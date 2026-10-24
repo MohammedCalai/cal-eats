@@ -1,0 +1,14 @@
+{
+  "name": "Calai Eats",
+  "short_name": "Calai Eats",
+  "description": "Calai Eats browser preview for Luton.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7faff",
+  "theme_color": "#071b36",
+  "icons": [
+    { "src": "/assets/calai-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/assets/calai-icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

@@ -5,6 +5,7 @@ import { hashPassword } from "./auth/passwords.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { orderDto } from "./journey.js";
+import { isDemoEmail } from "./seed.js";
 
 const clean = (value, min, max, label) => { const result = typeof value === "string" ? value.trim() : ""; if (result.length < min || result.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); return result; };
 const accountDto = (row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, phone: row.phone, emailVerified: Boolean(row.email_verified_at), emailVerifiedAt: row.email_verified_at });
@@ -24,6 +25,7 @@ export async function routeProduct({ req, res, url, db, config, session }) {
     const name = clean(body.name, 1, VALIDATION.nameMax, "Name"); const email = clean(body.email, 3, VALIDATION.emailMax, "Email").toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof body.password !== "string" || body.password.length < VALIDATION.passwordMin || body.password.length > VALIDATION.passwordMax) throw new HttpError(400, "VALIDATION_ERROR", "Staff details are invalid");
     if (db.prepare("SELECT 1 FROM users WHERE email=?").get(email)) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists");
+    if (config.runMode === "hosted-preview" && isDemoEmail(email)) throw new HttpError(400, "RESERVED_EMAIL", "Email is reserved");
     const passwordHash = await hashPassword(body.password); const now = config.now().toISOString(); const id = randomUUID();
     try { withTransaction(db, () => { db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(id, name, email, passwordHash, "restaurant", now); db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at,permission) VALUES(?,?,?,'staff')").run(match[1], id, now); }); }
     catch (error) { if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists"); throw error; }

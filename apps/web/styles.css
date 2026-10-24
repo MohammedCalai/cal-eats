@@ -57,6 +57,7 @@
 .integration-card .badge {
   margin-bottom: 0.45rem;
 }
+.runtime-banner{background:#d9e9ff;color:#071b36;border-bottom:1px solid #a9c9f2;padding:.55rem 1rem;text-align:center;font-size:.82rem;font-weight:800}
 
 .access-page { max-width: 620px; }
 .order-highlight { outline: 4px solid #75adff; outline-offset: 3px; animation: order-highlight 2.4s ease-out; }

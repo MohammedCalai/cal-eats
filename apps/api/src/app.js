@@ -10,6 +10,7 @@ import { routeOperations } from "./operations.js";
 import { serveStatic } from "./static.js";
 import { routeProduct } from "./product.js";
 import { routeAccountAccess } from "./account-access.js";
+import { isDemoEmail } from "./seed.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -32,17 +33,19 @@ function validateIdentity(body) {
 function clientKey(req, email = "") { return `${req.socket.remoteAddress ?? "unknown"}|${email}`; }
 
 export function createApp({ db, config }) {
-  const attempts = new Map();
   function incrementRateBucket(key, now) {
-    const entry = attempts.get(key);
-    if (!entry || now - entry.start >= config.rateLimit.windowMs) { attempts.set(key, { start: now, count: 1 }); return; }
-    entry.count += 1;
-    if (entry.count > config.rateLimit.attempts) throw new HttpError(429, "RATE_LIMITED", "Too many attempts; try again later");
+    const entry = db.prepare("SELECT * FROM auth_rate_limits WHERE bucket_key=?").get(key);
+    if (!entry || now - entry.window_start_ms >= config.rateLimit.windowMs) db.prepare("INSERT INTO auth_rate_limits(bucket_key,window_start_ms,attempt_count) VALUES(?,?,1) ON CONFLICT(bucket_key) DO UPDATE SET window_start_ms=excluded.window_start_ms,attempt_count=1").run(key, now);
+    else {
+      const count = entry.attempt_count + 1; db.prepare("UPDATE auth_rate_limits SET attempt_count=? WHERE bucket_key=?").run(count, key);
+      if (count > config.rateLimit.attempts) throw new HttpError(429, "RATE_LIMITED", "Too many attempts; try again later");
+    }
   }
   function checkRate(req, email) {
     const now = config.now().getTime();
-    for (const [key, entry] of attempts) if (now - entry.start >= config.rateLimit.windowMs) attempts.delete(key);
-    while (attempts.size > 10_000) attempts.delete(attempts.keys().next().value);
+    db.prepare("DELETE FROM auth_rate_limits WHERE window_start_ms<=?").run(now - config.rateLimit.windowMs);
+    const excess = db.prepare("SELECT COUNT(*) count FROM auth_rate_limits").get().count - 10_000;
+    if (excess > 0) db.prepare("DELETE FROM auth_rate_limits WHERE bucket_key IN (SELECT bucket_key FROM auth_rate_limits ORDER BY window_start_ms LIMIT ?)").run(excess);
     const ip = req.socket.remoteAddress ?? "unknown";
     incrementRateBucket(`ip:${ip}`, now);
     incrementRateBucket(`identity:${clientKey(req, email)}`, now);
@@ -51,14 +54,16 @@ export function createApp({ db, config }) {
   return async function app(req, res) {
     try {
       for (const [key, value] of Object.entries(securityHeaders)) res.setHeader(key, value);
-      if (req.headers.host !== config.expectedHost) throw new HttpError(403, "INVALID_HOST", "Request host is not allowed");
       const url = new URL(req.url, config.origin);
+      const healthcheckHostAllowed = req.method === "GET" && ["/health/live", "/health/ready"].includes(url.pathname) && config.runMode === "hosted-preview" && config.healthcheckHost && req.headers.host === config.healthcheckHost;
+      if (req.headers.host !== config.expectedHost && !healthcheckHostAllowed) throw new HttpError(403, "INVALID_HOST", "Request host is not allowed");
+      if (req.method === "GET" && url.pathname === "/api/runtime") return sendJson(res, 200, { data: { mode: config.runMode, demoShortcuts: config.demoShortcuts, simulatedPayments: true } });
       if (req.method === "GET" && url.pathname === "/health/live") return sendJson(res, 200, { data: { status: "ok", service: "calai-eats-api" } });
       if (req.method === "GET" && url.pathname === "/health/ready") {
         const ready = isDatabaseReady(db);
         return sendJson(res, ready ? 200 : 503, ready ? { data: { status: "ready", database: "ready", migrations: "current" } } : { error: { code: "NOT_READY", message: "Service is not ready" } });
       }
-      if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && req.headers.origin && req.headers.origin !== config.origin) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((config.runMode === "hosted-preview" && req.headers.origin !== config.origin) || (req.headers.origin && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       const token = parseSessionCookie(req.headers.cookie);
       const session = readSession(db, token, config);
       const accountAccessHandled = await routeAccountAccess({ req, res, url, db, config, session, checkRate });
@@ -68,6 +73,7 @@ export function createApp({ db, config }) {
         const body = await readJson(req, config.bodyLimit);
         exactObject(body, ["name", "email", "password"]);
         const identity = validateIdentity(body);
+        if (config.runMode === "hosted-preview" && isDemoEmail(identity.email)) throw new HttpError(400, "RESERVED_EMAIL", "Email is reserved");
         checkRate(req, identity.email);
         const passwordHash = await hashPassword(identity.password);
         const user = { id: randomUUID(), name: identity.name, email: identity.email, role: "customer" };
@@ -81,12 +87,13 @@ export function createApp({ db, config }) {
           if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists");
           throw error;
         }
-        return sendJson(res, 201, { data: { user } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
+        return sendJson(res, 201, { data: { user } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
       }
       if (req.method === "POST" && url.pathname === "/api/auth/restaurant-register") {
         const body = await readJson(req, config.bodyLimit);
         exactObject(body, ["name", "email", "password", "restaurantName"]);
         const identity = validateIdentity(body); const restaurantName = typeof body.restaurantName === "string" ? body.restaurantName.trim() : "";
+        if (config.runMode === "hosted-preview" && isDemoEmail(identity.email)) throw new HttpError(400, "RESERVED_EMAIL", "Email is reserved");
         if (!restaurantName || restaurantName.length > VALIDATION.restaurantNameMax) throw new HttpError(400, "VALIDATION_ERROR", "Restaurant name is invalid");
         checkRate(req, identity.email);
         const passwordHash = await hashPassword(identity.password); const now = config.now().toISOString();
@@ -99,7 +106,7 @@ export function createApp({ db, config }) {
           db.prepare("INSERT INTO contracts VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(), restaurantId, 700, 24, "demo-v1", 1, null, null, now);
           return createSession(db, user.id, config);
         }); } catch (error) { if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists"); throw error; }
-        return sendJson(res, 201, { data: { user, restaurantId } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
+        return sendJson(res, 201, { data: { user, restaurantId } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
       }
       if (req.method === "POST" && url.pathname === "/api/auth/login") {
         const body = await readJson(req, config.bodyLimit);
@@ -118,7 +125,7 @@ export function createApp({ db, config }) {
             if (upgradedHash) db.prepare("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?").run(upgradedHash, row.id, verifiedHash);
             return createSession(db, row.id, config);
           });
-          if (created) return sendJson(res, 200, { data: { user: publicUser(row) } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
+          if (created) return sendJson(res, 200, { data: { user: publicUser(row) } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
         }
         throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
       }
@@ -130,7 +137,7 @@ export function createApp({ db, config }) {
         const body = await readJson(req, config.bodyLimit);
         exactObject(body, []);
         revokeSession(db, token, config.now());
-        return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie() });
+        return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
       const offersHandled = await routeOffers({ req, res, url, db, config, session });

@@ -4,7 +4,7 @@ Updated: 2026-10-24 (Europe/London).
 
 ## Delivered
 
-The first persisted local browser app is complete through schema v7 and runs at http://127.0.0.1:4310/. Customer, restaurant and admin workspaces share the original user-supplied Calai logo and navy/blue theme. Implementation was delegated to supported gpt-5.6-sol agents, with lead architecture, review and browser integration checks.
+The first persisted local browser app is complete through schema v8 and runs at http://127.0.0.1:4310/. Customer, restaurant and admin workspaces share the original user-supplied Calai logo and navy/blue theme. Implementation was delegated to supported gpt-5.6-sol agents, with lead architecture, review and browser integration checks.
 
 - Customer: restaurant discovery and postcode search, delivery/collection, menu choices, basket, checkout, order confirmation/history/status, reorder, receipts, account export and support.
 - Restaurant: order handling with restaurant-owned delivery, editable menu/choices/allergens, delivery areas/fees/minimums, profile, hours/overnight service/holidays/pause, staff access and statements.
@@ -34,12 +34,16 @@ The user confirmed that directly rendered image tool results are visible on thei
 
 ## Run and resume details
 
+The final local preparation adds a guarded hosted-preview profile, secure hosted cookies and exact write origins, persistent SQLite authentication throttles, known-demo-account refusal, an initial-admin CLI with masked or bounded stdin secret input, and a five-second request drain that cannot close SQLite beneath an active handler. Four focused deployment/security tests passed, including a held-handler shutdown regression. The full suite and persisted order smoke were not repeated. The repository check passed for 35 JavaScript files and 21 required files. The existing local database migrated to v8 and the actual HTTP readiness probe passed.
+
+The browser app now includes a phone installation manifest, original-logo icons embedding the unchanged PNG, a public-asset-only network-first service worker and branded reconnect page. A pinned Node 24.19.0 non-root Docker recipe and readiness probe prepare a future single-instance preview with a private persistent volume. Static validation passed; Docker is not installed, so no container was built. Browser installation diagnostics stalled, so service-worker activation/offline interception and real-phone installation remain explicitly unverified. The normal customer screen still rendered after restart. The deprecated Railway config file was omitted in favour of current documented manual setup choices; no service was provisioned.
+
 Node 24.19.0 and npm 11.17.0 are installed. No package download is required. Use the root README for startup and public local fixture credentials, LOCAL_RUNBOOK.md for backup/recovery and the screenshot gallery for the phone walkthrough. The current local Git branch is `codex/local-app`; no remote push or cloud deployment was made. Database, backups, secrets and logs remain ignored by Git.
 
 ## Remaining work and limits
 
 This is a local responsive browser app, not a native Expo/iOS binary or a production release. Mock card processing, refunds, cash records and delivery statuses do not contact banks or couriers. Receipt handoff does not verify physical printing. There is no GPS driver map, external push/email/SMS, real email verification, live payout or provider reconciliation. Local password recovery and informational email confirmation are now implemented with a private simulated mailbox.
 
-Native packaging/device validation, verified sandbox payment adapters/webhooks, approved commercial/privacy terms, production security/recovery/monitoring, infrastructure and deployment remain later work. The code deliberately rejects production mode and non-loopback binding; publishing requires implementation and review, not merely switching a setting. See DEPLOYMENT.md and PENDING_DECISIONS.md.
+Native packaging/device validation, verified sandbox payment adapters/webhooks, approved commercial/privacy terms, production security/recovery/monitoring, infrastructure and deployment remain later work. Default local mode still rejects production and non-loopback binding. The new hosted-preview profile is separately guarded, keeps payments simulated and requires an empty non-demo database. Before hosting, verify the container build, mounted-volume permissions, HTTPS/proxy behaviour, backups and phone installation. See DEPLOYMENT.md, HOSTED_PREVIEW.md, CONTAINER_PREVIEW.md and PENDING_DECISIONS.md.
 
-No GitHub, Expo, Railway, paid infrastructure, live payment, DNS or store-submission operation was performed. The user's stop threshold is **5% usage remaining**; check account usage before further sustained work. The latest check during final verification showed 30% remaining.
+No GitHub, Expo, Railway, paid infrastructure, live payment, DNS or store-submission operation was performed. The user's stop threshold is **5% usage remaining**; check account usage before further sustained work. The latest check during final verification showed 24% remaining.

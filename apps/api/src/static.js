@@ -8,8 +8,13 @@ const assets = new Map([
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/model.js", ["model.js", "text/javascript; charset=utf-8"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
+  ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json; charset=utf-8"]],
+  ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],
+  ["/offline.html", ["offline.html", "text/html; charset=utf-8"]],
   ["/assets/calai-original.png", ["assets/calai-original.png", "image/png"]],
-  ["/assets/food-demo.png", ["assets/food-demo.png", "image/png"]]
+  ["/assets/food-demo.png", ["assets/food-demo.png", "image/png"]],
+  ["/assets/calai-icon.svg", ["assets/calai-icon.svg", "image/svg+xml"]],
+  ["/assets/calai-icon-maskable.svg", ["assets/calai-icon-maskable.svg", "image/svg+xml"]]
 ]);
 
 export async function serveStatic(req, res, pathname) {

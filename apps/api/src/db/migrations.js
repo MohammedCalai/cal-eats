@@ -127,5 +127,12 @@ CREATE INDEX account_access_tokens_user_idx ON account_access_tokens(user_id,pur
 CREATE TABLE local_mail_sink (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('password_reset','email_verification')), recipient TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE INDEX local_mail_sink_created_idx ON local_mail_sink(created_at);
 `
+  },
+  {
+    version: 8,
+    name: "persistent_auth_throttling",
+    sql: `
+CREATE TABLE auth_rate_limits (bucket_key TEXT PRIMARY KEY, window_start_ms INTEGER NOT NULL, attempt_count INTEGER NOT NULL CHECK(attempt_count > 0));
+`
   }
 ];

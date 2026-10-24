@@ -6,6 +6,7 @@
   "scripts": {
     "db:migrate": "node --env-file-if-exists=.env apps/api/src/cli/migrate.js",
     "db:seed": "node --env-file-if-exists=.env apps/api/src/cli/seed.js",
+    "admin:create": "node --env-file-if-exists=.env apps/api/scripts/bootstrap-admin.js",
     "start": "node --env-file-if-exists=.env apps/api/src/main.js",
     "smoke": "node apps/api/scripts/smoke.js",
     "backup": "node scripts/backup.js",

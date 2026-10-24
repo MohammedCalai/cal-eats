@@ -1,6 +1,6 @@
 # Repository release preparation
 
-Calai Eats is currently a **local preview**. Production hosting, live payments, email delivery and other provider integrations are not enabled.
+Calai Eats currently runs as a **local preview**. The repository includes a guarded hosted-preview profile, container recipe and phone installation assets. No hosting operation has occurred; live payments, external email and other provider integrations are not enabled. See HOSTED_PREVIEW.md, CONTAINER_PREVIEW.md and PHONE_INSTALL.md for the precise remaining environment checks.
 
 ## Supported local toolchain
 

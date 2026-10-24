@@ -4,7 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#071b36">
+  <meta name="description" content="Calai Eats local and hosted browser preview for Luton.">
   <title>Calai Eats — Luton local demo</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/assets/calai-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -20,6 +23,7 @@
     </nav>
     <div id="account"></div>
   </header>
+  <div id="runtime-banner" class="runtime-banner" role="status" hidden></div>
   <div id="network" class="network" role="status" hidden>You appear to be offline. We’ll keep your order details on screen.</div>
   <main id="main" tabindex="-1"></main>
   <nav id="customer-bottom" class="bottom-nav" aria-label="Customer navigation" hidden>

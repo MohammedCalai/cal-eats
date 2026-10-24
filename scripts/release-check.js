@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -7,7 +7,10 @@ const failures = [];
 const required = [
   "package.json", "package-lock.json", ".gitignore", ".gitattributes",
   ".editorconfig", ".env.example", ".nvmrc", "README.md",
-  "apps/api/src/main.js", "apps/web/index.html", "packages/contracts/src/index.js"
+  "apps/api/src/main.js", "apps/api/scripts/bootstrap-admin.js", "apps/web/index.html",
+  "apps/web/manifest.webmanifest", "apps/web/sw.js", "apps/web/offline.html",
+  "packages/contracts/src/index.js", "Dockerfile", ".dockerignore", "infra/healthcheck.js",
+  "docs/HOSTED_PREVIEW.md", "docs/CONTAINER_PREVIEW.md", "docs/PHONE_INSTALL.md"
 ];
 
 for (const file of required) if (!existsSync(join(root, file))) failures.push(`Missing required file: ${file}`);
@@ -33,7 +36,7 @@ function filesUnder(directory) {
   });
 }
 
-const sourceRoots = ["apps/api/src", "apps/api/scripts", "apps/web", "packages/contracts/src", "scripts"];
+const sourceRoots = ["apps/api/src", "apps/api/scripts", "apps/web", "packages/contracts/src", "scripts", "infra"];
 const javascript = sourceRoots.flatMap((dir) => filesUnder(join(root, dir))).filter((file) => extname(file) === ".js");
 for (const file of javascript) {
   const result = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });

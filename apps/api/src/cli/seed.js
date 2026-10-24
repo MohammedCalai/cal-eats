@@ -6,6 +6,6 @@ const config = loadConfig();
 const db = openDatabase(config.dbPath);
 try {
   migrateDatabase(db);
-  const result = await seedDemoData(db);
+  const result = await seedDemoData(db, new Date(), { runMode: config.runMode });
   console.log(`Local demo data ready (${result.accounts} accounts). Credentials are documented in README.md.`);
 } finally { closeDatabase(db); }

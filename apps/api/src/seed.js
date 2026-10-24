@@ -8,8 +8,16 @@ export const DEMO_ACCOUNTS = Object.freeze([
   { name: "Second Restaurant Owner", email: "restaurant2@calai.local", password: "LocalRestaurant2!4310", role: "restaurant", restaurant: { name: "Second Spoon", status: "pending" } },
   { name: "Demo Customer", email: "customer@calai.local", password: "LocalCustomer!4310", role: "customer" }
 ]);
+const demoEmails = new Set(DEMO_ACCOUNTS.map((account) => account.email));
+export const isDemoEmail = (email) => demoEmails.has(String(email).trim().toLowerCase());
+export function assertHostedPreviewSafe(db, config) {
+  if (config.runMode !== "hosted-preview") return;
+  const placeholders = DEMO_ACCOUNTS.map(() => "?").join(",");
+  if (db.prepare(`SELECT 1 FROM users WHERE email IN (${placeholders}) LIMIT 1`).get(...DEMO_ACCOUNTS.map((account) => account.email))) throw new Error("Hosted preview refuses a database containing reserved demo accounts");
+}
 
-export async function seedDemoData(db, now = new Date()) {
+export async function seedDemoData(db, now = new Date(), { runMode = "local" } = {}) {
+  if (runMode !== "local") throw new Error("Demo seed is available only in local mode");
   const timestamp = now.toISOString();
   for (const account of DEMO_ACCOUNTS) {
     let user = db.prepare("SELECT id FROM users WHERE email=?").get(account.email);

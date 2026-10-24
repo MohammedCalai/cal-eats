@@ -26,11 +26,11 @@ export function revokeSession(db, token, now) {
   if (token) db.prepare("UPDATE sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL").run(now.toISOString(), tokenHash(token));
 }
 
-export function cookieFor(token, expires, now) {
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, Math.floor((expires.getTime() - now.getTime()) / 1000))}`;
+export function cookieFor(token, expires, now, secure = false) {
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}; Max-Age=${Math.max(0, Math.floor((expires.getTime() - now.getTime()) / 1000))}`;
 }
 
-export const clearCookie = () => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
+export const clearCookie = (secure = false) => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}; Max-Age=0`;
 
 export function parseSessionCookie(header = "") {
   for (const part of header.split(";")) {
