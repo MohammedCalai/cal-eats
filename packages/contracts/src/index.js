@@ -1,6 +1,6 @@
 export const ROLES = Object.freeze(["customer", "restaurant", "admin"]);
 export const RESTAURANT_STATUSES = Object.freeze(["pending", "approved", "rejected"]);
-export const ORDER_STATUSES = Object.freeze(["placed", "accepted", "preparing", "ready", "completed", "rejected"]);
+export const ORDER_STATUSES = Object.freeze(["placed", "accepted", "preparing", "ready", "out_for_delivery", "completed", "rejected"]);
 export const CURRENCY = "GBP";
 export const COMMISSION_BASIS_POINTS = 700;
 export const VALIDATION = Object.freeze({
@@ -10,7 +10,17 @@ export const VALIDATION = Object.freeze({
   passwordMin: 12,
   passwordMax: 200,
   requestBodyMaxBytes: 16 * 1024,
-  sessionHours: 24
+  sessionHours: 24,
+  restaurantNameMax: 100,
+  menuNameMax: 120,
+  descriptionMax: 500,
+  priceMaxMinor: 10_000_000,
+  quantityMax: 50,
+  orderItemsMax: 50,
+  idempotencyKeyMax: 128,
+  addressLineMax: 120,
+  cityMax: 100,
+  deliveryOutcodesMax: 50
 });
 
 export function publicUser(user) {

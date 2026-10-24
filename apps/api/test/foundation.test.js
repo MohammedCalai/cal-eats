@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { closeDatabase, migrateDatabase, openDatabase } from "../src/db/index.js";
+import { migrations } from "../src/db/migrations.js";
 import { createServer, closeServer } from "../src/server.js";
 import { calculateCommission } from "../../../packages/contracts/src/index.js";
 
@@ -51,13 +52,38 @@ test("migrations are repeatable and persisted after reopen", async () => {
   const dbPath = path.join(directory, "test.sqlite");
   let db = openDatabase(dbPath);
   try {
-    assert.equal(migrateDatabase(db), 1);
-    assert.equal(migrateDatabase(db), 1);
+    assert.equal(migrateDatabase(db), 2);
+    assert.equal(migrateDatabase(db), 2);
     db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run("u1", "Saved", "saved@example.test", "hash", "customer", new Date().toISOString());
     closeDatabase(db);
     db = openDatabase(dbPath);
     migrateDatabase(db);
     assert.equal(db.prepare("SELECT name FROM users WHERE id='u1'").get().name, "Saved");
+  } finally { closeDatabase(db); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("v1 to v2 migration preserves existing journey records", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "calai-eats-v1-"));
+  const db = openDatabase(path.join(directory, "test.sqlite"));
+  try {
+    db.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
+    db.exec(migrations[0].sql);
+    db.prepare("INSERT INTO schema_migrations VALUES(1,'initial_schema',?)").run(new Date().toISOString());
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run("u", "User", "u@example.test", "hash", "customer", now);
+    db.prepare("INSERT INTO restaurants VALUES(?,?,?,?)").run("r", "Restaurant", "approved", now);
+    db.prepare("INSERT INTO menu_items VALUES(?,?,?,?,?,?,?,?)").run("m", "r", "Meal", "", 1000, 1, now, now);
+    db.prepare("INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run("o", "r", "Restaurant", "u", "accepted", "GBP", 1000, 70, "mock_card", "mock_captured", "collection", "key", "hash", now, now);
+    db.prepare("INSERT INTO order_items VALUES(?,?,?,?,?,?)").run("i", "o", "m", "Meal", 1000, 1);
+    db.prepare("INSERT INTO order_events VALUES(?,?,?,?,?,?,?)").run("e", "o", "u", "status_changed", "placed", "accepted", now);
+    db.prepare("INSERT INTO ledger_entries VALUES(?,?,?,?,?,?,?)").run("l", "o", "r", "commission_mock", 70, "GBP", now);
+    migrateDatabase(db);
+    const order = db.prepare("SELECT * FROM orders WHERE id='o'").get();
+    assert.equal(order.total_minor, 1000);
+    assert.equal(order.delivery_fee_minor, 0);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM order_items WHERE order_id='o'").get().n, 1);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM order_events WHERE order_id='o'").get().n, 1);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM ledger_entries WHERE order_id='o'").get().n, 1);
   } finally { closeDatabase(db); await rm(directory, { recursive: true, force: true }); }
 });
 

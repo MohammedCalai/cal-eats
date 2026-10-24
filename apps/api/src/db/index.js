@@ -15,14 +15,20 @@ export function migrateDatabase(db) {
   const applied = db.prepare("SELECT version FROM schema_migrations").all().map((row) => row.version);
   for (const migration of migrations) {
     if (applied.includes(migration.version)) continue;
-    db.exec("BEGIN IMMEDIATE");
+    if (migration.foreignKeysOff) db.exec("PRAGMA foreign_keys = OFF");
     try {
-      db.exec(migration.sql);
-      db.prepare("INSERT INTO schema_migrations(version,name,applied_at) VALUES(?,?,?)").run(migration.version, migration.name, new Date().toISOString());
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        db.exec(migration.sql);
+        if (migration.foreignKeysOff && db.prepare("PRAGMA foreign_key_check").get()) throw new Error("Foreign key violation during migration");
+        db.prepare("INSERT INTO schema_migrations(version,name,applied_at) VALUES(?,?,?)").run(migration.version, migration.name, new Date().toISOString());
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    } finally {
+      if (migration.foreignKeysOff) db.exec("PRAGMA foreign_keys = ON");
     }
   }
   return migrations.length;

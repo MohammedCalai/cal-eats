@@ -23,9 +23,21 @@ export async function seedDemoData(db, now = new Date()) {
       const membership = db.prepare("SELECT restaurant_id FROM restaurant_memberships WHERE user_id=?").get(user.id);
       if (!membership) withTransaction(db, () => {
         const restaurantId = randomUUID();
-        db.prepare("INSERT INTO restaurants(id,name,status,created_at) VALUES(?,?,?,?)").run(restaurantId, account.restaurant.name, account.restaurant.status, timestamp);
+        db.prepare("INSERT INTO restaurants(id,name,status,created_at,delivery_enabled,delivery_outcodes,delivery_fee_minor,min_delivery_subtotal_minor) VALUES(?,?,?,?,?,?,?,?)").run(restaurantId, account.restaurant.name, account.restaurant.status, timestamp, 1, JSON.stringify(["N1", "N2"]), 250, 1000);
         db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at) VALUES(?,?,?)").run(restaurantId, user.id, timestamp);
+        if (account.restaurant.status === "approved") {
+          db.prepare("INSERT INTO menu_items VALUES(?,?,?,?,?,?,?,?)").run(randomUUID(), restaurantId, "Demo bowl", "Local demo menu item", 1200, 1, timestamp, timestamp);
+          db.prepare("INSERT INTO menu_items VALUES(?,?,?,?,?,?,?,?)").run(randomUUID(), restaurantId, "Demo side", "Local demo side", 450, 1, timestamp, timestamp);
+        }
       });
+      else {
+        db.prepare("UPDATE restaurants SET delivery_enabled=1,delivery_outcodes=?,delivery_fee_minor=250,min_delivery_subtotal_minor=1000 WHERE id=?").run(JSON.stringify(["N1", "N2"]), membership.restaurant_id);
+        const menuCount = db.prepare("SELECT count(*) AS n FROM menu_items WHERE restaurant_id=?").get(membership.restaurant_id).n;
+        if (!menuCount && account.restaurant.status === "approved") {
+          db.prepare("INSERT INTO menu_items VALUES(?,?,?,?,?,?,?,?)").run(randomUUID(), membership.restaurant_id, "Demo bowl", "Local demo menu item", 1200, 1, timestamp, timestamp);
+          db.prepare("INSERT INTO menu_items VALUES(?,?,?,?,?,?,?,?)").run(randomUUID(), membership.restaurant_id, "Demo side", "Local demo side", 450, 1, timestamp, timestamp);
+        }
+      }
     }
   }
   return { accounts: DEMO_ACCOUNTS.length };

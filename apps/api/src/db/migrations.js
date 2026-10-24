@@ -14,5 +14,22 @@ CREATE TABLE order_items (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES
 CREATE TABLE order_events (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, actor_user_id TEXT REFERENCES users(id), kind TEXT NOT NULL, from_status TEXT, to_status TEXT, created_at TEXT NOT NULL);
 CREATE TABLE ledger_entries (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), restaurant_id TEXT NOT NULL REFERENCES restaurants(id), kind TEXT NOT NULL, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'GBP', created_at TEXT NOT NULL, UNIQUE(order_id,kind));
 `
+  },
+  {
+    version: 2,
+    name: "delivery_journey",
+    foreignKeysOff: true,
+    sql: `
+ALTER TABLE restaurants ADD COLUMN delivery_enabled INTEGER NOT NULL DEFAULT 0 CHECK(delivery_enabled IN (0,1));
+ALTER TABLE restaurants ADD COLUMN delivery_outcodes TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE restaurants ADD COLUMN delivery_fee_minor INTEGER NOT NULL DEFAULT 0 CHECK(delivery_fee_minor >= 0);
+ALTER TABLE restaurants ADD COLUMN min_delivery_subtotal_minor INTEGER NOT NULL DEFAULT 0 CHECK(min_delivery_subtotal_minor >= 0);
+CREATE TABLE orders_new (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), restaurant_name TEXT NOT NULL, customer_id TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL CHECK(status IN ('placed','accepted','preparing','ready','out_for_delivery','completed','rejected')), currency TEXT NOT NULL DEFAULT 'GBP', subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor >= 0), delivery_fee_minor INTEGER NOT NULL DEFAULT 0 CHECK(delivery_fee_minor >= 0), total_minor INTEGER NOT NULL DEFAULT 0 CHECK(total_minor >= 0), delivery_address TEXT, commission_minor INTEGER NOT NULL CHECK(commission_minor >= 0), payment_method TEXT NOT NULL CHECK(payment_method IN ('mock_card','cash')), payment_status TEXT NOT NULL, fulfillment TEXT NOT NULL CHECK(fulfillment IN ('collection','delivery')), idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(customer_id,idempotency_key));
+INSERT INTO orders_new(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at)
+SELECT id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,0,subtotal_minor,NULL,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at FROM orders;
+DROP TABLE orders;
+ALTER TABLE orders_new RENAME TO orders;
+CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_user_id TEXT NOT NULL REFERENCES users(id), entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL, created_at TEXT NOT NULL);
+`
   }
 ];

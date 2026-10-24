@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword } from "./auth/passwords.js";
 import { clearCookie, cookieFor, createSession, parseSessionCookie, readSession, revokeSession } from "./auth/sessions.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { isDatabaseReady, withTransaction } from "./db/index.js";
+import { routeJourney } from "./journey.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -96,6 +97,8 @@ export function createApp({ db, config }) {
         revokeSession(db, token, config.now());
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie() });
       }
+      const handled = await routeJourney({ req, res, url, db, config, session });
+      if (handled || res.writableEnded || res.headersSent) return;
       throw new HttpError(404, "NOT_FOUND", "Resource not found");
     } catch (error) {
       const status = Number.isInteger(error.status) ? error.status : 500;

@@ -14,6 +14,7 @@ Journey endpoints (backend agent implements before frontend starts):
 - `GET /api/restaurants`: public approved restaurant array.
 - `GET /api/restaurants/:id/menu`: approved restaurant + active menu.
 - `GET /api/restaurant/restaurants`: member's restaurant array (all approval states).
+- `GET /api/restaurant/restaurants/:id/menu`: member-only `{restaurant,items}` including unavailable menu items.
 - `POST /api/restaurant/restaurants` `{name}`: authenticated restaurant role creates pending restaurant + membership.
 - `POST /api/restaurant/restaurants/:id/menu` `{name,description,priceMinor}`: member adds menu item; 201 item.
 - `PATCH /api/restaurant/restaurants/:id/menu/:itemId` `{name?,description?,priceMinor?,available?}`: member changes item.
@@ -33,3 +34,6 @@ Proposed DTO fields to finalize during backend milestone:
 Restaurant `{id,name,status,createdAt,delivery:{enabled,outcodes,deliveryFeeMinor,minDeliverySubtotalMinor}}`; MenuItem `{id,restaurantId,name,description,priceMinor,available}`; Order `{id,restaurantId,restaurantName,customerId,status,currency,subtotalMinor,deliveryFeeMinor,totalMinor,deliveryAddress,commissionMinor,paymentMethod,paymentStatus,fulfillment,createdAt,updatedAt,items,events}`. Detail may include ledger. Ledger `{id,orderId,restaurantId,kind,amountMinor,currency,createdAt}` with explicit kinds to be finalized. Public responses never include customer info, credentials or memberships.
 
 Front-end must use documented real responses, not synthesize success. Updates can poll own orders every 5 seconds and must stop on logout. Payment mocks are deterministic local adapter behavior, not Stripe sandbox verification.
+
+## Frozen response details for web integration
+All list routes return `data: [...]`. Menu GET routes return `data: {restaurant,items:[MenuItem]}`. Create/update routes return the DTO directly in data; auth routes are the documented `{user}` exception. Order items snapshot `{menuItemId,name,unitPriceMinor,quantity}` (may also include id). Order events contain kind/fromStatus/toStatus/createdAt. Ledger kinds: `commission_mock` or `commission_cash_receivable`; do not sum different kinds as cash received. Mock card payment states `mock_authorized`, `mock_captured`, `mock_cancelled`; cash states `cash_due`, `cash_collected`, `cash_cancelled`. No refunds in this milestone. Delivery settings are the `delivery` object documented above.
