@@ -8,8 +8,10 @@
     "db:seed": "node apps/api/src/cli/seed.js",
     "start": "node apps/api/src/main.js",
     "smoke": "node apps/api/scripts/smoke.js",
+    "backup": "node scripts/backup.js",
+    "restore:check": "node scripts/restore-check.js",
     "test": "node --test",
-    "check": "node --check apps/api/src/main.js && node --check apps/api/src/app.js && node --check apps/api/src/journey.js && node --check apps/api/scripts/smoke.js && node --test"
+    "check": "node --check apps/api/src/main.js && node --check apps/api/src/app.js && node --check apps/api/src/journey.js && node --check apps/api/src/operations.js && node --check apps/api/src/product.js && node --check apps/api/src/availability.js && node --check apps/api/src/static.js && node --check apps/api/src/payments/mock.js && node --check apps/api/scripts/smoke.js && node --check scripts/backup.js && node --check scripts/restore-check.js && node --test"
   },
   "engines": { "node": ">=24.0.0" }
 }

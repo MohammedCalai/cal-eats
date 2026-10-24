@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calai Eats demo screens</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #071b36; background: #f7faff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { padding: 2.5rem max(1rem, calc((100vw - 1200px) / 2)); background: #071b36; color: white; }
+    h1 { margin: 0 0 0.65rem; font-size: clamp(1.8rem, 5vw, 3rem); }
+    header p { max-width: 65ch; margin: 0; line-height: 1.6; color: #dceaff; }
+    main { width: min(1200px, calc(100% - 2rem)); margin: 2rem auto; }
+    ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 1.25rem; padding: 0; list-style: none; counter-reset: screens; }
+    li { counter-increment: screens; min-width: 0; }
+    figure { margin: 0; height: 100%; overflow: hidden; border: 1px solid #cfdded; border-radius: 1rem; background: white; box-shadow: 0 0.45rem 1.4rem rgba(7, 27, 54, 0.08); }
+    figcaption { padding: 1rem; font-size: 1.05rem; font-weight: 700; }
+    figcaption::before { content: counter(screens, decimal-leading-zero) ". "; color: #1261d5; }
+    img { display: block; width: 100%; height: auto; border-top: 1px solid #e4edf7; }
+    @media (max-width: 420px) { header { padding-block: 1.75rem; } main { width: min(100% - 1rem, 1200px); margin-block: 1rem; } ol { gap: 0.75rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Calai Eats demo screens</h1>
+    <p>This gallery documents a fictional local demo. Some captures show intermediate workflow states while an order, offer, refund, or settlement is being processed.</p>
+  </header>
+  <main>
+    <ol>
+      <li><figure><figcaption>Customer home</figcaption><img src="01-customer-home.jpg" alt="Customer home screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Sign in and registration</figcaption><img src="02-sign-in-and-registration.jpg" alt="Sign in and registration screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Menu and basket</figcaption><img src="03-menu-and-basket.jpg" alt="Menu and basket screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Delivery checkout</figcaption><img src="04-delivery-checkout.jpg" alt="Delivery checkout screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Order confirmation</figcaption><img src="05-order-confirmation.jpg" alt="Order confirmation screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Order tracking</figcaption><img src="06-order-tracking.jpg" alt="Order tracking screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Customer offers</figcaption><img src="07-customer-offers.jpg" alt="Customer offers screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Notifications</figcaption><img src="08-notifications.jpg" alt="Notifications screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Account and support</figcaption><img src="09-account-and-support.jpg" alt="Account and support screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Restaurant orders</figcaption><img src="10-restaurant-orders.jpg" alt="Restaurant orders screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Restaurant menu</figcaption><img src="11-restaurant-menu.jpg" alt="Restaurant menu screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Delivery settings</figcaption><img src="12-delivery-settings.jpg" alt="Delivery settings screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Profile and hours</figcaption><img src="13-profile-and-hours.jpg" alt="Profile and opening hours screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Staff</figcaption><img src="14-staff.jpg" alt="Staff management screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Statement</figcaption><img src="15-statement.jpg" alt="Restaurant statement screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Customers and offer analytics</figcaption><img src="16-customers-and-offer-analytics.jpg" alt="Customers and offer analytics screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Admin approvals</figcaption><img src="17-admin-approvals.jpg" alt="Admin approvals screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Admin orders</figcaption><img src="18-admin-orders.jpg" alt="Admin orders screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Admin ledger</figcaption><img src="19-admin-ledger.jpg" alt="Admin ledger screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Admin support</figcaption><img src="20-admin-support.jpg" alt="Admin support screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Margin estimate</figcaption><img src="21-margin-estimate.jpg" alt="Margin estimate screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Admin operations</figcaption><img src="22-admin-operations.jpg" alt="Admin operations screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Refund controls</figcaption><img src="23-refund-controls.jpg" alt="Refund controls screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Cash settlement</figcaption><img src="24-cash-settlement.jpg" alt="Cash settlement screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Receipt</figcaption><img src="25-receipt.jpg" alt="Receipt screen" loading="lazy"></figure></li>
+      <li><figure><figcaption>Menu item editor</figcaption><img src="26-menu-item-editor.jpg" alt="Menu item editor screen" loading="lazy"></figure></li>
+    </ol>
+  </main>
+</body>
+</html>

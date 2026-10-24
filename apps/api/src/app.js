@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { publicUser, VALIDATION } from "../../../packages/contracts/src/index.js";
-import { hashPassword, verifyPassword } from "./auth/passwords.js";
+import { hashPassword, passwordNeedsRehash, verifyPassword } from "./auth/passwords.js";
 import { clearCookie, cookieFor, createSession, parseSessionCookie, readSession, revokeSession } from "./auth/sessions.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { isDatabaseReady, withTransaction } from "./db/index.js";
 import { routeJourney } from "./journey.js";
+import { routeOffers } from "./offers.js";
+import { routeOperations } from "./operations.js";
+import { serveStatic } from "./static.js";
+import { routeProduct } from "./product.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -76,6 +80,24 @@ export function createApp({ db, config }) {
         }
         return sendJson(res, 201, { data: { user } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
       }
+      if (req.method === "POST" && url.pathname === "/api/auth/restaurant-register") {
+        const body = await readJson(req, config.bodyLimit);
+        exactObject(body, ["name", "email", "password", "restaurantName"]);
+        const identity = validateIdentity(body); const restaurantName = typeof body.restaurantName === "string" ? body.restaurantName.trim() : "";
+        if (!restaurantName || restaurantName.length > VALIDATION.restaurantNameMax) throw new HttpError(400, "VALIDATION_ERROR", "Restaurant name is invalid");
+        checkRate(req, identity.email);
+        const passwordHash = await hashPassword(identity.password); const now = config.now().toISOString();
+        const user = { id: randomUUID(), name: identity.name, email: identity.email, role: "restaurant" }; const restaurantId = randomUUID();
+        let created;
+        try { created = withTransaction(db, () => {
+          db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(user.id, user.name, user.email, passwordHash, user.role, now);
+          db.prepare("INSERT INTO restaurants(id,name,status,created_at) VALUES(?,?,?,?)").run(restaurantId, restaurantName, "pending", now);
+          db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at,permission) VALUES(?,?,?,'owner')").run(restaurantId, user.id, now);
+          db.prepare("INSERT INTO contracts VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(), restaurantId, 700, 24, "demo-v1", 1, null, null, now);
+          return createSession(db, user.id, config);
+        }); } catch (error) { if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists"); throw error; }
+        return sendJson(res, 201, { data: { user, restaurantId } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
+      }
       if (req.method === "POST" && url.pathname === "/api/auth/login") {
         const body = await readJson(req, config.bodyLimit);
         exactObject(body, ["email", "password"]);
@@ -84,6 +106,7 @@ export function createApp({ db, config }) {
         checkRate(req, email);
         const row = db.prepare("SELECT * FROM users WHERE email=?").get(email);
         if (!(await verifyPassword(password, row?.password_hash)) || !row) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+        if (passwordNeedsRehash(row.password_hash)) db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(await hashPassword(password), row.id);
         const created = createSession(db, row.id, config);
         return sendJson(res, 200, { data: { user: publicUser(row) } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
       }
@@ -97,6 +120,13 @@ export function createApp({ db, config }) {
         revokeSession(db, token, config.now());
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie() });
       }
+      if (await serveStatic(req, res, url.pathname)) return;
+      const offersHandled = await routeOffers({ req, res, url, db, config, session });
+      if (offersHandled || res.writableEnded || res.headersSent) return;
+      const productHandled = await routeProduct({ req, res, url, db, config, session });
+      if (productHandled || res.writableEnded || res.headersSent) return;
+      const operationHandled = await routeOperations({ req, res, url, db, config, session });
+      if (operationHandled || res.writableEnded || res.headersSent) return;
       const handled = await routeJourney({ req, res, url, db, config, session });
       if (handled || res.writableEnded || res.headersSent) return;
       throw new HttpError(404, "NOT_FOUND", "Resource not found");

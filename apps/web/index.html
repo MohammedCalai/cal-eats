@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#071b36">
+  <title>Calai Eats — Luton local demo</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <button class="brand" type="button" data-action="home" aria-label="Calai Eats home"><span class="brand-crop"><img src="/assets/calai-original.png" alt="Calai"></span><i>Eats</i></button>
+    <nav aria-label="Main navigation">
+      <button type="button" data-view="discover">Find food</button>
+      <button type="button" data-view="orders">My orders</button>
+      <button type="button" data-view="offers">Offers</button>
+      <button type="button" data-view="account">Account</button>
+      <button type="button" data-view="workspace">Workspace</button>
+    </nav>
+    <div id="account"></div>
+  </header>
+  <div id="network" class="network" role="status" hidden>You appear to be offline. We’ll keep your order details on screen.</div>
+  <main id="main" tabindex="-1"></main>
+  <nav id="customer-bottom" class="bottom-nav" aria-label="Customer navigation" hidden>
+    <button data-view="discover"><span aria-hidden="true">⌂</span>Browse</button>
+    <button data-view="orders"><span aria-hidden="true">▤</span>Orders</button>
+    <button data-view="offers"><span aria-hidden="true">◇</span>Offers</button>
+    <button data-view="account"><span aria-hidden="true">◯</span>Account</button>
+  </nav>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <footer><span>Calai Eats local browser preview · Luton launch workspace</span></footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

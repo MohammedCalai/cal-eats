@@ -20,6 +20,10 @@ try {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   config.expectedHost = `127.0.0.1:${server.address().port}`;
+  const page = await fetch(base + "/");
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get("content-security-policy"), /script-src 'self'/);
+  assert.doesNotMatch(page.headers.get("content-security-policy"), /unsafe-inline/);
   async function call(route, { method = "GET", body, cookie, headers = {} } = {}) {
     const response = await fetch(base + route, { method, headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...(cookie ? { Cookie: cookie } : {}), ...(method === "GET" ? {} : { Origin: config.origin }), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
     const data = await response.json();
@@ -38,20 +42,27 @@ try {
   const item = (await call(`/api/restaurant/restaurants/${restaurant.id}/menu`, { method: "POST", cookie: owner, body: { name: "Smoke meal", description: "End-to-end fixture", priceMinor: 1200 } })).data;
   await call(`/api/admin/restaurants/${restaurant.id}/approval`, { method: "PATCH", cookie: admin, body: { status: "approved" } });
   assert.equal((await call(`/api/restaurants/${restaurant.id}/menu`)).data.items.length, 1);
-  const order = (await call("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "smoke-order" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 Smoke Road", city: "London", postcode: "N1 1AA" } } })).data;
+  const order = (await call("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "smoke-order" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 Smoke Road", city: "Luton", postcode: "LU1 1AA" } } })).data;
   await call(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted" } });
   assert.equal((await call(`/api/orders/${order.id}`, { cookie: customer })).data.status, "accepted");
   assert.equal((await call("/api/admin/ledger", { cookie: admin })).data.length, 1);
-  const receipt = await fetch(`${base}/api/orders/${order.id}/receipt`, { headers: { Cookie: customer } });
+  const printJob = (await call(`/api/orders/${order.id}/print-jobs`, { method: "POST", cookie: customer, body: {} })).data;
+  await call(`/api/print-jobs/${printJob.id}`, { method: "PATCH", cookie: customer, body: { status: "browser_opened" } });
+  const receipt = await fetch(`${base}${printJob.receiptUrl}`, { headers: { Cookie: customer } });
   assert.equal(receipt.status, 200);
   assert.match(await receipt.text(), /Mock card — no real payment processed/);
+  const refunded = (await call(`/api/admin/orders/${order.id}/refunds`, { method: "POST", cookie: admin, headers: { "Idempotency-Key": "smoke-refund" }, body: { foodAmountMinor: 1200, deliveryAmountMinor: 250, reason: "Full local smoke refund" } })).data;
+  assert.equal(refunded.order.paymentStatus, "mock_refunded");
+  assert.equal((await fetch(`${base}/api/admin/reports/orders.csv`, { headers: { Cookie: admin } })).status, 200);
   await closeServer(server); server = null;
   closeDatabase(db); db = null;
   db = openDatabase(dbPath);
   migrateDatabase(db);
   assert.equal(db.prepare("SELECT status FROM orders WHERE id=?").get(order.id).status, "accepted");
-  assert.equal(db.prepare("SELECT count(*) AS n FROM ledger_entries WHERE order_id=?").get(order.id).n, 1);
-  console.log("Smoke journey passed with persisted order and exactly one commission entry after database reopen.");
+  assert.equal(db.prepare("SELECT payment_status FROM orders WHERE id=?").get(order.id).payment_status, "mock_refunded");
+  assert.equal(db.prepare("SELECT count(*) AS n FROM ledger_entries WHERE order_id=?").get(order.id).n, 2);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM refunds WHERE order_id=?").get(order.id).n, 1);
+  console.log("Smoke journey passed with persisted approval, order, print job, refund and balanced commission after database reopen.");
 } finally {
   if (server) await closeServer(server);
   if (db) closeDatabase(db);

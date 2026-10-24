@@ -15,3 +15,11 @@ export function requireRestaurantMembership(db, session, restaurantId) {
   if (!member) throw Object.assign(new Error("Resource not found"), { status: 404, code: "NOT_FOUND" });
   return user;
 }
+
+export function requireRestaurantOwner(db, session, restaurantId) {
+  const user = requireRole(session, "restaurant");
+  const membership = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id);
+  if (!membership) throw Object.assign(new Error("Resource not found"), { status: 404, code: "NOT_FOUND" });
+  if (membership.permission !== "owner") throw Object.assign(new Error("Owner permission required"), { status: 403, code: "OWNER_REQUIRED" });
+  return user;
+}

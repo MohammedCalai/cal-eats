@@ -10,6 +10,8 @@ export function loadConfig(overrides = {}) {
   const origin = overrides.origin ?? process.env.CALAI_ORIGIN ?? `http://${hostname === "::1" ? "[::1]" : hostname}:${port}`;
   const parsed = new URL(origin);
   if (parsed.protocol !== "http:" || !["127.0.0.1", "[::1]", "localhost"].includes(parsed.hostname)) throw new Error("CALAI_ORIGIN must be loopback HTTP");
+  const orderExpiryMinutes = overrides.orderExpiryMinutes ?? Number(process.env.CALAI_ORDER_EXPIRY_MINUTES ?? 15);
+  if (!Number.isInteger(orderExpiryMinutes) || orderExpiryMinutes < 1 || orderExpiryMinutes > 1440) throw new Error("CALAI_ORDER_EXPIRY_MINUTES must be an integer from 1 to 1440");
   return {
     hostname,
     port,
@@ -18,6 +20,8 @@ export function loadConfig(overrides = {}) {
     dbPath: overrides.dbPath ?? process.env.CALAI_DB_PATH ?? path.resolve("data/calai-eats.sqlite"),
     sessionHours: overrides.sessionHours ?? 24,
     bodyLimit: overrides.bodyLimit ?? 16 * 1024,
+    orderExpiryMinutes,
+    mockCapture: overrides.mockCapture,
     now: overrides.now ?? (() => new Date()),
     rateLimit: overrides.rateLimit ?? { attempts: 8, windowMs: 60_000 }
   };

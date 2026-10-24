@@ -1,5 +1,7 @@
 # Calai Eats: local foundation and first journey
 
+Current implementation: foundation, delivery journey, finance, product operations, recipient notifications and tailored offers are complete through schema v6. The original scope below records the initial design; subsequent contracts in LOCAL_COMPLETION.md, PRODUCT_OPERATIONS_API.md and OFFERS_API.md extend it. Current fixtures use Luton LU1/LU2 and GBP. Restaurant signup creates a pending application with an owner membership. Refunds, staff permissions, support and export are implemented. Delivery uses restaurant-owned drivers; no Calai dispatch fleet is planned in this phase. Automatic loyalty is deferred by the user. STATUS.md records verification and remaining limits.
+
 ## Scope and authority
 The user's delivery request is preserved in `USER_REQUEST.txt`. It ends after the workflow instructions; no full product specification was supplied. Build a real persisted local foundation and one complete journey. This is a local development system, not a production release. The user explicitly confirmed on 2026-10-24 that delivery MUST be included in the first demo. Provisional choices: GBP, collection AND delivery, one restaurant per order, 7% commission on food subtotal excluding delivery fee, no tax/tip calculations. Flag commission base/currency for later confirmation; do not imply tax compliance or courier integration is implemented.
 

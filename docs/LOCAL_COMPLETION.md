@@ -3,7 +3,7 @@
 The user confirmed delivery and requested the first visible Calai-themed app plus all feasible local work, with GitHub, Expo and Railway unused. Earlier product context recovered in PRODUCT_CONTEXT.md confirms Luton/GBP/British English, restaurant-owned delivery drivers (no Calai courier fleet), 7% commission locked for 24 months, no platform service/subscription/setup/extra processing fees. Commission base, VAT, payout/refund liability and actual contract terms remain unapproved. Keep development terms explicitly labelled.
 
 ## Theme
-Verified read-only CalaiDirect CSS tokens: navy #071b36, blue #1261d5, blue-dark #0847a4, sky #e9f2ff, background #f7faff, line #d9e5f6, muted #52657c. Use white Calai + blue Eats on a horizontal navy wordmark, Eats only slightly italic. Original speech/phone emblem with three dots is missing; do not invent it. Label the temporary wordmark discreetly in demo information. No green, speed streaks or fake logos. Responsive customer experience should feel like food ordering, with practical separate role views. No external asset/service dependency. Use supplied brand asset later.
+Verified read-only CalaiDirect CSS tokens: navy #071b36, blue #1261d5, blue-dark #0847a4, sky #e9f2ff, background #f7faff, line #d9e5f6, muted #52657c. User supplied the original logo on 2026-10-24: `C:/Users/hello/Downloads/Modern logo with chat icon.png`, copied unchanged to `apps/web/assets/calai-original.png`. Use the original blue speech/phone emblem and white Calai lettering from this asset with blue Eats alongside, only slightly italic. CSS may frame its whitespace without rewriting image pixels. Remove the temporary-wordmark notice. No green, speed streaks or fake logos. Responsive customer experience should feel like food ordering, with practical separate role views. No external asset/service dependency.
 
 ## Runtime decision
 The tested local monolith uses Node 24, SQLite and dependency-free browser modules because Docker is absent and this environment has restricted network access. Preserve the working tested core. This is a browser app preview, not a verified native iPhone binary. The earlier preferred Expo/Next/Nest/PostgreSQL/TypeScript production stack is recorded as later architecture work; do not imply this JavaScript prototype implements that stack. Never claim ready for production solely because local tests pass.
@@ -23,7 +23,7 @@ The tested local monolith uses Node 24, SQLite and dependency-free browser modul
 
 All additions keep API.md existing routes/shapes. Document DTO specifics after implementation. Test meaningful money/refund/idempotency/concurrency/expiry/isolation cases; `npm run check` and `npm run smoke` remain green. Use forward migrations only.
 
-## Phase B: product operations (next bounded task)
+## Phase B: product operations (implemented; see STATUS.md)
 Postcode-first Luton discovery, cuisine/search, menu categories/modifiers/allergens, contact/delivery/allergy notes, opening/holiday/overnight hours, pause/busy/cash/collection settings, customer reorder with fresh pricing, restaurant application/profile, scoped staff memberships, support/deletion requests/export, admin support/integration/report views, local notification/printing feedback. Define endpoints before implementation. No fake tracking or unverified hygiene claims. Browser first; native/provider verification remains separately tracked.
 
 ## Ownership

@@ -28,6 +28,11 @@ export function publicUser(user) {
 }
 
 export function calculateCommission(subtotalMinor) {
+  return calculateCommissionAtRate(subtotalMinor, COMMISSION_BASIS_POINTS);
+}
+
+export function calculateCommissionAtRate(subtotalMinor, rateBasisPoints) {
   if (!Number.isSafeInteger(subtotalMinor) || subtotalMinor < 0) throw new TypeError("Invalid subtotal");
-  return Number((BigInt(subtotalMinor) * BigInt(COMMISSION_BASIS_POINTS) + 5000n) / 10000n);
+  if (!Number.isSafeInteger(rateBasisPoints) || rateBasisPoints < 0 || rateBasisPoints > 10000) throw new TypeError("Invalid commission rate");
+  return Number((BigInt(subtotalMinor) * BigInt(rateBasisPoints) + 5000n) / 10000n);
 }

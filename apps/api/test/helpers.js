@@ -7,13 +7,13 @@ import { loadConfig } from "../src/config.js";
 import { closeDatabase, migrateDatabase, openDatabase } from "../src/db/index.js";
 import { seedDemoData } from "../src/seed.js";
 
-export async function journeyFixture() {
+export async function journeyFixture(configOverrides = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "calai-journey-"));
   const db = openDatabase(path.join(directory, "test.sqlite"));
   migrateDatabase(db);
   await seedDemoData(db, new Date("2026-01-01T00:00:00.000Z"));
   let tick = 0;
-  const config = loadConfig({ dbPath: path.join(directory, "test.sqlite"), now: () => new Date(Date.parse("2026-01-01T01:00:00.000Z") + tick++ * 1000) });
+  const config = loadConfig({ dbPath: path.join(directory, "test.sqlite"), now: () => new Date(Date.parse("2026-01-01T01:00:00.000Z") + tick++ * 1000), ...configOverrides });
   const app = createApp({ db, config });
   async function request(route, { method = "GET", body, cookie, headers = {} } = {}) {
     const allHeaders = Object.fromEntries(Object.entries({ host: config.expectedHost, ...(cookie ? { cookie } : {}), ...headers }).map(([key, value]) => [key.toLowerCase(), value]));
@@ -38,5 +38,5 @@ export async function journeyFixture() {
     if (response.status !== 200) throw new Error(`Login failed: ${response.text}`);
     return response.headers.get("set-cookie").split(";", 1)[0];
   }
-  return { db, directory, request, json, login, async close() { closeDatabase(db); await rm(directory, { recursive: true, force: true }); } };
+  return { db, config, directory, request, json, login, async close() { closeDatabase(db); await rm(directory, { recursive: true, force: true }); } };
 }

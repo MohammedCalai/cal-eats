@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Readable } from "node:stream";
+import { randomBytes, scrypt as scryptCallback } from "node:crypto";
+import { promisify } from "node:util";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { closeDatabase, migrateDatabase, openDatabase } from "../src/db/index.js";
@@ -52,9 +54,9 @@ test("migrations are repeatable and persisted after reopen", async () => {
   const dbPath = path.join(directory, "test.sqlite");
   let db = openDatabase(dbPath);
   try {
-    assert.equal(migrateDatabase(db), 2);
-    assert.equal(migrateDatabase(db), 2);
-    db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run("u1", "Saved", "saved@example.test", "hash", "customer", new Date().toISOString());
+    assert.equal(migrateDatabase(db), 6);
+    assert.equal(migrateDatabase(db), 6);
+    db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run("u1", "Saved", "saved@example.test", "hash", "customer", new Date().toISOString());
     closeDatabase(db);
     db = openDatabase(dbPath);
     migrateDatabase(db);
@@ -140,6 +142,19 @@ test("invalid login is generic and commission rounding is precise", async () => 
     assert.deepEqual(response.body, { error: { code: "INVALID_CREDENTIALS", message: "Email or password is incorrect" } });
     assert.equal(calculateCommission(1999), 140);
     assert.equal(calculateCommission(Number.MAX_SAFE_INTEGER), Number((BigInt(Number.MAX_SAFE_INTEGER) * 700n + 5000n) / 10000n));
+  } finally { await f.close(); }
+});
+
+test("successful legacy scrypt login upgrades the stored hash", async () => {
+  const f = await fixture();
+  try {
+    const password = "legacy local password"; const salt = randomBytes(16);
+    const derived = await promisify(scryptCallback)(password, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+    const legacy = `scrypt$16384$8$1$${salt.toString("hex")}$${derived.toString("hex")}`;
+    f.db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run("legacy", "Legacy", "legacy@example.test", legacy, "customer", new Date().toISOString());
+    const response = await f.request("/api/auth/login", { method: "POST", body: { email: "legacy@example.test", password } });
+    assert.equal(response.status, 200);
+    assert.match(f.db.prepare("SELECT password_hash FROM users WHERE id='legacy'").get().password_hash, /^scrypt\$32768\$8\$3\$/);
   } finally { await f.close(); }
 });
 
