@@ -6,12 +6,14 @@ import { withTransaction } from "./db/index.js";
 import { authorizeMockPayment, captureMockPayment } from "./payments/mock.js";
 import { restaurantAvailability } from "./availability.js";
 import { notifyNewOrder, notifyOrderStatus, redeemOfferForOrder, releaseOfferForOrder } from "./offers.js";
+import { normalizeAddress } from "./address-validation.js";
+import { restaurantReadiness } from "./readiness.js";
 
-const integer = (value, min, max, label) => {
+export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
   return value;
 };
-const text = (value, min, max, label) => {
+export const text = (value, min, max, label) => {
   const result = typeof value === "string" ? value.trim() : "";
   if (result.length < min || result.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
   return result;
@@ -27,14 +29,14 @@ function deliveryFromRow(row) {
 export function restaurantDto(row, { privateDetails = false, now = new Date() } = {}) {
   const availability = restaurantAvailability(row, now);
   const profile = { description: row.description, cuisine: row.cuisine, phone: row.phone, address: row.address, collectionEnabled: Boolean(row.collection_enabled), cashEnabled: Boolean(row.cash_enabled), paused: Boolean(row.paused), busyMinutes: row.busy_minutes, estimatedDeliveryMinutes: row.estimated_delivery_minutes, estimatedCollectionMinutes: row.estimated_collection_minutes, openingHours: JSON.parse(row.opening_hours ?? "[]"), holidayDates: JSON.parse(row.holiday_dates ?? "[]"), alwaysOpen: Boolean(row.always_open) };
-  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, ...availability, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
+  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, ...availability, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
 }
 export function itemDto(row) {
-  return { id: row.id, restaurantId: row.restaurant_id, name: row.name, description: row.description, priceMinor: row.price_minor, available: Boolean(row.available), category: row.category, allergens: JSON.parse(row.allergens ?? "[]"), dietaryTags: JSON.parse(row.dietary_tags ?? "[]"), modifierGroups: JSON.parse(row.modifier_groups ?? "[]") };
+  return { id: row.id, restaurantId: row.restaurant_id, name: row.name, description: row.description, priceMinor: row.price_minor, available: Boolean(row.available), category: row.category, allergens: JSON.parse(row.allergens ?? "[]"), dietaryTags: JSON.parse(row.dietary_tags ?? "[]"), modifierGroups: JSON.parse(row.modifier_groups ?? "[]"), sortOrder: row.sort_order ?? 0, photoUrl: row.photo_media_id ? `/api/media/${row.photo_media_id}` : null };
 }
 const shortId = (value, label) => { const id = text(value, 1, 40, label); if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); return id; };
-const stringList = (value, label) => { if (!Array.isArray(value) || value.length > 30) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); const list = value.map((entry) => text(entry, 1, 80, label)); if (new Set(list.map((entry) => entry.toLowerCase())).size !== list.length) throw new HttpError(400, "VALIDATION_ERROR", `${label} contains duplicates`); return list; };
-function modifierGroups(value) {
+export const stringList = (value, label) => { if (!Array.isArray(value) || value.length > 30) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); const list = value.map((entry) => text(entry, 1, 80, label)); if (new Set(list.map((entry) => entry.toLowerCase())).size !== list.length) throw new HttpError(400, "VALIDATION_ERROR", `${label} contains duplicates`); return list; };
+export function validateModifierGroups(value) {
   if (!Array.isArray(value) || value.length > 10) throw new HttpError(400, "VALIDATION_ERROR", "Modifier groups are invalid");
   const groups = value.map((group) => {
     exactObject(group, ["id", "name", "minSelections", "maxSelections", "options"]);
@@ -73,19 +75,6 @@ function normalizeOutcode(value) {
   const outcode = typeof value === "string" ? value.trim().toUpperCase().replace(/\s+/g, "") : "";
   if (!/^[A-Z]{1,2}\d[A-Z\d]?$/.test(outcode)) throw new HttpError(400, "VALIDATION_ERROR", "Delivery outcode is invalid");
   return outcode;
-}
-function normalizeAddress(value) {
-  exactObject(value, ["line1", "line2", "city", "postcode"]);
-  const compact = typeof value.postcode === "string" ? value.postcode.trim().toUpperCase().replace(/\s+/g, "") : "";
-  const match = compact.match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})$/);
-  if (!match) throw new HttpError(400, "VALIDATION_ERROR", "Delivery postcode is invalid");
-  return {
-    line1: text(value.line1, 1, VALIDATION.addressLineMax, "Address line 1"),
-    ...(value.line2 === undefined ? {} : { line2: text(value.line2, 1, VALIDATION.addressLineMax, "Address line 2") }),
-    city: text(value.city, 1, VALIDATION.cityMax, "City"),
-    postcode: `${match[1]} ${match[2]}`,
-    outcode: match[1]
-  };
 }
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -131,7 +120,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (req.method === "GET" && match) {
     const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(match[1]);
     if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    const items = db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? AND available=1 ORDER BY name").all(restaurant.id).map(itemDto);
+    const items = db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? AND available=1 ORDER BY sort_order,created_at,rowid").all(restaurant.id).map(itemDto);
     return sendJson(res, 200, { data: { restaurant: restaurantDto(restaurant, { now: config.now() }), items } });
   }
   if (req.method === "GET" && url.pathname === "/api/restaurant/restaurants") {
@@ -156,14 +145,14 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (match && req.method === "GET") {
     requireRestaurantMembership(db, session, match[1]);
     const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=?").get(match[1]);
-    return sendJson(res, 200, { data: { restaurant: restaurantDto(restaurant, { privateDetails: true, now: config.now() }), items: db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? ORDER BY name").all(match[1]).map(itemDto) } });
+    return sendJson(res, 200, { data: { restaurant: restaurantDto(restaurant, { privateDetails: true, now: config.now() }), items: db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? ORDER BY sort_order,created_at,rowid").all(match[1]).map(itemDto) } });
   }
   if (match && req.method === "POST") {
     requireRestaurantOwner(db, session, match[1]);
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["name", "description", "priceMinor", "category", "allergens", "dietaryTags", "modifierGroups"]);
     const now = config.now().toISOString();
-    const item = { id: randomUUID(), restaurant_id: match[1], name: text(body.name, 1, VALIDATION.menuNameMax, "Item name"), description: text(body.description ?? "", 0, VALIDATION.descriptionMax, "Description"), price_minor: integer(body.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), available: 1, created_at: now, updated_at: now, category: text(body.category ?? "", 0, 80, "Category"), allergens: JSON.stringify(stringList(body.allergens ?? [], "Allergens")), dietary_tags: JSON.stringify(stringList(body.dietaryTags ?? [], "Dietary tags")), modifier_groups: JSON.stringify(modifierGroups(body.modifierGroups ?? [])) };
-    db.prepare("INSERT INTO menu_items(id,restaurant_id,name,description,price_minor,available,created_at,updated_at,category,allergens,dietary_tags,modifier_groups) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(item));
+    const item = { id: randomUUID(), restaurant_id: match[1], name: text(body.name, 1, VALIDATION.menuNameMax, "Item name"), description: text(body.description ?? "", 0, VALIDATION.descriptionMax, "Description"), price_minor: integer(body.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), available: 1, created_at: now, updated_at: now, category: text(body.category ?? "", 0, 80, "Category"), allergens: JSON.stringify(stringList(body.allergens ?? [], "Allergens")), dietary_tags: JSON.stringify(stringList(body.dietaryTags ?? [], "Dietary tags")), modifier_groups: JSON.stringify(validateModifierGroups(body.modifierGroups ?? [])), sort_order: db.prepare("SELECT COALESCE(MAX(sort_order),-1)+1 next FROM menu_items WHERE restaurant_id=?").get(match[1]).next };
+    db.prepare("INSERT INTO menu_items(id,restaurant_id,name,description,price_minor,available,created_at,updated_at,category,allergens,dietary_tags,modifier_groups,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(item));
     return sendJson(res, 201, { data: itemDto(item) });
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/menu\/([^/]+)$/);
@@ -173,7 +162,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     if (!Object.keys(body).length) throw new HttpError(400, "VALIDATION_ERROR", "At least one field is required");
     const current = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=?").get(match[2], match[1]);
     if (!current) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    const updated = { ...current, name: body.name === undefined ? current.name : text(body.name, 1, VALIDATION.menuNameMax, "Item name"), description: body.description === undefined ? current.description : text(body.description, 0, VALIDATION.descriptionMax, "Description"), price_minor: body.priceMinor === undefined ? current.price_minor : integer(body.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), available: body.available === undefined ? current.available : Number(bool(body.available, "Available")), category: body.category === undefined ? current.category : text(body.category, 0, 80, "Category"), allergens: body.allergens === undefined ? current.allergens : JSON.stringify(stringList(body.allergens, "Allergens")), dietary_tags: body.dietaryTags === undefined ? current.dietary_tags : JSON.stringify(stringList(body.dietaryTags, "Dietary tags")), modifier_groups: body.modifierGroups === undefined ? current.modifier_groups : JSON.stringify(modifierGroups(body.modifierGroups)), updated_at: config.now().toISOString() };
+    const updated = { ...current, name: body.name === undefined ? current.name : text(body.name, 1, VALIDATION.menuNameMax, "Item name"), description: body.description === undefined ? current.description : text(body.description, 0, VALIDATION.descriptionMax, "Description"), price_minor: body.priceMinor === undefined ? current.price_minor : integer(body.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), available: body.available === undefined ? current.available : Number(bool(body.available, "Available")), category: body.category === undefined ? current.category : text(body.category, 0, 80, "Category"), allergens: body.allergens === undefined ? current.allergens : JSON.stringify(stringList(body.allergens, "Allergens")), dietary_tags: body.dietaryTags === undefined ? current.dietary_tags : JSON.stringify(stringList(body.dietaryTags, "Dietary tags")), modifier_groups: body.modifierGroups === undefined ? current.modifier_groups : JSON.stringify(validateModifierGroups(body.modifierGroups)), updated_at: config.now().toISOString() };
     db.prepare("UPDATE menu_items SET name=?,description=?,price_minor=?,available=?,category=?,allergens=?,dietary_tags=?,modifier_groups=?,updated_at=? WHERE id=?").run(updated.name, updated.description, updated.price_minor, updated.available, updated.category, updated.allergens, updated.dietary_tags, updated.modifier_groups, updated.updated_at, updated.id);
     return sendJson(res, 200, { data: itemDto(updated) });
   }
@@ -210,6 +199,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     if (!["approved", "rejected"].includes(body.status)) throw new HttpError(400, "VALIDATION_ERROR", "Approval status is invalid");
     const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=?").get(match[1]);
     if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    if (body.status === "approved" && restaurant.status !== "approved" && !restaurantReadiness(db, restaurant.id).ready) throw new HttpError(409, "RESTAURANT_NOT_READY", "Restaurant setup is incomplete");
     const now = config.now().toISOString();
     withTransaction(db, () => {
       db.prepare("UPDATE restaurants SET status=? WHERE id=?").run(body.status, restaurant.id);

@@ -11,6 +11,7 @@ import { serveStatic } from "./static.js";
 import { routeProduct } from "./product.js";
 import { routeAccountAccess } from "./account-access.js";
 import { isDemoEmail } from "./seed.js";
+import { routePolish } from "./polish.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -140,6 +141,8 @@ export function createApp({ db, config }) {
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
+      const polishHandled = await routePolish({ req, res, url, db, config, session });
+      if (polishHandled || res.writableEnded || res.headersSent) return;
       const offersHandled = await routeOffers({ req, res, url, db, config, session });
       if (offersHandled || res.writableEnded || res.headersSent) return;
       const productHandled = await routeProduct({ req, res, url, db, config, session });

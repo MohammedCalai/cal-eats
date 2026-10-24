@@ -25,6 +25,7 @@ test("pending restaurant approval through delivery lifecycle preserves snapshots
     const item = added.body.data;
     const configured = await f.json(`/api/restaurant/restaurants/${restaurant.id}/delivery`, { method: "PATCH", cookie: c.owner2, body: { enabled: true, outcodes: ["n1", "N2", "N1"], deliveryFeeMinor: 250, minDeliverySubtotalMinor: 1000 } });
     assert.deepEqual(configured.body.data.delivery.outcodes, ["N1", "N2"]);
+    await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: c.owner2, body: { phone: "07000000000" } });
     const approved = await f.json(`/api/admin/restaurants/${restaurant.id}/approval`, { method: "PATCH", cookie: c.admin, body: { status: "approved" } });
     assert.equal(approved.body.data.status, "approved");
     const orderBody = { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 2 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 <Main>", city: "London", postcode: "N1 1AA" } };

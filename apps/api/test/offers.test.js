@@ -27,10 +27,13 @@ test("owner campaigns are tenant scoped, idempotent and expose persisted analyti
   const f = await journeyFixture();
   try {
     const s = await setupEligible(f);
+    const defaultDirectory = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/customers`, { cookie: s.owner }); assert.equal(defaultDirectory.body.data[0].merchantOffers, false);
     const directory = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/customers`, { cookie: s.owner });
     assert.deepEqual(directory.body.data.map((row) => row.customerId), [s.customerId]);
     assert.equal(directory.body.data[0].completedOrderCount, 1); assert.equal(directory.body.data[0].averageOrderMinor, directory.body.data[0].netSpendMinor);
     const body = { customerIds: [s.customerId], title: "A free side", message: "Thanks for ordering locally.", menuItemId: s.gift.id, minSubtotalMinor: 500, expiresInDays: 7 };
+    assert.equal((await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "optout-blocked" }, body })).body.error.code, "RECIPIENT_NOT_ELIGIBLE");
+    await f.json("/api/account/preferences", { method: "PATCH", cookie: s.customer, body: { merchantOffers: true } });
     const first = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "campaign-one" }, body });
     assert.equal(first.status, 201, first.text); assert.equal(first.body.data.recipientCount, 1);
     const replay = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "campaign-one" }, body });
@@ -50,7 +53,7 @@ test("owner campaigns are tenant scoped, idempotent and expose persisted analyti
 test("offer checkout reserves once, snapshots a free item, releases on rejection and redeems on completion", async () => {
   const f = await journeyFixture();
   try {
-    const s = await setupEligible(f); const admin = await f.login("admin@calai.local", "LocalAdmin!4310"); const campaignBody = { customerIds: [s.customerId], title: "Free fries", message: "One free side with a paid order.", menuItemId: s.gift.id, minSubtotalMinor: 1000, expiresInDays: 7 };
+    const s = await setupEligible(f); await f.json("/api/account/preferences", { method: "PATCH", cookie: s.customer, body: { merchantOffers: true } }); const admin = await f.login("admin@calai.local", "LocalAdmin!4310"); const campaignBody = { customerIds: [s.customerId], title: "Free fries", message: "One free side with a paid order.", menuItemId: s.gift.id, minSubtotalMinor: 1000, expiresInDays: 7 };
     await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "redeem-campaign" }, body: campaignBody });
     const grant = (await f.json("/api/offers", { cookie: s.customer })).body.data[0];
     const request = (key) => f.json("/api/orders", { method: "POST", cookie: s.customer, headers: { "Idempotency-Key": key }, body: { restaurantId: s.restaurant.id, items: [{ menuItemId: s.paid.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection", offerId: grant.id } });
@@ -73,7 +76,7 @@ test("offer checkout reserves once, snapshots a free item, releases on rejection
 test("offer eligibility, minimum, expiry, order expiry and pre-completion full refund are enforced", async () => {
   const f = await journeyFixture();
   try {
-    const s = await setupEligible(f); const admin = await f.login("admin@calai.local", "LocalAdmin!4310");
+    const s = await setupEligible(f); await f.json("/api/account/preferences", { method: "PATCH", cookie: s.customer, body: { merchantOffers: true } }); const admin = await f.login("admin@calai.local", "LocalAdmin!4310");
     const outsider = await f.json("/api/auth/register", { method: "POST", body: { name: "No history", email: "no-history@example.test", password: "long local password" } });
     const outsiderId = outsider.body.data.user.id;
     const invalid = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "ineligible" }, body: { customerIds: [outsiderId], title: "Not allowed", message: "No merchant history", menuItemId: s.gift.id, minSubtotalMinor: 0, expiresInDays: 2 } });

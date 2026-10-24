@@ -58,6 +58,7 @@
   margin-bottom: 0.45rem;
 }
 .runtime-banner{background:#d9e9ff;color:#071b36;border-bottom:1px solid #a9c9f2;padding:.55rem 1rem;text-align:center;font-size:.82rem;font-weight:800}
+.photo-picker{display:inline-flex;position:relative;overflow:hidden}.photo-picker input{position:absolute;inset:0;opacity:0;cursor:pointer}.upload-preview{width:100%;max-height:240px;object-fit:cover;border-radius:.8rem}.menu-photo{width:92px;height:72px;object-fit:cover;border-radius:.7rem;border:1px solid var(--line)}
 
 .access-page { max-width: 620px; }
 .order-highlight { outline: 4px solid #75adff; outline-offset: 3px; animation: order-highlight 2.4s ease-out; }

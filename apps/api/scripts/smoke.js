@@ -40,6 +40,7 @@ try {
   const restaurant = (await call("/api/restaurant/restaurants", { cookie: owner })).data[0];
   assert.equal(restaurant.status, "pending");
   const item = (await call(`/api/restaurant/restaurants/${restaurant.id}/menu`, { method: "POST", cookie: owner, body: { name: "Smoke meal", description: "End-to-end fixture", priceMinor: 1200 } })).data;
+  await call(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: owner, body: { phone: "07000000000" } });
   await call(`/api/admin/restaurants/${restaurant.id}/approval`, { method: "PATCH", cookie: admin, body: { status: "approved" } });
   assert.equal((await call(`/api/restaurants/${restaurant.id}/menu`)).data.items.length, 1);
   const order = (await call("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "smoke-order" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 Smoke Road", city: "Luton", postcode: "LU1 1AA" } } })).data;

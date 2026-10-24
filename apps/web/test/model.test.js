@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AUTH_SUBMIT_SELECTOR, availabilityMessage, canDeliver, cartLines, cartTotals, currentSelections, estimatedMargin, money, nextOrderStatuses, orderItemPayload, outwardPostcode, recognisedCommission, restaurantMatches, safeCsvCell, serializeModifierRows, serializeOpeningRows, validateModifierSelection } from "../model.js";
+import { AUTH_SUBMIT_SELECTOR, availabilityMessage, canDeliver, cartLines, cartTotals, currentSelections, estimatedMargin, money, nextOrderStatuses, orderItemPayload, outwardPostcode, parseMenuCsv, recognisedCommission, restaurantMatches, safeCsvCell, sanitizeCartDraft, serializeModifierRows, serializeOpeningRows, validateModifierSelection } from "../model.js";
 
 test("money formats integer pence as GBP", () => assert.equal(money(1250), "£12.50"));
 test("outward postcode accepts complete and outward-only UK postcodes", () => {
@@ -85,3 +85,7 @@ test("opening-hour rows preserve multiple and overnight intervals", () => {
 test("modifier rows preserve IDs and convert extra pounds to pence", () => {
   assert.deepEqual(serializeModifierRows([{id:"sauce",name:"Sauce",minSelections:"0",maxSelections:"1",options:[{id:"chilli",name:"Chilli mayo",extraPrice:"0.50",available:true}]}]), [{id:"sauce",name:"Sauce",minSelections:0,maxSelections:1,options:[{id:"chilli",name:"Chilli mayo",priceMinor:50,available:true}]}]);
 });
+test("draft sanitizer keeps only bounded cart identifiers",()=>{const now=Date.now();assert.deepEqual(sanitizeCartDraft({savedAt:now,restaurantId:"r1",fulfillment:"delivery",quantities:{meal:2,bad:0},modifiers:{meal:{sauce:["hot","hot"]}},address:{line1:"private"}},now),{savedAt:now,restaurantId:"r1",fulfillment:"delivery",quantities:{meal:2},modifiers:{meal:{sauce:["hot"]}}});assert.equal(sanitizeCartDraft({savedAt:now-86_400_001,restaurantId:"r1",quantities:{meal:1}},now),null);});
+test("draft sanitizer rejects missing timestamps and array maps",()=>{assert.equal(sanitizeCartDraft({restaurantId:"r1",quantities:{meal:1}}),null);assert.equal(sanitizeCartDraft({savedAt:Date.now(),restaurantId:"r1",quantities:[]}),null);});
+test("menu CSV supports quoted values and converts pounds",()=>{assert.deepEqual(parseMenuCsv('name,description,price,category,allergens,dietaryTags\n"Bowl, large",Fresh,12.50,Mains,"milk|sesame",halal')[0],{name:"Bowl, large",description:"Fresh",priceMinor:1250,category:"Mains",allergens:["milk","sesame"],dietaryTags:["halal"],modifierGroups:[]});});
+test("menu CSV rejects malformed row widths and quotes",()=>{assert.throws(()=>parseMenuCsv("name,description,price,category,allergens,dietaryTags\nMeal,Fresh,10,Mains,none"),/six cells/);assert.throws(()=>parseMenuCsv('name,description,price,category,allergens,dietaryTags\nMe"al,Fresh,10,Mains,,'),/quote/);});

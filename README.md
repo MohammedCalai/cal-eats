@@ -16,7 +16,9 @@ Open `http://127.0.0.1:4310/` to use the app; readiness is at `/health/ready`. T
 
 This first version is a responsive browser app with the original Calai logo, a [phone installation manifest and offline reconnect screen](docs/PHONE_INSTALL.md). It is not a native Expo/iOS build. See `docs/STATUS.md` for verified completion, `docs/LOCAL_RUNBOOK.md` for backup and recovery, and `docs/PENDING_DECISIONS.md` for remaining commercial decisions. [Container preparation](docs/CONTAINER_PREVIEW.md) is included for a future single-instance preview; Docker and real-device installation remain unverified. No GitHub, Expo or Railway deployment has been performed.
 
-View the 28 captured screens in [the offline gallery](docs/screenshots/index.html). Some screenshots show intermediate stages of the fictional order and offer walkthrough. The reconnect page was captured directly; that image does not verify automatic offline interception. The earlier 26-screen archive is kept local and excluded from repository uploads.
+View the captured screens in [the offline gallery](docs/screenshots/index.html), including photo upload, CSV import and customer account controls. Some screenshots show intermediate stages of the fictional walkthrough. The reconnect page was captured directly; that image does not verify automatic offline interception. The earlier 26-screen archive is kept local and excluded from repository uploads.
+
+The final local improvements add saved delivery addresses, optional restaurant offers, session controls, 24-hour basket recovery, business setup checks, restaurant/dish photos, menu ordering, previewed CSV import and optional new-order sounds. See [the final API contract](docs/FINAL_POLISH_API.md) and [browser behavior](docs/FINAL_POLISH_UI.md). These are browser-preview features; live providers and device validation remain later work.
 
 The explicit, idempotent seed command creates local demo accounts (it is never run automatically):
 

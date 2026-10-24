@@ -18,6 +18,6 @@ Open the HTTPS preview in Safari. Use **Share**, choose **Add to Home Screen**, 
 
 ## Offline behavior
 
-The installed shell can show a simple reconnect page when the network is unavailable. Account pages, baskets, orders, receipts and API responses are always fetched from the server and are never saved into the offline cache. Reconnect before relying on any order status.
+The installed shell can show a simple reconnect page when the network is unavailable. Account pages, orders, receipts, uploaded photos and API responses are never saved into the offline cache. A separate 24-hour basket draft stores only restaurant/item/choice IDs, quantities and fulfillment in browser storage. Restoring it requires the current menu from the server. Addresses, contact details and authentication tokens never enter that draft. Reconnect before relying on any order status.
 
 Before sharing installation instructions publicly, verify the icon, launch behavior, updates and offline screen on the exact supported phone/browser combinations.

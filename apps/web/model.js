@@ -139,3 +139,27 @@ export function safeCsvCell(value) {
   const text = String(value ?? "");
   return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
+
+export function sanitizeCartDraft(value, now = Date.now()) {
+  const savedAt=Number(value?.savedAt), plain=(candidate)=>candidate&&typeof candidate==="object"&&!Array.isArray(candidate);
+  if (!plain(value) || !Number.isFinite(savedAt) || now - savedAt > 86_400_000 || savedAt > now || !/^[\w-]{1,100}$/.test(value.restaurantId) || !plain(value.quantities) || (value.modifiers!==undefined&&!plain(value.modifiers))) return null;
+  const quantities = {}, modifiers = {};
+  for (const [id, quantity] of Object.entries(value.quantities ?? {}).slice(0, 100)) if (/^[\w-]{1,100}$/.test(id) && Number.isInteger(quantity) && quantity > 0 && quantity <= 99) quantities[id] = quantity;
+  for (const [itemId, groups] of Object.entries(value.modifiers ?? {}).slice(0, 100)) if (quantities[itemId] && plain(groups)) {
+    modifiers[itemId] = {};
+    for (const [groupId, optionIds] of Object.entries(groups).slice(0, 30)) if (/^[\w-]{1,100}$/.test(groupId) && Array.isArray(optionIds)) modifiers[itemId][groupId] = [...new Set(optionIds.filter((id) => typeof id === "string" && /^[\w-]{1,100}$/.test(id)).slice(0, 30))];
+  }
+  if (!Object.keys(quantities).length) return null;
+  return { savedAt, restaurantId:value.restaurantId, fulfillment:value.fulfillment === "collection" ? "collection" : "delivery", quantities, modifiers };
+}
+
+export function parseMenuCsv(text) {
+  text=String(text).replace(/^\uFEFF/,"");
+  const rows=[]; let row=[], cell="", quoted=false, closedQuote=false;
+  for(let i=0;i<String(text).length;i++){const char=text[i];if(closedQuote&&char!==","&&char!=="\n"&&char!=="\r")throw new Error("CSV has characters after a closing quote.");if(char==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++;}else if(quoted){quoted=false;closedQuote=true;}else{if(cell.length)throw new Error("CSV quote must begin a cell.");quoted=true;}}else if(char===","&&!quoted){row.push(cell);cell="";closedQuote=false;}else if((char==="\n"||char==="\r")&&!quoted){if(char==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some((v)=>v.trim()))rows.push(row);row=[];cell="";closedQuote=false;}else cell+=char;}
+  row.push(cell);if(row.some((v)=>v.trim()))rows.push(row);if(quoted)throw new Error("CSV has an unclosed quote.");
+  const expected=["name","description","price","category","allergens","dietaryTags"];
+  if(!rows.length||rows[0].length!==expected.length||expected.some((name,index)=>rows[0][index]?.trim()!==name))throw new Error(`CSV header must be exactly ${expected.join(",")}.`);
+  if(rows.length<2||rows.length>101)throw new Error("CSV must contain 1–100 menu items.");
+  return rows.slice(1).map((values,index)=>{if(values.length!==expected.length)throw new Error(`Row ${index+2} must have exactly six cells.`);const priceText=values[2]?.trim();if(!values[0]?.trim()||values[0].trim().length>100||values[1].trim().length>500||!values[3]?.trim()||values[3].trim().length>100||!/^\d+(?:\.\d{1,2})?$/.test(priceText))throw new Error(`Row ${index+2} has an invalid name, description, category or price.`);const [pounds,pence=""]=priceText.split(".");const priceMinor=Number(pounds)*100+Number(pence.padEnd(2,"0"));if(!Number.isSafeInteger(priceMinor)||priceMinor>100_000_000)throw new Error(`Row ${index+2} price is too large.`);return {name:values[0].trim(),description:values[1].trim(),priceMinor,category:values[3].trim(),allergens:values[4].split("|").map((v)=>v.trim()).filter(Boolean),dietaryTags:values[5].split("|").map((v)=>v.trim()).filter(Boolean),modifierGroups:[]};});
+}

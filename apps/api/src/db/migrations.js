@@ -134,5 +134,20 @@ CREATE INDEX local_mail_sink_created_idx ON local_mail_sink(created_at);
     sql: `
 CREATE TABLE auth_rate_limits (bucket_key TEXT PRIMARY KEY, window_start_ms INTEGER NOT NULL, attempt_count INTEGER NOT NULL CHECK(attempt_count > 0));
 `
+  },
+  {
+    version: 9,
+    name: "final_local_polish",
+    sql: `
+ALTER TABLE users ADD COLUMN merchant_offers INTEGER NOT NULL DEFAULT 0 CHECK(merchant_offers IN (0,1));
+CREATE TABLE saved_addresses (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, label TEXT NOT NULL, line1 TEXT NOT NULL, line2 TEXT, city TEXT NOT NULL, postcode TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX saved_addresses_user_idx ON saved_addresses(user_id,created_at);
+CREATE TABLE media_assets (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE, mime_type TEXT NOT NULL CHECK(mime_type IN ('image/png','image/jpeg')), data BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, byte_length INTEGER NOT NULL, created_at TEXT NOT NULL);
+ALTER TABLE restaurants ADD COLUMN cover_media_id TEXT REFERENCES media_assets(id);
+ALTER TABLE menu_items ADD COLUMN photo_media_id TEXT REFERENCES media_assets(id);
+ALTER TABLE menu_items ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+UPDATE menu_items SET sort_order=rowid;
+CREATE TABLE menu_imports (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE, actor_user_id TEXT NOT NULL REFERENCES users(id), idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL, item_ids TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(actor_user_id,idempotency_key));
+`
   }
 ];

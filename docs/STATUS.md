@@ -4,7 +4,7 @@ Updated: 2026-10-24 (Europe/London).
 
 ## Delivered
 
-The first persisted local browser app is complete through schema v8 and runs at http://127.0.0.1:4310/. Customer, restaurant and admin workspaces share the original user-supplied Calai logo and navy/blue theme. Implementation was delegated to supported gpt-5.6-sol agents, with lead architecture, review and browser integration checks.
+The first persisted local browser app is complete through schema v9 and runs at http://127.0.0.1:4310/. Customer, restaurant and admin workspaces share the original user-supplied Calai logo and navy/blue theme. Implementation was delegated to supported gpt-5.6-sol agents, with lead architecture, review and browser integration checks.
 
 - Customer: restaurant discovery and postcode search, delivery/collection, menu choices, basket, checkout, order confirmation/history/status, reorder, receipts, account export and support.
 - Restaurant: order handling with restaurant-owned delivery, editable menu/choices/allergens, delivery areas/fees/minimums, profile, hours/overnight service/holidays/pause, staff access and statements.
@@ -46,4 +46,16 @@ This is a local responsive browser app, not a native Expo/iOS binary or a produc
 
 Native packaging/device validation, verified sandbox payment adapters/webhooks, approved commercial/privacy terms, production security/recovery/monitoring, infrastructure and deployment remain later work. Default local mode still rejects production and non-loopback binding. The new hosted-preview profile is separately guarded, keeps payments simulated and requires an empty non-demo database. Before hosting, verify the container build, mounted-volume permissions, HTTPS/proxy behaviour, backups and phone installation. See DEPLOYMENT.md, HOSTED_PREVIEW.md, CONTAINER_PREVIEW.md and PENDING_DECISIONS.md.
 
-No GitHub, Expo, Railway, paid infrastructure, live payment, DNS or store-submission operation was performed. The user's stop threshold is **5% usage remaining**; check account usage before further sustained work. The latest check during final verification showed 24% remaining.
+No GitHub, Expo, Railway, paid infrastructure, live payment, DNS or store-submission operation was performed. The user's stop threshold is **5% usage remaining**; check account usage before further sustained work. The latest check during final verification showed 8% remaining.
+
+## Final local improvements (schema v9)
+
+Completed customer offer preferences (default off), safe session controls, up to ten saved addresses, validated 24-hour basket recovery, merchant readiness checks, bounded restaurant/dish image uploads, exact menu ordering, atomic/idempotent CSV append and optional new-order sounds. Existing offer grants remain; new campaigns require customer opt-in. Customers who decline promotions remain visible in business analytics. New approvals require the setup checks; existing approved demo restaurants remain approved. See FINAL_POLISH_SCOPE.md, FINAL_POLISH_API.md and FINAL_POLISH_UI.md.
+
+Focused verification: final-polish API tests 3/3, affected offers 3/3, affected journey 4/4, browser model tests 22/22. The full suite and persisted smoke were not rerun. Release packaging checks passed for 38 JavaScript source files and 21 required files. Targeted syntax and whitespace checks passed. Browser walkthrough saved a fictional delivery address, previewed and appended one CSV drink, previewed and saved a dish photo, then displayed both the imported drink and saved photo in the public menu. A hidden form field named id initially blocked address submission; DOM form identification now uses getAttribute and the successful save was rechecked.
+
+Screenshots 29 and 30 show pre-confirmation previews; screenshot 31 shows the saved dish photo and imported item. The additional account capture shows the new controls. Actual device sound output, phone installation, browser basket recovery and cover-image upload were not manually exercised in this final walkthrough. Backend/helper coverage does not substitute for those device checks.
+
+A pre-v9 online backup exists at backups/calai-eats-2026-10-24T16-19-02-055Z.sqlite. It was created successfully but was not restore-verified. The older verified backup remains unchanged. All current demo mutations are fictional local data. No remote push, deployment or live-provider action occurred.
+
+Final review also restricted merchant sound to unseen new_order notifications and removed the duplicate order-refresh sound path; syntax validation passed. Physical audio remains unverified.
