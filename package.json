@@ -1,0 +1,14 @@
+{
+  "name": "calai-eats",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "db:migrate": "node apps/api/src/cli/migrate.js",
+    "db:seed": "node apps/api/src/cli/seed.js",
+    "start": "node apps/api/src/main.js",
+    "test": "node --test",
+    "check": "node --check apps/api/src/main.js && node --check apps/api/src/app.js && node --test"
+  },
+  "engines": { "node": ">=24.0.0" }
+}

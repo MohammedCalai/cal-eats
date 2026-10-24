@@ -17,9 +17,10 @@ Journey endpoints (backend agent implements before frontend starts):
 - `POST /api/restaurant/restaurants` `{name}`: authenticated restaurant role creates pending restaurant + membership.
 - `POST /api/restaurant/restaurants/:id/menu` `{name,description,priceMinor}`: member adds menu item; 201 item.
 - `PATCH /api/restaurant/restaurants/:id/menu/:itemId` `{name?,description?,priceMinor?,available?}`: member changes item.
+- `PATCH /api/restaurant/restaurants/:id/delivery` `{enabled,outcodes,deliveryFeeMinor,minDeliverySubtotalMinor}`: member configures postcode-based delivery; exact validation and bounded values.
 - `GET /api/admin/restaurants`: admin all restaurants.
 - `PATCH /api/admin/restaurants/:id/approval` `{status:"approved"|"rejected"}`: admin approval + audit.
-- `POST /api/orders` `{restaurantId,items:[{menuItemId,quantity}],paymentMethod:"mock_card"|"cash",fulfillment:"collection"}` + Idempotency-Key: customer; 201 order (200 replay).
+- `POST /api/orders` `{restaurantId,items:[{menuItemId,quantity}],paymentMethod:"mock_card"|"cash",fulfillment:"collection"|"delivery",deliveryAddress?:{line1,line2?,city,postcode}}` + Idempotency-Key: customer; 201 order (200 replay). Server validates delivery area/minimum and computes fee/total; never accepts client monetary fields.
 - `GET /api/orders`: own customer orders.
 - `GET /api/orders/:id`: own/member/admin order detail with items/events/ledger as authorized.
 - `GET /api/restaurant/restaurants/:id/orders`: member order array.
@@ -29,6 +30,6 @@ Journey endpoints (backend agent implements before frontend starts):
 - `GET /api/orders/:id/receipt`: authorized HTML receipt with print styles, escaped snapshots and visible mock/cash label. No automatic print side effects.
 
 Proposed DTO fields to finalize during backend milestone:
-Restaurant `{id,name,status,createdAt}`; MenuItem `{id,restaurantId,name,description,priceMinor,available}`; Order `{id,restaurantId,restaurantName,customerId,status,currency,subtotalMinor,commissionMinor,paymentMethod,paymentStatus,fulfillment,createdAt,updatedAt,items,events}`. Detail may include ledger. Ledger `{id,orderId,restaurantId,kind,amountMinor,currency,createdAt}` with explicit kinds to be finalized. Public responses never include customer info, credentials or memberships.
+Restaurant `{id,name,status,createdAt,delivery:{enabled,outcodes,deliveryFeeMinor,minDeliverySubtotalMinor}}`; MenuItem `{id,restaurantId,name,description,priceMinor,available}`; Order `{id,restaurantId,restaurantName,customerId,status,currency,subtotalMinor,deliveryFeeMinor,totalMinor,deliveryAddress,commissionMinor,paymentMethod,paymentStatus,fulfillment,createdAt,updatedAt,items,events}`. Detail may include ledger. Ledger `{id,orderId,restaurantId,kind,amountMinor,currency,createdAt}` with explicit kinds to be finalized. Public responses never include customer info, credentials or memberships.
 
 Front-end must use documented real responses, not synthesize success. Updates can poll own orders every 5 seconds and must stop on logout. Payment mocks are deterministic local adapter behavior, not Stripe sandbox verification.
