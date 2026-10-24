@@ -7,7 +7,7 @@ import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { orderDto } from "./journey.js";
 
 const clean = (value, min, max, label) => { const result = typeof value === "string" ? value.trim() : ""; if (result.length < min || result.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); return result; };
-const accountDto = (row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, phone: row.phone });
+const accountDto = (row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, phone: row.phone, emailVerified: Boolean(row.email_verified_at), emailVerifiedAt: row.email_verified_at });
 const supportDto = (row) => ({ id: row.id, userId: row.user_id, orderId: row.order_id, subject: row.subject, message: row.message, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at });
 const deletionDto = (row) => ({ id: row.id, userId: row.user_id, reason: row.reason, status: row.status, note: row.note, createdAt: row.created_at, updatedAt: row.updated_at });
 

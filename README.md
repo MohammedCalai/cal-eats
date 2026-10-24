@@ -4,7 +4,7 @@ Local milestone implementation using Node.js 24 only. It provides persistent aut
 
 ## Run locally
 
-Requires Node.js 24.19.0 or newer. No package download is needed.
+The checked toolchain is Node.js 24.19.0 and npm 11.17.0, pinned in the repository. There are no third-party runtime packages to download. See [repository preparation](docs/REPOSITORY_RELEASE.md) for the offline lockfile install.
 
 ```text
 npm run db:migrate
@@ -16,7 +16,7 @@ Open `http://127.0.0.1:4310/` to use the app; readiness is at `/health/ready`. T
 
 This first version is a responsive browser app with the original Calai logo. It is not a native Expo/iOS build. See `docs/STATUS.md` for verified completion, `docs/LOCAL_RUNBOOK.md` for backup and recovery, and `docs/PENDING_DECISIONS.md` for remaining commercial decisions. No GitHub, Expo or Railway deployment has been performed.
 
-View all 26 captured screens in [the offline gallery](docs/screenshots/index.html), or download [the screenshot pack](docs/Calai-Eats-Screenshots.zip). Some screenshots show intermediate stages of the fictional order and offer walkthrough.
+View the 27 captured screens in [the offline gallery](docs/screenshots/index.html). Some screenshots show intermediate stages of the fictional order and offer walkthrough. The earlier 26-screen archive is kept local and excluded from repository uploads.
 
 The explicit, idempotent seed command creates local demo accounts (it is never run automatically):
 
@@ -30,13 +30,11 @@ The approved demo restaurant includes a usable menu and delivery to exact outwar
 
 ## Verify
 
-```text
-npm test
-npm run check
-npm run smoke
-```
+Use `npm run release:check` for inexpensive syntax, lockfile and upload-set checks. Run focused tests for changed behaviour. `npm run check` runs the complete suite and `npm run smoke` checks the persisted HTTP journey; reserve these broader checks for an integration milestone or an unresolved regression.
 
-This is a local development system. Delivery is a postcode allowlist simulation advanced manually by the restaurant; it has no courier integration. Mock cards and refunds never contact a payment provider. Cash is marked collected only when the restaurant completes the order, and cash refunds/settlements are explicit manual records. There is no tax/tip calculation, provider-verified refund, bank settlement, physical-printer confirmation, production deployment mode, password reset or email verification. The provisional demo contract records a 7% food-only commission for 24 months; it is not a live legal agreement.
+This is a local development system. Delivery is a postcode allowlist simulation advanced manually by the restaurant; it has no courier integration. Mock cards and refunds never contact a payment provider. Cash is marked collected only when the restaurant completes the order, and cash refunds/settlements are explicit manual records. There is no tax/tip calculation, provider-verified refund, bank settlement, physical-printer confirmation or production deployment mode. The provisional demo contract records a 7% food-only commission for 24 months; it is not a live legal agreement.
+
+Password recovery and informational email confirmation are implemented using a private local mail simulation. No real email is sent. Reset links expire, can be used once and revoke all existing sessions. See [the account-access contract](docs/ACCOUNT_ACCESS_API.md) for routes and the explicit local mailbox command; never publish mailbox output or the database.
 
 ## Frontend response shapes
 

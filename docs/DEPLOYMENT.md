@@ -9,6 +9,8 @@ This milestone runs only on loopback HTTP. `NODE_ENV=production` and non-loopbac
 Payment provider is a deterministic mock with no card data and no external requests. Cash states are manual bookkeeping confirmations. Delivery eligibility is configured postcode coverage, not a courier or route service; a restaurant advances the delivery status manually. Receipt output is printable HTML. No printer daemon, SMS, email, map or dispatch service is active.
 
 ## Before a separately authorized sandbox integration
+Local recovery and email confirmation now use expiring, single-use tokens and a private mail sink. The UI labels simulated delivery explicitly. Connecting a real email provider requires independent delivery, sender-domain and recovery-flow verification; the local confirmation flag alone does not demonstrate ownership of a real address.
+
 The current product context is Luton, UK, GBP and restaurant-owned drivers. Confirm commercial details in PENDING_DECISIONS.md, including delivery coverage and fees, commission base/timing, refund policy and taxes. Implement provider adapters, webhook verification, event replay protection, compensation/refund tests and reconciliation with sandbox credentials that belong only to Calai Eats. Never infer Stripe sandbox verification from a successful mock payment.
 
 ## Before a separately authorized production release

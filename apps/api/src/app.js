@@ -9,6 +9,7 @@ import { routeOffers } from "./offers.js";
 import { routeOperations } from "./operations.js";
 import { serveStatic } from "./static.js";
 import { routeProduct } from "./product.js";
+import { routeAccountAccess } from "./account-access.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -60,6 +61,8 @@ export function createApp({ db, config }) {
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && req.headers.origin && req.headers.origin !== config.origin) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       const token = parseSessionCookie(req.headers.cookie);
       const session = readSession(db, token, config);
+      const accountAccessHandled = await routeAccountAccess({ req, res, url, db, config, session, checkRate });
+      if (accountAccessHandled || res.writableEnded || res.headersSent) return;
 
       if (req.method === "POST" && url.pathname === "/api/auth/register") {
         const body = await readJson(req, config.bodyLimit);
@@ -104,11 +107,20 @@ export function createApp({ db, config }) {
         const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
         const password = typeof body.password === "string" ? body.password : "";
         checkRate(req, email);
-        const row = db.prepare("SELECT * FROM users WHERE email=?").get(email);
-        if (!(await verifyPassword(password, row?.password_hash)) || !row) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
-        if (passwordNeedsRehash(row.password_hash)) db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(await hashPassword(password), row.id);
-        const created = createSession(db, row.id, config);
-        return sendJson(res, 200, { data: { user: publicUser(row) } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
+        for (let verificationAttempt = 0; verificationAttempt < 2; verificationAttempt += 1) {
+          const row = db.prepare("SELECT * FROM users WHERE email=?").get(email);
+          if (!(await verifyPassword(password, row?.password_hash)) || !row) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+          const verifiedHash = row.password_hash;
+          const upgradedHash = passwordNeedsRehash(verifiedHash) ? await hashPassword(password) : null;
+          const created = withTransaction(db, () => {
+            const current = db.prepare("SELECT password_hash FROM users WHERE id=?").get(row.id);
+            if (!current || current.password_hash !== verifiedHash) return null;
+            if (upgradedHash) db.prepare("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?").run(upgradedHash, row.id, verifiedHash);
+            return createSession(db, row.id, config);
+          });
+          if (created) return sendJson(res, 200, { data: { user: publicUser(row) } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now()) });
+        }
+        throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
       }
       if (req.method === "GET" && url.pathname === "/api/auth/me") {
         if (!session) throw new HttpError(401, "AUTH_REQUIRED", "Authentication required");

@@ -116,5 +116,16 @@ ALTER TABLE orders ADD COLUMN offer_grant_id TEXT REFERENCES offer_grants(id);
 ALTER TABLE orders ADD COLUMN offer_snapshot TEXT;
 ALTER TABLE order_items ADD COLUMN is_offer_item INTEGER NOT NULL DEFAULT 0 CHECK(is_offer_item IN (0,1));
 `
+  },
+  {
+    version: 7,
+    name: "local_account_access",
+    sql: `
+ALTER TABLE users ADD COLUMN email_verified_at TEXT;
+CREATE TABLE account_access_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, purpose TEXT NOT NULL CHECK(purpose IN ('password_reset','email_verification')), token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, consumed_at TEXT, created_at TEXT NOT NULL);
+CREATE INDEX account_access_tokens_user_idx ON account_access_tokens(user_id,purpose,created_at);
+CREATE TABLE local_mail_sink (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('password_reset','email_verification')), recipient TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX local_mail_sink_created_idx ON local_mail_sink(created_at);
+`
   }
 ];

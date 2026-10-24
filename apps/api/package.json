@@ -3,5 +3,5 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "dependencies": { "@calai/contracts": "workspace:*" }
+  "dependencies": { "@calai/contracts": "0.1.0" }
 }

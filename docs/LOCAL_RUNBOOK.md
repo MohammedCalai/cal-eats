@@ -4,18 +4,17 @@ This runbook covers the dependency-free local Node.js demo. It does not deploy s
 
 ## Start and verify
 
-From the project root with Node.js 24.19 or newer:
+From the project root with the pinned Node.js 24.19.0 and npm 11.17.0 toolchain:
 
 ```text
 npm run db:migrate
 npm run db:seed
-npm test
-npm run check
-npm run smoke
 npm start
 ```
 
 The seed command is explicit and idempotent. The app listens only on its documented local address. Keep the terminal open while using the browser preview.
+
+The start and database commands load an optional untracked `.env`; `.env.example` documents the actual supported variables. Use `npm run release:check` for a lightweight repository check and focused tests for changed behaviour. Do not run both `npm test` and `npm run check` as routine duplicates. The complete check and persisted smoke remain available when a change warrants them.
 
 ## Create a consistent backup
 

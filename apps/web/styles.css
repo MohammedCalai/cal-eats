@@ -58,6 +58,10 @@
   margin-bottom: 0.45rem;
 }
 
+.access-page { max-width: 620px; }
+.order-highlight { outline: 4px solid #75adff; outline-offset: 3px; animation: order-highlight 2.4s ease-out; }
+@keyframes order-highlight { from { background: #e9f2ff; } to { background: #fff; } }
+
 @media (max-width: 760px) {
   .editor-row,
   .option-row {

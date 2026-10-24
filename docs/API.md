@@ -1,6 +1,6 @@
 # API contract v1 (local milestone)
 
-This is the original foundation contract. Implemented finance, product operations and schema-v6 offers/notifications extend it in LOCAL_COMPLETION.md, PRODUCT_OPERATIONS_API.md and OFFERS_API.md. See STATUS.md for the current completed scope.
+This is the original foundation contract. Implemented finance, product operations, offers/notifications and schema-v7 account access extend it in LOCAL_COMPLETION.md, PRODUCT_OPERATIONS_API.md, OFFERS_API.md and ACCOUNT_ACCESS_API.md. See STATUS.md for the current completed scope.
 
 Success JSON is `{ "data": ... }`; failure is `{ "error": { "code": "...", "message": "..." } }`. Use HTTP 400 validation, 401 session missing, 403 role/origin denial, 404 inaccessible resource, 409 conflict, 413 body too large, 415 media type and 429 rate limit. No stack traces. IDs are UUID strings, money integer pence, dates ISO UTC. Response DTOs camelCase; DB names may use snake_case. Same-origin cookies; browser writes send JSON.
 
