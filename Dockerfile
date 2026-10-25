@@ -7,6 +7,7 @@ RUN npm ci --workspace=@cal-eats/portal --include-workspace-root --ignore-script
 RUN npm run build --workspace=@cal-eats/portal
 
 FROM node:24.19.0-bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
     CALAI_RUN_MODE=hosted-preview \
@@ -23,8 +24,9 @@ COPY --chown=node:node packages/contracts ./packages/contracts
 COPY --from=portal-build --chown=node:node /build/apps/portal/dist ./apps/portal/dist
 COPY --chown=node:node infra ./infra
 RUN mkdir -p /data && chown node:node /data
+RUN chmod 755 /app/infra/entrypoint.sh
 
-USER node
+ENTRYPOINT ["/app/infra/entrypoint.sh"]
 # Mount /data explicitly in the hosting platform or docker run.
 EXPOSE 4310
 STOPSIGNAL SIGTERM
