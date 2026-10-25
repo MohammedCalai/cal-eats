@@ -21,7 +21,7 @@ function useLoad(loader, deps = []) {
 }
 
 function Brand() {
-  return <span className="brand" aria-label="Cal-Eats"><span className="brand-crop"><img src="/assets/calai-original.png" alt="" /></span><span className="brand-cal">Cal</span><span className="brand-eats">-Eats</span></span>;
+  return <span className="brand"><img className="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats" /></span>;
 }
 
 function App() {

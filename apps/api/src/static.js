@@ -18,6 +18,7 @@ const assets = new Map([
   ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],
   ["/offline.html", ["offline.html", "text/html; charset=utf-8"]],
   ["/assets/calai-original.png", ["assets/calai-original.png", "image/png"]],
+  ["/assets/cal-eats-logo.png", ["assets/cal-eats-logo.png", "image/png"]],
   ["/assets/food-demo.png", ["assets/food-demo.png", "image/png"]],
   ["/assets/calai-icon.svg", ["assets/calai-icon.svg", "image/svg+xml"]],
   ["/assets/calai-icon-maskable.svg", ["assets/calai-icon-maskable.svg", "image/svg+xml"]]

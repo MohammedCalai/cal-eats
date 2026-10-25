@@ -4,6 +4,10 @@
 
 ## Local routes
 
+25 October deployment preparation: the user approved the new private repository `MohammedCalai/cal-eats` and a separate Cal-Eats Railway preview. The connected Railway account is `mohammedcalai`; it currently has only unrelated staging projects. The IONOS DNS filter confirmed there is no `eats` record. No DNS or Railway resource has been changed. Project creation was blocked by automatic approval review pending explicit consent to existing-plan hosting charges. The browser is signed into the original GitHub account; the new-account sign-in handoff is pending. Never create the repository under `calai-operation`.
+
+Logo update: the reattached Cal-Eats artwork now replaces the reconstructed wordmark across landing, customer browser, portal and native source. The user requested removal of “Save more on every order”; the supplied design was edited for that request and is stored as `assets/cal-eats-logo.png` in web/mobile. Display crops only generated letterboxing. Portal production build and changed JavaScript syntax checks passed; phone screenshot `artifacts/screenshots/45-logo-no-tagline-phone.jpg` verifies the served landing. Public cache version is v7. Delivery fees were not changed.
+
 - `/`: responsive public landing with the original blue emblem, Luton launch copy, postcode search, restaurant section and FAQ.
 - `/order/`: existing customer browser app. Landing postcode submissions initialise discovery; `?view=account` opens account/sign-in and `?view=register-restaurant` opens the existing pending restaurant application form.
 - `/business/`: role-controlled restaurant/admin portal.

@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View,
 import { colours, radii } from "./theme";
 
 export function Brand() {
-  return <View style={styles.brand}><View style={styles.mark}><Image accessibilityIgnoresInvertColors source={require("../assets/calai-original.png")} style={styles.markImage}/></View><Text style={styles.brandCal}>Cal-</Text><Text style={styles.brandEats}>Eats</Text></View>;
+  return <View style={styles.brand}><Image accessibilityIgnoresInvertColors accessible accessibilityLabel="Cal-Eats" source={require("../assets/cal-eats-logo.png")} style={styles.brandLogo} resizeMode="cover"/></View>;
 }
 
 export function Field({ label, hint, ...props }: TextInputProps & { label: string; hint?: string }) {
@@ -27,9 +27,8 @@ export function ErrorBanner({ message }: { message?: string | null }) { return m
 export function SectionTitle({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: ReactNode }) { return <View style={styles.sectionHead}><View style={{ flex: 1 }}>{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text style={styles.title}>{title}</Text></View>{action}</View>; }
 
 const styles = StyleSheet.create({
-  brand: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", backgroundColor: "#06101F", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 15 },
-  mark: { width: 42, height: 48, overflow: "hidden" }, markImage: { position: "absolute", width: 200, height: 133, left: -37, top: -43 },
-  brandCal: { color: colours.white, fontSize: 23, fontWeight: "900", letterSpacing: -0.7, marginLeft: 5 }, brandEats: { color: "#159CFF", fontSize: 23, fontWeight: "900", fontStyle: "italic", letterSpacing: -0.7 },
+  brand: { alignSelf: "flex-start", width: 230, maxWidth: "92%", aspectRatio: 4.096, overflow: "hidden" },
+  brandLogo: { width: "100%", height: "100%" },
   fieldWrap: { gap: 6 }, label: { color: colours.ink, fontWeight: "700", fontSize: 14 },
   input: { minHeight: 48, borderWidth: 1, borderColor: colours.line, borderRadius: radii.small, paddingHorizontal: 13, paddingVertical: 11, color: colours.ink, backgroundColor: colours.white, fontSize: 16 },
   multiline: { minHeight: 96, textAlignVertical: "top" }, hint: { fontSize: 12, color: colours.muted },
