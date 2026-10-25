@@ -1,0 +1,802 @@
+**Copy everything below into Astra, replace the GitHub placeholder, and attach your screenshot.** This combines the full build, automated business payouts, earnings breakdowns, refund reviews and scaling requirements.
+
+# CAL-EATS — COMPLETE BUILD INSTRUCTIONS FOR ASTRA
+
+You are Astra, acting as technical lead, architect and integration reviewer for **Cal-Eats**.
+
+Use **GPT-5.6 Sol agents for most implementation work** to conserve my Astra usage. Coordinate the work, make important architecture decisions, review sensitive changes and integrate the completed components.
+
+This is an instruction to build working software once the source repository is available. Continue through implementation and verification; do not stop after producing a plan.
+
+---
+
+## 1. Project context and source material
+
+I own **Calai**, an existing restaurant phone-ordering system with its own backend, restaurant dashboard, Windows tablet setup and thermal printer integration.
+
+I want to create **Cal-Eats**, a separate restaurant food-ordering marketplace under Calai Ltd.
+
+The approach is to:
+
+1. Inspect the original Calai source using read-only access.
+2. Create a completely separate writable copy for Cal-Eats.
+3. Reuse the existing restaurant, menu, order, authentication and printing functionality where appropriate.
+4. Remove all phone-assistant functionality from the Cal-Eats copy.
+5. Build the Cal-Eats customer app and connect it to the new Cal-Eats backend.
+6. Add marketplace payments, automatic restaurant payouts, earnings reporting and refund case management.
+
+Calai and Cal-Eats must operate independently. We may combine them later, once Cal-Eats has enough restaurants, but **there must be no live integration between the products during this build**.
+
+The original stack is understood to be React and Laravel. Confirm the actual architecture and versions from the repository.
+
+**Original Calai repository — READ ONLY:**
+[PASTE ORIGINAL CALAI GITHUB URL HERE]
+
+**Existing Cal-Eats repository or workspace, if one already exists:**
+[ADD URL OR PATH IF AVAILABLE]
+
+**Visual reference:** the attached screenshot of the Calai restaurant dashboard.
+
+If Cal-Eats work already exists, inspect it and preserve useful progress. Establish how it will connect to the duplicated backend before restructuring anything.
+
+Use the screenshot to understand the existing layout. Use the source code to establish what functionality actually exists.
+
+---
+
+## 2. Absolute restriction: original Calai must remain untouched
+
+**The original Calai repository and live system are read-only. This restriction applies to you and every agent.**
+
+Do not:
+
+- Edit or commit to the original repository.
+- Create branches, tags or pull requests in it.
+- Push, merge or trigger its workflows.
+- Change repository settings, secrets, webhooks or deployment connections.
+- Run migrations, seeders or maintenance commands against Calai.
+- Send write requests to its live APIs.
+- Change its servers, domains, databases, storage or environment variables.
+- Modify existing restaurant accounts or production data.
+- Change existing tablets, printer bridges, startup tasks or device configurations.
+- Deploy anything to an original Calai environment.
+
+Reading the source and downloading it for the separate copy are permitted.
+
+### Safe duplication
+
+Create a reference checkout for inspection and a separate writable Cal-Eats workspace. Do not run installations, generators or development commands inside the reference checkout.
+
+Record the original source commit used.
+
+For a new Cal-Eats project, initialise separate Git history and verify that the original repository is not configured as a push destination. If a Cal-Eats repository already exists, preserve its own history and authorised destination.
+
+Do not copy:
+
+- The original `.git` directory or hooks.
+- Production `.env` values or secrets.
+- Customer or restaurant data.
+- Database dumps.
+- Call recordings, transcripts or logs.
+- Device tokens, certificates or payment credentials.
+- Infrastructure state or active deployment connections.
+
+Preserve applicable licence and attribution files.
+
+Inspect inherited scripts, jobs and CI configuration before running them. Remove production connections from the writable copy first.
+
+Cal-Eats needs its own application secrets, authentication keys, sessions, database, storage, queues, caches, payment configuration, webhooks, logging and deployment configuration.
+
+Use synthetic development data.
+
+If an approach requires changing original Calai, implement an independent solution within Cal-Eats or report the precise blocker.
+
+---
+
+## 3. Preserve useful functionality and remove calling
+
+Keep the familiar restaurant dashboard structure and working components.
+
+### Retain and adapt
+
+- **Dashboard:** orders, sales, pending work, restaurant availability and printer status.
+- **Order List:** Cal-Eats delivery and collection orders.
+- **Item Management:** categories, products, prices, modifiers and availability.
+- **Printer Management:** supported printer setup, status and printing workflow.
+- **Settings:** relevant account, restaurant and operational settings.
+
+Preserve useful non-call functionality discovered during inspection.
+
+### Remove from the Cal-Eats copy
+
+- **Agents**, including phone-agent configuration.
+- **Test Call Window**.
+- **Call Summary**.
+- Call histories, recordings, transcripts and call analytics.
+- Telephony number allocation and call-forwarding settings.
+- Voice selection, assistant prompts and speech-provider configuration.
+- AI-minute allowances, call subscriptions and telephony billing.
+- Call-specific routes, APIs, webhooks, jobs and scheduled tasks.
+
+Remove integrations and dependencies used exclusively for calling after checking whether any shared functionality still needs them.
+
+Retain ordinary customer and restaurant contact telephone numbers needed for delivery and support.
+
+Removing navigation links is insufficient. Cal-Eats must run without calling credentials or services, and removed call-specific routes must not remain accessible.
+
+Inspect whether existing orders depend on a call, transcript, agent or telephony webhook. Refactor the Cal-Eats copy so customer checkout creates an order independently.
+
+Provide proper order identifiers, source information and server-side validation.
+
+---
+
+## 4. Product surfaces and user roles
+
+Build three connected parts using the new Cal-Eats backend.
+
+### A. Customer iPhone app
+
+The first customer release is for iPhone.
+
+Include:
+
+- Registration, login and essential account-management flows.
+- Postcode/address-based restaurant discovery.
+- Restaurant details, opening hours and delivery/collection availability.
+- Menus, prices, options, modifiers and sold-out information.
+- Restaurant-provided dietary and allergen information.
+- Basket and server-validated checkout.
+- Delivery and collection.
+- Card, Apple Pay and cash where enabled.
+- Order confirmation, status updates and order history.
+- Saved addresses where appropriate.
+- Customer support and refund requests.
+- Relevant terms, privacy and account-management screens.
+
+Do not invent dietary or allergen claims.
+
+Use order statuses supported by the restaurant’s actual workflow. Do not display live driver tracking unless it has been implemented and verified.
+
+Keep the API reusable for later Android or customer website clients. Business rules belong in the backend.
+
+### B. Restaurant portal
+
+Adapt the existing portal for the same Windows tablet workflow.
+
+Include restaurant registration or admin-assisted onboarding, business details, menu setup, admin approval status and payment onboarding.
+
+Restaurants must be able to:
+
+- Receive visible and audible new-order alerts.
+- Accept or reject orders.
+- Set preparation estimates.
+- Update preparation, collection and delivery progress.
+- Manage opening hours, availability and temporary closures.
+- Manage menus, modifiers and sold-out items.
+- Configure supported delivery areas, minimum orders and restaurant delivery charges.
+- View payment information.
+- Print orders and request clearly labelled reprints.
+- View printer status.
+- View earnings, refunds, commission and payouts.
+- Respond to refund enquiries from Cal-Eats.
+
+Keep owner and staff permissions appropriate to their responsibilities.
+
+Preserve an installable Windows-tablet experience where supported by the existing implementation.
+
+### C. Cal-Eats admin portal
+
+Provide secure platform administration covering:
+
+- Restaurant onboarding, approval, suspension and management.
+- Restaurant users and permissions.
+- Menu and operational settings.
+- Orders and payment records.
+- Commission rates and contract dates.
+- Earnings, settlements, payouts and financial exceptions.
+- Refund requests, evidence, restaurant responses and decisions.
+- Customer support and account management.
+- Device and printer diagnostics.
+- Administrative audit history.
+
+Enforce tenant isolation in the backend. A restaurant must never access another restaurant’s orders, customers, menus, financial information or devices.
+
+---
+
+## 5. Business rules, location and branding
+
+### Commercial model
+
+Preserve these requirements:
+
+- **7% commission on order value.**
+- **A 24-month restaurant contract with the agreed commission rate fixed throughout.**
+- **No additional Cal-Eats setup, monthly subscription, administration or per-order platform fees.**
+- **No customer platform service fee for the initial release.**
+- Restaurants always use **their own delivery drivers**.
+- Collection is supported.
+- Cal-Eats does not recruit or provide delivery drivers.
+
+A separate driver app or fleet-management system is outside the initial scope.
+
+Store the restaurant’s agreed rate and contract dates explicitly. Changing a default rate must not change an existing locked agreement or historical order.
+
+### Initial market
+
+- Luton, UK.
+- GBP.
+- British English.
+- Europe/London for user-facing dates and reporting periods.
+
+### Branding
+
+Use **Cal-Eats**, including the hyphen.
+
+Preserve:
+
+- The original blue Calai speech/phone-style emblem with three dots.
+- Dark navy and black surfaces.
+- Blue accents.
+- A readable, single-line wordmark.
+- White “Cal” and blue “-Eats”.
+- A slight italic slant on “Eats”.
+
+Use existing brand assets where available. Preserve the emblem’s established shape and a professional appearance.
+
+Keep the restaurant portal familiar while making the product clearly identifiable as Cal-Eats.
+
+---
+
+## 6. Automated payments, earnings calculations and bank payouts
+
+Automatic restaurant settlement is a core requirement.
+
+Cal-Eats must calculate each restaurant’s earnings per order, maintain an accurate ledger and arrange scheduled bank payouts through a marketplace payment provider.
+
+Use **Stripe Connect as the preferred starting point**, subject to verifying the appropriate UK configuration and payment flow. Use current official documentation.
+
+Keep all payment configuration separate from original Calai. An existing ordinary checkout or subscription integration must not be assumed to provide marketplace settlement.
+
+### Business onboarding
+
+Use provider-hosted or supported embedded onboarding for business verification and payout bank details.
+
+Record the connected-account reference and capability status. Show outstanding requirements clearly.
+
+Do not mark payment onboarding complete merely because the user returns from the provider’s onboarding page.
+
+### Per-order calculations
+
+Record:
+
+- Restaurant and order identifiers.
+- Item and modifier totals.
+- Delivery charges and relevant tax breakdown.
+- Discounts and which party funds them.
+- Customer payment method and amount.
+- Commissionable amount and calculation-policy version.
+- Agreed commission rate and deducted commission.
+- Restaurant earnings.
+- Provider costs paid by Cal-Eats.
+- Refunds, reversals and adjustments.
+- Transfer and payout references.
+- Payment, settlement and reconciliation statuses.
+
+Calculate money using integer pence or an appropriate exact decimal representation.
+
+For a simple £30 order where the full amount is commissionable and there are no adjustments:
+
+- Customer payment: £30.00.
+- Cal-Eats commission: £2.10.
+- Restaurant earnings: £27.90.
+
+Normal processing, Connect and payout costs must be recorded as Cal-Eats costs. Do not silently deduct additional fees from the restaurant beyond the agreed commission.
+
+### Explicit financial policy
+
+Document these decisions before implementing the corresponding flow:
+
+- The precise commission base.
+- Treatment of delivery charges, discounts and taxes.
+- Payment authorisation and capture timing.
+- When an order becomes eligible for settlement.
+- Transfer timing and payout schedule.
+- Refund and commission-reversal treatment.
+- Holds, negative balances and recovery.
+- The provider’s business/merchant configuration and allocation of responsibilities.
+
+Where a commercial decision remains unresolved, use a clearly labelled development assumption and keep it configurable. Continue unaffected development.
+
+Do not silently turn a development assumption into a live contractual rule.
+
+### Automatic bank payouts
+
+Distinguish:
+
+1. Earnings recorded against an order.
+2. Funds pending settlement.
+3. Funds available for payout.
+4. A transfer to the restaurant’s provider account.
+5. A bank payout that is scheduled, in transit, paid or failed.
+
+Calculate earnings per order and pay eligible funds on a configurable schedule.
+
+Use weekly payouts as a development default only. Explicitly configure the live schedule before launch.
+
+Use provider-confirmed statuses and expected arrival information. Do not mark a payout paid because a local job ran.
+
+Routine eligible payouts must not require manual approval. Exceptions should enter an admin queue.
+
+Choose one coordinated payout mechanism. Prevent duplication between provider automatic payouts and any custom scheduling.
+
+### Cash orders
+
+The restaurant or its driver receives cash directly. Do not pay that order amount to the restaurant again.
+
+Record the restaurant’s cash sales and Cal-Eats’ commission receivable separately.
+
+Implement a concrete, provider-supported and expressly authorised method for collecting cash commission, such as an appropriate settlement offset or payment mandate.
+
+Include authorisation setup in restaurant onboarding. Handle insufficient funds, failed collection, revoked mandates and retries without duplicate collection.
+
+Do not mistake recording money owed for actually collecting it.
+
+---
+
+## 7. Earnings and payout transparency
+
+Add an **Earnings & Payouts** section to the restaurant portal.
+
+Show:
+
+- Gross sales.
+- Cal-Eats commission.
+- Refunds and adjustments.
+- Net earnings.
+- Cash collected directly.
+- Outstanding cash commission.
+- Pending and available funds.
+- Any hold, with an explanation.
+- Next scheduled payout and estimated amount.
+- Payout history, status and reference.
+
+Provide:
+
+- An order-level financial breakdown.
+- A payout detail page identifying the transactions included.
+- Date filters.
+- Downloadable CSV statements.
+- Clear failed-payout messages and required next steps.
+
+Generate large reports in the background.
+
+The admin portal needs corresponding views across restaurants, plus actual provider costs, financial exceptions and Cal-Eats’ net payment margin.
+
+Do not present gross commission as profit.
+
+---
+
+## 8. Customer refund requests and manual admin review
+
+Customer complaint refunds must follow a case-management process.
+
+**Submitting a request must not automatically issue a refund or credit.**
+
+### Customer submission
+
+From order history, the customer can:
+
+1. Select the affected order.
+2. Choose a reason.
+3. Identify affected items where relevant.
+4. Write a description.
+5. Upload supporting photos where available.
+6. Submit and receive a case reference.
+
+Reasons should include missing items, incorrect items, quality problems and non-delivery.
+
+Support photos without making them mandatory for issues that cannot reasonably be photographed, such as an order that never arrived.
+
+Verify order ownership. Validate uploads and store them privately with appropriate access controls and retention.
+
+Tell the customer that the request has been received and will be reviewed with the restaurant.
+
+### Admin review
+
+The Cal-Eats admin must be able to:
+
+- Review the order, payment, description and evidence.
+- View the customer’s refund history across all restaurants.
+- Contact the restaurant and record its response.
+- Request more information.
+- Add private internal notes.
+- Approve a full refund.
+- Approve a partial refund.
+- Reject with a recorded reason.
+- Reopen or review a decision when new evidence is supplied.
+
+The restaurant’s response informs the decision. Do not make restaurant agreement an absolute condition where the customer is entitled to a remedy.
+
+Use configurable response targets, reminders and escalation so cases do not remain indefinitely blocked.
+
+### Statuses
+
+Support:
+
+- Submitted.
+- Under review.
+- Awaiting restaurant response.
+- Awaiting customer information.
+- Approved or partially approved.
+- Rejected.
+- Refund processing.
+- Refunded.
+- Refund failed — action required.
+
+Record the actor, timestamp, reason and approved amount for each material decision.
+
+Approval and successful money movement are separate. Do not display “refunded” until the result is confirmed.
+
+### Repeat requests across restaurants
+
+Track refund requests across the customer’s account, covering every restaurant on Cal-Eats.
+
+A second request involving a different order in the same calendar month, using Europe/London time, should trigger an admin review flag.
+
+Do not automatically reject a potentially valid claim solely because the customer previously requested or received a refund. Assess each claim on its evidence and applicable consumer rights.
+
+Support a configurable limit of **one approved discretionary goodwill credit per calendar month**. This limit must not block statutory remedies and does not automatically entitle the customer to their first goodwill credit.
+
+Track requests, approvals, rejections and goodwill credits separately.
+
+Prevent duplicate active cases for the same order and issue. Allow additional evidence or a genuinely separate issue without blocking legitimate support.
+
+Only authorised Cal-Eats staff may view history across restaurants. Restaurant users must not see complaints involving other businesses.
+
+---
+
+## 9. Execute approved refunds and update financial records
+
+After an authorised admin approves a complaint refund, execute the corresponding financial operations automatically.
+
+For card and Apple Pay payments:
+
+- Refund against the original payment through the provider.
+- Support full and partial amounts.
+- Prevent cumulative refunds exceeding the remaining refundable amount.
+- Adjust restaurant earnings and commission according to the documented policy.
+- Perform necessary transfer reversals or settlement adjustments.
+- Update customer, restaurant and admin views from confirmed results.
+
+Do not assume that refunding the customer automatically reverses the restaurant’s transfer or returns Cal-Eats’ commission. Implement those operations explicitly.
+
+Handle funds that are pending, already transferred or already paid to the restaurant’s bank.
+
+If funds have already been paid out, record the correct recovery or subsequent settlement adjustment. Do not assume a completed bank payout can always be reversed.
+
+Any hold on disputed earnings must follow the agreed restaurant terms and use a supported provider mechanism. Do not freeze unrelated earnings because one order is disputed.
+
+A customer’s valid remedy must not depend indefinitely on recovering money from the restaurant first.
+
+### Cash refunds
+
+Record:
+
+- Who must return the money.
+- The approved amount.
+- The repayment method.
+- Completion evidence or confirmation.
+- Any required cash-commission adjustment.
+
+Do not attempt a card refund for cash that never passed through the provider.
+
+Prevent the restaurant and Cal-Eats from both refunding the same amount.
+
+### Reliability and reconciliation
+
+Maintain an append-only financial ledger. Correct settled history through reversals and adjustments.
+
+Use durable idempotency keys, unique provider references and concurrency controls for orders, payments, refunds, transfers, payouts and commission collection.
+
+Repeated webhooks, worker restarts and simultaneous admin actions must not create duplicate money movements.
+
+Reconcile the ledger against provider transactions and payout results automatically. Surface mismatches for investigation.
+
+Keep payment failures, order cancellations and payment-provider disputes separate from customer complaint approval. Do not assume an internal review rule can stop a bank from processing a chargeback.
+
+---
+
+## 10. Windows tablet and thermal printer integration
+
+Reuse the existing supported Windows tablet and **80mm ESC/POS thermal printer** workflow.
+
+Inspect the current Calai Thermal Print Bridge, including:
+
+- Authentication.
+- Job polling or delivery.
+- Restaurant/device pairing.
+- Receipt formatting.
+- Status reporting.
+- Acknowledgements and retries.
+- Startup and restart behaviour.
+
+Adapt a separate copy for Cal-Eats.
+
+### Isolation
+
+Give the Cal-Eats bridge its own:
+
+- API endpoint.
+- Credentials and device identity.
+- Configuration.
+- Process/service identity.
+- Logs.
+- Startup configuration.
+- Print-job routing.
+
+Do not overwrite or reconfigure the existing Calai bridge.
+
+Each device/printer must be scoped to its restaurant. Cal-Eats must not consume Calai jobs or send another restaurant’s receipts to a printer.
+
+### Operational requirements
+
+Preserve or implement:
+
+- Automatic startup and recovery after process failure.
+- Honest online/offline status.
+- Heartbeat reporting.
+- Persistent pending jobs across temporary connection failures.
+- Controlled retries and idempotent job handling.
+- Visible failed or uncertain print status.
+- Clearly labelled manual reprints.
+
+The bridge must remain running for printing to work. Make startup and recovery automatic where practical so restaurant staff do not have to manage technical tasks manually.
+
+Account for uncertainty when a connection fails after a print may already have occurred. Do not claim guaranteed exactly-once physical printing from a network acknowledgement alone.
+
+Receipts should show Cal-Eats branding, order number, delivery/collection, items, modifiers, relevant notes, totals and payment status.
+
+If the same physical device will run both products, verify coexistence on development hardware before rollout.
+
+Do not change any live tablet or printer during this build. Mark physical printing unverified until tested on suitable hardware.
+
+---
+
+## 11. Scalability and the 10,000-user target
+
+Use **at least 10,000 registered customer and business/staff accounts combined** as the initial working assumption. Do not impose a hard limit at that number.
+
+Record the assumed number of restaurants and active printer devices separately.
+
+Distinguish:
+
+- Downloads.
+- Registered accounts.
+- Active users.
+- Concurrent users.
+- Orders per minute.
+- Active restaurant tablets and printer bridges.
+
+Do not claim support for 10,000 simultaneous users merely because 10,000 accounts exist.
+
+Reuse the established architecture where suitable and provide:
+
+- Application services capable of running across multiple instances.
+- Indexed, tenant-aware database queries.
+- Pagination.
+- Appropriate caching and cache invalidation.
+- Server-side price and availability validation at checkout.
+- Background queues for payment events, printing, notifications, reports and reconciliation.
+- Controlled retries and recovery after worker restarts.
+- Efficient restaurant updates and printer polling.
+- Rate limits and protection against repeated submissions.
+- Monitoring of response times, errors, queue delays and financial exceptions.
+
+Use a dataset representing at least 10,000 accounts and realistic restaurant/menu data.
+
+Load-test browsing, checkout, restaurant order updates, printer traffic and financial processing.
+
+Report:
+
+- The tested environment.
+- Concurrent users and active devices.
+- Order rate.
+- Response times and error rates.
+- Queue delays.
+- Bottlenecks and measured limits.
+- Infrastructure requirements and scaling triggers.
+
+Base capacity claims on evidence. Provide an initial infrastructure sizing and growth plan without purchasing or deploying infrastructure.
+
+---
+
+## 12. Astra and GPT-5.6 Sol working method
+
+Astra should focus on:
+
+- Architecture and reuse decisions.
+- Shared API and data-model contracts.
+- Task allocation.
+- Important security and financial reviews.
+- Integration.
+- Final verification.
+
+Use **GPT-5.6 Sol / `gpt-5.6-sol`** for most coding, routine debugging, migrations, components and focused tests.
+
+Use the actual model when selectable. Do not merely name an Astra agent “5.6”.
+
+If model selection is unavailable, state that accurately. Do not silently switch the bulk of implementation to a more expensive model.
+
+Run up to three implementation agents concurrently where tasks are independent and the environment supports it.
+
+Each agent must receive:
+
+- A bounded task.
+- Relevant architecture and interface contracts.
+- Clear file ownership or an isolated Cal-Eats worktree.
+- The original-Calai read-only restriction.
+- Completion criteria.
+- A requirement to report changed files, checks and unresolved issues.
+
+Coordinate shared schema, configuration and lockfile changes centrally.
+
+Keep agent briefs concise and avoid repeated full-repository analysis.
+
+Maintain concise project documents covering architecture, API contracts, decisions, progress and known blockers.
+
+Do not ask for confirmation at every phase. Continue safe, reversible development within the agreed scope.
+
+---
+
+## 13. Delivery phases
+
+### Phase 1 — Read-only inspection
+
+Inspect the original repository.
+
+Identify the stack, authentication, tenancy, menu/order models, printer integration, call dependencies and deployment configuration.
+
+Produce a concise reuse/removal map.
+
+Identify missing source, such as a bridge stored in another repository. Do not invent unseen functionality.
+
+### Phase 2 — Isolated foundation
+
+Create the separate writable Cal-Eats project.
+
+Establish independent configuration, a clean database, synthetic seed data and working development admin/restaurant accounts.
+
+Remove inherited production connections before running the application.
+
+Get the retained portal working and remove calling features.
+
+### Phase 3 — Parallel implementation
+
+Define shared models and API contracts first.
+
+Divide work between agents covering:
+
+- Backend, tenancy, orders and financial foundations.
+- Restaurant/admin portals and refund case management.
+- Customer iPhone app.
+
+Assign payment-provider integration, printer adaptation and additional verification as dependencies are ready and agent slots become available.
+
+Keep interface contracts current.
+
+### Phase 4 — Integration
+
+Demonstrate:
+
+**Customer discovers a restaurant → selects items → checks out → payment/cash state is recorded → restaurant receives the order → print job is created → order progresses → earnings are calculated → eligible funds enter the payout flow.**
+
+Also demonstrate:
+
+**Customer submits a refund request → admin reviews evidence and contacts the restaurant → admin decides → an approved refund executes → customer status, restaurant earnings, commission and settlement records update correctly.**
+
+Use provider sandbox services and a printer simulator where appropriate. Clearly distinguish simulation from actual provider or hardware testing.
+
+### Phase 5 — Verification and handover
+
+Complete the required checks and provide working source, startup instructions, results, limitations and deployment preparation.
+
+Do not describe the system as production-ready while material payment, security, native-build or hardware checks remain incomplete.
+
+---
+
+## 14. Development and deployment constraints
+
+GitHub and Expo build allowances have been exhausted in the current setup.
+
+Work locally by default. Read-only source retrieval is permitted, but do not depend on GitHub Actions or Expo EAS cloud builds.
+
+Perform available local checks. Distinguish JavaScript/type checks from an actual native iPhone build or physical-device test.
+
+During this build, do not:
+
+- Push code or trigger hosted CI.
+- Start paid cloud builds.
+- Purchase infrastructure.
+- Change DNS.
+- Activate live payments or real payouts.
+- Submit to the App Store.
+- Deploy to production.
+
+Prepare the code and configuration so those actions can be completed when separately authorised.
+
+Use sandbox credentials only where available. If credentials or hardware are missing, continue with clearly identified adapters or simulations and record the exact remaining verification.
+
+Never claim a mock test proves real payment-provider or physical-device behaviour.
+
+---
+
+## 15. Acceptance criteria
+
+Verify the material risks with focused, meaningful checks.
+
+### Isolation and functionality
+
+- Original Calai has not been modified.
+- Cal-Eats runs with its own configuration and data.
+- Calling features and exposed call-specific routes are removed.
+- Orders can be created without a call record.
+- Customer, restaurant and admin flows are connected.
+- Cross-restaurant access is blocked.
+
+### Orders and money
+
+- Prices, availability and totals are validated on the server.
+- Repeated checkout requests do not create duplicate orders or charges.
+- Commission calculations follow the documented policy.
+- Contract-locked rates remain unchanged.
+- Per-order earnings match the ledger.
+- Payouts reconcile to their included transactions.
+- Cash orders are not paid twice.
+- Cash commission collection is authorised, recorded and retry-safe.
+
+### Refunds
+
+- Submitting a complaint does not move money.
+- Only an authorised decision initiates a complaint refund.
+- Full and partial refunds update the correct records.
+- Cumulative refunds cannot exceed the refundable amount.
+- Repeated clicks and webhooks cannot duplicate refunds.
+- Refunds work correctly before and after restaurant settlement.
+- Repeat requests across restaurants are visible to admins.
+- A monthly goodwill limit does not block valid refund claims.
+- Failed refunds and recovery issues remain visible.
+
+### Printing and scale
+
+- Print jobs route to the correct restaurant/device.
+- Offline and retry behaviour is tested.
+- Uncertain physical printing is handled honestly.
+- Cal-Eats cannot consume original Calai print jobs.
+- Load-test assumptions, results and limitations are documented.
+- Financial correctness is preserved under retries and concurrency.
+
+---
+
+## 16. Final deliverables and reporting
+
+Provide:
+
+- Working Cal-Eats source code.
+- The original source commit used.
+- A summary of reused, removed and newly built components.
+- Local startup instructions.
+- Development account setup.
+- Environment templates without real secrets.
+- Database setup and migration instructions.
+- API/interface documentation.
+- Payment, settlement and refund-policy assumptions.
+- Sandbox verification results.
+- Printer installation and testing instructions.
+- Load-test results and infrastructure sizing assumptions.
+- Separate Cal-Eats deployment and rollback instructions.
+- Remaining credentials, commercial decisions and hardware checks.
+
+Give brief progress updates explaining what is working, what remains and any genuine blocker.
+
+Do not describe placeholders as working features or reviewed code as tested behaviour.
+
+**Start with read-only inspection of the supplied Calai repository, create the isolated Cal-Eats copy, and begin implementation using GPT-5.6 Sol agents. Preserve the original Calai repository, production system and devices throughout.**

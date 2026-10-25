@@ -12,7 +12,7 @@ assertHostedPreviewSafe(db, config);
 runOperationsCycle(db, config);
 const server = createServer(createApp({ db, config }));
 await listen(server, config);
-console.log(`Calai Eats API listening at ${config.origin}`);
+console.log(`Cal-Eats API listening at ${config.origin}`);
 const worker = setInterval(() => { runOperationsCycle(db, config); }, 60_000);
 worker.unref();
 

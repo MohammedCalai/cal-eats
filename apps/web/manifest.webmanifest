@@ -1,7 +1,7 @@
 {
-  "name": "Calai Eats",
-  "short_name": "Calai Eats",
-  "description": "Calai Eats browser preview for Luton.",
+  "name": "Cal-Eats",
+  "short_name": "Cal-Eats",
+  "description": "Cal-Eats browser preview for Luton.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

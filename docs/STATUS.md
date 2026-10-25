@@ -1,5 +1,7 @@
 # Calai Eats local version handover
 
+**25 October 2026 update:** the product is now named **Cal-Eats**. The expanded source-reuse/marketplace brief is a new unfinished phase; see NEXT_PHASE.md. Earlier completion statements below apply only to the existing local browser milestone. The original repository URL and dashboard screenshot have not been supplied, so original-source inspection/duplication remains pending. The browser branding has been updated independently while preserving this project's history and data.
+
 Updated: 2026-10-24 (Europe/London).
 
 ## Delivered

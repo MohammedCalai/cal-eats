@@ -1,4 +1,6 @@
-# Calai Eats
+# Cal-Eats
+
+The expanded 25 October brief is in [next-phase status and reuse map](docs/NEXT_PHASE.md). The existing local prototype is preserved. Original Calai source inspection and duplication are awaiting its repository URL; automated provider payouts, refund case management, native iPhone delivery and printer-bridge reuse are not complete. Internal package names, environment variables and storage identifiers retain their existing names for compatibility.
 
 Local milestone implementation using Node.js 24 only. It provides persistent authentication plus the full restaurant approval, menu, collection/delivery ordering, status, receipt and commission journey.
 
