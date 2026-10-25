@@ -13,7 +13,7 @@ const newToken = () => randomBytes(32).toString("base64url");
 
 function storeMail(db, { user, purpose, token, origin, now }) {
   const verification = purpose === "email_verification";
-  const link = `${origin}/#${verification ? "verify-email" : "reset-password"}=${encodeURIComponent(token)}`;
+  const link = `${origin}/order/#${verification ? "verify-email" : "reset-password"}=${encodeURIComponent(token)}`;
   db.prepare("INSERT INTO local_mail_sink(id,user_id,kind,recipient,subject,body,created_at) VALUES(?,?,?,?,?,?,?)").run(randomUUID(), user.id, purpose, user.email, verification ? "Verify your Cal-Eats email (local simulation)" : "Reset your Cal-Eats password (local simulation)", `${verification ? "Confirm your local email status" : "Reset your local password"}: ${link}\n\nThis message was stored locally and was not sent by email.`, now);
 }
 

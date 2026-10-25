@@ -2,6 +2,8 @@
 
 ## Expansion update — 25 October 2026
 
+Landing follow-up: `/` now serves a responsive Cal-Eats landing page; customer ordering/PWA launch moves to `/order/`, while `/business/` remains the business/admin portal. Postcode hand-off, restaurant application entry and legacy account-link forwarding were verified in the browser. Three focused hosting checks and the portal production build passed. Screenshots 43–44 show the phone and desktop landing. The user owns `calai.info`; proposed separate host `eats.calai.info` remains unconfigured, with no DNS or live-system changes. See `LANDING_AND_DOMAIN.md`.
+
 Final local walkthrough: the running demo is schema v18 with four fictional orders; database integrity and foreign keys passed. Two new orders were placed through native bearer authentication, with delivery completion, collection preparation and a restaurant refund enquiry verified across the shared API. The portal displays combined historical/current gross sales £57.50 and commission £3.68. Current screenshots 37–42 show platform administration, restaurant orders/menu, customer phone browser views and refund review. Account switching and refund-message visibility were checked in the served production portal build. No signed iPhone run is implied.
 
 Backup `backups/calai-eats-2026-10-25T14-38-23-503Z.sqlite` was verified in an isolated copy: integrity OK, schema v17, four users, two restaurants and four orders. It precedes the additive v18 reminder-episode migration. Final verification used focused changed-area checks and runtime walkthroughs; the broad functional suite was not repeated.

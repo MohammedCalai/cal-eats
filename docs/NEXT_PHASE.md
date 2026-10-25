@@ -10,7 +10,8 @@ The original Calai GitHub account/repository is permanently no-write. Future pub
 
 ## Implemented locally
 
-- Customer browser/PWA at `http://127.0.0.1:4310/`: accounts, Luton discovery, menu/modifiers, delivery/collection, mock-card/cash checkout, history/status, offers, support, refund cases, addresses and account controls.
+- Landing page at `http://127.0.0.1:4310/`, with working postcode discovery, restaurant application and business sign-in links. Planned independent host: `eats.calai.info` using the user's existing domain; no DNS or deployment changes. See `LANDING_AND_DOMAIN.md`.
+- Customer browser/PWA at `http://127.0.0.1:4310/order/`: accounts, Luton discovery, menu/modifiers, delivery/collection, mock-card/cash checkout, history/status, offers, support, refund cases, addresses and account controls.
 - React owner/admin portal at `http://127.0.0.1:4310/business/`; Vite development at `http://127.0.0.1:4311/business/`. It covers orders, menu/photos/CSV/hours, offers/customers, printers, finance/payout reporting, refunds, restaurant administration, operations and governance.
 - API schema through v18: marketplace finance/refunds/printers/native auth, governance v16, durable Stripe-test provider events v17 and per-waiting-episode refund deadlines v18.
 - Native Expo/React Native source. A connected runtime exercise completed two mock checkouts and a refund enquiry. It remains unsigned and untested on an iPhone.

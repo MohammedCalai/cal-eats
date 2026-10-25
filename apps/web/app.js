@@ -49,13 +49,24 @@ function consumeAccessFragment() {
 
 async function boot() {
   consumeAccessFragment();
+  const entry = new URLSearchParams(location.search);
+  const postcode = (entry.get("postcode") || "").trim().toUpperCase();
+  if (/^[A-Z0-9 ]{2,10}$/.test(postcode)) state.postcode = postcode;
   try { state.runtime=await api("/api/runtime"); } catch { /* secure defaults keep demo shortcuts hidden */ }
   const runtimeBanner=document.querySelector("#runtime-banner");
   if(state.runtime.mode==="hosted-preview"){runtimeBanner.hidden=false;runtimeBanner.textContent="Hosted preview · simulated payments · no real orders or provider email";}
   setAccount();
   try { const result = await api("/api/auth/me"); resetIdentity(result.user); } catch { resetIdentity(null); }
   if (state.accessFlow) return renderAccessFlow();
-  await navigate("discover");
+  if (entry.get("view") === "register-restaurant") {
+    renderAuth("Start a restaurant application. Your restaurant stays private until reviewed and approved.");
+    main.querySelector("h1").textContent = "Join Cal-Eats as a restaurant";
+    document.querySelector("#login-form").remove();
+    document.querySelector("#register-form").remove();
+    document.querySelector("#restaurant-register-form input")?.focus();
+    return;
+  }
+  await navigate(entry.get("view") === "account" ? "account" : "discover");
 }
 
 async function navigate(view) {

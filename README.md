@@ -6,17 +6,19 @@ Local milestone implementation using Node.js 24 only. It provides persistent aut
 
 ## Run locally
 
-The checked toolchain is Node.js 24.19.0 and npm 11.17.0, pinned in the repository. There are no third-party runtime packages to download. See [repository preparation](docs/REPOSITORY_RELEASE.md) for the offline lockfile install.
+The checked toolchain is Node.js 24.19.0 and npm 11.17.0, pinned in the repository. The API uses Node built-ins; the portal and native app have pinned workspace dependencies. A fresh checkout needs the lockfile install and portal build before all screens are available.
 
 ```text
+npm ci --ignore-scripts
+npm run portal:build
 npm run db:migrate
 npm run db:seed
 npm start
 ```
 
-Open `http://127.0.0.1:4310/` to use the app; readiness is at `/health/ready`. The database defaults to `data/calai-eats.sqlite`. Override it with `CALAI_DB_PATH`. Default local mode only binds to loopback and checks the configured host and origin. A separately selected [hosted-preview profile](docs/HOSTED_PREVIEW.md) supports an HTTPS-facing preview with secure cookies, exact write origins and no seeded accounts. Nothing is deployed.
+Open `http://127.0.0.1:4310/` for the landing page and `/order/` for ordering; readiness is at `/health/ready`. The database defaults to `data/calai-eats.sqlite`. Override it with `CALAI_DB_PATH`. Default local mode only binds to loopback and checks the configured host and origin. A separately selected [hosted-preview profile](docs/HOSTED_PREVIEW.md) supports an HTTPS-facing preview with secure cookies, exact write origins and no seeded accounts. Nothing is deployed.
 
-The customer browser app is at `http://127.0.0.1:4310/`. The React business portal is served at `http://127.0.0.1:4310/business/`; optional Vite development uses `http://127.0.0.1:4311/business/`. Phone-sized screenshots are browser previews, not native-device evidence. Native iPhone source exists but is unsigned and has not run on an iPhone. Docker remains unavailable/unbuilt, and no GitHub, Expo or Railway deployment has been performed.
+The landing page is at `http://127.0.0.1:4310/`; customer ordering is at `/order/` and the React business portal is at `/business/`. Optional Vite development uses `http://127.0.0.1:4311/business/`. The planned independent public host is `eats.calai.info`, using the user's existing domain without changing its main website. DNS, hosting and HTTPS are not configured. See [domain and landing plan](docs/LANDING_AND_DOMAIN.md). Phone screenshots are browser previews, not native-device evidence. Native iPhone source exists but is unsigned and has not run on an iPhone. Docker remains unavailable/unbuilt, and no GitHub, Expo or Railway deployment has been performed.
 
 View the captured screens in [the offline gallery](docs/screenshots/index.html), including photo upload, CSV import and customer account controls. Some screenshots show intermediate stages of the fictional walkthrough. The reconnect page was captured directly; that image does not verify automatic offline interception. The earlier 26-screen archive is kept local and excluded from repository uploads.
 

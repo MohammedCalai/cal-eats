@@ -19,6 +19,22 @@ test('portal hosting refuses traversal, source files and unknown route fallbacks
   assert.equal(redirect.headers.location, '/business/');
 });
 
+test('landing and ordering are distinct public entries with working assets and HEAD', async () => {
+  const home = await serve('/');
+  assert.equal(home.status, 200);
+  assert.match(home.body.toString(), /action="\/order\/"/);
+  assert.match(home.body.toString(), /href="\/business\/login"/);
+  const order = await serve('/order/');
+  assert.equal(order.status, 200);
+  assert.match(order.body.toString(), /id="customer-bottom"/);
+  for (const pathname of ['/landing.css', '/landing.js', '/order/']) {
+    const head = await serve(pathname, 'HEAD');
+    assert.equal(head.status, 200);
+    assert.equal(head.body, undefined);
+  }
+  assert.equal((await serve('/order/.env')).handled, false);
+});
+
 test('built portal supports deep links and HEAD without leaking authenticated content', { skip: !existsSync(new URL('../apps/portal/dist/index.html', import.meta.url)) }, async () => {
   const response = await serve('/business/owner/earnings');
   assert.equal(response.status, 200);

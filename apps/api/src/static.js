@@ -6,7 +6,11 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../portal/dist");
 const portalTypes = new Map([[".html", "text/html; charset=utf-8"], [".js", "text/javascript; charset=utf-8"], [".css", "text/css; charset=utf-8"], [".webmanifest", "application/manifest+json; charset=utf-8"], [".png", "image/png"], [".svg", "image/svg+xml"]]);
 const assets = new Map([
-  ["/", ["index.html", "text/html; charset=utf-8"]],
+  ["/", ["landing.html", "text/html; charset=utf-8"]],
+  ["/order", ["index.html", "text/html; charset=utf-8"]],
+  ["/order/", ["index.html", "text/html; charset=utf-8"]],
+  ["/landing.css", ["landing.css", "text/css; charset=utf-8"]],
+  ["/landing.js", ["landing.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/model.js", ["model.js", "text/javascript; charset=utf-8"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],

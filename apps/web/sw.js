@@ -1,4 +1,4 @@
-const CACHE="calai-public-v5";
+const CACHE="calai-public-v6";
 const PUBLIC=["/offline.html","/styles.css","/app.js","/model.js","/manifest.webmanifest","/assets/calai-original.png","/assets/food-demo.png","/assets/calai-icon.svg","/assets/calai-icon-maskable.svg"];
 self.addEventListener("install",event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PUBLIC)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith("calai-public-")&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));

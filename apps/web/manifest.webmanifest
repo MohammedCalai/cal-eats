@@ -2,7 +2,7 @@
   "name": "Cal-Eats",
   "short_name": "Cal-Eats",
   "description": "Cal-Eats browser preview for Luton.",
-  "start_url": "/",
+  "start_url": "/order/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7faff",
