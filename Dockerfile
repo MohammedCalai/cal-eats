@@ -25,7 +25,7 @@ COPY --chown=node:node infra ./infra
 RUN mkdir -p /data && chown node:node /data
 
 USER node
-VOLUME ["/data"]
+# Mount /data explicitly in the hosting platform or docker run.
 EXPOSE 4310
 STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["node", "infra/healthcheck.js"]
