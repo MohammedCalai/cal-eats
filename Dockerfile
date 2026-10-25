@@ -1,4 +1,12 @@
-FROM node:24.19.0-bookworm-slim
+FROM node:24.19.0-bookworm-slim AS portal-build
+WORKDIR /build
+COPY package.json package-lock.json ./
+COPY apps ./apps
+COPY packages ./packages
+RUN npm ci --workspace=@cal-eats/portal --include-workspace-root --ignore-scripts --no-audit --no-fund
+RUN npm run build --workspace=@cal-eats/portal
+
+FROM node:24.19.0-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     CALAI_RUN_MODE=hosted-preview \
@@ -8,13 +16,11 @@ ENV NODE_ENV=production \
     CALAI_DB_PATH=/data/calai-eats.sqlite
 WORKDIR /app
 
-COPY --chown=node:node package.json package-lock.json ./
-COPY --chown=node:node apps/api/package.json apps/api/package.json
-COPY --chown=node:node apps/web/package.json apps/web/package.json
-COPY --chown=node:node packages/contracts/package.json packages/contracts/package.json
-RUN npm ci --ignore-scripts --no-audit --no-fund --offline
-COPY --chown=node:node apps ./apps
-COPY --chown=node:node packages ./packages
+COPY --chown=node:node package.json ./
+COPY --chown=node:node apps/api ./apps/api
+COPY --chown=node:node apps/web ./apps/web
+COPY --chown=node:node packages/contracts ./packages/contracts
+COPY --from=portal-build --chown=node:node /build/apps/portal/dist ./apps/portal/dist
 COPY --chown=node:node infra ./infra
 RUN mkdir -p /data && chown node:node /data
 

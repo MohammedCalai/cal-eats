@@ -2,8 +2,15 @@
   "name": "calai-eats",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
+    "portal:build": "npm run build --workspace=@cal-eats/portal",
+    "portal:dev": "npm run dev --workspace=@cal-eats/portal",
+    "mobile:check": "npm run typecheck --workspace=@cal-eats/mobile",
+    "load:local": "node scripts/load-marketplace.js",
     "db:migrate": "node --env-file-if-exists=.env apps/api/src/cli/migrate.js",
     "db:seed": "node --env-file-if-exists=.env apps/api/src/cli/seed.js",
     "admin:create": "node --env-file-if-exists=.env apps/api/scripts/bootstrap-admin.js",
@@ -11,10 +18,13 @@
     "smoke": "node apps/api/scripts/smoke.js",
     "backup": "node scripts/backup.js",
     "restore:check": "node scripts/restore-check.js",
-    "test": "node --test",
-    "check": "node --check apps/api/src/main.js && node --check apps/api/src/app.js && node --check apps/api/src/journey.js && node --check apps/api/src/operations.js && node --check apps/api/src/product.js && node --check apps/api/src/availability.js && node --check apps/api/src/static.js && node --check apps/api/src/payments/mock.js && node --check apps/api/scripts/smoke.js && node --check scripts/backup.js && node --check scripts/restore-check.js && node --test",
+    "test": "node --test apps/api/test/*.test.js apps/web/test/*.test.js apps/portal/test/*.test.js apps/print-bridge/test/*.test.js scripts/*.test.js",
+    "check": "node --check apps/api/src/main.js && node --check apps/api/src/app.js && node --check apps/api/src/journey.js && node --check apps/api/src/operations.js && node --check apps/api/src/product.js && node --check apps/api/src/availability.js && node --check apps/api/src/static.js && node --check apps/api/src/payments/mock.js && node --check apps/api/scripts/smoke.js && node --check scripts/backup.js && node --check scripts/restore-check.js && npm test",
     "release:check": "node scripts/release-check.js"
   },
-  "engines": { "node": "24.19.0", "npm": "11.17.0" },
+  "engines": {
+    "node": "24.19.0",
+    "npm": "11.17.0"
+  },
   "packageManager": "npm@11.17.0"
 }

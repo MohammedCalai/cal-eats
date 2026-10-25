@@ -1,0 +1,1473 @@
+{
+  "repository": "https://github.com/calai-operation/calai-platform",
+  "commit": "ab138fd17c9ac4fc6e0b34ef5044754be643056c",
+  "reference": "reference/calai-platform-ab138fd",
+  "retrieval": "Authenticated browser download; filtered read-only source snapshot, not a Git clone",
+  "archiveSha256": "1026B1E64BA5DEB8502B700605E1987622339764E3F83C9B63FF7CF8FF780CC5",
+  "excluded": [
+    ".env.example",
+    "backend/.env.example",
+    "frontend/public/Banner.mp4",
+    "frontend/public/CALAI.mp4",
+    "frontend/public/notification.wav",
+    "frontend/public/unconfirmed-notification.wav"
+  ],
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 562
+    },
+    {
+      "path": "README.md",
+      "bytes": 5584
+    },
+    {
+      "path": "ai-codebase/.dockerignore",
+      "bytes": 188
+    },
+    {
+      "path": "ai-codebase/.gitignore",
+      "bytes": 243
+    },
+    {
+      "path": "ai-codebase/Dockerfile",
+      "bytes": 993
+    },
+    {
+      "path": "ai-codebase/README.md",
+      "bytes": 6408
+    },
+    {
+      "path": "ai-codebase/app/__init__.py",
+      "bytes": 32
+    },
+    {
+      "path": "ai-codebase/app/api/__init__.py",
+      "bytes": 26
+    },
+    {
+      "path": "ai-codebase/app/api/agent_status.py",
+      "bytes": 4771
+    },
+    {
+      "path": "ai-codebase/app/api/agents.py",
+      "bytes": 13761
+    },
+    {
+      "path": "ai-codebase/app/api/telephony.py",
+      "bytes": 2728
+    },
+    {
+      "path": "ai-codebase/app/api/webhooks.py",
+      "bytes": 10108
+    },
+    {
+      "path": "ai-codebase/app/config.py",
+      "bytes": 939
+    },
+    {
+      "path": "ai-codebase/app/main.py",
+      "bytes": 1030
+    },
+    {
+      "path": "ai-codebase/app/services/__init__.py",
+      "bytes": 43
+    },
+    {
+      "path": "ai-codebase/app/services/assistant_update.py",
+      "bytes": 5661
+    },
+    {
+      "path": "ai-codebase/app/services/document_service.py",
+      "bytes": 2469
+    },
+    {
+      "path": "ai-codebase/app/services/order_parser.py",
+      "bytes": 6538
+    },
+    {
+      "path": "ai-codebase/app/services/order_validator.py",
+      "bytes": 3063
+    },
+    {
+      "path": "ai-codebase/app/services/prompt_service.py",
+      "bytes": 2745
+    },
+    {
+      "path": "ai-codebase/app/services/vapi_service.py",
+      "bytes": 33857
+    },
+    {
+      "path": "ai-codebase/app/storage/__init__.py",
+      "bytes": 44
+    },
+    {
+      "path": "ai-codebase/app/storage/business_store.py",
+      "bytes": 1062
+    },
+    {
+      "path": "ai-codebase/app/tasks/__init__.py",
+      "bytes": 32
+    },
+    {
+      "path": "ai-codebase/app/tasks/forwarders.py",
+      "bytes": 4631
+    },
+    {
+      "path": "ai-codebase/requirements.txt",
+      "bytes": 684
+    },
+    {
+      "path": "ai-codebase/tests/test_assistant_update.py",
+      "bytes": 14754
+    },
+    {
+      "path": "ai-codebase/uk_system_prompt.txt",
+      "bytes": 22379
+    },
+    {
+      "path": "backend/.dockerignore",
+      "bytes": 57
+    },
+    {
+      "path": "backend/.gitignore",
+      "bytes": 537
+    },
+    {
+      "path": "backend/Dockerfile",
+      "bytes": 322
+    },
+    {
+      "path": "backend/README.md",
+      "bytes": 4733
+    },
+    {
+      "path": "backend/api/index.js",
+      "bytes": 0
+    },
+    {
+      "path": "backend/docker-compose.yml",
+      "bytes": 693
+    },
+    {
+      "path": "backend/intune/INTUNE_DEPLOYMENT_GUIDE.md",
+      "bytes": 3861
+    },
+    {
+      "path": "backend/intune/config.json",
+      "bytes": 237
+    },
+    {
+      "path": "backend/intune/install.ps1",
+      "bytes": 5484
+    },
+    {
+      "path": "backend/intune/package.json",
+      "bytes": 106
+    },
+    {
+      "path": "backend/intune/print-bridge.js",
+      "bytes": 8809
+    },
+    {
+      "path": "backend/intune/uninstall.ps1",
+      "bytes": 1565
+    },
+    {
+      "path": "backend/package-lock.json",
+      "bytes": 177741
+    },
+    {
+      "path": "backend/package.json",
+      "bytes": 1212
+    },
+    {
+      "path": "backend/print-bridge.js",
+      "bytes": 8805
+    },
+    {
+      "path": "backend/prisma.config.ts",
+      "bytes": 391
+    },
+    {
+      "path": "backend/prisma/migrations/20260307045034_init_single_role/migration.sql",
+      "bytes": 1687
+    },
+    {
+      "path": "backend/prisma/migrations/20260321035452_user_and_order/migration.sql",
+      "bytes": 654
+    },
+    {
+      "path": "backend/prisma/migrations/20260321050953_add_order_status_enum_and_updated_at/migration.sql",
+      "bytes": 1062
+    },
+    {
+      "path": "backend/prisma/migrations/20260409154845_newnew/migration.sql",
+      "bytes": 11340
+    },
+    {
+      "path": "backend/prisma/migrations/20260413141153_backup/migration.sql",
+      "bytes": 718
+    },
+    {
+      "path": "backend/prisma/migrations/20260507031142_full_db_changed2/migration.sql",
+      "bytes": 37062
+    },
+    {
+      "path": "backend/prisma/migrations/20260513030501_add_vapi_agent_id/migration.sql",
+      "bytes": 69
+    },
+    {
+      "path": "backend/prisma/migrations/20260513053114_update_schema_for_file_upload/migration.sql",
+      "bytes": 62
+    },
+    {
+      "path": "backend/prisma/migrations/20260514144338/migration.sql",
+      "bytes": 906
+    },
+    {
+      "path": "backend/prisma/migrations/20260514153628/migration.sql",
+      "bytes": 327
+    },
+    {
+      "path": "backend/prisma/migrations/20260515024557_model_rearrenge/migration.sql",
+      "bytes": 320
+    },
+    {
+      "path": "backend/prisma/migrations/20260515025943_update_schema_for_better_view2/migration.sql",
+      "bytes": 1248
+    },
+    {
+      "path": "backend/prisma/migrations/20260520083332_final_one/migration.sql",
+      "bytes": 570
+    },
+    {
+      "path": "backend/prisma/migrations/20260520100642_tenant_status_updated/migration.sql",
+      "bytes": 58
+    },
+    {
+      "path": "backend/prisma/migrations/20260521025823_add_business_type_to_business/migration.sql",
+      "bytes": 73
+    },
+    {
+      "path": "backend/prisma/migrations/20260522040121_add_vapi_agent_id_to_call/migration.sql",
+      "bytes": 69
+    },
+    {
+      "path": "backend/prisma/migrations/20260522092917_add_audit_logs/migration.sql",
+      "bytes": 468
+    },
+    {
+      "path": "backend/prisma/migrations/20260620092500_add_business_type_enum/migration.sql",
+      "bytes": 386
+    },
+    {
+      "path": "backend/prisma/migrations/20260701095342_update_plan_limits/migration.sql",
+      "bytes": 313
+    },
+    {
+      "path": "backend/prisma/migrations/20260704093804_add_vapi_phone_number_id/migration.sql",
+      "bytes": 75
+    },
+    {
+      "path": "backend/prisma/migrations/20260709102722_order_type_added/migration.sql",
+      "bytes": 328
+    },
+    {
+      "path": "backend/prisma/migrations/20260710031350_printers_added/migration.sql",
+      "bytes": 1504
+    },
+    {
+      "path": "backend/prisma/migrations/20260710063711_add_pickup_time_to_orders/migration.sql",
+      "bytes": 69
+    },
+    {
+      "path": "backend/prisma/migrations/20260711055629_item_filter_with_only_vapi_agent_id/migration.sql",
+      "bytes": 69
+    },
+    {
+      "path": "backend/prisma/migrations/20260804000000_add_ip_address_to_printer/migration.sql",
+      "bytes": 81
+    },
+    {
+      "path": "backend/prisma/migrations/20260810000000_update_plan_limits/migration.sql",
+      "bytes": 454
+    },
+    {
+      "path": "backend/prisma/migrations/20260811000000_add_forwarded_call_and_off_days/migration.sql",
+      "bytes": 247
+    },
+    {
+      "path": "backend/prisma/migrations/20260909102000_unconfirmed_orders/migration.sql",
+      "bytes": 183
+    },
+    {
+      "path": "backend/prisma/migrations/migration_lock.toml",
+      "bytes": 128
+    },
+    {
+      "path": "backend/prisma/schema.prisma",
+      "bytes": 11972
+    },
+    {
+      "path": "backend/prisma/seed.js",
+      "bytes": 6056
+    },
+    {
+      "path": "backend/src/app.js",
+      "bytes": 1111
+    },
+    {
+      "path": "backend/src/app/config/dbConnect.js",
+      "bytes": 515
+    },
+    {
+      "path": "backend/src/app/config/env.js",
+      "bytes": 1734
+    },
+    {
+      "path": "backend/src/app/config/multer.config.js",
+      "bytes": 1727
+    },
+    {
+      "path": "backend/src/app/config/passport.config.js",
+      "bytes": 2760
+    },
+    {
+      "path": "backend/src/app/config/redis.config.js",
+      "bytes": 380
+    },
+    {
+      "path": "backend/src/app/errorHelper/appError.js",
+      "bytes": 294
+    },
+    {
+      "path": "backend/src/app/lib/DevBuildError.js",
+      "bytes": 201
+    },
+    {
+      "path": "backend/src/app/lib/softDeletePlugin.js",
+      "bytes": 709
+    },
+    {
+      "path": "backend/src/app/lib/utilityFunction.js",
+      "bytes": 522
+    },
+    {
+      "path": "backend/src/app/lib/vapi.js",
+      "bytes": 1985
+    },
+    {
+      "path": "backend/src/app/middleware/bodyParser.js",
+      "bytes": 837
+    },
+    {
+      "path": "backend/src/app/middleware/checkAuthMiddleware.js",
+      "bytes": 2052
+    },
+    {
+      "path": "backend/src/app/middleware/globalErrorHandeler.js",
+      "bytes": 1449
+    },
+    {
+      "path": "backend/src/app/middleware/notFound.js",
+      "bytes": 194
+    },
+    {
+      "path": "backend/src/app/middleware/validateRequest.js",
+      "bytes": 337
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.controller.js",
+      "bytes": 5299
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.route.js",
+      "bytes": 1669
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.service.js",
+      "bytes": 6975
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.validation.js",
+      "bytes": 3115
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.controller.js",
+      "bytes": 569
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.route.js",
+      "bytes": 340
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.service.js",
+      "bytes": 591
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.validation.js",
+      "bytes": 37
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.controller.js",
+      "bytes": 1516
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.route.js",
+      "bytes": 684
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.service.js",
+      "bytes": 2031
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.validation.js",
+      "bytes": 318
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/call-summary/call-summary.controller.js",
+      "bytes": 2279
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/call-summary/call-summary.route.js",
+      "bytes": 728
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/call-summary/call-summary.service.js",
+      "bytes": 13573
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/dashboard/dashboard.controller.js",
+      "bytes": 2336
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/dashboard/dashboard.route.js",
+      "bytes": 564
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/dashboard/dashboard.service.js",
+      "bytes": 16570
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/item_management/item_management.controller.js",
+      "bytes": 3164
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/item_management/item_management.route.js",
+      "bytes": 851
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/item_management/item_management.service.js",
+      "bytes": 8971
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/order/order.controller.js",
+      "bytes": 3585
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/order/order.route.js",
+      "bytes": 695
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/order/order.service.js",
+      "bytes": 4734
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/payment/payment.controller.js",
+      "bytes": 3346
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/payment/payment.route.js",
+      "bytes": 431
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/payment/payment.service.js",
+      "bytes": 5727
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/device-printer.route.js",
+      "bytes": 354
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/printer.controller.js",
+      "bytes": 10206
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/printer.route.js",
+      "bytes": 1055
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/printer.service.js",
+      "bytes": 11304
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.controller.js",
+      "bytes": 4491
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.route.js",
+      "bytes": 1405
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.service.js",
+      "bytes": 3384
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.validation.js",
+      "bytes": 554
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/subscription/subscription.controller.js",
+      "bytes": 1906
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/subscription/subscription.route.js",
+      "bytes": 609
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/subscription/subscription.service.js",
+      "bytes": 4890
+    },
+    {
+      "path": "backend/src/app/modules/freeRoute/freeRoute.controller.js",
+      "bytes": 566
+    },
+    {
+      "path": "backend/src/app/modules/freeRoute/freeRoute.route.js",
+      "bytes": 213
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.controller.js",
+      "bytes": 1707
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.route.js",
+      "bytes": 473
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.service.js",
+      "bytes": 3631
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.validation.js",
+      "bytes": 459
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.controller.js",
+      "bytes": 3294
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.route.js",
+      "bytes": 1517
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.service.js",
+      "bytes": 13197
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.validation.js",
+      "bytes": 616
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.controller.js",
+      "bytes": 2437
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.route.js",
+      "bytes": 1039
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.service.js",
+      "bytes": 2692
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.validation.js",
+      "bytes": 952
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/dashboard.controller.js",
+      "bytes": 1859
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/dashboard.route.js",
+      "bytes": 644
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/dashboard.service.js",
+      "bytes": 7560
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/live-usage.js",
+      "bytes": 9438
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/operations.service.js",
+      "bytes": 8399
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/report-metrics.js",
+      "bytes": 15648
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/twilio-reporting.js",
+      "bytes": 9905
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/vapi-reporting.js",
+      "bytes": 4497
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/individual_tenant/individual_tenant.controller.js",
+      "bytes": 2916
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/individual_tenant/individual_tenant.route.js",
+      "bytes": 931
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/individual_tenant/individual_tenant.service.js",
+      "bytes": 4077
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/settings/settings.controller.js",
+      "bytes": 1499
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/settings/settings.route.js",
+      "bytes": 739
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/settings/settings.service.js",
+      "bytes": 707
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/subscription_billing/subscription_billing.controller.js",
+      "bytes": 1350
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/subscription_billing/subscription_billing.route.js",
+      "bytes": 563
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/subscription_billing/subscription_billing.service.js",
+      "bytes": 2100
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.controller.js",
+      "bytes": 4022
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.route.js",
+      "bytes": 1431
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.service.js",
+      "bytes": 10458
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.validation.js",
+      "bytes": 1186
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.controller.js",
+      "bytes": 4102
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.route.js",
+      "bytes": 1165
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.service.js",
+      "bytes": 11883
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.validation.js",
+      "bytes": 1214
+    },
+    {
+      "path": "backend/src/app/modules/webhook/card-payment-transfer.controller.js",
+      "bytes": 2345
+    },
+    {
+      "path": "backend/src/app/modules/webhook/card-payment-transfer.js",
+      "bytes": 8462
+    },
+    {
+      "path": "backend/src/app/modules/webhook/card-payment-transfer.test.js",
+      "bytes": 12978
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/call-handler.js",
+      "bytes": 2800
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/closed-transfer.js",
+      "bytes": 2713
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/order-sync.js",
+      "bytes": 3233
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/order-validator.js",
+      "bytes": 6444
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/self-heal.js",
+      "bytes": 3703
+    },
+    {
+      "path": "backend/src/app/modules/webhook/unconfirmed-order.js",
+      "bytes": 7612
+    },
+    {
+      "path": "backend/src/app/modules/webhook/webhook.controller.js",
+      "bytes": 1203
+    },
+    {
+      "path": "backend/src/app/modules/webhook/webhook.route.js",
+      "bytes": 457
+    },
+    {
+      "path": "backend/src/app/modules/webhook/webhook.service.js",
+      "bytes": 23559
+    },
+    {
+      "path": "backend/src/app/prisma/client.js",
+      "bytes": 265
+    },
+    {
+      "path": "backend/src/app/router/index.js",
+      "bytes": 4204
+    },
+    {
+      "path": "backend/src/app/utils/QueryBuilder.js",
+      "bytes": 4252
+    },
+    {
+      "path": "backend/src/app/utils/auditLogger.js",
+      "bytes": 451
+    },
+    {
+      "path": "backend/src/app/utils/business-hours.js",
+      "bytes": 1670
+    },
+    {
+      "path": "backend/src/app/utils/cleanup.js",
+      "bytes": 4787
+    },
+    {
+      "path": "backend/src/app/utils/fileUpload.js",
+      "bytes": 1320
+    },
+    {
+      "path": "backend/src/app/utils/generateToken.js",
+      "bytes": 493
+    },
+    {
+      "path": "backend/src/app/utils/jwt.js",
+      "bytes": 308
+    },
+    {
+      "path": "backend/src/app/utils/menuParser.js",
+      "bytes": 4896
+    },
+    {
+      "path": "backend/src/app/utils/normalizeEssayText.js",
+      "bytes": 199
+    },
+    {
+      "path": "backend/src/app/utils/order-email.js",
+      "bytes": 7975
+    },
+    {
+      "path": "backend/src/app/utils/pdfGenerator.js",
+      "bytes": 1161
+    },
+    {
+      "path": "backend/src/app/utils/phoneRouting.js",
+      "bytes": 3112
+    },
+    {
+      "path": "backend/src/app/utils/pilotCallReconciler.js",
+      "bytes": 2595
+    },
+    {
+      "path": "backend/src/app/utils/receipt.js",
+      "bytes": 5337
+    },
+    {
+      "path": "backend/src/app/utils/role.js",
+      "bytes": 135
+    },
+    {
+      "path": "backend/src/app/utils/sendEmail.js",
+      "bytes": 2003
+    },
+    {
+      "path": "backend/src/app/utils/sendResponse.js",
+      "bytes": 220
+    },
+    {
+      "path": "backend/src/app/utils/setCookie.js",
+      "bytes": 491
+    },
+    {
+      "path": "backend/src/app/utils/socket.js",
+      "bytes": 2176
+    },
+    {
+      "path": "backend/src/app/utils/subscriptionChecker.js",
+      "bytes": 2078
+    },
+    {
+      "path": "backend/src/app/utils/template/forgotPassword.ejs",
+      "bytes": 2821
+    },
+    {
+      "path": "backend/src/app/utils/template/otp.ejs",
+      "bytes": 2823
+    },
+    {
+      "path": "backend/src/app/utils/toHtml.js",
+      "bytes": 132
+    },
+    {
+      "path": "backend/src/app/utils/userTokenGenerator.js",
+      "bytes": 1860
+    },
+    {
+      "path": "backend/src/app/utils/workingHoursScheduler.js",
+      "bytes": 11719
+    },
+    {
+      "path": "backend/src/app/views/call-summary-pdf.ejs",
+      "bytes": 2477
+    },
+    {
+      "path": "backend/src/app/views/order-pdf.ejs",
+      "bytes": 13502
+    },
+    {
+      "path": "backend/src/server.js",
+      "bytes": 3237
+    },
+    {
+      "path": "backend/test-print-flow.js",
+      "bytes": 3021
+    },
+    {
+      "path": "backend/test/closed-transfer.test.js",
+      "bytes": 6966
+    },
+    {
+      "path": "backend/test/live-usage.test.js",
+      "bytes": 6011
+    },
+    {
+      "path": "backend/test/operations.test.js",
+      "bytes": 13914
+    },
+    {
+      "path": "backend/test/order-email.test.js",
+      "bytes": 3524
+    },
+    {
+      "path": "backend/test/owner-dashboard.test.js",
+      "bytes": 6235
+    },
+    {
+      "path": "backend/test/receipt-layout.test.js",
+      "bytes": 2944
+    },
+    {
+      "path": "backend/test/twilio-reporting.test.js",
+      "bytes": 5538
+    },
+    {
+      "path": "backend/test/unconfirmed-order.test.js",
+      "bytes": 5029
+    },
+    {
+      "path": "backend/test/working-hours.test.js",
+      "bytes": 2101
+    },
+    {
+      "path": "docker-compose.override.yml",
+      "bytes": 207
+    },
+    {
+      "path": "docker-compose.yml",
+      "bytes": 3104
+    },
+    {
+      "path": "files.txt",
+      "bytes": 528
+    },
+    {
+      "path": "frontend/.dockerignore",
+      "bytes": 80
+    },
+    {
+      "path": "frontend/.gitattributes",
+      "bytes": 97
+    },
+    {
+      "path": "frontend/.gitignore",
+      "bytes": 289
+    },
+    {
+      "path": "frontend/Dockerfile",
+      "bytes": 904
+    },
+    {
+      "path": "frontend/README.md",
+      "bytes": 3940
+    },
+    {
+      "path": "frontend/components.json",
+      "bytes": 516
+    },
+    {
+      "path": "frontend/eslint.config.js",
+      "bytes": 758
+    },
+    {
+      "path": "frontend/index.html",
+      "bytes": 660
+    },
+    {
+      "path": "frontend/jsconfig.json",
+      "bytes": 97
+    },
+    {
+      "path": "frontend/nginx.conf",
+      "bytes": 303
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "bytes": 302074
+    },
+    {
+      "path": "frontend/package.json",
+      "bytes": 1458
+    },
+    {
+      "path": "frontend/public/Hand.png",
+      "bytes": 3271
+    },
+    {
+      "path": "frontend/public/logo.png",
+      "bytes": 2900
+    },
+    {
+      "path": "frontend/public/moon.png",
+      "bytes": 260653
+    },
+    {
+      "path": "frontend/public/title.png",
+      "bytes": 1077
+    },
+    {
+      "path": "frontend/src/App.css",
+      "bytes": 0
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "bytes": 442
+    },
+    {
+      "path": "frontend/src/components/AllTenantsList.jsx",
+      "bytes": 10353
+    },
+    {
+      "path": "frontend/src/components/Breadcrumb.jsx",
+      "bytes": 1163
+    },
+    {
+      "path": "frontend/src/components/CallActivityChart.jsx",
+      "bytes": 10110
+    },
+    {
+      "path": "frontend/src/components/CallDuration.jsx",
+      "bytes": 3420
+    },
+    {
+      "path": "frontend/src/components/CallLogTabContent.jsx",
+      "bytes": 5594
+    },
+    {
+      "path": "frontend/src/components/ConnectedServices.jsx",
+      "bytes": 2481
+    },
+    {
+      "path": "frontend/src/components/Container.jsx",
+      "bytes": 207
+    },
+    {
+      "path": "frontend/src/components/DashboardTabs.jsx",
+      "bytes": 1272
+    },
+    {
+      "path": "frontend/src/components/Dropdown.jsx",
+      "bytes": 4581
+    },
+    {
+      "path": "frontend/src/components/EnterpriseContactModal.jsx",
+      "bytes": 10817
+    },
+    {
+      "path": "frontend/src/components/ErrorBoundary.jsx",
+      "bytes": 1091
+    },
+    {
+      "path": "frontend/src/components/FAQdropdown.jsx",
+      "bytes": 2191
+    },
+    {
+      "path": "frontend/src/components/FailedCallsTabContent.jsx",
+      "bytes": 5740
+    },
+    {
+      "path": "frontend/src/components/Header.jsx",
+      "bytes": 755
+    },
+    {
+      "path": "frontend/src/components/Image.jsx",
+      "bytes": 188
+    },
+    {
+      "path": "frontend/src/components/Inputfield.jsx",
+      "bytes": 953
+    },
+    {
+      "path": "frontend/src/components/LiveAgentUsage.jsx",
+      "bytes": 7417
+    },
+    {
+      "path": "frontend/src/components/LiveOrderPopup.jsx",
+      "bytes": 10637
+    },
+    {
+      "path": "frontend/src/components/LowBalanceTenants.jsx",
+      "bytes": 2192
+    },
+    {
+      "path": "frontend/src/components/MonthByMonth.jsx",
+      "bytes": 12875
+    },
+    {
+      "path": "frontend/src/components/OfflineBanner.jsx",
+      "bytes": 5333
+    },
+    {
+      "path": "frontend/src/components/OverallPerformanceReport.jsx",
+      "bytes": 3014
+    },
+    {
+      "path": "frontend/src/components/OverallReports.jsx",
+      "bytes": 3121
+    },
+    {
+      "path": "frontend/src/components/OverviewTabContent.jsx",
+      "bytes": 1372
+    },
+    {
+      "path": "frontend/src/components/OwnerLiveActivity.jsx",
+      "bytes": 7311
+    },
+    {
+      "path": "frontend/src/components/Password.jsx",
+      "bytes": 1848
+    },
+    {
+      "path": "frontend/src/components/PeriodPerformance.jsx",
+      "bytes": 3956
+    },
+    {
+      "path": "frontend/src/components/PlanDistribution.jsx",
+      "bytes": 4236
+    },
+    {
+      "path": "frontend/src/components/PrinterHealthTabContent.jsx",
+      "bytes": 3398
+    },
+    {
+      "path": "frontend/src/components/ProviderCallTable.jsx",
+      "bytes": 5605
+    },
+    {
+      "path": "frontend/src/components/ProviderCostsTabContent.jsx",
+      "bytes": 9332
+    },
+    {
+      "path": "frontend/src/components/RecentTrainingList.jsx",
+      "bytes": 8681
+    },
+    {
+      "path": "frontend/src/components/SpecialOfferUpload.jsx",
+      "bytes": 5622
+    },
+    {
+      "path": "frontend/src/components/StatCard.jsx",
+      "bytes": 3300
+    },
+    {
+      "path": "frontend/src/components/Table.jsx",
+      "bytes": 7994
+    },
+    {
+      "path": "frontend/src/components/TenantCallUsageSection.jsx",
+      "bytes": 8664
+    },
+    {
+      "path": "frontend/src/components/TenantCallUsageStats.jsx",
+      "bytes": 6541
+    },
+    {
+      "path": "frontend/src/components/TenantDetailSlideOver.jsx",
+      "bytes": 15697
+    },
+    {
+      "path": "frontend/src/components/TenantDistribution.jsx",
+      "bytes": 4389
+    },
+    {
+      "path": "frontend/src/components/TenantResourceTabs.jsx",
+      "bytes": 26511
+    },
+    {
+      "path": "frontend/src/components/TenantUsageTabContent.jsx",
+      "bytes": 5547
+    },
+    {
+      "path": "frontend/src/components/ToogleButton.jsx",
+      "bytes": 1095
+    },
+    {
+      "path": "frontend/src/components/UploadExcel.jsx",
+      "bytes": 5822
+    },
+    {
+      "path": "frontend/src/components/UploadPdf.jsx",
+      "bytes": 8799
+    },
+    {
+      "path": "frontend/src/components/layout/Footer.jsx",
+      "bytes": 5261
+    },
+    {
+      "path": "frontend/src/components/layout/Header.jsx",
+      "bytes": 10841
+    },
+    {
+      "path": "frontend/src/components/layout/Navbar.jsx",
+      "bytes": 8762
+    },
+    {
+      "path": "frontend/src/components/layout/Sidebar.jsx",
+      "bytes": 5011
+    },
+    {
+      "path": "frontend/src/components/ui/button.jsx",
+      "bytes": 3115
+    },
+    {
+      "path": "frontend/src/components/ui/switch.jsx",
+      "bytes": 1623
+    },
+    {
+      "path": "frontend/src/data/mockData.js",
+      "bytes": 2218
+    },
+    {
+      "path": "frontend/src/hooks/useAdminSubscription.jsx",
+      "bytes": 1765
+    },
+    {
+      "path": "frontend/src/hooks/useAuth.jsx",
+      "bytes": 202
+    },
+    {
+      "path": "frontend/src/hooks/useAxiosPublic.jsx",
+      "bytes": 261
+    },
+    {
+      "path": "frontend/src/hooks/useAxiosSecure.jsx",
+      "bytes": 1119
+    },
+    {
+      "path": "frontend/src/hooks/useCallSummary.jsx",
+      "bytes": 1374
+    },
+    {
+      "path": "frontend/src/hooks/useItemManagement.jsx",
+      "bytes": 2791
+    },
+    {
+      "path": "frontend/src/hooks/useNetworkStatus.jsx",
+      "bytes": 4643
+    },
+    {
+      "path": "frontend/src/hooks/useOrderList.jsx",
+      "bytes": 2312
+    },
+    {
+      "path": "frontend/src/hooks/useOwnerDashboard.jsx",
+      "bytes": 1704
+    },
+    {
+      "path": "frontend/src/hooks/usePrinterManagement.jsx",
+      "bytes": 3553
+    },
+    {
+      "path": "frontend/src/hooks/useSystemDashboard.jsx",
+      "bytes": 1816
+    },
+    {
+      "path": "frontend/src/hooks/useTelephony.jsx",
+      "bytes": 3797
+    },
+    {
+      "path": "frontend/src/hooks/useTenantManagement.jsx",
+      "bytes": 2305
+    },
+    {
+      "path": "frontend/src/hooks/useViewTenant.jsx",
+      "bytes": 5864
+    },
+    {
+      "path": "frontend/src/index.css",
+      "bytes": 949
+    },
+    {
+      "path": "frontend/src/layout/AuthLayout.jsx",
+      "bytes": 849
+    },
+    {
+      "path": "frontend/src/layout/DashboardLayout.jsx",
+      "bytes": 1310
+    },
+    {
+      "path": "frontend/src/layout/LandingPageLayout.jsx",
+      "bytes": 924
+    },
+    {
+      "path": "frontend/src/lib/utils.js",
+      "bytes": 137
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "bytes": 996
+    },
+    {
+      "path": "frontend/src/pages/admin/AiTraining.jsx",
+      "bytes": 1868
+    },
+    {
+      "path": "frontend/src/pages/admin/Dashboard.jsx",
+      "bytes": 12423
+    },
+    {
+      "path": "frontend/src/pages/admin/Settings.jsx",
+      "bytes": 4319
+    },
+    {
+      "path": "frontend/src/pages/admin/Subscription.jsx",
+      "bytes": 7225
+    },
+    {
+      "path": "frontend/src/pages/admin/Telephony.jsx",
+      "bytes": 16470
+    },
+    {
+      "path": "frontend/src/pages/admin/TenantManagement.jsx",
+      "bytes": 17646
+    },
+    {
+      "path": "frontend/src/pages/admin/ViewTenant.jsx",
+      "bytes": 11849
+    },
+    {
+      "path": "frontend/src/pages/auth/ConfirmSignUp.jsx",
+      "bytes": 5901
+    },
+    {
+      "path": "frontend/src/pages/auth/ForgetPass.jsx",
+      "bytes": 3147
+    },
+    {
+      "path": "frontend/src/pages/auth/LogIn.jsx",
+      "bytes": 5745
+    },
+    {
+      "path": "frontend/src/pages/auth/NewPass.jsx",
+      "bytes": 3970
+    },
+    {
+      "path": "frontend/src/pages/auth/OTP.jsx",
+      "bytes": 5001
+    },
+    {
+      "path": "frontend/src/pages/auth/SignUp.jsx",
+      "bytes": 7395
+    },
+    {
+      "path": "frontend/src/pages/auth/Success.jsx",
+      "bytes": 1364
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Banner.jsx",
+      "bytes": 3758
+    },
+    {
+      "path": "frontend/src/pages/landindPage/BannerVideo.jsx",
+      "bytes": 10788
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Contact.jsx",
+      "bytes": 11623
+    },
+    {
+      "path": "frontend/src/pages/landindPage/CustomerCalls.jsx",
+      "bytes": 1433
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Demo.jsx",
+      "bytes": 714
+    },
+    {
+      "path": "frontend/src/pages/landindPage/FAQ.jsx",
+      "bytes": 10848
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Features.jsx",
+      "bytes": 2932
+    },
+    {
+      "path": "frontend/src/pages/landindPage/HowItWorks.jsx",
+      "bytes": 5458
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Pricing.jsx",
+      "bytes": 9018
+    },
+    {
+      "path": "frontend/src/pages/landindPage/PrivacyPolicy.jsx",
+      "bytes": 30588
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Stats.jsx",
+      "bytes": 2637
+    },
+    {
+      "path": "frontend/src/pages/landindPage/TermsCondition.jsx",
+      "bytes": 2944
+    },
+    {
+      "path": "frontend/src/pages/landindPage/ThankYouContact.jsx",
+      "bytes": 1960
+    },
+    {
+      "path": "frontend/src/pages/owner/AgentList.jsx",
+      "bytes": 5315
+    },
+    {
+      "path": "frontend/src/pages/owner/CallSummary.jsx",
+      "bytes": 7457
+    },
+    {
+      "path": "frontend/src/pages/owner/Dashboard.jsx",
+      "bytes": 12613
+    },
+    {
+      "path": "frontend/src/pages/owner/ItemManagement.jsx",
+      "bytes": 11664
+    },
+    {
+      "path": "frontend/src/pages/owner/OrderList.jsx",
+      "bytes": 10876
+    },
+    {
+      "path": "frontend/src/pages/owner/PrinterManagement.jsx",
+      "bytes": 16998
+    },
+    {
+      "path": "frontend/src/pages/owner/Settings.jsx",
+      "bytes": 1578
+    },
+    {
+      "path": "frontend/src/pages/owner/TestCallWindow.jsx",
+      "bytes": 19265
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/BillingHistory.jsx",
+      "bytes": 2587
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/BusinessInfo.jsx",
+      "bytes": 14487
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/ConnectEmail.jsx",
+      "bytes": 5227
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/CurrentPlan.jsx",
+      "bytes": 3459
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/HelpSupport.jsx",
+      "bytes": 1895
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/Plan.jsx",
+      "bytes": 6500
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/PrivacySetting.jsx",
+      "bytes": 4767
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/ProfileSettings.jsx",
+      "bytes": 15535
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/Subscription.jsx",
+      "bytes": 504
+    },
+    {
+      "path": "frontend/src/provider/AuthProvider.jsx",
+      "bytes": 804
+    },
+    {
+      "path": "frontend/src/router/router.jsx",
+      "bytes": 4766
+    },
+    {
+      "path": "frontend/src/utils/date.js",
+      "bytes": 3465
+    },
+    {
+      "path": "frontend/src/utils/export.js",
+      "bytes": 2055
+    },
+    {
+      "path": "frontend/vercel.json",
+      "bytes": 96
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "bytes": 483
+    },
+    {
+      "path": "nginx/conf.d/default.conf",
+      "bytes": 3261
+    },
+    {
+      "path": "nginx/nginx.conf",
+      "bytes": 958
+    }
+  ]
+}

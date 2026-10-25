@@ -3,6 +3,13 @@
 .env.*
 !.env.example
 node_modules
+**/node_modules
+reference
+apps/*/dist
+apps/mobile/.expo
+apps/mobile/.bundle-check
+apps/print-bridge/config.json
+apps/print-bridge/var
 data
 backups
 logs

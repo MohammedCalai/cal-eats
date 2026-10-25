@@ -1,0 +1,24 @@
+{
+  "name": "@cal-eats/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "expo": "57.0.31",
+    "expo-image-picker": "57.0.20",
+    "expo-secure-store": "57.0.4",
+    "expo-status-bar": "57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "6.0.3"
+  }
+}

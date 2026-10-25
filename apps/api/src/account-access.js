@@ -31,15 +31,15 @@ function readToken(body) {
 }
 
 export async function routeAccountAccess({ req, res, url, db, config, session, checkRate }) {
-  if (req.method === "POST" && url.pathname === "/api/auth/password/forgot") {
+  if (req.method === "POST" && ["/api/auth/password/forgot", "/api/native/auth/forgot-password"].includes(url.pathname)) {
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["email"]);
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (!validEmail(email)) throw new HttpError(400, "VALIDATION_ERROR", "Email is invalid");
     checkRate(req, email); const user = db.prepare("SELECT id,email FROM users WHERE email=?").get(email);
     if (user) withTransaction(db, () => issue(db, config, user, "password_reset", RESET_MS));
-    return sendJson(res, 202, { data: { accepted: true } });
+    return sendJson(res, 202, { data: { accepted: true, ...(url.pathname.startsWith("/api/native/") ? { delivery: "local_simulation" } : {}) } });
   }
-  if (req.method === "POST" && url.pathname === "/api/auth/password/reset") {
+  if (req.method === "POST" && ["/api/auth/password/reset", "/api/native/auth/reset-password"].includes(url.pathname)) {
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["token", "password"]); checkRate(req, "password-reset");
     const token = readToken(body); const password = typeof body.password === "string" ? body.password : "";
     if (password.length < VALIDATION.passwordMin || password.length > VALIDATION.passwordMax) throw new HttpError(400, "VALIDATION_ERROR", "Password is invalid");
@@ -51,6 +51,7 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
       db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, row.user_id);
       db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE user_id=? AND purpose='password_reset' AND consumed_at IS NULL").run(now, row.user_id);
       db.prepare("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now, row.user_id);
+      db.prepare("UPDATE native_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now, row.user_id);
     });
     return sendJson(res, 200, { data: { passwordReset: true } });
   }

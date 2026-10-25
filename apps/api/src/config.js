@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createStripeTestAdapter } from "./payments/stripe-test.js";
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -21,6 +22,9 @@ export function loadConfig(overrides = {}) {
   if (!Number.isInteger(orderExpiryMinutes) || orderExpiryMinutes < 1 || orderExpiryMinutes > 1440) throw new Error("CALAI_ORDER_EXPIRY_MINUTES must be an integer from 1 to 1440");
   const healthcheckHost = overrides.healthcheckHost ?? process.env.CALAI_HEALTHCHECK_HOST ?? null;
   if (healthcheckHost && (runMode !== "hosted-preview" || healthcheckHost !== "healthcheck.railway.app")) throw new Error("CALAI_HEALTHCHECK_HOST is invalid");
+  const paymentProviderMode = overrides.paymentProviderMode ?? process.env.CALAI_PAYMENT_PROVIDER ?? "local_simulator";
+  if (!['local_simulator','stripe_test'].includes(paymentProviderMode)) throw new Error("CALAI_PAYMENT_PROVIDER must be local_simulator or stripe_test");
+  const paymentProvider = overrides.paymentProvider ?? (paymentProviderMode === "stripe_test" ? createStripeTestAdapter({ secretKey: process.env.CALAI_STRIPE_TEST_SECRET_KEY, mode: "test" }) : null);
   return {
     hostname,
     runMode,
@@ -35,6 +39,10 @@ export function loadConfig(overrides = {}) {
     bodyLimit: overrides.bodyLimit ?? 16 * 1024,
     orderExpiryMinutes,
     mockCapture: overrides.mockCapture,
+    paymentProviderMode,
+    paymentProvider,
+    paymentProviderWebhookSecret: overrides.paymentProviderWebhookSecret ?? process.env.CALAI_STRIPE_TEST_WEBHOOK_SECRET,
+    providerWebhookBodyLimit: overrides.providerWebhookBodyLimit ?? 256 * 1024,
     now: overrides.now ?? (() => new Date()),
     rateLimit: overrides.rateLimit ?? { attempts: 8, windowMs: 60_000 }
   };

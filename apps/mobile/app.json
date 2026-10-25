@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Cal-Eats",
+    "slug": "cal-eats",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "uk.co.calai.caleats",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Cal-Eats to select a refund evidence photo.",
+          "cameraPermission": "Allow Cal-Eats to take a refund evidence photo.",
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}

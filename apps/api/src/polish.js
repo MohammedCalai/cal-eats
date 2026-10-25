@@ -22,7 +22,7 @@ function dimensions(buffer) {
   if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[buffer.length-2] === 0xff && buffer[buffer.length-1] === 0xd9) { let at = 2; while (at + 8 < buffer.length) { if (buffer[at] !== 0xff) { at += 1; continue; } const marker = buffer[at + 1]; if ([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)) return { mimeType: "image/jpeg", height: buffer.readUInt16BE(at + 5), width: buffer.readUInt16BE(at + 7) }; if (marker === 0xd8 || marker === 0xd9) { at += 2; continue; } if(at+4>buffer.length)break;const size = buffer.readUInt16BE(at + 2); if (size < 2 || at+2+size>buffer.length) break; at += 2 + size; } }
   throw new HttpError(400, "INVALID_IMAGE", "Image must be a valid JPEG or PNG");
 }
-function decodeImage(body) {
+export function decodeImage(body) {
   exactObject(body, ["mimeType", "dataBase64"]); if (typeof body.dataBase64 !== "string" || body.dataBase64.length > 1_400_000 || body.dataBase64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(body.dataBase64)) throw new HttpError(400, "INVALID_IMAGE", "Image encoding is invalid");
   const data = Buffer.from(body.dataBase64, "base64"); if (!data.length || data.length > 1024 * 1024 || data.toString("base64") !== body.dataBase64) throw new HttpError(400, "INVALID_IMAGE", "Image is too large or invalid");
   const parsed = dimensions(data); if (body.mimeType !== parsed.mimeType || parsed.width < 1 || parsed.height < 1 || parsed.width > 4096 || parsed.height > 4096) throw new HttpError(400, "INVALID_IMAGE", "Image type or dimensions are invalid"); return { ...parsed, data };

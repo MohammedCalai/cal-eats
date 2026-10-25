@@ -1,6 +1,22 @@
 # Calai Eats local version handover
 
-**25 October 2026 update:** the product is now named **Cal-Eats**. The expanded source-reuse/marketplace brief is a new unfinished phase; see NEXT_PHASE.md. Earlier completion statements below apply only to the existing local browser milestone. The original repository URL and dashboard screenshot have not been supplied, so original-source inspection/duplication remains pending. The browser branding has been updated independently while preserving this project's history and data.
+## Expansion update — 25 October 2026
+
+Final local walkthrough: the running demo is schema v18 with four fictional orders; database integrity and foreign keys passed. Two new orders were placed through native bearer authentication, with delivery completion, collection preparation and a restaurant refund enquiry verified across the shared API. The portal displays combined historical/current gross sales £57.50 and commission £3.68. Current screenshots 37–42 show platform administration, restaurant orders/menu, customer phone browser views and refund review. Account switching and refund-message visibility were checked in the served production portal build. No signed iPhone run is implied.
+
+Backup `backups/calai-eats-2026-10-25T14-38-23-503Z.sqlite` was verified in an isolated copy: integrity OK, schema v17, four users, two restaurants and four orders. It precedes the additive v18 reminder-episode migration. Final verification used focused changed-area checks and runtime walkthroughs; the broad functional suite was not repeated.
+
+The local expansion now includes the React business portal at `/business/`, native iPhone source, print-bridge simulator, marketplace finance/refund/device routes, audited governance v16, durable Stripe-test provider events v17 and registered waiting episodes v18. Governance handles account state/session revocation, restaurant permissions and per-request deduplicated refund-response reminders/escalations without automatic decisions.
+
+The portal is served at `http://127.0.0.1:4310/business/`; Vite development uses `http://127.0.0.1:4311/business/`. Phone screenshots are responsive browser captures. A connected native-API runtime exercise completed two mock checkouts and submitted a refund enquiry successfully; the native source remains unsigned and untested on an iPhone. The real bridge CLI also completed an isolated API-to-file-sink job and acknowledgement, documented in `PRINT_BRIDGE.md`; no bytes reached physical hardware. Provider code has mocked local tests only and has not moved provider money; scheduled simulator batches are not bank-paid payouts. Docker remains unbuilt because Docker is unavailable.
+
+`LOAD_RESULTS_2026-10-25.json` records a short synthetic run with 10,001 accounts, 100 restaurants, 20 concurrent clients and 120/120 completed orders with zero HTTP errors on one Windows host/shared SQLite WAL. Its 520.53 orders/minute over 13.8 seconds is not 10,000 concurrent users, a duration/production test, a provider test or physical-printer evidence.
+
+The original Calai GitHub account/repository remains strictly no-write. Future publication must use a separate account/repository, destination TBD. See `SOURCE_TEST_DISCOVERY_INCIDENT.md` for the corrected reference-test incident.
+
+The sections below are a chronological record of earlier milestones. Where they describe a feature as absent or pending, the expansion summary above and `EXPANSION_ACCEPTANCE.md` are authoritative.
+
+**25 October 2026 update:** the product is now named **Cal-Eats**. The expanded source-reuse/marketplace brief is a new unfinished phase; see NEXT_PHASE.md. Earlier completion statements below apply only to the existing local browser milestone. Original Calai was located through the user's signed-in browser, downloaded at a pinned commit and inspected read-only; source adaptations and additive marketplace implementation are now in progress. The browser branding has been updated while preserving this project's history and data.
 
 Updated: 2026-10-24 (Europe/London).
 
@@ -44,7 +60,7 @@ Node 24.19.0 and npm 11.17.0 are installed. No package download is required. Use
 
 ## Remaining work and limits
 
-This is a local responsive browser app, not a native Expo/iOS binary or a production release. Mock card processing, refunds, cash records and delivery statuses do not contact banks or couriers. Receipt handoff does not verify physical printing. There is no GPS driver map, external push/email/SMS, real email verification, live payout or provider reconciliation. Local password recovery and informational email confirmation are now implemented with a private simulated mailbox.
+At that browser milestone this was not a native binary or production release. That remains true. Mock card processing, refunds, cash and delivery states still do not contact banks or couriers. Later expansion added native source, provider-event reconciliation code and a verified API-to-file-sink bridge path, but still no signed iPhone, live provider payout or physical printing. There is no GPS driver map or external push/email/SMS. Local password recovery and informational email confirmation use a private simulated mailbox.
 
 Native packaging/device validation, verified sandbox payment adapters/webhooks, approved commercial/privacy terms, production security/recovery/monitoring, infrastructure and deployment remain later work. Default local mode still rejects production and non-loopback binding. The new hosted-preview profile is separately guarded, keeps payments simulated and requires an empty non-demo database. Before hosting, verify the container build, mounted-volume permissions, HTTPS/proxy behaviour, backups and phone installation. See DEPLOYMENT.md, HOSTED_PREVIEW.md, CONTAINER_PREVIEW.md and PENDING_DECISIONS.md.
 

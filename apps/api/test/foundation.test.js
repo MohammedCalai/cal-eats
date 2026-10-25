@@ -54,8 +54,8 @@ test("migrations are repeatable and persisted after reopen", async () => {
   const dbPath = path.join(directory, "test.sqlite");
   let db = openDatabase(dbPath);
   try {
-    assert.equal(migrateDatabase(db), 9);
-    assert.equal(migrateDatabase(db), 9);
+    assert.equal(migrateDatabase(db), migrations.length);
+    assert.equal(migrateDatabase(db), migrations.length);
     db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run("u1", "Saved", "saved@example.test", "hash", "customer", new Date().toISOString());
     closeDatabase(db);
     db = openDatabase(dbPath);

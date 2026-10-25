@@ -1,6 +1,6 @@
 # Cal-Eats
 
-The expanded 25 October brief is in [next-phase status and reuse map](docs/NEXT_PHASE.md). The existing local prototype is preserved. Original Calai source inspection and duplication are awaiting its repository URL; automated provider payouts, refund case management, native iPhone delivery and printer-bridge reuse are not complete. Internal package names, environment variables and storage identifiers retain their existing names for compatibility.
+The expanded 25 October brief is tracked in the [acceptance map](docs/EXPANSION_ACCEPTANCE.md) and [next-phase record](docs/NEXT_PHASE.md). The local customer app, business portal, marketplace/refund API, native source, print-bridge simulator, governance controls and test-provider boundaries are implemented locally. Live payments/payouts, a signed iPhone build, physical printing and deployment remain unverified. Internal package names, environment variables and storage identifiers retain their existing names for compatibility.
 
 Local milestone implementation using Node.js 24 only. It provides persistent authentication plus the full restaurant approval, menu, collection/delivery ordering, status, receipt and commission journey.
 
@@ -16,7 +16,7 @@ npm start
 
 Open `http://127.0.0.1:4310/` to use the app; readiness is at `/health/ready`. The database defaults to `data/calai-eats.sqlite`. Override it with `CALAI_DB_PATH`. Default local mode only binds to loopback and checks the configured host and origin. A separately selected [hosted-preview profile](docs/HOSTED_PREVIEW.md) supports an HTTPS-facing preview with secure cookies, exact write origins and no seeded accounts. Nothing is deployed.
 
-This first version is a responsive browser app with the original Calai logo, a [phone installation manifest and offline reconnect screen](docs/PHONE_INSTALL.md). It is not a native Expo/iOS build. See `docs/STATUS.md` for verified completion, `docs/LOCAL_RUNBOOK.md` for backup and recovery, and `docs/PENDING_DECISIONS.md` for remaining commercial decisions. [Container preparation](docs/CONTAINER_PREVIEW.md) is included for a future single-instance preview; Docker and real-device installation remain unverified. No GitHub, Expo or Railway deployment has been performed.
+The customer browser app is at `http://127.0.0.1:4310/`. The React business portal is served at `http://127.0.0.1:4310/business/`; optional Vite development uses `http://127.0.0.1:4311/business/`. Phone-sized screenshots are browser previews, not native-device evidence. Native iPhone source exists but is unsigned and has not run on an iPhone. Docker remains unavailable/unbuilt, and no GitHub, Expo or Railway deployment has been performed.
 
 View the captured screens in [the offline gallery](docs/screenshots/index.html), including photo upload, CSV import and customer account controls. Some screenshots show intermediate stages of the fictional walkthrough. The reconnect page was captured directly; that image does not verify automatic offline interception. The earlier 26-screen archive is kept local and excluded from repository uploads.
 
@@ -35,6 +35,10 @@ The approved demo restaurant includes a usable menu and delivery to exact outwar
 ## Verify
 
 Use `npm run release:check` for inexpensive syntax, lockfile and upload-set checks. Run focused tests for changed behaviour. `npm run check` runs the complete suite and `npm run smoke` checks the persisted HTTP journey; reserve these broader checks for an integration milestone or an unresolved regression.
+
+The schema includes governance v16, durable Stripe-test provider-event intake/reconciliation v17 and registered refund waiting episodes v18. Provider code remains test-only and does not make simulated orders provider-paid. A connected native-API runtime check completed two checkouts and a refund enquiry, but this is not a signed-device test. The short single-host synthetic load result is recorded in `docs/LOAD_RESULTS_2026-10-25.json`; it is not a production capacity claim.
+
+The original Calai GitHub account/repository is permanently read-only. Nothing may be created or changed there. Future Cal-Eats publication requires a separate account/repository whose destination remains TBD. See [the source test-discovery incident](docs/SOURCE_TEST_DISCOVERY_INCIDENT.md).
 
 This is a development preview. Delivery is a postcode allowlist simulation advanced manually by the restaurant; it has no courier integration. Mock cards and refunds never contact a payment provider. Cash is marked collected only when the restaurant completes the order, and cash refunds/settlements are explicit manual records. There is no tax/tip calculation, provider-verified refund, bank settlement, physical-printer confirmation or live production release. The provisional demo contract records a 7% food-only commission for 24 months; it is not a live legal agreement.
 

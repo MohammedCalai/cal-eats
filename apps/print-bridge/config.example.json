@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "product": "cal-eats",
+  "deviceName": "Local kitchen simulator",
+  "apiBaseUrl": "http://127.0.0.1:4310",
+  "credentialPath": "./var/device-credential.json",
+  "journalPath": "./var/print-journal.json",
+  "logPath": "./var/print-bridge.log",
+  "transport": {
+    "kind": "file-sink",
+    "outputDirectory": "./var/printed"
+  },
+  "requestTimeoutMs": 5000,
+  "heartbeatIntervalMs": 30000,
+  "idlePollMs": 3000,
+  "retry": {
+    "maxAttempts": 3,
+    "baseDelayMs": 250,
+    "maxDelayMs": 3000,
+    "jitterRatio": 0.2
+  }
+}

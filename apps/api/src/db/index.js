@@ -12,13 +12,12 @@ export function openDatabase(filename) {
 
 export function migrateDatabase(db) {
   db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
-  const applied = db.prepare("SELECT version FROM schema_migrations").all().map((row) => row.version);
   for (const migration of migrations) {
-    if (applied.includes(migration.version)) continue;
     if (migration.foreignKeysOff) db.exec("PRAGMA foreign_keys = OFF");
     try {
       db.exec("BEGIN IMMEDIATE");
       try {
+        if (db.prepare("SELECT 1 FROM schema_migrations WHERE version=?").get(migration.version)) { db.exec("COMMIT"); continue; }
         db.exec(migration.sql);
         if (migration.foreignKeysOff && db.prepare("PRAGMA foreign_key_check").get()) throw new Error("Foreign key violation during migration");
         db.prepare("INSERT INTO schema_migrations(version,name,applied_at) VALUES(?,?,?)").run(migration.version, migration.name, new Date().toISOString());

@@ -21,7 +21,7 @@ if (lock && (lock.name !== packageJson.name || lock.lockfileVersion !== 3)) fail
 if (lock && JSON.stringify(lock.packages?.[""]?.workspaces) !== JSON.stringify(packageJson.workspaces)) failures.push("package-lock.json workspace metadata is out of date.");
 if (lock && JSON.stringify(lock.packages?.[""]?.engines) !== JSON.stringify(packageJson.engines)) failures.push("package-lock.json runtime metadata is out of date.");
 if (lock) {
-  for (const workspace of ["apps/api", "apps/web", "packages/contracts"]) {
+  for (const workspace of ["apps/api", "apps/web", "apps/portal", "apps/mobile", "apps/print-bridge", "packages/contracts"]) {
     const manifest = JSON.parse(readFileSync(join(root, workspace, "package.json"), "utf8"));
     const locked = lock.packages?.[workspace];
     if (!locked || locked.name !== manifest.name || locked.version !== manifest.version || JSON.stringify(locked.dependencies || {}) !== JSON.stringify(manifest.dependencies || {})) failures.push(`package-lock.json is out of date for ${workspace}.`);
@@ -36,7 +36,7 @@ function filesUnder(directory) {
   });
 }
 
-const sourceRoots = ["apps/api/src", "apps/api/scripts", "apps/web", "packages/contracts/src", "scripts", "infra"];
+const sourceRoots = ["apps/api/src", "apps/api/scripts", "apps/web", "apps/print-bridge/src", "packages/contracts/src", "scripts", "infra"];
 const javascript = sourceRoots.flatMap((dir) => filesUnder(join(root, dir))).filter((file) => extname(file) === ".js");
 for (const file of javascript) {
   const result = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
@@ -44,8 +44,11 @@ for (const file of javascript) {
 }
 
 try {
+  const remoteConfig = spawnSync("git", ["config", "--get-regexp", "^remote\\..*\\.(url|pushurl)$"], { cwd: root, encoding: "utf8" });
+  if (remoteConfig.status > 1) failures.push("Could not inspect Git remote destinations.");
+  if (/github\.com[/:]calai-operation\//i.test(remoteConfig.stdout || "")) failures.push("Original Calai GitHub account must not be configured as a Cal-Eats remote destination.");
   const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
-  const privatePattern = /(^|\/)(?:data|backups|logs|artifacts|local-mail|mail)(\/|$)|(^|\/)\.env(?:\.|$)|\.(?:sqlite(?:-shm|-wal)?|log|zip|tar|tgz)$/i;
+  const privatePattern = /(^|\/)(?:data|backups|logs|artifacts|local-mail|mail|reference|node_modules|\.expo)(\/|$)|apps\/print-bridge\/(?:config\.json|var\/)|(^|\/)\.env(?:\.|$)|\.(?:sqlite(?:-shm|-wal)?|log|zip|tar|tgz)$/i;
   const disallowed = tracked.filter((file) => file !== ".env.example" && privatePattern.test(file.replaceAll(sep, "/")));
   if (disallowed.length) failures.push(`Remove private/local artifacts from the tracked upload set:\n${disallowed.map((file) => `  - ${file}`).join("\n")}`);
 } catch (error) {

@@ -8,6 +8,7 @@ import { restaurantAvailability } from "./availability.js";
 import { notifyNewOrder, notifyOrderStatus, redeemOfferForOrder, releaseOfferForOrder } from "./offers.js";
 import { normalizeAddress } from "./address-validation.js";
 import { restaurantReadiness } from "./readiness.js";
+import { recordMarketplaceAcceptance, recordMarketplaceCompletion } from "./marketplace.js";
 
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
@@ -65,7 +66,7 @@ export function orderDto(db, row, includeLedger = false, includeFinancial = true
   const refunds = db.prepare("SELECT * FROM refunds WHERE order_id=? ORDER BY created_at,rowid").all(row.id);
   const refundedFoodMinor = refunds.reduce((sum, refund) => sum + refund.food_amount_minor, 0);
   const refundedDeliveryMinor = refunds.reduce((sum, refund) => sum + refund.delivery_amount_minor, 0);
-  const result = { id: row.id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, customerId: row.customer_id, customerName: row.customer_name, customerEmail: row.customer_email, customerPhone: row.customer_phone, deliveryInstructions: row.delivery_instructions, allergyNotes: row.allergy_notes, status: row.status, currency: row.currency, subtotalMinor: row.subtotal_minor, deliveryFeeMinor: row.delivery_fee_minor, totalMinor: row.total_minor, deliveryAddress: row.delivery_address ? JSON.parse(row.delivery_address) : null, commissionMinor: row.commission_minor, contract: { rateBasisPoints: row.contract_rate_bps, policyVersion: row.contract_policy_version, demoOnly: Boolean(row.contract_demo_only) }, paymentMethod: row.payment_method, paymentStatus: row.payment_status, fulfillment: row.fulfillment, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor: refundedFoodMinor + refundedDeliveryMinor, refunds: refunds.map(refundDto), ...(row.offer_snapshot ? { offer: JSON.parse(row.offer_snapshot) } : {}), createdAt: row.created_at, updatedAt: row.updated_at, items, events };
+  const result = { id: row.id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, customerId: row.customer_id, customerName: row.customer_name, customerEmail: row.customer_email, customerPhone: row.customer_phone, deliveryInstructions: row.delivery_instructions, allergyNotes: row.allergy_notes, status: row.status, estimatedReadyAt: row.estimated_ready_at ?? null, currency: row.currency, subtotalMinor: row.subtotal_minor, deliveryFeeMinor: row.delivery_fee_minor, totalMinor: row.total_minor, deliveryAddress: row.delivery_address ? JSON.parse(row.delivery_address) : null, commissionMinor: row.commission_minor, contract: { rateBasisPoints: row.contract_rate_bps, commissionBase: row.commission_base ?? "food", policyVersion: row.contract_policy_version, demoOnly: Boolean(row.contract_demo_only) }, paymentMethod: row.payment_method, paymentStatus: row.payment_status, fulfillment: row.fulfillment, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor: refundedFoodMinor + refundedDeliveryMinor, refunds: refunds.map(refundDto), ...(row.offer_snapshot ? { offer: JSON.parse(row.offer_snapshot) } : {}), createdAt: row.created_at, updatedAt: row.updated_at, items, events };
   if (includeLedger) result.ledger = db.prepare("SELECT * FROM ledger_entries WHERE order_id=? ORDER BY created_at,rowid").all(row.id).map(ledgerDto);
   if (!includeFinancial) { delete result.commissionMinor; delete result.contract; }
   return result;
@@ -269,10 +270,11 @@ async function createOrder({ req, res, db, config, session }) {
   const offerId = body.offerId === undefined ? null : text(body.offerId, 1, 100, "Offer");
   const canonicalBody = { restaurantId: body.restaurantId, items: normalizedItems, paymentMethod: body.paymentMethod, fulfillment: body.fulfillment, customerPhone, deliveryInstructions, allergyNotes, ...(offerId ? { offerId } : {}), ...(address ? { deliveryAddress: address } : {}) };
   const hash = requestHash(canonicalBody);
+  const outcome = withTransaction(db, () => {
   const prior = db.prepare("SELECT * FROM orders WHERE customer_id=? AND idempotency_key=?").get(user.id, key);
   if (prior) {
     if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request");
-    return sendJson(res, 200, { data: orderDto(db, prior) });
+    return { replay: prior };
   }
   const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(body.restaurantId);
   if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
@@ -314,8 +316,9 @@ async function createOrder({ req, res, db, config, session }) {
   if (body.paymentMethod === "mock_card" && !authorizeMockPayment({ amountMinor: subtotal + fee }).ok) throw new HttpError(409, "PAYMENT_DECLINED", "Mock payment was declined");
   const deliveryAddress = address ? Object.fromEntries(Object.entries(address).filter(([key]) => key !== "outcode")) : null;
   const customer = db.prepare("SELECT * FROM users WHERE id=?").get(user.id);
-  const order = { id: randomUUID(), restaurant_id: restaurant.id, restaurant_name: restaurant.name, customer_id: user.id, status: "placed", currency: "GBP", subtotal_minor: subtotal, delivery_fee_minor: fee, total_minor: subtotal + fee, delivery_address: deliveryAddress ? JSON.stringify(deliveryAddress) : null, commission_minor: calculateCommissionAtRate(subtotal, contract.rate_bps), payment_method: body.paymentMethod, payment_status: body.paymentMethod === "mock_card" ? "mock_authorized" : "cash_due", fulfillment: body.fulfillment, idempotency_key: key, request_hash: hash, created_at: now, updated_at: now, contract_rate_bps: contract.rate_bps, contract_policy_version: contract.policy_version, contract_demo_only: contract.demo_only, customer_name: customer.name, customer_email: customer.email, customer_phone: customerPhone || customer.phone, delivery_instructions: deliveryInstructions, allergy_notes: allergyNotes, offer_grant_id: offerId, offer_snapshot: null };
-  withTransaction(db, () => {
+  const marketplacePolicy = db.prepare("SELECT * FROM commission_policies WHERE restaurant_id=? AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1").get(restaurant.id, now, now);
+  const rateBasisPoints = marketplacePolicy?.rate_bps ?? contract.rate_bps, commissionBase = marketplacePolicy?.commission_base ?? "food", commissionAmount = subtotal + (commissionBase === "food_plus_delivery" ? fee : 0);
+  const order = { id: randomUUID(), restaurant_id: restaurant.id, restaurant_name: restaurant.name, customer_id: user.id, status: "placed", currency: "GBP", subtotal_minor: subtotal, delivery_fee_minor: fee, total_minor: subtotal + fee, delivery_address: deliveryAddress ? JSON.stringify(deliveryAddress) : null, commission_minor: calculateCommissionAtRate(commissionAmount, rateBasisPoints), payment_method: body.paymentMethod, payment_status: body.paymentMethod === "mock_card" ? "mock_authorized" : "cash_due", fulfillment: body.fulfillment, idempotency_key: key, request_hash: hash, created_at: now, updated_at: now, contract_rate_bps: rateBasisPoints, contract_policy_version: marketplacePolicy?.version ?? contract.policy_version, contract_demo_only: marketplacePolicy ? marketplacePolicy.development_assumption : contract.demo_only, customer_name: customer.name, customer_email: customer.email, customer_phone: customerPhone || customer.phone, delivery_instructions: deliveryInstructions, allergy_notes: allergyNotes, offer_grant_id: offerId, offer_snapshot: null, commission_base: commissionBase };
     let gift = null;
     if (offerId) {
       if (subtotal <= 0) throw new HttpError(409, "OFFER_REQUIRES_PURCHASE", "An offer requires a paid food item");
@@ -329,14 +332,16 @@ async function createOrder({ req, res, db, config, session }) {
       order.offer_snapshot = JSON.stringify({ offerId: grant.id, title: grant.title, menuItemId: grant.menu_item_id, itemName: grant.item_name, itemValueMinor: grant.item_value_minor });
       gift.offerName = grant.item_name; gift.offerValue = grant.item_value_minor;
     }
-    db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,contract_rate_bps,contract_policy_version,contract_demo_only,customer_name,customer_email,customer_phone,delivery_instructions,allergy_notes,offer_grant_id,offer_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(order));
+    db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,contract_rate_bps,contract_policy_version,contract_demo_only,customer_name,customer_email,customer_phone,delivery_instructions,allergy_notes,offer_grant_id,offer_snapshot,commission_base) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(order));
     if (offerId) { const reserved = db.prepare("UPDATE offer_grants SET status='reserved',reserved_order_id=?,updated_at=? WHERE id=? AND status='available'").run(order.id, now, offerId); if (reserved.changes !== 1) throw new HttpError(409, "OFFER_UNAVAILABLE", "Offer is no longer available"); }
     for (const { entry, row, selected, unitPrice } of menu) db.prepare("INSERT INTO order_items(id,order_id,menu_item_id,name,unit_price_minor,quantity,base_price_minor,selected_modifiers,allergens,category,is_offer_item) VALUES(?,?,?,?,?,?,?,?,?,?,0)").run(randomUUID(), order.id, row.id, row.name, unitPrice, entry.quantity, row.price_minor, JSON.stringify(selected), row.allergens, row.category);
     if (gift) db.prepare("INSERT INTO order_items(id,order_id,menu_item_id,name,unit_price_minor,quantity,base_price_minor,selected_modifiers,allergens,category,is_offer_item) VALUES(?,?,?,?,0,1,?,?,?,?,1)").run(randomUUID(), order.id, gift.id, gift.offerName, gift.offerValue, "[]", gift.allergens, gift.category);
     db.prepare("INSERT INTO order_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), order.id, user.id, "status_changed", null, "placed", now);
     notifyNewOrder(db, order, now);
+    return { order };
   });
-  return sendJson(res, 201, { data: orderDto(db, order) });
+  const stored = outcome.replay ?? outcome.order;
+  return sendJson(res, outcome.replay ? 200 : 201, { data: orderDto(db, stored) });
 }
 
 async function updateStatus({ req, res, db, config, session, id }) {
@@ -369,7 +374,9 @@ async function updateStatus({ req, res, db, config, session, id }) {
     if (body.status === "accepted") {
       const kind = order.payment_method === "mock_card" ? "commission_mock" : "commission_cash_receivable";
       db.prepare("INSERT OR IGNORE INTO ledger_entries(id,order_id,restaurant_id,kind,amount_minor,currency,reference_type,reference_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(), order.id, order.restaurant_id, kind, order.commission_minor, order.currency, "order", order.id, now);
+      recordMarketplaceAcceptance(db, db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), now);
     }
+    if (body.status === "completed") recordMarketplaceCompletion(db, db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), now);
     return { order: db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), permission: membership.permission };
   });
   return sendJson(res, 200, { data: orderDto(db, result.order, result.permission === "owner", result.permission === "owner") });

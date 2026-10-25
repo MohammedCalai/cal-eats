@@ -129,11 +129,14 @@ async function createRefund({ req, res, db, config, session, orderId }) {
   const result = withTransaction(db, () => {
     const order = db.prepare("SELECT * FROM orders WHERE id=?").get(orderId);
     if (!order) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    if (db.prepare("SELECT 1 FROM refund_cases WHERE order_id=? AND status NOT IN ('rejected','refunded','refund_failed') LIMIT 1").get(order.id)) throw new HttpError(409, "REFUND_CASE_ACTIVE", "Use the linked refund case workflow");
     const allowed = order.payment_method === "mock_card" ? ["mock_captured", "mock_partially_refunded"] : ["cash_collected", "cash_partially_refunded"];
     if (!allowed.includes(order.payment_status)) throw new HttpError(409, "REFUND_NOT_ALLOWED", "Payment is not eligible for refund");
     const sums = db.prepare("SELECT COALESCE(SUM(food_amount_minor),0) AS food,COALESCE(SUM(delivery_amount_minor),0) AS delivery FROM refunds WHERE order_id=?").get(order.id);
     if (sums.food + normalized.foodAmountMinor > order.subtotal_minor || sums.delivery + normalized.deliveryAmountMinor > order.delivery_fee_minor) throw new HttpError(409, "REFUND_EXCEEDS_PAYMENT", "Refund exceeds remaining amount");
-    const reversal = calculateCommissionAtRate(order.subtotal_minor - sums.food, order.contract_rate_bps) - calculateCommissionAtRate(order.subtotal_minor - sums.food - normalized.foodAmountMinor, order.contract_rate_bps);
+    const baseBefore = order.subtotal_minor - sums.food + ((order.commission_base ?? "food") === "food_plus_delivery" ? order.delivery_fee_minor - sums.delivery : 0);
+    const baseAfter = baseBefore - normalized.foodAmountMinor - ((order.commission_base ?? "food") === "food_plus_delivery" ? normalized.deliveryAmountMinor : 0);
+    const reversal = calculateCommissionAtRate(baseBefore, order.contract_rate_bps) - calculateCommissionAtRate(baseAfter, order.contract_rate_bps);
     const now = config.now().toISOString(); const id = randomUUID();
     const mode = order.payment_method === "mock_card" ? "simulated_card" : "manual_cash_return";
     db.prepare("INSERT INTO refunds VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(id, order.id, user.id, key, hash, normalized.foodAmountMinor, normalized.deliveryAmountMinor, normalized.reason, mode, reversal, now);

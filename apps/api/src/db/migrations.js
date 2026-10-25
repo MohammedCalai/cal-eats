@@ -1,3 +1,6 @@
+import { PROVIDER_EVENTS_MIGRATION } from "../payments/provider-events-migration.js";
+import { GOVERNANCE_EPISODE_MIGRATION } from "../governance-migration.js";
+
 export const migrations = [
   {
     version: 1,
@@ -149,5 +152,92 @@ ALTER TABLE menu_items ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
 UPDATE menu_items SET sort_order=rowid;
 CREATE TABLE menu_imports (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE, actor_user_id TEXT NOT NULL REFERENCES users(id), idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL, item_ids TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(actor_user_id,idempotency_key));
 `
-  }
+  },
+  {
+    version: 10,
+    name: "marketplace_finance_refunds_devices",
+    sql: `
+ALTER TABLE orders ADD COLUMN estimated_ready_at TEXT;
+CREATE TABLE commission_policies (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), rate_bps INTEGER NOT NULL CHECK(rate_bps BETWEEN 0 AND 10000), commission_base TEXT NOT NULL CHECK(commission_base IN ('food','food_plus_delivery')), starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, duration_months INTEGER NOT NULL, version TEXT NOT NULL, development_assumption INTEGER NOT NULL CHECK(development_assumption IN (0,1)), accepted_at TEXT, accepted_by_user_id TEXT REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(restaurant_id,version));
+CREATE TABLE marketplace_operations (id TEXT PRIMARY KEY, operation_key TEXT NOT NULL UNIQUE, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), order_id TEXT REFERENCES orders(id), kind TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed','delayed','held','cancelled')), amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), currency TEXT NOT NULL DEFAULT 'GBP', provider_mode TEXT NOT NULL CHECK(provider_mode IN ('local_simulator','stripe_test')), provider_reference TEXT, error TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX marketplace_operations_restaurant_idx ON marketplace_operations(restaurant_id,created_at);
+CREATE TABLE journal_postings (id TEXT PRIMARY KEY, group_id TEXT NOT NULL, operation_key TEXT NOT NULL REFERENCES marketplace_operations(operation_key), restaurant_id TEXT NOT NULL REFERENCES restaurants(id), order_id TEXT REFERENCES orders(id), account TEXT NOT NULL, direction TEXT NOT NULL CHECK(direction IN ('debit','credit')), amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), currency TEXT NOT NULL DEFAULT 'GBP', source_type TEXT NOT NULL, source_id TEXT NOT NULL, provider_mode TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX journal_postings_restaurant_idx ON journal_postings(restaurant_id,created_at);
+CREATE TABLE provider_accounts (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL UNIQUE REFERENCES restaurants(id), provider_mode TEXT NOT NULL CHECK(provider_mode IN ('local_simulator','stripe_test')), status TEXT NOT NULL CHECK(status IN ('not_started','pending','restricted','enabled')), capabilities TEXT NOT NULL DEFAULT '[]', requirements TEXT NOT NULL DEFAULT '[]', provider_reference TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE payout_batches (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), operation_key TEXT NOT NULL UNIQUE, status TEXT NOT NULL CHECK(status IN ('scheduled','pending','paid','failed','held')), amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), provider_mode TEXT NOT NULL, scheduled_for TEXT, provider_reference TEXT, failure TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE payout_items (payout_id TEXT NOT NULL REFERENCES payout_batches(id), operation_id TEXT NOT NULL REFERENCES marketplace_operations(id), amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), PRIMARY KEY(payout_id,operation_id));
+CREATE TABLE cash_mandates (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL UNIQUE REFERENCES restaurants(id), status TEXT NOT NULL CHECK(status IN ('created','authorised','revoked','failed')), provider_mode TEXT NOT NULL, operation_key TEXT NOT NULL UNIQUE, provider_reference TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE cash_collections (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), mandate_id TEXT NOT NULL REFERENCES cash_mandates(id), operation_key TEXT NOT NULL UNIQUE, amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), status TEXT NOT NULL CHECK(status IN ('pending','succeeded','failed','delayed')), provider_mode TEXT NOT NULL, failure TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE refund_cases (id TEXT PRIMARY KEY, reference TEXT NOT NULL UNIQUE, order_id TEXT NOT NULL REFERENCES orders(id), restaurant_id TEXT NOT NULL REFERENCES restaurants(id), customer_id TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL CHECK(status IN ('submitted','under_review','awaiting_restaurant','awaiting_customer','approved','partially_approved','awaiting_cash_return','rejected','refund_processing','refunded','refund_failed')), reason TEXT NOT NULL CHECK(reason IN ('missing_items','incorrect_items','quality','non_delivery','other')), item_ids TEXT NOT NULL DEFAULT '[]', description TEXT NOT NULL, issue_hash TEXT NOT NULL, requested_amount_minor INTEGER NOT NULL, approved_amount_minor INTEGER, remedy TEXT, execution_status TEXT, execution_operation_id TEXT REFERENCES marketplace_operations(id), execution_error TEXT, provider_mode TEXT, monthly_review_flag INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX refund_cases_customer_idx ON refund_cases(customer_id,created_at);
+CREATE INDEX refund_cases_restaurant_idx ON refund_cases(restaurant_id,created_at);
+CREATE UNIQUE INDEX refund_cases_active_issue ON refund_cases(order_id,issue_hash) WHERE status NOT IN ('rejected','refunded');
+CREATE TABLE refund_case_evidence (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES refund_cases(id) ON DELETE CASCADE, actor_user_id TEXT NOT NULL REFERENCES users(id), mime_type TEXT NOT NULL CHECK(mime_type IN ('image/png','image/jpeg')), data BLOB NOT NULL, byte_length INTEGER NOT NULL, created_at TEXT NOT NULL, delete_after TEXT);
+CREATE TABLE refund_case_messages (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES refund_cases(id) ON DELETE CASCADE, actor_user_id TEXT NOT NULL REFERENCES users(id), audience TEXT NOT NULL CHECK(audience IN ('customer','restaurant','admin','internal')), message TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE refund_case_events (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES refund_cases(id) ON DELETE CASCADE, actor_user_id TEXT REFERENCES users(id), kind TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL);
+CREATE TABLE refund_decisions (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES refund_cases(id), actor_user_id TEXT NOT NULL REFERENCES users(id), idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL, decision TEXT NOT NULL, amount_minor INTEGER, reason TEXT NOT NULL, remedy TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(actor_user_id,idempotency_key));
+CREATE TABLE restaurant_printers (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)), revoked_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE printer_pairing_codes (id TEXT PRIMARY KEY, printer_id TEXT NOT NULL REFERENCES restaurant_printers(id), code_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, consumed_at TEXT, created_at TEXT NOT NULL);
+CREATE TABLE printer_devices (id TEXT PRIMARY KEY, printer_id TEXT NOT NULL REFERENCES restaurant_printers(id), restaurant_id TEXT NOT NULL REFERENCES restaurants(id), name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, revoked_at TEXT, last_seen_at TEXT, created_at TEXT NOT NULL);
+CREATE TABLE device_print_jobs (id TEXT PRIMARY KEY, printer_id TEXT NOT NULL REFERENCES restaurant_printers(id), order_id TEXT NOT NULL REFERENCES orders(id), operation_key TEXT NOT NULL UNIQUE, receipt TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('queued','claimed','printed','failed','uncertain')), manual_reprint INTEGER NOT NULL DEFAULT 0 CHECK(manual_reprint IN (0,1)), attempt INTEGER NOT NULL DEFAULT 0, claim_token_hash TEXT, lease_expires_at TEXT, detail TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX device_print_jobs_claim_idx ON device_print_jobs(printer_id,status,created_at);
+CREATE TABLE marketplace_worker_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, entity_id TEXT NOT NULL, operation_key TEXT NOT NULL UNIQUE, status TEXT NOT NULL CHECK(status IN ('queued','claimed','completed','failed','delayed')), lease_owner TEXT, lease_expires_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '{}', error TEXT, available_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+`
+  },
+  {
+    version: 11,
+    name: "native_customer_sessions_and_device_claim_owner",
+    sql: `
+CREATE TABLE native_sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT);
+CREATE INDEX native_sessions_user_idx ON native_sessions(user_id,expires_at);
+ALTER TABLE device_print_jobs ADD COLUMN claimed_by_device_id TEXT REFERENCES printer_devices(id);
+`
+  },
+  {
+    version: 12,
+    name: "marketplace_report_artifacts",
+    sql: `
+CREATE TABLE marketplace_report_jobs (id TEXT PRIMARY KEY, restaurant_id TEXT REFERENCES restaurants(id), actor_user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL CHECK(kind IN ('finance_statement')), status TEXT NOT NULL CHECK(status IN ('queued','completed','failed')), request_hash TEXT NOT NULL, content BLOB, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX marketplace_report_actor_idx ON marketplace_report_jobs(actor_user_id,created_at);
+`
+  },
+  {
+    version: 13,
+    name: "commission_base_snapshot",
+    sql: `
+ALTER TABLE orders ADD COLUMN commission_base TEXT NOT NULL DEFAULT 'food' CHECK(commission_base IN ('food','food_plus_delivery'));
+`
+  },
+  {
+    version: 14,
+    name: "printer_claim_replay_tokens",
+    sql: `
+CREATE TABLE printer_job_claim_tokens (job_id TEXT NOT NULL REFERENCES device_print_jobs(id) ON DELETE CASCADE, device_id TEXT NOT NULL REFERENCES printer_devices(id), token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, PRIMARY KEY(job_id,token_hash));
+`
+  },
+  {
+    version: 15,
+    name: "recoverable_payout_states",
+    foreignKeysOff: true,
+    sql: `
+CREATE TABLE payout_batches_new (id TEXT PRIMARY KEY, restaurant_id TEXT NOT NULL REFERENCES restaurants(id), operation_key TEXT NOT NULL UNIQUE, status TEXT NOT NULL CHECK(status IN ('scheduled','in_transit','pending','paid','failed','held')), amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), provider_mode TEXT NOT NULL, scheduled_for TEXT, provider_reference TEXT, failure TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+INSERT INTO payout_batches_new SELECT * FROM payout_batches;
+DROP TABLE payout_batches;
+ALTER TABLE payout_batches_new RENAME TO payout_batches;
+`
+  },
+  {
+    version: 16,
+    name: "admin_governance_and_refund_sla",
+    sql: `
+ALTER TABLE users ADD COLUMN account_enabled INTEGER NOT NULL DEFAULT 1 CHECK(account_enabled IN (0,1));
+CREATE TABLE governance_audit (id TEXT PRIMARY KEY, actor_user_id TEXT REFERENCES users(id), action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, details TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX governance_audit_created_idx ON governance_audit(created_at);
+CREATE TABLE refund_response_policy (id INTEGER PRIMARY KEY CHECK(id=1), customer_response_hours INTEGER NOT NULL CHECK(customer_response_hours BETWEEN 1 AND 720), restaurant_response_hours INTEGER NOT NULL CHECK(restaurant_response_hours BETWEEN 1 AND 720), reminder_lead_hours INTEGER NOT NULL CHECK(reminder_lead_hours BETWEEN 1 AND 168), updated_by_user_id TEXT REFERENCES users(id), updated_at TEXT NOT NULL);
+INSERT INTO refund_response_policy VALUES(1,48,48,12,NULL,'1970-01-01T00:00:00.000Z');
+CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refund_cases(id) ON DELETE CASCADE, awaiting_status TEXT NOT NULL CHECK(awaiting_status IN ('awaiting_customer','awaiting_restaurant')), due_at TEXT NOT NULL, reminder_sent_at TEXT, escalated_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+`
+  },
+  PROVIDER_EVENTS_MIGRATION,
+  GOVERNANCE_EPISODE_MIGRATION
 ];

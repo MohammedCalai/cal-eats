@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web");
+const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../portal/dist");
+const portalTypes = new Map([[".html", "text/html; charset=utf-8"], [".js", "text/javascript; charset=utf-8"], [".css", "text/css; charset=utf-8"], [".webmanifest", "application/manifest+json; charset=utf-8"], [".png", "image/png"], [".svg", "image/svg+xml"]]);
 const assets = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
@@ -19,6 +21,8 @@ const assets = new Map([
 
 export async function serveStatic(req, res, pathname) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
+  if (pathname === "/business") { res.writeHead(308, { Location: "/business/" }); res.end(); return true; }
+  if (pathname.startsWith("/business/")) return servePortal(req, res, pathname);
   const asset = assets.get(pathname);
   if (!asset) return false;
   try {
@@ -31,4 +35,28 @@ export async function serveStatic(req, res, pathname) {
     if (error.code === "ENOENT") return false;
     throw error;
   }
+}
+
+async function servePortal(req, res, pathname) {
+  let relative;
+  try { relative = decodeURIComponent(pathname.slice("/business/".length)); }
+  catch { return false; }
+  if (relative.includes("\\") || relative.split("/").some(segment => segment === ".." || segment.startsWith("."))) return false;
+  // Only generated public assets and explicit client routes are served. Never expose source/maps/config.
+  const extension = path.extname(relative);
+  let resource = relative;
+  if (!extension) {
+    if (relative && !/^(login|owner|staff|admin)(\/|$)/.test(relative)) return false;
+    resource = "index.html";
+  } else if (!portalTypes.has(extension)) return false;
+  const absolute = path.resolve(portalRoot, resource);
+  if (!absolute.startsWith(portalRoot + path.sep)) return false;
+  try {
+    const body = await readFile(absolute);
+    const offline = resource === "offline-portal.html";
+    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
+    res.writeHead(200, { "Content-Type": portalTypes.get(path.extname(resource)), "Content-Length": body.length, "Cache-Control": "no-store" });
+    res.end(req.method === "HEAD" ? undefined : body);
+    return true;
+  } catch (error) { if (error.code === "ENOENT" || error.code === "EISDIR") return false; throw error; }
 }
