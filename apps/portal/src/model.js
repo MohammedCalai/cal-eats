@@ -5,7 +5,7 @@ export const roleHome = (role) => role === "admin" ? "/admin/dashboard" : "/owne
 export function ownerNavigation(permission = "owner") {
   const core = [
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
-    ["Customers & offers", "/owner/customers"], ["Printers", "/owner/printers"],
+    ["Customers & Loyalty", "/owner/customers"], ["Printers", "/owner/printers"],
   ];
   if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Refund cases", "/owner/refunds"], ["Settings", "/owner/settings"]);
   return core;

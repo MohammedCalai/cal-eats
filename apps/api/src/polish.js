@@ -5,6 +5,7 @@ import { clearCookie } from "./auth/sessions.js";
 import { normalizeAddress } from "./address-validation.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
+import { updateMarketingPreferences } from "./loyalty.js";
 import { integer, itemDto, stringList, text, validateModifierGroups } from "./journey.js";
 import { restaurantReadiness } from "./readiness.js";
 
@@ -30,7 +31,7 @@ export function decodeImage(body) {
 
 export async function routePolish({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/account/preferences") { const u = requireUser(session); const row = db.prepare("SELECT merchant_offers FROM users WHERE id=?").get(u.id); return sendJson(res, 200, { data: { merchantOffers: Boolean(row.merchant_offers) } }); }
-  if (req.method === "PATCH" && url.pathname === "/api/account/preferences") { const u = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, ["merchantOffers"]); if (typeof body.merchantOffers !== "boolean") throw new HttpError(400, "VALIDATION_ERROR", "Preference is invalid"); db.prepare("UPDATE users SET merchant_offers=? WHERE id=?").run(Number(body.merchantOffers), u.id); return sendJson(res, 200, { data: { merchantOffers: body.merchantOffers } }); }
+  if (req.method === "PATCH" && url.pathname === "/api/account/preferences") { const u = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, ["merchantOffers"]); if (typeof body.merchantOffers !== "boolean") throw new HttpError(400, "VALIDATION_ERROR", "Preference is invalid"); const current=db.prepare("SELECT push_promotions FROM marketing_preferences WHERE user_id=?").get(u.id); updateMarketingPreferences(db,u,{inAppPromotions:body.merchantOffers,pushPromotions:Boolean(current?.push_promotions),source:"legacy-account-preferences"},config); return sendJson(res, 200, { data: { merchantOffers: body.merchantOffers } }); }
   if (req.method === "GET" && url.pathname === "/api/account/sessions") { const u = requireUser(session); const rows = db.prepare("SELECT id,created_at,expires_at FROM sessions WHERE user_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY created_at DESC").all(u.id, config.now().toISOString()); return sendJson(res, 200, { data: rows.map((x) => ({ id: x.id, createdAt: x.created_at, expiresAt: x.expires_at, current: x.id === session.sessionId })) }); }
   let match = url.pathname.match(/^\/api\/account\/sessions\/([^/]+)$/);
   if (match && req.method === "DELETE") { const u = requireUser(session); const changed = db.prepare("UPDATE sessions SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL").run(config.now().toISOString(), match[1], u.id); if (!changed.changes) throw new HttpError(404, "NOT_FOUND", "Resource not found"); return sendJson(res, 200, { data: { revoked: true } }, match[1] === session.sessionId ? { "Set-Cookie": clearCookie(config.secureCookies) } : {}); }

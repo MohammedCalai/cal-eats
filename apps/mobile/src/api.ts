@@ -7,7 +7,7 @@ export function validateBase(raw: string): string {
   if (url.username || url.password || url.search || url.hash) throw new Error("The API URL cannot contain credentials, a query or a fragment.");
   const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   const unbracketed = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-  if (hostname === "calai.info" || hostname.endsWith(".calai.info")) throw new Error("The original Calai host is not permitted.");
+  if (hostname !== "eats.calai.info" && (hostname === "calai.info" || hostname.endsWith(".calai.info"))) throw new Error("The original Calai host is not permitted.");
   const loopback = ["localhost", "127.0.0.1", "::1"].includes(unbracketed);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) throw new Error("Use HTTPS, except for an explicit loopback development API.");
   return url.toString().replace(/\/$/, "");

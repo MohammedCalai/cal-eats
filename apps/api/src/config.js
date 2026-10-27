@@ -25,6 +25,8 @@ export function loadConfig(overrides = {}) {
   const paymentProviderMode = overrides.paymentProviderMode ?? process.env.CALAI_PAYMENT_PROVIDER ?? "local_simulator";
   if (!['local_simulator','stripe_test'].includes(paymentProviderMode)) throw new Error("CALAI_PAYMENT_PROVIDER must be local_simulator or stripe_test");
   const paymentProvider = overrides.paymentProvider ?? (paymentProviderMode === "stripe_test" ? createStripeTestAdapter({ secretKey: process.env.CALAI_STRIPE_TEST_SECRET_KEY, mode: "test" }) : null);
+  const messagingSupportHours = overrides.messagingSupportHours ?? Number(process.env.CALAI_MESSAGE_SUPPORT_HOURS ?? 2);
+  if (!Number.isFinite(messagingSupportHours) || messagingSupportHours < 0 || messagingSupportHours > 24) throw new Error("CALAI_MESSAGE_SUPPORT_HOURS must be from 0 to 24");
   return {
     hostname,
     runMode,
@@ -41,6 +43,9 @@ export function loadConfig(overrides = {}) {
     mockCapture: overrides.mockCapture,
     paymentProviderMode,
     paymentProvider,
+    messagingSupportHours,
+    messageEncryptionKey: overrides.messageEncryptionKey ?? process.env.CALAI_MESSAGE_ENCRYPTION_KEY,
+    messageKeyFile: overrides.messageKeyFile ?? process.env.CALAI_MESSAGE_KEY_FILE,
     paymentProviderWebhookSecret: overrides.paymentProviderWebhookSecret ?? process.env.CALAI_STRIPE_TEST_WEBHOOK_SECRET,
     providerWebhookBodyLimit: overrides.providerWebhookBodyLimit ?? 256 * 1024,
     now: overrides.now ?? (() => new Date()),

@@ -1,5 +1,7 @@
 .git
 .env
+.cal-eats-message-key
+**/.cal-eats-message-key
 .env.*
 !.env.example
 node_modules

@@ -76,6 +76,11 @@ export interface Order {
   id: string;
   restaurantId: string;
   restaurantName: string;
+  restaurantPhone?: string | null;
+  messagingAvailable?: boolean;
+  messagingClosesAt?: string | null;
+  grossFoodMinor?: number;
+  restaurantDiscountMinor?: number;
   status: string;
   estimatedReadyAt?: string | null;
   currency: "GBP";
@@ -104,6 +109,8 @@ export interface NotificationRecord {
   createdAt: string;
 }
 export interface Offer {
+  offerType?: "free_item" | "percent_off" | "fixed_off";
+  value?: number;
   id: string;
   title: string;
   message: string;
@@ -116,6 +123,7 @@ export interface Offer {
   viewedAt?: string | null;
 }
 export interface RefundCase {
+  phase?: string;
   id: string;
   reference: string;
   orderId: string;

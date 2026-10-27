@@ -47,6 +47,14 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
   try {
     db = new DatabaseSync(sourcePath, { readOnly: true });
     await sqliteBackup(db, destinationPath);
+    // Temporary chats are deliberately excluded from managed backups. Formal
+    // order/dispute records remain intact and keep their separate policies.
+    const copy = new DatabaseSync(destinationPath);
+    try {
+      if (copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='order_messages'").get()) {
+        copy.exec("PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; DELETE FROM order_messages; DELETE FROM order_message_reads; DELETE FROM order_message_rate_limits; VACUUM;");
+      }
+    } finally { copy.close(); }
   } catch (error) {
     try {
       const current = fs.statSync(destinationPath, { bigint: true });

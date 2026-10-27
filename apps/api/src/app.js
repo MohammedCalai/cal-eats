@@ -16,6 +16,9 @@ import { routeMarketplace } from "./marketplace.js";
 import { readNativeSession, routeNativeAuth } from "./native-auth.js";
 import { routeAdminGovernance } from "./admin-governance.js";
 import { routeProviderEventWebhook } from "./payments/provider-events.js";
+import { routeOrderMessaging } from "./order-messaging.js";
+import { routeLoyalty } from "./loyalty.js";
+import { routeDisputeResolution } from "./dispute-resolution.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -156,6 +159,9 @@ export function createApp({ db, config }) {
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
+      if (await routeOrderMessaging({ req, res, url, db, config, session })) return;
+      if (await routeLoyalty({ req, res, url, db, config, session })) return;
+      if (await routeDisputeResolution({ req, res, url, db, config, session })) return;
       const polishHandled = await routePolish({ req, res, url, db, config, session });
       if (polishHandled || res.writableEnded || res.headersSent) return;
       const marketplaceHandled = await routeMarketplace({ req, res, url, db, config, session });

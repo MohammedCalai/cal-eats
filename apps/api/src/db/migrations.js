@@ -1,5 +1,8 @@
 import { PROVIDER_EVENTS_MIGRATION } from "../payments/provider-events-migration.js";
 import { GOVERNANCE_EPISODE_MIGRATION } from "../governance-migration.js";
+import { orderMessagingMigration19 } from "../order-messaging-migration.js";
+import { loyaltyMigration20 } from "../loyalty-migration.js";
+import { disputeResolutionMigration21 } from "../dispute-resolution-migration.js";
 
 export const migrations = [
   {
@@ -239,5 +242,8 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
 `
   },
   PROVIDER_EVENTS_MIGRATION,
-  GOVERNANCE_EPISODE_MIGRATION
+  GOVERNANCE_EPISODE_MIGRATION,
+  orderMessagingMigration19,
+  loyaltyMigration20,
+  disputeResolutionMigration21
 ];

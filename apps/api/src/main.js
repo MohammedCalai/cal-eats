@@ -7,6 +7,9 @@ import { runMarketplaceWorker } from "./marketplace.js";
 import { runGovernanceReminders } from "./admin-governance.js";
 import { runProviderEventReconciliation } from "./payments/provider-events.js";
 import { assertHostedPreviewSafe } from "./seed.js";
+import { runMessageRetention } from "./order-messaging.js";
+import { runPromotionMaintenance } from "./loyalty.js";
+import { notificationStreamHub } from "./notification-stream.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -21,6 +24,8 @@ async function runWorkers() {
     runOperationsCycle(db, config);
     runMarketplaceWorker(db, config);
     runGovernanceReminders(db, config);
+    runMessageRetention(db, config);
+    runPromotionMaintenance(db, config);
     await runProviderEventReconciliation(db, config);
   } catch (error) {
     console.error("Background worker cycle failed", error instanceof Error ? error.message : "unknown error");
@@ -44,6 +49,7 @@ let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true; clearInterval(worker);
+  notificationStreamHub(db).close();
   const result = await closeServer(server, { graceMs: 5_000 });
   if (!result.drained) process.exit(1);
   const workerDrained = await Promise.race([currentWorker.then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);

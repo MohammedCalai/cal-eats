@@ -1,0 +1,29 @@
+import { promotionBadge } from "./loyalty-ui.js";
+const escape = value => String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = value => new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(value/100);
+
+export async function mountMarketingPreferences(root,{api}={}) {
+  try {
+    let value=await api("/api/account/marketing-preferences");if(!root.isConnected)return;
+    root.innerHTML=`<form class="card stack"><h2>Promotion preferences</h2><p>Choose optional restaurant promotions. Order updates are separate. You can withdraw either choice at any time.</p><label class="radio-card"><input type="checkbox" name="inAppPromotions" ${value.inAppPromotions?"checked":""}> Restaurant offers in the app</label><label class="radio-card"><input type="checkbox" name="pushPromotions" ${value.pushPromotions?"checked":""}> Promotional push notifications</label><small>Push delivery also requires device permission and a connected push service.</small><button class="primary">Save promotion preferences</button><p role="status"></p></form>`;
+    const form=root.querySelector("form");form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector("button"),status=form.querySelector("[role=status]");button.disabled=true;try{const data=new FormData(form);value=await api("/api/account/marketing-preferences",{method:"PATCH",body:JSON.stringify({inAppPromotions:data.has("inAppPromotions"),pushPromotions:data.has("pushPromotions"),source:"browser-account"})});status.textContent="Preferences saved.";window.dispatchEvent(new Event("cal-eats-notifications-read"));}catch(error){status.textContent=error.message;}finally{button.disabled=false;}};
+  } catch(error){if(root.isConnected)root.textContent=`Promotion preferences unavailable: ${error.message}`;}
+}
+
+export async function mountFirstOrderPromotions(root,{api,restaurantId,onClaim}) {
+  try {const campaigns=await api(`/api/promotions?restaurantId=${encodeURIComponent(restaurantId)}`);if(!root.isConnected||!campaigns.length)return;
+    root.innerHTML=`<section class="card"><h2>First-order offers</h2>${campaigns.map(c=>`<article><h3>${escape(c.title)}</h3><p>${escape(c.message)}</p><p>${escape(promotionBadge(c))} · £${(c.minSubtotalMinor/100).toFixed(2)} minimum</p><button class="secondary" data-claim="${escape(c.id)}">Choose this offer</button><p role="status"></p></article>`).join("")}</section>`;
+    root.querySelectorAll("[data-claim]").forEach(button=>{button.onclick=async()=>{button.disabled=true;try{const grant=await api(`/api/promotions/${encodeURIComponent(button.dataset.claim)}/claim`,{method:"POST",body:"{}"});onClaim({...campaigns.find(c=>c.id===button.dataset.claim),...grant,restaurantId,status:"available"});}catch(error){button.parentElement.querySelector("[role=status]").textContent=error.message;button.disabled=false;}};});
+  }catch{/* Discovery remains usable when no promotion is available. */}
+}
+
+export function mountCheckoutQuote(form,{api,body}) {
+  const panel=document.createElement("section");panel.className="notice server-quote";panel.setAttribute("aria-live","polite");form.querySelector("#place-order")?.before(panel);
+  const button=form.querySelector("#place-order"),initialLabel=button?.textContent||"Place order";
+  let sequence=0,timer,last=null,stopped=false,pending=false;
+  function draw(value){const totals=form.querySelector(".totals");if(totals)totals.innerHTML=`<div><span>Food</span><span>${money(value.grossFoodMinor)}</span></div>${value.restaurantDiscountMinor?`<div><span>Restaurant promotion</span><span>−${money(value.restaurantDiscountMinor)}</span></div>`:""}<div><span>Delivery</span><span>${money(value.deliveryFeeMinor)}</span></div><div class="grand"><span>Order total</span><span>${money(value.totalMinor)}</span></div>`;const heading=form.closest("section")?.querySelector(".section-head > strong");if(heading)heading.textContent=money(value.totalMinor);panel.innerHTML=`<strong>Your total: ${money(value.totalMinor)}</strong><p>Food ${money(value.grossFoodMinor)}${value.restaurantDiscountMinor?` · restaurant promotion −${money(value.restaurantDiscountMinor)}`:""} · delivery ${money(value.deliveryFeeMinor)}</p>`;if(button)button.textContent=`Place order · ${money(value.totalMinor)}`;}
+  async function refresh(){const own=++sequence;pending=true;if(button)button.disabled=true;try{const request=body(),fingerprint=JSON.stringify(request),value=await api("/api/orders/quote",{method:"POST",body:fingerprint});if(stopped||own!==sequence||!form.isConnected)return null;last={fingerprint,value};draw(value);if(button)button.disabled=false;return last;}catch(error){if(!stopped&&own===sequence){last=null;panel.textContent=`Complete your details to review the price. ${error.message}`;if(button){button.disabled=true;button.textContent=initialLabel;}}return null;}finally{if(own===sequence)pending=false;}}
+  function changed(){clearTimeout(timer);last=null;if(button)button.disabled=true;timer=setTimeout(()=>void refresh(),350);}
+  form.addEventListener("input",changed);form.addEventListener("change",changed);void refresh();
+  return {async confirm(){if(pending||!last)return false;const before=last;const checked=await refresh();if(!checked)return false;if(before.fingerprint!==checked.fingerprint||before.value.totalMinor!==checked.value.totalMinor){panel.insertAdjacentHTML("beforeend","<p>The price changed. Review the updated total, then place your order.</p>");return false;}return true;},close(){stopped=true;clearTimeout(timer);form.removeEventListener("input",changed);form.removeEventListener("change",changed);}};
+}

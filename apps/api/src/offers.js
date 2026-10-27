@@ -29,7 +29,7 @@ export function releaseOfferForOrder(db, order, now) {
   const grant = db.prepare("SELECT g.*,c.expires_at FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=?").get(order.offer_grant_id);
   if (!grant || grant.status !== "reserved" || grant.reserved_order_id !== order.id) return;
   const status = grant.expires_at <= now ? "expired" : "available";
-  db.prepare("UPDATE offer_grants SET status=?,reserved_order_id=NULL,updated_at=? WHERE id=? AND status='reserved' AND reserved_order_id=?").run(status, now, grant.id, order.id);
+  db.prepare("UPDATE offer_grants SET status=?,reserved_order_id=NULL,reserved_discount_minor=0,updated_at=? WHERE id=? AND status='reserved' AND reserved_order_id=?").run(status, now, grant.id, order.id);
 }
 
 export function redeemOfferForOrder(db, order, now) {
@@ -46,12 +46,12 @@ function campaignDto(db, row) {
 }
 function grantDto(row, now) {
   const effectiveStatus = row.status === "available" && row.expires_at <= now ? "expired" : row.status;
-  return { id: row.id, campaignId: row.campaign_id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, title: row.title, message: row.message, menuItemId: row.menu_item_id, itemName: row.item_name, itemValueMinor: row.item_value_minor, minSubtotalMinor: row.min_subtotal_minor, expiresAt: row.expires_at, status: effectiveStatus, viewedAt: row.viewed_at };
+  return { id: row.id, campaignId: row.campaign_id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, title: row.title, message: row.message, offerType: row.offer_type ?? "free_item", value: row.offer_value ?? 0, menuItemId: row.menu_item_id, itemName: row.item_name, itemValueMinor: row.item_value_minor, minSubtotalMinor: row.min_subtotal_minor, startsAt: row.starts_at ?? row.created_at, expiresAt: row.expires_at, eligibleItemIds: JSON.parse(row.eligible_item_ids ?? "[]"), eligibleCategories: JSON.parse(row.eligible_categories ?? "[]"), stackingPolicy: row.stacking_policy ?? "exclusive", fundingParty: row.funding_party ?? "restaurant", status: effectiveStatus, viewedAt: row.viewed_at };
 }
 
 export async function routeOffers({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/notifications") {
-    const user = requireUser(session); const rows = db.prepare("SELECT * FROM user_notifications WHERE user_id=? ORDER BY created_at DESC,rowid DESC").all(user.id);
+    const user = requireUser(session); const permitsOffers = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); const rows = db.prepare(`SELECT * FROM user_notifications WHERE user_id=? ${permitsOffers ? "" : "AND type<>'offer'"} ORDER BY created_at DESC,rowid DESC`).all(user.id);
     return sendJson(res, 200, { data: { items: rows.map(notificationDto), unreadCount: rows.filter((row) => !row.read_at).length } });
   }
   let match = url.pathname.match(/^\/api\/notifications\/([^/]+)$/);
@@ -73,15 +73,17 @@ export async function routeOffers({ req, res, url, db, config, session }) {
   if (match && req.method === "POST") return createCampaign({ req, res, db, config, session, restaurantId: match[1] });
   if (req.method === "GET" && url.pathname === "/api/offers") {
     const user = requireRole(session, "customer"); const restaurantId = url.searchParams.get("restaurantId");
-    const rows = db.prepare(`SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.customer_id=? ${restaurantId ? "AND g.restaurant_id=?" : ""} ORDER BY g.created_at DESC`).all(...(restaurantId ? [user.id, restaurantId] : [user.id]));
+    const permitted = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); if (!permitted) return sendJson(res, 200, { data: [] });
+    const rows = db.prepare(`SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.offer_type,c.offer_value,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.customer_id=? ${restaurantId ? "AND g.restaurant_id=?" : ""} ORDER BY g.created_at DESC`).all(...(restaurantId ? [user.id, restaurantId] : [user.id]));
     return sendJson(res, 200, { data: rows.map((row) => grantDto(row, config.now().toISOString())) });
   }
   match = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
   if (match && req.method === "PATCH") {
     const user = requireRole(session, "customer"); const body = await readJson(req, config.bodyLimit); exactObject(body, ["viewed"]); if (body.viewed !== true) throw new HttpError(400, "VALIDATION_ERROR", "viewed must be true");
+    const permitted = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); if (!permitted) throw new HttpError(409, "MARKETING_CONSENT_WITHDRAWN", "Promotion is unavailable because marketing consent is off");
     const row = db.prepare("SELECT * FROM offer_grants WHERE id=? AND customer_id=?").get(match[1], user.id); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     db.prepare("UPDATE offer_grants SET viewed_at=COALESCE(viewed_at,?),updated_at=? WHERE id=?").run(config.now().toISOString(), config.now().toISOString(), row.id);
-    const joined = db.prepare("SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.id=?").get(row.id);
+    const joined = db.prepare("SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.offer_type,c.offer_value,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.id=?").get(row.id);
     return sendJson(res, 200, { data: grantDto(joined, config.now().toISOString()) });
   }
   return false;
@@ -104,8 +106,8 @@ async function createCampaign({ req, res, db, config, session, restaurantId }) {
     const eligible = new Set(db.prepare(`SELECT DISTINCT o.customer_id FROM orders o JOIN users u ON u.id=o.customer_id WHERE o.restaurant_id=? AND o.status='completed' AND u.merchant_offers=1 AND o.customer_id IN (${normalized.customerIds.map(() => "?").join(",")})`).all(restaurantId, ...normalized.customerIds).map((row) => row.customer_id));
     if (eligible.size !== normalized.customerIds.length) throw new HttpError(409, "RECIPIENT_NOT_ELIGIBLE", "Every recipient must allow offers and have a completed order at this restaurant");
     const nowDate = config.now(); const now = nowDate.toISOString(); const id = randomUUID(); const expiresAt = new Date(nowDate.getTime() + normalized.expiresInDays * 86400000).toISOString();
-    db.prepare("INSERT INTO offer_campaigns VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id, restaurantId, user.id, key, hash, normalized.title, normalized.message, item.id, item.name, item.price_minor, normalized.minSubtotalMinor, expiresAt, now);
-    for (const customerId of normalized.customerIds) { const grantId = randomUUID(); db.prepare("INSERT INTO offer_grants VALUES(?,?,?,?,?,?,?,?,?,?)").run(grantId, id, restaurantId, customerId, "available", null, null, null, now, now); addNotification(db, { userId: customerId, type: "offer", title: normalized.title, message: normalized.message, offerId: grantId, restaurantId, eventKey: `offer:${grantId}:issued`, now }); }
+    db.prepare("INSERT INTO offer_campaigns(id,restaurant_id,created_by_user_id,idempotency_key,request_hash,title,message,menu_item_id,item_name,item_value_minor,min_subtotal_minor,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id, restaurantId, user.id, key, hash, normalized.title, normalized.message, item.id, item.name, item.price_minor, normalized.minSubtotalMinor, expiresAt, now);
+    for (const customerId of normalized.customerIds) { const grantId = randomUUID(); db.prepare("INSERT INTO offer_grants(id,campaign_id,restaurant_id,customer_id,status,viewed_at,reserved_order_id,redeemed_order_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").run(grantId, id, restaurantId, customerId, "available", null, null, null, now, now); addNotification(db, { userId: customerId, type: "offer", title: normalized.title, message: normalized.message, offerId: grantId, restaurantId, eventKey: `offer:${grantId}:issued`, now }); }
     db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), user.id, "offer_campaign", id, "offer_campaign_created", JSON.stringify({ recipientCount: normalized.customerIds.length }), now);
     return { row: db.prepare("SELECT * FROM offer_campaigns WHERE id=?").get(id), replay: false };
   });

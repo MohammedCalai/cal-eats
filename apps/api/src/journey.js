@@ -9,6 +9,8 @@ import { notifyNewOrder, notifyOrderStatus, redeemOfferForOrder, releaseOfferFor
 import { normalizeAddress } from "./address-validation.js";
 import { restaurantReadiness } from "./readiness.js";
 import { recordMarketplaceAcceptance, recordMarketplaceCompletion } from "./marketplace.js";
+import { promotionQuote } from "./loyalty.js";
+import { orderMessageWindow } from "./order-messaging.js";
 
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
@@ -60,13 +62,16 @@ export function ledgerDto(row) {
   return { id: row.id, orderId: row.order_id, restaurantId: row.restaurant_id, kind: row.kind, amountMinor: row.amount_minor, currency: row.currency, referenceType: row.reference_type, referenceId: row.reference_id, createdAt: row.created_at };
 }
 function refundDto(row) { return { id: row.id, foodAmountMinor: row.food_amount_minor, deliveryAmountMinor: row.delivery_amount_minor, totalMinor: row.food_amount_minor + row.delivery_amount_minor, reason: row.reason, mode: row.mode, createdAt: row.created_at }; }
-export function orderDto(db, row, includeLedger = false, includeFinancial = true) {
+export function orderDto(db, row, includeLedger = false, includeFinancial = true, config = null) {
+  const restaurantPhone = db.prepare("SELECT phone FROM restaurants WHERE id=?").get(row.restaurant_id)?.phone ?? "";
   const items = db.prepare("SELECT * FROM order_items WHERE order_id=? ORDER BY rowid").all(row.id).map((item) => ({ id: item.id, menuItemId: item.menu_item_id, name: item.name, basePriceMinor: item.base_price_minor, unitPriceMinor: item.unit_price_minor, quantity: item.quantity, lineTotalMinor: item.unit_price_minor * item.quantity, selectedModifiers: JSON.parse(item.selected_modifiers ?? "[]"), allergens: JSON.parse(item.allergens ?? "[]"), category: item.category, isOfferItem: Boolean(item.is_offer_item) }));
   const events = db.prepare("SELECT id,kind,from_status,to_status,created_at FROM order_events WHERE order_id=? ORDER BY created_at,rowid").all(row.id).map((event) => ({ id: event.id, kind: event.kind, fromStatus: event.from_status, toStatus: event.to_status, createdAt: event.created_at }));
   const refunds = db.prepare("SELECT * FROM refunds WHERE order_id=? ORDER BY created_at,rowid").all(row.id);
   const refundedFoodMinor = refunds.reduce((sum, refund) => sum + refund.food_amount_minor, 0);
   const refundedDeliveryMinor = refunds.reduce((sum, refund) => sum + refund.delivery_amount_minor, 0);
-  const result = { id: row.id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, customerId: row.customer_id, customerName: row.customer_name, customerEmail: row.customer_email, customerPhone: row.customer_phone, deliveryInstructions: row.delivery_instructions, allergyNotes: row.allergy_notes, status: row.status, estimatedReadyAt: row.estimated_ready_at ?? null, currency: row.currency, subtotalMinor: row.subtotal_minor, deliveryFeeMinor: row.delivery_fee_minor, totalMinor: row.total_minor, deliveryAddress: row.delivery_address ? JSON.parse(row.delivery_address) : null, commissionMinor: row.commission_minor, contract: { rateBasisPoints: row.contract_rate_bps, commissionBase: row.commission_base ?? "food", policyVersion: row.contract_policy_version, demoOnly: Boolean(row.contract_demo_only) }, paymentMethod: row.payment_method, paymentStatus: row.payment_status, fulfillment: row.fulfillment, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor: refundedFoodMinor + refundedDeliveryMinor, refunds: refunds.map(refundDto), ...(row.offer_snapshot ? { offer: JSON.parse(row.offer_snapshot) } : {}), createdAt: row.created_at, updatedAt: row.updated_at, items, events };
+  const result = { id: row.id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, customerId: row.customer_id, customerName: row.customer_name, customerEmail: row.customer_email, customerPhone: row.customer_phone, deliveryInstructions: row.delivery_instructions, allergyNotes: row.allergy_notes, status: row.status, estimatedReadyAt: row.estimated_ready_at ?? null, currency: row.currency, grossFoodMinor: row.gross_food_minor ?? row.subtotal_minor, restaurantDiscountMinor: row.restaurant_discount_minor ?? 0, subtotalMinor: row.subtotal_minor, deliveryFeeMinor: row.delivery_fee_minor, totalMinor: row.total_minor, deliveryAddress: row.delivery_address ? JSON.parse(row.delivery_address) : null, commissionMinor: row.commission_minor, contract: { rateBasisPoints: row.contract_rate_bps, commissionBase: row.commission_base ?? "food", policyVersion: row.contract_policy_version, demoOnly: Boolean(row.contract_demo_only) }, paymentMethod: row.payment_method, paymentStatus: row.payment_status, fulfillment: row.fulfillment, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor: refundedFoodMinor + refundedDeliveryMinor, refunds: refunds.map(refundDto), ...(row.offer_snapshot ? { offer: JSON.parse(row.offer_snapshot) } : {}), ...(row.promotion_snapshot ? { promotion: JSON.parse(row.promotion_snapshot) } : {}), createdAt: row.created_at, updatedAt: row.updated_at, items, events };
+  result.restaurantPhone = restaurantPhone;
+  if (config) Object.assign(result, orderMessageWindow(db, row, config));
   if (includeLedger) result.ledger = db.prepare("SELECT * FROM ledger_entries WHERE order_id=? ORDER BY created_at,rowid").all(row.id).map(ledgerDto);
   if (!includeFinancial) { delete result.commissionMinor; delete result.contract; }
   return result;
@@ -99,7 +104,8 @@ function receiptHtml(order, printJobId = null) {
   const rows = order.items.map((item) => `<tr><td>${escapeHtml(item.name)}${item.isOfferItem ? "<br><strong>FREE OFFER ITEM</strong>" : ""}${item.selectedModifiers.length ? `<br><small>${item.selectedModifiers.map((modifier) => escapeHtml(modifier.name)).join(", ")}</small>` : ""}${item.allergens.length ? `<br><small>Allergens: ${item.allergens.map(escapeHtml).join(", ")} (restaurant supplied)</small>` : ""}</td><td>${item.quantity}</td><td>${item.isOfferItem ? `Free (value ${money(item.basePriceMinor)})` : money(item.lineTotalMinor)}</td></tr>`).join("");
   const address = order.deliveryAddress ? `<p><strong>Deliver to:</strong> ${[order.deliveryAddress.line1, order.deliveryAddress.line2, order.deliveryAddress.city, order.deliveryAddress.postcode].filter(Boolean).map(escapeHtml).join(", ")}</p>` : "";
   const payment = order.paymentMethod === "mock_card" ? "Mock card — no real payment processed" : "Cash — paid directly to restaurant; collection is confirmed only when completed";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Order receipt</title><style>@page{size:80mm auto;margin:4mm}body{font:12px system-ui;width:72mm;margin:0 auto}table{width:100%;border-collapse:collapse}td,th{padding:2mm 0;border-bottom:1px solid #ccc;text-align:left}.allergy{border:2px solid #000;padding:2mm}@media screen{body{padding:1rem}}</style></head><body><h1>${escapeHtml(order.restaurantName)}</h1><p>Order ${escapeHtml(order.id)}</p><p>Created: ${escapeHtml(order.createdAt)}</p>${printJobId ? `<p><strong>Reprint reference:</strong> ${escapeHtml(printJobId)}</p>` : ""}<p>Customer: ${escapeHtml(order.customerName)} · ${escapeHtml(order.customerPhone || "No phone supplied")}</p><p>Fulfillment: ${escapeHtml(order.fulfillment)}</p>${address}${order.deliveryInstructions ? `<p>Instructions: ${escapeHtml(order.deliveryInstructions)}</p>` : ""}${order.allergyNotes ? `<p class="allergy"><strong>ALLERGY NOTE:</strong> ${escapeHtml(order.allergyNotes)}</p>` : ""}<table><thead><tr><th>Item</th><th>Qty</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><p>Food subtotal: ${money(order.subtotalMinor)}</p><p>Delivery fee: ${money(order.deliveryFeeMinor)}</p><p>Refunded: ${money(order.refundedTotalMinor)}</p><p><strong>Total: ${money(order.totalMinor - order.refundedTotalMinor)}</strong></p><p>${escapeHtml(payment)}</p><p>Payment status: ${escapeHtml(order.paymentStatus)}</p><p>Order status: ${escapeHtml(order.status)}</p></body></html>`;
+  const discount = order.restaurantDiscountMinor ? `<p>Food before promotion: ${money(order.grossFoodMinor)}</p><p>Restaurant promotion: −${money(order.restaurantDiscountMinor)}</p>` : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Order receipt</title><style>@page{size:80mm auto;margin:4mm}body{font:12px system-ui;width:72mm;margin:0 auto}table{width:100%;border-collapse:collapse}td,th{padding:2mm 0;border-bottom:1px solid #ccc;text-align:left}.allergy{border:2px solid #000;padding:2mm}@media screen{body{padding:1rem}}</style></head><body><h1>${escapeHtml(order.restaurantName)}</h1><p>Order ${escapeHtml(order.id)}</p><p>Created: ${escapeHtml(order.createdAt)}</p>${printJobId ? `<p><strong>Reprint reference:</strong> ${escapeHtml(printJobId)}</p>` : ""}<p>Customer: ${escapeHtml(order.customerName)} · ${escapeHtml(order.customerPhone || "No phone supplied")}</p><p>Fulfillment: ${escapeHtml(order.fulfillment)}</p>${address}${order.deliveryInstructions ? `<p>Instructions: ${escapeHtml(order.deliveryInstructions)}</p>` : ""}${order.allergyNotes ? `<p class="allergy"><strong>ALLERGY NOTE:</strong> ${escapeHtml(order.allergyNotes)}</p>` : ""}<table><thead><tr><th>Item</th><th>Qty</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>${discount}<p>Food paid: ${money(order.subtotalMinor)}</p><p>Delivery fee: ${money(order.deliveryFeeMinor)}</p><p>Refunded: ${money(order.refundedTotalMinor)}</p><p><strong>Total: ${money(order.totalMinor - order.refundedTotalMinor)}</strong></p><p>${escapeHtml(payment)}</p><p>Payment status: ${escapeHtml(order.paymentStatus)}</p><p>Order status: ${escapeHtml(order.status)}</p></body></html>`;
 }
 
 export async function routeJourney({ req, res, url, db, config, session }) {
@@ -214,20 +220,21 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     withTransaction(db, () => { db.prepare("UPDATE restaurants SET suspended=?,suspension_reason=? WHERE id=?").run(Number(suspended), suspended ? reason : "", row.id); db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), user.id, "restaurant", row.id, "suspension_changed", JSON.stringify({ suspended, reason }), now); });
     return sendJson(res, 200, { data: restaurantDto(db.prepare("SELECT * FROM restaurants WHERE id=?").get(row.id), { privateDetails: true, now: config.now() }) });
   }
+  if (req.method === "POST" && url.pathname === "/api/orders/quote") return quoteOrder({ req, res, db, config, session });
   if (req.method === "POST" && url.pathname === "/api/orders") return createOrder({ req, res, db, config, session });
   if (req.method === "GET" && url.pathname === "/api/orders") {
     const user = requireRole(session, "customer");
-    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE customer_id=? ORDER BY created_at DESC").all(user.id).map((row) => orderDto(db, row)) });
+    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE customer_id=? ORDER BY created_at DESC").all(user.id).map((row) => orderDto(db, row, false, true, config)) });
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/orders$/);
   if (match && req.method === "GET") {
     const member = requireRestaurantMembership(db, session, match[1]);
     const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(match[1], member.id).permission;
-    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE restaurant_id=? ORDER BY created_at DESC").all(match[1]).map((row) => orderDto(db, row, permission === "owner", permission === "owner")) });
+    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE restaurant_id=? ORDER BY created_at DESC").all(match[1]).map((row) => orderDto(db, row, permission === "owner", permission === "owner", config)) });
   }
   if (req.method === "GET" && url.pathname === "/api/admin/orders") {
     requireRole(session, "admin");
-    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all().map((row) => orderDto(db, row, true)) });
+    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all().map((row) => orderDto(db, row, true, true, config)) });
   }
   if (req.method === "GET" && url.pathname === "/api/admin/ledger") {
     requireRole(session, "admin");
@@ -240,16 +247,28 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     const access = authorizedOrder(db, session, match[1]);
     const printJobId = url.searchParams.get("printJobId");
     if (printJobId && !db.prepare("SELECT 1 FROM print_jobs WHERE id=? AND order_id=?").get(printJobId, access.row.id)) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    const html = receiptHtml(orderDto(db, access.row, access.includeLedger, access.includeFinancial), printJobId);
+    const html = receiptHtml(orderDto(db, access.row, access.includeLedger, access.includeFinancial, config), printJobId);
     res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": Buffer.byteLength(html) }); res.end(html); return true;
   }
   match = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
   if (match && req.method === "GET") {
     const access = authorizedOrder(db, session, match[1]);
-    return sendJson(res, 200, { data: orderDto(db, access.row, access.includeLedger, access.includeFinancial) });
+    return sendJson(res, 200, { data: orderDto(db, access.row, access.includeLedger, access.includeFinancial, config) });
   }
   return false;
+}
+
+async function quoteOrder({req,res,db,config,session}){
+  const user=requireRole(session,"customer"),body=await readJson(req,config.bodyLimit);exactObject(body,["restaurantId","items","fulfillment","deliveryAddress","offerId"]);if(typeof body.restaurantId!=="string"||!Array.isArray(body.items)||!body.items.length||body.items.length>VALIDATION.orderItemsMax||!["collection","delivery"].includes(body.fulfillment))throw new HttpError(400,"VALIDATION_ERROR","Quote is invalid");
+  const restaurant=db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(body.restaurantId);if(!restaurant)throw new HttpError(404,"NOT_FOUND","Resource not found");const address=body.fulfillment==="delivery"?normalizeAddress(body.deliveryAddress):null;if(body.fulfillment==="collection"&&body.deliveryAddress!==undefined)throw new HttpError(400,"VALIDATION_ERROR","Collection quotes cannot include an address");
+  const normalized=body.items.map((entry)=>{exactObject(entry,["menuItemId","quantity","modifiers"]);return{menuItemId:text(entry.menuItemId,1,100,"Menu item"),quantity:integer(entry.quantity,1,VALIDATION.quantityMax,"Quantity"),modifiers:entry.modifiers??[]};});if(new Set(normalized.map(x=>x.menuItemId)).size!==normalized.length)throw new HttpError(400,"VALIDATION_ERROR","Duplicate menu items are not allowed");
+  const menu=normalized.map((entry)=>({entry,row:db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(entry.menuItemId,restaurant.id)}));if(menu.some(x=>!x.row))throw new HttpError(409,"MENU_UNAVAILABLE","One or more menu items are unavailable");
+  for(const line of menu){const groups=JSON.parse(line.row.modifier_groups??"[]"),supplied=new Map();if(!Array.isArray(line.entry.modifiers)||line.entry.modifiers.length>groups.length)throw new HttpError(400,"VALIDATION_ERROR","Modifier selections are invalid");for(const selection of line.entry.modifiers){exactObject(selection,["groupId","optionIds"]);const id=shortId(selection.groupId,"Modifier group");if(supplied.has(id)||!Array.isArray(selection.optionIds))throw new HttpError(400,"VALIDATION_ERROR","Modifier selections are invalid");supplied.set(id,selection.optionIds);}let extra=0;line.selected=[];for(const group of groups){const ids=supplied.get(group.id)??[];if(new Set(ids).size!==ids.length||ids.length<group.minSelections||ids.length>group.maxSelections)throw new HttpError(409,"MODIFIER_SELECTION_INVALID",`Selections for ${group.name} are invalid`);for(const id of ids){const option=group.options.find(x=>x.id===id);if(!option||!option.available)throw new HttpError(409,"MODIFIER_UNAVAILABLE","A selected modifier is unavailable");extra+=option.priceMinor;}supplied.delete(group.id);}if(supplied.size)throw new HttpError(400,"VALIDATION_ERROR","Unknown modifier group");line.unitPrice=line.row.price_minor+extra;}
+  const gross=menu.reduce((n,l)=>n+l.unitPrice*l.entry.quantity,0);let deliveryFeeMinor=0;if(address){const d=deliveryFromRow(restaurant);if(!d.enabled||!d.outcodes.includes(address.outcode))throw new HttpError(409,"DELIVERY_UNAVAILABLE","Delivery is unavailable for this address");if(gross<d.minDeliverySubtotalMinor)throw new HttpError(409,"DELIVERY_MINIMUM","Order does not meet the delivery minimum");deliveryFeeMinor=d.deliveryFeeMinor;}
+  let quote={discountMinor:0,netSubtotalMinor:gross,allocations:[]},offer=null;const now=config.now().toISOString();if(body.offerId){offer=db.prepare("SELECT g.*,c.title,c.offer_type,c.offer_value,c.min_subtotal_minor,c.expires_at,c.created_at AS campaign_created_at,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.funding_party,c.budget_minor,c.redemption_limit FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=? AND g.customer_id=? AND g.restaurant_id=? AND g.status='available'").get(body.offerId,user.id,restaurant.id);if(!offer)throw new HttpError(409,"OFFER_UNAVAILABLE","Offer is unavailable");if(!db.prepare("SELECT 1 FROM marketing_preferences WHERE user_id=? AND in_app_promotions=1").get(user.id))throw new HttpError(409,"MARKETING_CONSENT_WITHDRAWN","Promotion is unavailable because marketing consent is off");quote=promotionQuote(db,{grant:offer,menu,grossSubtotal:gross,now});const committed=db.prepare("SELECT COUNT(*) count,COALESCE(SUM(reserved_discount_minor),0) amount FROM offer_grants WHERE campaign_id=? AND status IN ('reserved','redeemed')").get(offer.campaign_id);if(committed.count>=(offer.redemption_limit??1)||(offer.budget_minor!==null&&committed.amount+quote.discountMinor>offer.budget_minor))throw new HttpError(409,"PROMOTION_UNAVAILABLE","Promotion limit or budget is exhausted");}
+  const policy=db.prepare("SELECT * FROM commission_policies WHERE restaurant_id=? AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1").get(restaurant.id,now,now),contract=db.prepare("SELECT * FROM contracts WHERE restaurant_id=? AND accepted_at IS NOT NULL").get(restaurant.id),rate=policy?.rate_bps??contract?.rate_bps??700,base=policy?.commission_base??"food",commissionBaseMinor=quote.netSubtotalMinor+(base==="food_plus_delivery"?deliveryFeeMinor:0);
+  return sendJson(res,200,{data:{currency:"GBP",grossFoodMinor:gross,restaurantDiscountMinor:quote.discountMinor,subtotalMinor:quote.netSubtotalMinor,deliveryFeeMinor,totalMinor:quote.netSubtotalMinor+deliveryFeeMinor,commissionMinor:calculateCommissionAtRate(commissionBaseMinor,rate),commission:{rateBasisPoints:rate,base,baseMinor:commissionBaseMinor},promotion:offer?{grantId:offer.id,campaignId:offer.campaign_id,title:offer.title,offerType:offer.offer_type,allocations:quote.allocations}:null,sideEffects:false}});
 }
 
 async function createOrder({ req, res, db, config, session }) {
@@ -302,38 +321,40 @@ async function createOrder({ req, res, db, config, session }) {
     if (supplied.size) throw new HttpError(400, "VALIDATION_ERROR", "Unknown modifier group");
     line.unitPrice = line.row.price_minor + extra;
   }
-  const subtotal = menu.reduce((sum, { entry, unitPrice }) => sum + unitPrice * entry.quantity, 0);
-  if (!Number.isSafeInteger(subtotal) || subtotal > VALIDATION.priceMaxMinor) throw new HttpError(400, "VALIDATION_ERROR", "Order subtotal is invalid");
+  const grossSubtotal = menu.reduce((sum, { entry, unitPrice }) => sum + unitPrice * entry.quantity, 0);
+  if (!Number.isSafeInteger(grossSubtotal) || grossSubtotal > VALIDATION.priceMaxMinor) throw new HttpError(400, "VALIDATION_ERROR", "Order subtotal is invalid");
   let fee = 0;
   if (address) {
     const delivery = deliveryFromRow(restaurant);
     if (!delivery.enabled) throw new HttpError(409, "DELIVERY_DISABLED", "Restaurant delivery is disabled");
     if (!delivery.outcodes.includes(address.outcode)) throw new HttpError(409, "DELIVERY_OUTSIDE_AREA", "Address is outside the delivery area");
-    if (subtotal < delivery.minDeliverySubtotalMinor) throw new HttpError(409, "DELIVERY_MINIMUM", "Order does not meet the delivery minimum");
+    if (grossSubtotal < delivery.minDeliverySubtotalMinor) throw new HttpError(409, "DELIVERY_MINIMUM", "Order does not meet the delivery minimum");
     fee = delivery.deliveryFeeMinor;
   }
   const now = config.now().toISOString();
+  let grant = null, quote = { discountMinor: 0, netSubtotalMinor: grossSubtotal, allocations: [] };
+  if (offerId) {
+    grant = db.prepare("SELECT g.*,c.title,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.created_at AS campaign_created_at,c.offer_type,c.offer_value,c.starts_at,c.redemption_limit,c.budget_minor,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=? AND g.customer_id=? AND g.restaurant_id=?").get(offerId, user.id, restaurant.id);
+    if (!grant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    if (grant.status !== "available") throw new HttpError(409, "OFFER_UNAVAILABLE", "Offer is no longer available");
+    if (!db.prepare("SELECT 1 FROM marketing_preferences WHERE user_id=? AND in_app_promotions=1").get(user.id)) throw new HttpError(409, "MARKETING_CONSENT_WITHDRAWN", "Promotion is unavailable because marketing consent is off");
+    quote = promotionQuote(db, { grant, menu, grossSubtotal, now });
+  }
+  const subtotal = quote.netSubtotalMinor;
   if (body.paymentMethod === "mock_card" && !authorizeMockPayment({ amountMinor: subtotal + fee }).ok) throw new HttpError(409, "PAYMENT_DECLINED", "Mock payment was declined");
   const deliveryAddress = address ? Object.fromEntries(Object.entries(address).filter(([key]) => key !== "outcode")) : null;
   const customer = db.prepare("SELECT * FROM users WHERE id=?").get(user.id);
   const marketplacePolicy = db.prepare("SELECT * FROM commission_policies WHERE restaurant_id=? AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1").get(restaurant.id, now, now);
   const rateBasisPoints = marketplacePolicy?.rate_bps ?? contract.rate_bps, commissionBase = marketplacePolicy?.commission_base ?? "food", commissionAmount = subtotal + (commissionBase === "food_plus_delivery" ? fee : 0);
-  const order = { id: randomUUID(), restaurant_id: restaurant.id, restaurant_name: restaurant.name, customer_id: user.id, status: "placed", currency: "GBP", subtotal_minor: subtotal, delivery_fee_minor: fee, total_minor: subtotal + fee, delivery_address: deliveryAddress ? JSON.stringify(deliveryAddress) : null, commission_minor: calculateCommissionAtRate(commissionAmount, rateBasisPoints), payment_method: body.paymentMethod, payment_status: body.paymentMethod === "mock_card" ? "mock_authorized" : "cash_due", fulfillment: body.fulfillment, idempotency_key: key, request_hash: hash, created_at: now, updated_at: now, contract_rate_bps: rateBasisPoints, contract_policy_version: marketplacePolicy?.version ?? contract.policy_version, contract_demo_only: marketplacePolicy ? marketplacePolicy.development_assumption : contract.demo_only, customer_name: customer.name, customer_email: customer.email, customer_phone: customerPhone || customer.phone, delivery_instructions: deliveryInstructions, allergy_notes: allergyNotes, offer_grant_id: offerId, offer_snapshot: null, commission_base: commissionBase };
+  const order = { id: randomUUID(), restaurant_id: restaurant.id, restaurant_name: restaurant.name, customer_id: user.id, status: "placed", currency: "GBP", subtotal_minor: subtotal, delivery_fee_minor: fee, total_minor: subtotal + fee, delivery_address: deliveryAddress ? JSON.stringify(deliveryAddress) : null, commission_minor: calculateCommissionAtRate(commissionAmount, rateBasisPoints), payment_method: body.paymentMethod, payment_status: body.paymentMethod === "mock_card" ? "mock_authorized" : "cash_due", fulfillment: body.fulfillment, idempotency_key: key, request_hash: hash, created_at: now, updated_at: now, contract_rate_bps: rateBasisPoints, contract_policy_version: marketplacePolicy?.version ?? contract.policy_version, contract_demo_only: marketplacePolicy ? marketplacePolicy.development_assumption : contract.demo_only, customer_name: customer.name, customer_email: customer.email, customer_phone: customerPhone || customer.phone, delivery_instructions: deliveryInstructions, allergy_notes: allergyNotes, offer_grant_id: offerId, offer_snapshot: null, commission_base: commissionBase, gross_food_minor: grossSubtotal, restaurant_discount_minor: quote.discountMinor, promotion_snapshot: quote.discountMinor ? JSON.stringify({ grantId: offerId, campaignId: grant.campaign_id, title: grant.title, offerType: grant.offer_type, fundingParty: "restaurant", grossFoodMinor: grossSubtotal, discountMinor: quote.discountMinor, netFoodMinor: subtotal, allocations: quote.allocations }) : null };
     let gift = null;
     if (offerId) {
       if (subtotal <= 0) throw new HttpError(409, "OFFER_REQUIRES_PURCHASE", "An offer requires a paid food item");
-      const grant = db.prepare("SELECT g.*,c.title,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=? AND g.customer_id=? AND g.restaurant_id=?").get(offerId, user.id, restaurant.id);
-      if (!grant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-      if (grant.status !== "available") throw new HttpError(409, "OFFER_UNAVAILABLE", "Offer is no longer available");
-      if (grant.expires_at <= now) throw new HttpError(409, "OFFER_EXPIRED", "Offer has expired");
-      if (subtotal < grant.min_subtotal_minor) throw new HttpError(409, "OFFER_MINIMUM", "Order does not meet the offer minimum");
-      gift = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(grant.menu_item_id, restaurant.id);
-      if (!gift || JSON.parse(gift.modifier_groups ?? "[]").some((group) => group.minSelections > 0)) throw new HttpError(409, "OFFER_ITEM_UNAVAILABLE", "Offer item is unavailable");
-      order.offer_snapshot = JSON.stringify({ offerId: grant.id, title: grant.title, menuItemId: grant.menu_item_id, itemName: grant.item_name, itemValueMinor: grant.item_value_minor });
-      gift.offerName = grant.item_name; gift.offerValue = grant.item_value_minor;
+      order.offer_snapshot = JSON.stringify({ offerId: grant.id, title: grant.title, offerType: grant.offer_type, menuItemId: grant.menu_item_id, itemName: grant.item_name, itemValueMinor: grant.item_value_minor, discountMinor: quote.discountMinor });
+      if ((grant.offer_type ?? "free_item") === "free_item") { gift = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(grant.menu_item_id, restaurant.id); if (!gift || JSON.parse(gift.modifier_groups ?? "[]").some((group) => group.minSelections > 0)) throw new HttpError(409, "OFFER_ITEM_UNAVAILABLE", "Offer item is unavailable"); gift.offerName = grant.item_name; gift.offerValue = grant.item_value_minor; }
     }
-    db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,contract_rate_bps,contract_policy_version,contract_demo_only,customer_name,customer_email,customer_phone,delivery_instructions,allergy_notes,offer_grant_id,offer_snapshot,commission_base) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(order));
-    if (offerId) { const reserved = db.prepare("UPDATE offer_grants SET status='reserved',reserved_order_id=?,updated_at=? WHERE id=? AND status='available'").run(order.id, now, offerId); if (reserved.changes !== 1) throw new HttpError(409, "OFFER_UNAVAILABLE", "Offer is no longer available"); }
+    db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,contract_rate_bps,contract_policy_version,contract_demo_only,customer_name,customer_email,customer_phone,delivery_instructions,allergy_notes,offer_grant_id,offer_snapshot,commission_base,gross_food_minor,restaurant_discount_minor,promotion_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(order));
+    if (offerId) { const committed=db.prepare("SELECT COUNT(*) count,COALESCE(SUM(reserved_discount_minor),0) amount FROM offer_grants WHERE campaign_id=? AND status IN ('reserved','redeemed')").get(grant.campaign_id); if(committed.count>=(grant.redemption_limit??1)) throw new HttpError(409,"PROMOTION_LIMIT_REACHED","Promotion redemption limit is reached"); if (grant.budget_minor !== null && committed.amount+quote.discountMinor>grant.budget_minor) throw new HttpError(409,"PROMOTION_BUDGET_EXHAUSTED","Promotion budget is exhausted"); const reserved = db.prepare("UPDATE offer_grants SET status='reserved',reserved_order_id=?,reserved_discount_minor=?,updated_at=? WHERE id=? AND status='available'").run(order.id, quote.discountMinor, now, offerId); if (reserved.changes !== 1) throw new HttpError(409, "OFFER_UNAVAILABLE", "Offer is no longer available"); }
     for (const { entry, row, selected, unitPrice } of menu) db.prepare("INSERT INTO order_items(id,order_id,menu_item_id,name,unit_price_minor,quantity,base_price_minor,selected_modifiers,allergens,category,is_offer_item) VALUES(?,?,?,?,?,?,?,?,?,?,0)").run(randomUUID(), order.id, row.id, row.name, unitPrice, entry.quantity, row.price_minor, JSON.stringify(selected), row.allergens, row.category);
     if (gift) db.prepare("INSERT INTO order_items(id,order_id,menu_item_id,name,unit_price_minor,quantity,base_price_minor,selected_modifiers,allergens,category,is_offer_item) VALUES(?,?,?,?,0,1,?,?,?,?,1)").run(randomUUID(), order.id, gift.id, gift.offerName, gift.offerValue, "[]", gift.allergens, gift.category);
     db.prepare("INSERT INTO order_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), order.id, user.id, "status_changed", null, "placed", now);
@@ -341,7 +362,7 @@ async function createOrder({ req, res, db, config, session }) {
     return { order };
   });
   const stored = outcome.replay ?? outcome.order;
-  return sendJson(res, outcome.replay ? 200 : 201, { data: orderDto(db, stored) });
+  return sendJson(res, outcome.replay ? 200 : 201, { data: orderDto(db, stored, false, true, config) });
 }
 
 async function updateStatus({ req, res, db, config, session, id }) {
@@ -379,5 +400,5 @@ async function updateStatus({ req, res, db, config, session, id }) {
     if (body.status === "completed") recordMarketplaceCompletion(db, db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), now);
     return { order: db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), permission: membership.permission };
   });
-  return sendJson(res, 200, { data: orderDto(db, result.order, result.permission === "owner", result.permission === "owner") });
+  return sendJson(res, 200, { data: orderDto(db, result.order, result.permission === "owner", result.permission === "owner", config) });
 }
