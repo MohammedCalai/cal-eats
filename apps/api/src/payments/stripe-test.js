@@ -14,7 +14,7 @@ export function createStripeTestAdapter(config = {}) {
 export function createStripeAdapter(config = {}) {
   const mode=config.mode??"test";if(!["test","live"].includes(mode))throw new StripeTestConfigurationError("Stripe mode is invalid");if(mode==="live"&&config.liveEnabled!==true)throw new StripeTestConfigurationError("Stripe live mode requires an explicit liveEnabled gate");
   const secretKey = String(config.secretKey || "");
-  const expectedPrefix=mode==="live"?"sk_live_":"sk_test_";if(!secretKey.startsWith(expectedPrefix))throw new StripeTestConfigurationError(`Stripe ${mode} adapter requires a matching secret key`);
+  const expectedPrefixes=mode==="live"?["rk_live_","sk_live_"]:["rk_test_","sk_test_"];if(!expectedPrefixes.some((prefix)=>secretKey.startsWith(prefix)))throw new StripeTestConfigurationError(`Stripe ${mode} adapter requires a matching restricted or secret key`);
   const baseUrl = new URL(config.baseUrl || DEFAULT_BASE_URL);
   if (baseUrl.origin !== DEFAULT_BASE_URL && !(config.allowTestTransport && typeof config.fetchImpl === "function")) throw new StripeTestConfigurationError("Custom Stripe transport requires an explicitly injected test fetch");
   const fetchImpl = config.fetchImpl || globalThis.fetch;
