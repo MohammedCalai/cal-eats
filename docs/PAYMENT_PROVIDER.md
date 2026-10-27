@@ -1,71 +1,51 @@
-# Stripe test-only provider boundary
+# Stripe payments and restaurant payouts
 
-## Status
+## Current status — 27 October 2026
 
-`apps/api/src/payments/stripe-test.js` is a dependency-free Node 24 HTTP adapter for a future, separately authorised Stripe sandbox integration. It has not made a Stripe request, received credentials, processed a payment, created an account, registered a webhook, or activated a provider. The existing deterministic local simulator remains the default.
+The customer browser, native source, restaurant portal and backend now share the Stripe payment flow. The local simulator remains selected. No Stripe account, credentials, external webhook, real charge, transfer, refund or bank payout was created in this phase. The owner confirmed that a separate Cal-Eats Stripe account still needs to be created. Original Calai remains untouched.
 
-The adapter pins Stripe API version `2025-06-30.basil`, the version identified by the official [Stripe API versioning reference](https://docs.stripe.com/api/versioning). Changing the pinned version requires a contract review and sandbox regression run; it must not silently inherit an account default.
+## Customer payment and restaurant earnings
 
-## Provider interface
+Card checkout is hosted by Stripe; Cal-Eats never accepts card numbers or bank details. The server prices the basket, reserves an eligible restaurant-funded offer and creates a pending order. One server-owned idempotency key identifies that order's Checkout Session, even if the browser changes its retry key. Customers can continue an interrupted checkout or refresh its authoritative payment status.
 
-`createStripeTestAdapter(config)` requires an `sk_test_` secret supplied only to server configuration and refuses live keys or non-test mode. No route accepts provider credentials. The returned frozen object exposes:
+The PaymentIntent uses manual capture. A verified authorization makes the order visible to the restaurant and produces its new-order notification. Restaurant acceptance captures the card; a durable per-order decision claim serializes acceptance and rejection. Confirmed capture, cancellation and amounts are retrieved from Stripe rather than inferred from a return URL. Abandoned sessions and authorizations are expired/cancelled before releasing the offer. A captured payment discovered during expiry is preserved for reconciliation.
 
-- connected accounts: `createConnectedAccount`, `refreshConnectedAccount`, `createAccountLink`;
-- payout policy: `configureWeeklyPayouts`;
-- card funds: `authorizePayment`, `capturePayment`, `cancelPayment`, `retrievePayment`;
-- marketplace movement: `refundPayment`, `createTransfer`, `retrieveTransfer`, `reverseTransfer`;
-- cash-commission mandate: `createCustomer`, `retrieveCustomer`, `createCashMandateSetup`, `retrieveSetupIntent`, `retrieveMandate`, `collectCashCommission`, `retrieveCashCollection`;
-- payout reconciliation: `listPayouts`, `retrievePayout`.
+The agreed 7% rate and the order's accepted food or food-plus-delivery commission basis remain unchanged. Discounts reduce the charged food; immutable allocations govern refunds. A £20 commissionable sale yields £1.40 gross platform commission and £18.60 restaurant earnings before later refunds. Processing fees are borne by the platform under the existing model, so gross commission is not profit. Actual Stripe balance-transaction fees are reconciled separately; missing fees remain pending rather than being invented.
 
-Foundation’s required methods return normalized `{ok,status,providerReference?,providerCostMinor?,capabilities?,requirements?,errorCode?}`. `status` is `confirmed`, `pending`, `failed`, or `unknown`. Payment results additionally distinguish `paymentState` (`authorized`, `captured`, `cancelled`, `action_required`, `processing`, `requires_confirmation`, `requires_payment_method`, or `unknown`), so a successful cancellation operation is not misreported as a failed cancellation. Expanded retrieval exposes the latest charge, actual balance-transaction fee and fund-availability timestamp when Stripe supplies them. Hosted onboarding additionally returns a single-use `actionUrl`; SetupIntent creation returns its client secret for a future reviewed Stripe.js confirmation flow. Neither value indicates onboarding or a mandate completed.
+## Restaurant Connect onboarding and payouts
 
-All mutations require a bounded operation-level idempotency key and send `Idempotency-Key`. The caller must persist the same operation key across retries. Network errors, timeouts, HTTP 409/429/5xx and Stripe API errors are `unknown`, never falsely marked failed. The caller reconciles unknown results with the corresponding retrieve method before retrying money movement.
+Owners use **Stripe setup** in the restaurant portal. Stripe Express collects business verification and bank details on Stripe's own pages. Returning to Cal-Eats does not prove verification. The server refreshes actual charges-enabled and payouts-enabled flags and keeps a mode-bound readiness snapshot. An unverified restaurant cannot accept card orders. Test and live account references cannot be reused across modes.
 
-The adapter imports no database code. Provider calls belong outside SQLite transactions. Foundation persists normalized results, provider references, journal postings and reconciliation work in a separate transaction.
+The integration uses [separate charges and transfers](https://docs.stripe.com/connect/separate-charges-and-transfers). A completed, captured order becomes eligible for a restaurant transfer only when its mode-bound account is ready and no active case blocks settlement. The queue records an immutable source-charge/account/net-earnings snapshot; the worker checks it again before submitting a transfer. Cash is excluded. Duplicate retries use the same provider operation key.
 
-## Payment and marketplace model
+Stripe is configured for weekly automatic bank payouts on Monday. Arrival depends on available funds, verification, Stripe and bank processing; Monday is not a guaranteed arrival date. Cal-Eats does not run a competing bank-payout scheduler. Internal restaurant transfers and actual bank payouts are separate records. The owner sees payout status and expected arrival; administrators can see confirmed bank-payout activity and failures. [Stripe payout schedule guidance](https://docs.stripe.com/connect/manage-payout-schedule).
 
-Card authorization creates one PaymentIntent for the order, confirms it with `capture_method=manual`, and captures only after restaurant acceptance. Cancellation is explicit. The adapter accepts only server-side integer GBP pence and pre-tokenized PaymentMethod references; it never accepts PAN, bank details or a secret key from a browser.
+## Refunds, reversals and recovery
 
-Transfers use Connect separate charges and transfers, associated by a server operation group and the captured charge as `source_transaction`. The caller must wait for the authoritative captured charge and persist that reference before transfer creation. Stripe documents that the platform is responsible for refund/transfer reconciliation: refunding a platform charge does not automatically reverse associated transfers. The adapter therefore exposes refund and transfer reversal as distinct idempotent operations. See [Stripe separate charges and transfers](https://docs.stripe.com/connect/separate-charges-and-transfers) and [transfer reversals](https://docs.stripe.com/api/transfer_reversals/create).
+Restaurant-approved and admin-approved card remedies enter the same durable Stripe refund worker. Approval does not create a refund record or claim a successful refund. Pending outcomes retain their provider reference for retrieval; confirmed amounts, currency, PaymentIntent and tenant bindings must match before the case and ledger are finalized. Duplicate events cannot finalize twice.
 
-Connected-account onboarding uses an Express account and a single-use hosted Account Link. A return URL is never treated as completion; `refreshConnectedAccount` checks enabled capabilities and outstanding requirements. See [Account Links](https://docs.stripe.com/api/account_links/create).
+A platform refund does not automatically reverse a restaurant transfer. Confirmed refunds separately queue the restaurant-funded transfer reversal, net of the documented commission reversal. Each reversal is idempotent and bounded by the original transfer. A failed recovery remains visible for review. Insufficient connected-account funds, already-paid-out money and chargebacks still require the platform's operational ownership; this code cannot guarantee recovery from an empty restaurant balance.
 
-`configureWeeklyPayouts` configures Stripe’s automatic weekly connected-account payout schedule through Balance Settings and a connected-account header. The application must not run a second bank-payout scheduler. Its local workers may establish transfer eligibility, create transfers and reconcile results, but must not create competing Payout objects. See [automatic payout schedules](https://docs.stripe.com/connect/manage-payout-schedule).
+Workers claim one job at a time, recover expired leases and assert ownership inside the same transaction as financial updates. Provider I/O stays outside database transactions. Ambiguous results are retrieved or replayed with the same key; changed settlement snapshots are held for review. Confirmed money state cannot regress to unknown. Simulator workers cannot consume Stripe jobs or simulate a card refund/payout.
 
-## Bacs cash-commission collection
+Cash orders remain direct payments to the restaurant, with a separate commission receivable and evidenced cash-refund process. The adapter includes a Bacs boundary, but the hosted mandate/notice/collection workflow is **not activated or connected**. Cal-Eats must not claim it has collected cash commission automatically.
 
-Cash-order commission is a platform receivable, never bank-payout funds. `createCashMandateSetup` creates a Bacs Direct Debit SetupIntent for `off_session` reuse. A separately reviewed Stripe.js/hosted flow must collect the bank details and mandate acceptance directly with Stripe; the API must never receive those details. A successful SetupIntent and returned mandate/payment-method references are prerequisites to `collectCashCommission`, which creates an off-session Bacs PaymentIntent.
+## Configuration and activation
 
-Bacs processing is asynchronous. `processing` remains pending, and webhooks or retrieval must establish success or failure. The system must retain the mandate reference, customer authority, required notices and evidence; the adapter alone does not establish regulatory compliance. See the official [SetupIntent reference](https://docs.stripe.com/api/setup_intents) and Bacs Direct Debit documentation before sandbox activation.
+`.env.example` documents names only. Secrets belong in private local/server configuration and must never be pasted in chat, committed or returned by an API.
 
-## HTTP and secret controls
+- Default: `CALAI_PAYMENT_PROVIDER=local_simulator` and `CALAI_LIVE_PAYMENTS_ENABLED=false`.
+- Sandbox: `CALAI_PAYMENT_PROVIDER=stripe_test`, `CALAI_STRIPE_ACCOUNT_ID`, `CALAI_STRIPE_TEST_SECRET_KEY`, `CALAI_STRIPE_TEST_WEBHOOK_SECRET`, `CALAI_STRIPE_TEST_CONNECT_WEBHOOK_SECRET`.
+- Live additionally requires `stripe_live`, explicit live enablement, production hosted HTTPS, the separately confirmed platform account, both live webhook secrets and approved non-demo restaurant commercial terms. A live key cannot be used in test mode or vice versa.
+- Platform webhook: `/api/provider-events/stripe-test` or `/stripe-live`.
+- Connected-account webhook: the corresponding path followed by `/connect`, with its separate signing secret.
 
-- The default origin is exactly `https://api.stripe.com`; a custom origin is permitted only when an injected mock transport explicitly enables it for unit tests.
-- Requests use a bounded timeout and `redirect: "error"`.
-- Live keys, live objects and live webhook events are rejected.
-- The adapter never logs request headers, keys, client secrets, webhook secrets or response bodies.
-- Mutation input is form encoded with bounded IDs, metadata and amount validation. Currency is fixed to GBP.
-- Secret keys remain adapter-constructor state and are not included in normalized results or errors.
+Webhook intake checks the signed raw body, timestamp and exact mode, then persists a deduplicated routing envelope. Account updates refresh authoritative readiness; Checkout updates expose payable orders; bank-payout events update actual payout records. Money operations still require immutable provider facts. Original Calai account IDs and credentials must not be used.
 
-## Webhooks
+The adapter pins `2025-06-30.basil`. Its Balance Settings request uses that version's `payouts[schedule]` fields, not the newer wrapper. Accounts may legitimately omit `livemode`; only an explicitly identified Account object gets that exception. Financial objects must prove the configured mode. References: [pinned Balance Settings API](https://docs.stripe.com/api/balance-settings/update?api-version=2025-06-30.basil), [Account object](https://docs.stripe.com/api/accounts/object?api-version=2025-06-30.basil), [hosted onboarding](https://docs.stripe.com/connect/hosted-onboarding). GBP card orders must meet Stripe's [£0.30 minimum](https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts).
 
-`verifyStripeWebhook` requires the exact raw request bytes captured before JSON parsing, a `whsec_` endpoint secret, a signed timestamp within the default five-minute tolerance, and at least one matching v1 HMAC-SHA256 signature. Comparison uses `timingSafeEqual`. `parseStripeWebhook` verifies first, then parses, rejects malformed events and rejects every event whose `livemode` is not exactly `false`.
+## Verification limits
 
-The route integration must persist and deduplicate event IDs before applying transitions, return success for already-processed retries, and retrieve the provider object when an event or request outcome is ambiguous. Stripe explicitly requires the unmodified raw request body and signature header; see [webhook signature guidance](https://docs.stripe.com/events/manage-webhook-endpoints#signature-errors).
+Local checks use injected provider responses, fictional accounts and the existing API test harness. They verify contracts and money-state invariants, not Stripe account approval or real network behavior. Before live activation, the separate sandbox must demonstrate onboarding, authentication/decline, acceptance capture, cancellation/expiry, partial/full refund, transfer/reversal, payout failure, signed webhooks and ambiguous retry recovery. Real device return behavior and live operating terms remain deployment-stage checks. No push or deployment is authorized by this local implementation.
 
-The adapter does not expose an HTTP webhook route, because foundation owns routing, raw-body limits, persistence, idempotent event handling and state transitions.
-
-## Required sandbox verification before activation
-
-The implementation currently has mocked-HTTP unit coverage only. Before enabling `stripe_test`, a separately authorised sandbox exercise must prove:
-
-1. Express account creation, hosted onboarding, return/refresh behavior, capability refresh and weekly automatic payout configuration.
-2. Manual PaymentIntent authorization, restaurant-acceptance capture, rejection cancellation, authentication-required and declined paths.
-3. Separate transfer creation, delayed availability, insufficient platform balance, partial/full refund and independent partial/full reversal.
-4. SetupIntent mandate completion, required Bacs notices, off-session collection success, asynchronous failure, revocation and duplicate callbacks.
-5. Timeout-after-provider-commit reconciliation for every mutation, replay with the same idempotency key, and conflict handling.
-6. Raw-body webhook verification, rotation strategy, duplicate/out-of-order events and retrieval recovery.
-7. No live key, live event, live object, browser-supplied credential or non-GBP amount can cross the adapter boundary.
-
-Until this evidence exists, UI and records must say `stripe_test`, pending, test, or simulated as appropriate—never paid, verified, transferred or refunded merely because a request was attempted.
+Local verification completed: focused payment, webhook, transition, refund, settlement, reporting and simulator-regression tests passed; portal production build, native type checking and release packaging passed (79 JavaScript files and 21 required release files). Migration 22 on an isolated copy preserved 4 users, 2 restaurants, 3 menu items, 5 orders, 6 order items and 2 dispute cases, with zero foreign-key violations and SQLite integrity OK. Temporary messages were excluded by the managed backup used for the copy. The normal local database and hosted deployment were not changed.

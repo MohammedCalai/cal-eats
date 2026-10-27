@@ -18,6 +18,7 @@ const assets = new Map([
   ["/dispute-resolution.js", ["dispute-resolution.js", "text/javascript; charset=utf-8"]],
   ["/loyalty-ui.js", ["loyalty-ui.js", "text/javascript; charset=utf-8"]],
   ["/customer-additions.js", ["customer-additions.js", "text/javascript; charset=utf-8"]],
+  ["/stripe-ui.js", ["stripe-ui.js", "text/javascript; charset=utf-8"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json; charset=utf-8"]],
   ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],

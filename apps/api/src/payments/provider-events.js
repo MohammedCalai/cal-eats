@@ -2,20 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 import { HttpError, sendJson } from "../http.js";
 import { withTransaction } from "../db/index.js";
 import { parseStripeWebhook, StripeTestConfigurationError } from "./stripe-test.js";
+import { notifyNewOrder } from "../offers.js";
 
 export const PROVIDER_EVENT_WEBHOOK_PATH = "/api/provider-events/stripe-test";
-const PROVIDER = "stripe_test";
 const DEFAULT_BODY_LIMIT = 256 * 1024;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_LEASE_MS = 30_000;
 const MAX_BACKOFF_MS = 5 * 60_000;
-const REFERENCE = /^(acct|pi|ch|tr|re|po|seti|mandate)_[A-Za-z0-9_]+$/;
+const REFERENCE = /^(acct|pi|ch|tr|re|po|seti|mandate|cs)_[A-Za-z0-9_]+$/;
 
 export async function routeProviderEventWebhook({ req, res, url, db, config }) {
-  if (url.pathname !== PROVIDER_EVENT_WEBHOOK_PATH) return false;
+  const path=url.pathname.match(/^\/api\/provider-events\/(stripe-test|stripe-live)(\/connect)?$/);if(!path)return false;const provider=path[1].replace("-","_"),connect=Boolean(path[2]),mode=provider==="stripe_live"?"live":"test";
   if (req.method !== "POST") throw new HttpError(405, "METHOD_NOT_ALLOWED", "Method not allowed");
-  if (config.paymentProviderMode !== PROVIDER || !config.paymentProvider) throw new HttpError(404, "PROVIDER_WEBHOOK_DISABLED", "Test provider webhook is disabled");
-  if (typeof config.paymentProviderWebhookSecret !== "string" || !config.paymentProviderWebhookSecret.startsWith("whsec_")) throw new HttpError(503, "PROVIDER_WEBHOOK_NOT_CONFIGURED", "Test provider webhook is not configured");
+  if (config.paymentProviderMode !== provider || !config.paymentProvider) throw new HttpError(404, "PROVIDER_WEBHOOK_DISABLED", "Provider webhook is disabled");
+  const webhookSecret=connect?config.paymentProviderConnectWebhookSecret:config.paymentProviderWebhookSecret;if(typeof webhookSecret!=="string"||!webhookSecret.startsWith("whsec_"))throw new HttpError(503,"PROVIDER_WEBHOOK_NOT_CONFIGURED","Provider webhook is not configured");
   if (req.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json");
 
   const rawBody = await readRawBody(req, boundedInteger(config.providerWebhookBodyLimit ?? DEFAULT_BODY_LIMIT, 1024, 1024 * 1024, "providerWebhookBodyLimit"));
@@ -25,18 +25,18 @@ export async function routeProviderEventWebhook({ req, res, url, db, config }) {
     event = parseStripeWebhook({
       rawBody,
       signatureHeader: req.headers["stripe-signature"],
-      secret: config.paymentProviderWebhookSecret,
+      secret: webhookSecret,mode,
       nowSeconds: Math.floor(now.getTime() / 1000),
       toleranceSeconds: 300
     });
   } catch (error) {
-    if (error instanceof StripeTestConfigurationError && /Live Stripe/.test(error.message)) throw new HttpError(400, "LIVE_PROVIDER_EVENT_REJECTED", "Live provider events are rejected");
+    if (error instanceof StripeTestConfigurationError && /mode/i.test(error.message)) throw new HttpError(400, mode==="test"?"LIVE_PROVIDER_EVENT_REJECTED":"PROVIDER_EVENT_MODE_MISMATCH", "Provider event mode does not match this endpoint");
     if (/signature/i.test(String(error?.message))) throw new HttpError(400, "INVALID_PROVIDER_SIGNATURE", "Provider signature is missing, invalid, or stale");
     throw new HttpError(400, "INVALID_PROVIDER_EVENT", "Provider event is malformed");
   }
 
   let normalized;
-  try { normalized = normalizeEvent(event); }
+  try { normalized = {...normalizeEvent(event),provider}; }
   catch (error) {
     if (error instanceof HttpError) throw error;
     throw new HttpError(400, "INVALID_PROVIDER_EVENT", "Provider event is malformed");
@@ -54,11 +54,11 @@ export async function runProviderEventReconciliation(db, config, options = {}) {
   const baseBackoffMs = boundedInteger(options.baseBackoffMs ?? 1000, 1, 60_000, "baseBackoffMs");
   const workerId = boundedText(options.workerId ?? randomUUID(), 1, 100, "workerId");
   const summary = { claimed: 0, completed: 0, delayed: 0, failed: 0, unmatched: 0, ignored: 0 };
-  if (config.paymentProviderMode !== PROVIDER || !config.paymentProvider) return { ...summary, skipped: "provider_disabled" };
+  const provider=config.paymentProviderMode;if(!["stripe_test","stripe_live"].includes(provider)||!config.paymentProvider)return{...summary,skipped:"provider_disabled"};
 
   for (let count = 0; count < limit; count += 1) {
     const now = currentDate(config);
-    const event = withTransaction(db, () => claimNext(db, workerId, now, leaseMs, maxAttempts));
+    const event = withTransaction(db, () => claimNext(db, provider, workerId, now, leaseMs, maxAttempts));
     if (!event) break;
     summary.claimed += 1;
     if (event.terminalExpired) { summary.failed += 1; continue; }
@@ -118,7 +118,7 @@ export async function runProviderEventReconciliation(db, config, options = {}) {
 }
 
 function persistEvent(db, event, fingerprint, now) {
-  const existing = db.prepare("SELECT payload_fingerprint,status FROM provider_events WHERE provider=? AND provider_event_id=?").get(PROVIDER, event.eventId);
+  const existing = db.prepare("SELECT payload_fingerprint,status FROM provider_events WHERE provider=? AND provider_event_id=?").get(event.provider, event.eventId);
   if (existing) {
     if (existing.payload_fingerprint !== fingerprint) throw new HttpError(409, "PROVIDER_EVENT_CONFLICT", "Provider event ID was reused with a different payload");
     return { status: existing.status, replayed: true };
@@ -130,17 +130,17 @@ function persistEvent(db, event, fingerprint, now) {
     id,provider,provider_event_id,event_type,object_type,object_id,provider_account_reference,restaurant_id,
     payload_fingerprint,normalized_payload,provider_created_at,status,attempts,available_at,lease_owner,lease_expires_at,error,created_at,updated_at
   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?,NULL,NULL,?,?,?)`).run(
-    randomUUID(), PROVIDER, event.eventId, event.eventType, event.objectType, event.objectId, event.providerAccountReference,
+    randomUUID(), event.provider, event.eventId, event.eventType, event.objectType, event.objectId, event.providerAccountReference,
     mapping.restaurantId ?? null, fingerprint, JSON.stringify(event), event.providerCreatedAt, status, now, error, now, now
   );
   return { status, replayed: false };
 }
 
-function claimNext(db, workerId, nowDate, leaseMs, maxAttempts) {
+function claimNext(db, provider, workerId, nowDate, leaseMs, maxAttempts) {
   const now = nowDate.toISOString();
   const row = db.prepare(`SELECT * FROM provider_events
-    WHERE (((status IN ('queued','delayed')) AND available_at<=? AND attempts<?) OR (status='claimed' AND lease_expires_at<=?))
-      ORDER BY available_at,created_at LIMIT 1`).get(now, maxAttempts, now);
+    WHERE provider=? AND (((status IN ('queued','delayed')) AND available_at<=? AND attempts<?) OR (status='claimed' AND lease_expires_at<=?))
+      ORDER BY available_at,created_at LIMIT 1`).get(provider,now, maxAttempts, now);
   if (!row) return null;
   if (row.status === "claimed" && row.attempts >= maxAttempts) {
     db.prepare("UPDATE provider_events SET status='failed',error='LEASE_EXPIRED_AFTER_MAX_ATTEMPTS',lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND status='claimed' AND lease_expires_at<=?")
@@ -183,16 +183,25 @@ function finalizeReconciliation(db, event, workerId, normalized, originalMapping
       last_event_created_at=CASE WHEN excluded.last_event_created_at>=provider_event_object_state.last_event_created_at THEN excluded.last_event_created_at ELSE provider_event_object_state.last_event_created_at END,
       last_event_id=CASE WHEN excluded.last_event_created_at>=provider_event_object_state.last_event_created_at THEN excluded.last_event_id ELSE provider_event_object_state.last_event_id END,
       last_result=CASE WHEN excluded.last_event_created_at>=provider_event_object_state.last_event_created_at THEN excluded.last_result ELSE provider_event_object_state.last_result END,
-      updated_at=excluded.updated_at`).run(PROVIDER, normalized.objectId, normalized.objectType, mapping.restaurantId, event.provider_created_at, event.provider_event_id, state, now);
+      updated_at=excluded.updated_at`).run(normalized.provider, normalized.objectId, normalized.objectType, mapping.restaurantId, event.provider_created_at, event.provider_event_id, state, now);
   db.prepare("UPDATE provider_events SET status='completed',restaurant_id=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?").run(mapping.restaurantId, now, event.id);
   return "completed";
 }
 
 function applyProviderResult(db, event, mapping, result, now) {
   if (event.kind === "account") {
+    if(result.providerReference!==event.objectId)return{ok:false,error:"ACCOUNT_REFERENCE_MISMATCH"};
+    if(typeof result.chargesEnabled!=="boolean"||typeof result.payoutsEnabled!=="boolean")return{ok:false,error:"ACCOUNT_READINESS_INVALID"};
     const status = result.status === "confirmed" ? "enabled" : result.status === "failed" ? "restricted" : "pending";
-    db.prepare("UPDATE provider_accounts SET status=?,capabilities=?,requirements=?,updated_at=? WHERE id=? AND provider_mode='stripe_test'")
-      .run(status, JSON.stringify(arrayOfText(result.capabilities)), JSON.stringify(arrayOfText(result.requirements)), now, mapping.row.id);
+    db.prepare("UPDATE provider_accounts SET status=?,capabilities=?,requirements=?,updated_at=? WHERE id=? AND provider_mode=?")
+      .run(status, JSON.stringify(arrayOfText(result.capabilities)), JSON.stringify(arrayOfText(result.requirements)), now, mapping.row.id,event.provider);
+    if (tableExists(db, "stripe_account_readiness")) {
+      db.prepare(`INSERT INTO stripe_account_readiness(restaurant_id,provider_mode,provider_account_id,charges_enabled,payouts_enabled,verified_at)
+        VALUES(?,?,?,?,?,?) ON CONFLICT(restaurant_id,provider_mode) DO UPDATE SET
+        provider_account_id=excluded.provider_account_id,charges_enabled=excluded.charges_enabled,
+        payouts_enabled=excluded.payouts_enabled,verified_at=excluded.verified_at`)
+        .run(mapping.restaurantId,event.provider,event.objectId,result.chargesEnabled===true?1:0,result.payoutsEnabled===true?1:0,now);
+    }
     return { ok: true };
   }
   if (event.kind === "payment") {
@@ -203,30 +212,61 @@ function applyProviderResult(db, event, mapping, result, now) {
     if (typeof result.latestChargeId === "string") nextMetadata.latestChargeId = result.latestChargeId;
     if (typeof result.availableOn === "string") nextMetadata.availableOn = result.availableOn;
     if (Number.isSafeInteger(result.providerCostMinor) && result.providerCostMinor >= 0) nextMetadata.providerCostMinorObserved = result.providerCostMinor;
-    db.prepare("UPDATE marketplace_operations SET status=?,error=?,metadata=?,updated_at=? WHERE id=? AND provider_mode='stripe_test'")
-      .run(status, status === "failed" ? safeCode(result.errorCode, "PROVIDER_PAYMENT_FAILED") : null, JSON.stringify(nextMetadata), now, mapping.row.id);
+    db.prepare("UPDATE marketplace_operations SET status=?,error=?,metadata=?,updated_at=? WHERE id=? AND provider_mode=?")
+      .run(status, status === "failed" ? safeCode(result.errorCode, "PROVIDER_PAYMENT_FAILED") : null, JSON.stringify(nextMetadata), now, mapping.row.id,event.provider);
     return { ok: true };
   }
+  if(event.kind==="checkout"){
+    const order=db.prepare("SELECT * FROM orders WHERE id=?").get(mapping.row.order_id),payable=["authorized","captured"].includes(result.paymentState);if(!order||result.amountMinor!==order.total_minor||String(result.currency||"").toUpperCase()!==String(order.currency).toUpperCase()||result.orderId!==order.id||result.restaurantId!==order.restaurant_id||(payable&&(!result.paymentIntentId||result.captureMethod!=="manual"))||(mapping.row.payment_intent_id&&result.paymentIntentId!==mapping.row.payment_intent_id))return{ok:false,error:"CHECKOUT_PAYMENT_BINDING_MISMATCH"};
+    if(mapping.row.status==="captured"&&result.paymentState!=="captured")return{ok:true};
+    const status=result.paymentState==="authorized"?"authorized":result.paymentState==="captured"?"captured":["cancelled","expired","requires_payment_method"].includes(result.paymentState)||result.status==="failed"?"failed":"pending";
+    db.prepare("UPDATE stripe_order_payments SET payment_intent_id=COALESCE(?,payment_intent_id),latest_charge_id=COALESCE(?,latest_charge_id),status=?,provider_cost_minor=COALESCE(?,provider_cost_minor),available_on=COALESCE(?,available_on),error=?,updated_at=? WHERE checkout_session_id=? AND provider_mode=?").run(result.paymentIntentId??null,result.latestChargeId??null,status,Number.isSafeInteger(result.providerCostMinor)?result.providerCostMinor:null,result.availableOn??null,status==="failed"?safeCode(result.errorCode,"PROVIDER_CHECKOUT_FAILED"):null,now,event.objectId,event.provider);
+    const firstPayable=["authorized","captured"].includes(status)&&!["stripe_authorized","stripe_captured","stripe_partially_refunded","stripe_refunded"].includes(order.payment_status);
+    if(["authorized","captured"].includes(status)&&!["stripe_partially_refunded","stripe_refunded"].includes(order.payment_status))db.prepare("UPDATE orders SET payment_status=?,updated_at=? WHERE id=?").run(`stripe_${status}`,now,order.id);
+    if(firstPayable&&order.status==="placed")notifyNewOrder(db,{...order,payment_status:`stripe_${status}`},now);
+    return{ok:true};
+  }
   if (event.kind === "transfer") {
+    if(result.providerReference!==event.objectId||result.amountMinor!==mapping.row.amount_minor||String(result.currency||"").toUpperCase()!==String(mapping.row.currency||"").toUpperCase())return{ok:false,error:"TRANSFER_FINANCIAL_BINDING_MISMATCH"};
+    const metadata=safeJson(mapping.row.metadata,{});
+    if(mapping.row.kind==="merchant_transfer"){
+      const order=mapping.row.order_id&&db.prepare("SELECT id,restaurant_id FROM orders WHERE id=?").get(mapping.row.order_id);
+      const payment=order&&db.prepare("SELECT payment_intent_id,latest_charge_id,provider_mode FROM stripe_order_payments WHERE order_id=?").get(order.id);
+      const account=order&&db.prepare("SELECT provider_reference,provider_mode FROM provider_accounts WHERE restaurant_id=?").get(order.restaurant_id);
+      if(!order||!payment||!account||metadata.orderId!==order.id||metadata.restaurantId!==order.restaurant_id||metadata.amountMinor!==mapping.row.amount_minor||metadata.providerMode!==event.provider||metadata.paymentIntentId!==payment.payment_intent_id||metadata.sourceCharge!==payment.latest_charge_id||metadata.accountId!==account.provider_reference||payment.provider_mode!==event.provider||account.provider_mode!==event.provider||result.destinationAccountId!==metadata.accountId||result.sourceTransactionId!==metadata.sourceCharge||result.transferGroup!==`order:${order.id}`)return{ok:false,error:"TRANSFER_SETTLEMENT_BINDING_MISMATCH"};
+    }else if((metadata.transferGroup&&result.transferGroup!==metadata.transferGroup)||(metadata.accountId&&result.destinationAccountId!==metadata.accountId)||(metadata.sourceCharge&&result.sourceTransactionId!==metadata.sourceCharge))return{ok:false,error:"TRANSFER_METADATA_BINDING_MISMATCH"};
     if (mapping.row.status === "confirmed" && result.status !== "confirmed") return { ok: true };
     const status = result.status === "confirmed" ? "confirmed" : result.status === "failed" ? "failed" : "delayed";
-    db.prepare("UPDATE marketplace_operations SET status=?,error=?,updated_at=? WHERE id=? AND provider_mode='stripe_test'")
-      .run(status, status === "failed" ? safeCode(result.errorCode, "PROVIDER_TRANSFER_FAILED") : null, now, mapping.row.id);
+    db.prepare("UPDATE marketplace_operations SET status=?,error=?,updated_at=? WHERE id=? AND provider_mode=?")
+      .run(status, status === "failed" ? safeCode(result.errorCode, "PROVIDER_TRANSFER_FAILED") : null, now, mapping.row.id,event.provider);
     return { ok: true };
   }
   if (event.kind === "payout") {
-    if (Number.isSafeInteger(result.amountMinor) && result.amountMinor !== mapping.row.amount_minor) return { ok: false, error: "PAYOUT_AMOUNT_MISMATCH" };
-    if (mapping.row.status === "paid" && result.paymentState !== "paid") return { ok: true };
-    const status = result.paymentState === "paid" ? "paid" : ["failed", "canceled"].includes(result.paymentState) || result.status === "failed" ? "failed" : "in_transit";
-    db.prepare("UPDATE payout_batches SET status=?,failure=?,updated_at=? WHERE id=? AND provider_mode='stripe_test'")
-      .run(status, status === "failed" ? safeCode(result.errorCode, "PROVIDER_PAYOUT_FAILED") : null, now, mapping.row.id);
+    if(result.providerReference!==event.objectId)return{ok:false,error:"PAYOUT_REFERENCE_MISMATCH"};
+    if (!Number.isSafeInteger(result.amountMinor) || result.amountMinor < 0) return { ok: false, error: "PAYOUT_AMOUNT_INVALID" };
+    if (mapping.row.amount_minor != null && result.amountMinor !== mapping.row.amount_minor) return { ok: false, error: "PAYOUT_AMOUNT_MISMATCH" };
+    const paymentState=safeCode(result.paymentState,"unknown");
+    const status=paymentState==="paid"?"paid":paymentState==="failed"||paymentState==="canceled"||result.status==="failed"?"failed":paymentState==="pending"?"pending":"in_transit";
+    const failure=status==="failed"?safeCode(result.errorCode,"PROVIDER_PAYOUT_FAILED"):null;
+    if (mapping.source === "legacy") {
+      if (mapping.row.status === "paid" && paymentState !== "paid") return { ok: true };
+      db.prepare("UPDATE payout_batches SET status=?,failure=?,updated_at=? WHERE id=? AND provider_mode=?")
+        .run(status,failure,now,mapping.row.id,event.provider);
+    }
+    if (tableExists(db,"stripe_connected_payouts")) {
+      db.prepare(`INSERT INTO stripe_connected_payouts(id,restaurant_id,provider_account_id,amount_minor,status,arrival_at,failure,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        restaurant_id=excluded.restaurant_id,provider_account_id=excluded.provider_account_id,amount_minor=excluded.amount_minor,
+        status=excluded.status,arrival_at=excluded.arrival_at,failure=excluded.failure,updated_at=excluded.updated_at`)
+        .run(event.objectId,mapping.restaurantId,mapping.providerAccount.provider_reference,result.amountMinor,status,result.arrivalAt??null,failure,now,now);
+    }
     return { ok: true };
   }
   if (event.kind === "setup" || event.kind === "mandate") {
     const status = result.status === "confirmed" ? "authorised" : result.status === "failed" ? "failed" : "created";
     const reference = typeof result.mandateId === "string" ? result.mandateId : mapping.row.provider_reference;
-    db.prepare("UPDATE cash_mandates SET status=?,provider_reference=?,updated_at=? WHERE id=? AND provider_mode='stripe_test'")
-      .run(status, reference, now, mapping.row.id);
+    db.prepare("UPDATE cash_mandates SET status=?,provider_reference=?,updated_at=? WHERE id=? AND provider_mode=?")
+      .run(status, reference, now, mapping.row.id,event.provider);
     return { ok: true };
   }
   return { ok: false, error: "UNSUPPORTED_RECONCILIATION_KIND" };
@@ -235,24 +275,30 @@ function applyProviderResult(db, event, mapping, result, now) {
 function resolveMapping(db, event) {
   if (event.kind === "unsupported") return { state: "ignored" };
   let rows = [];
-  if (event.kind === "account") rows = db.prepare("SELECT * FROM provider_accounts WHERE provider_mode='stripe_test' AND provider_reference=?").all(event.objectId);
-  else if (["payment", "transfer"].includes(event.kind)) rows = db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode='stripe_test' AND provider_reference=?").all(event.objectId);
-  else if (event.kind === "payout") rows = db.prepare("SELECT * FROM payout_batches WHERE provider_mode='stripe_test' AND provider_reference=?").all(event.objectId);
-  else if (["setup", "mandate"].includes(event.kind)) rows = db.prepare("SELECT * FROM cash_mandates WHERE provider_mode='stripe_test' AND provider_reference=?").all(event.objectId);
+  if (event.kind === "account") rows = db.prepare("SELECT * FROM provider_accounts WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+  else if(event.kind==="checkout")rows=db.prepare("SELECT * FROM stripe_order_payments WHERE provider_mode=? AND checkout_session_id=?").all(event.provider,event.objectId);
+  else if (["payment", "transfer"].includes(event.kind)) rows = db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+  else if (event.kind === "payout") {
+    if(tableExists(db,"stripe_connected_payouts")) rows=db.prepare("SELECT *, 'connected' AS mapping_source FROM stripe_connected_payouts WHERE id=?").all(event.objectId);
+    if(!rows.length)rows=db.prepare("SELECT *, 'legacy' AS mapping_source FROM payout_batches WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+    if(!rows.length&&event.providerAccountReference){const account=db.prepare("SELECT * FROM provider_accounts WHERE provider_mode=? AND provider_reference=?").get(event.provider,event.providerAccountReference);if(account)rows=[{id:event.objectId,restaurant_id:account.restaurant_id,amount_minor:null,mapping_source:"account"}];}
+  }
+  else if (["setup", "mandate"].includes(event.kind)) rows = db.prepare("SELECT * FROM cash_mandates WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
   if (!rows.length) return { state: "unmatched" };
   const tenants = new Set(rows.map((row) => row.restaurant_id));
   if (tenants.size !== 1 || rows.length !== 1) return { state: "conflict" };
   const restaurantId = rows[0].restaurant_id;
   if (event.kind === "account" && event.providerAccountReference && event.providerAccountReference !== event.objectId) return { state: "conflict" };
   let account = null;
-  if (event.kind !== "account") account = db.prepare("SELECT * FROM provider_accounts WHERE restaurant_id=? AND provider_mode='stripe_test'").get(restaurantId);
-  if (event.providerAccountReference && (!account || account.provider_reference !== event.providerAccountReference)) return { state: "conflict" };
+  if (event.kind !== "account") account = db.prepare("SELECT * FROM provider_accounts WHERE restaurant_id=? AND provider_mode=?").get(restaurantId,event.provider);
+  if (event.kind !== "account" && event.providerAccountReference && (!account || account.provider_reference !== event.providerAccountReference)) return { state: "conflict" };
   if (event.kind === "payout" && !account?.provider_reference) return { state: "unmatched" };
-  return { state: "mapped", restaurantId, row: rows[0], providerAccount: account };
+  return { state: "mapped", restaurantId, row: rows[0], source: rows[0].mapping_source, providerAccount: account };
 }
 
 async function retrieveCurrentProviderState(adapter, event, mapping) {
   if (event.kind === "account") return adapter.refreshConnectedAccount({ accountId: event.objectId });
+  if(event.kind==="checkout")return adapter.retrieveCheckoutSession({sessionId:event.objectId});
   if (event.kind === "payment") return adapter.retrievePayment({ paymentIntentId: event.objectId });
   if (event.kind === "transfer") return adapter.retrieveTransfer({ transferId: event.objectId });
   if (event.kind === "payout") return adapter.retrievePayout({ payoutId: event.objectId, accountId: mapping.providerAccount.provider_reference });
@@ -261,8 +307,18 @@ async function retrieveCurrentProviderState(adapter, event, mapping) {
   throw new TypeError("Unsupported reconciliation kind");
 }
 
+export async function retrieveAuthoritativeProviderState(adapter,{kind,providerReference,accountId,transferId}){
+  if(kind==="checkout")return adapter.retrieveCheckoutSession({sessionId:providerReference});
+  if(kind==="payment")return adapter.retrievePayment({paymentIntentId:providerReference});
+  if(kind==="refund")return adapter.retrieveRefund({refundId:providerReference});
+  if(kind==="transfer")return adapter.retrieveTransfer({transferId:providerReference});
+  if(kind==="transfer_reversal")return adapter.retrieveTransferReversal({transferId,reversalId:providerReference});
+  if(kind==="payout")return adapter.retrievePayout({payoutId:providerReference,accountId});
+  throw new TypeError("Unsupported authoritative provider state kind");
+}
+
 function appliedChronology(db, event, restaurantId) {
-  const state = db.prepare("SELECT * FROM provider_event_object_state WHERE provider=? AND object_id=?").get(PROVIDER, event.object_id);
+  const state = db.prepare("SELECT * FROM provider_event_object_state WHERE provider=? AND object_id=?").get(event.provider, event.object_id);
   if (!state) return "current";
   if (state.restaurant_id !== restaurantId) return "conflict";
   return event.provider_created_at < state.last_event_created_at ? "stale" : "current";
@@ -299,6 +355,7 @@ function normalizeEvent(event) {
   let objectId = originalObjectId ?? "unsupported";
   if (eventType.startsWith("account.")) { kind = "account"; objectId = requiredReference(object.id, "acct"); }
   else if (eventType.startsWith("payment_intent.")) { kind = "payment"; objectId = requiredReference(object.id, "pi"); }
+  else if(eventType.startsWith("checkout.session.")){kind="checkout";objectId=requiredReference(object.id,"cs");}
   else if (eventType.startsWith("charge.") || eventType.startsWith("refund.")) { kind = "payment"; objectId = requiredReference(typeof object.payment_intent === "string" ? object.payment_intent : object.payment_intent?.id, "pi"); }
   else if (eventType.startsWith("transfer.")) { kind = "transfer"; objectId = requiredReference(object.id, "tr"); }
   else if (eventType.startsWith("payout.")) { kind = "payout"; objectId = requiredReference(object.id, "po"); }
@@ -340,3 +397,4 @@ function optionalReference(value, prefix) { if (value == null) return null; cons
 function boundedText(value, min, max, name) { const text = String(value ?? ""); if (text.length < min || text.length > max || /[\r\n\0]/.test(text)) throw new TypeError(`${name} is invalid`); return text; }
 function boundedInteger(value, min, max, name) { if (!Number.isSafeInteger(value) || value < min || value > max) throw new TypeError(`${name} is invalid`); return value; }
 function currentDate(config) { const date = config.now(); if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw new TypeError("config.now must return a valid Date"); return date; }
+function tableExists(db,name){return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));}

@@ -62,7 +62,7 @@ function orderNet(db, order) {
 
 export function buildFinanceSummary(db, restaurantId, url = null) {
   const range = parseLondonDateRange(url);
-  const allOrders = db.prepare("SELECT * FROM orders WHERE restaurant_id=?").all(restaurantId).filter((row) => ORDER_STATES.has(row.status));
+  const allOrders = db.prepare("SELECT * FROM orders WHERE restaurant_id=?").all(restaurantId).filter((row) => ORDER_STATES.has(row.status) && (row.payment_method !== "card" || ["stripe_captured","stripe_partially_refunded","stripe_refunded"].includes(row.payment_status)));
   const rangedOrders = allOrders.filter((row) => inDateRange(row, range));
   const rangedRefunds = db.prepare("SELECT r.* FROM refunds r JOIN orders o ON o.id=r.order_id WHERE o.restaurant_id=?").all(restaurantId).filter((row) => inDateRange(row, range));
   const rangedOperations = db.prepare("SELECT * FROM marketplace_operations WHERE restaurant_id=?").all(restaurantId).filter((row) => inDateRange(row, range));
@@ -80,7 +80,11 @@ export function buildFinanceSummary(db, restaurantId, url = null) {
   const commissionMinor = historicalCommissionMinor + rangedOperations.filter((row) => ["commission", "cash_commission_receivable"].includes(row.kind) && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0)
     - recordedCommissionReversalsMinor;
   const providerCostMinor = rangedOperations.filter((row) => row.kind === "provider_cost" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
-  const paidTransfersMinor = db.prepare("SELECT COALESCE(SUM(amount_minor),0) n FROM payout_batches WHERE restaurant_id=? AND status='paid'").get(restaurantId).n;
+  const stripeTransfers = db.prepare("SELECT kind,status,amount_minor FROM marketplace_operations WHERE restaurant_id=? AND kind IN ('merchant_transfer','transfer_reversal') AND provider_mode IN ('stripe_test','stripe_live')").all(restaurantId);
+  const confirmedStripeTransfers = stripeTransfers.filter(row=>row.kind === "merchant_transfer" && row.status === "confirmed").reduce((sum,row)=>sum+row.amount_minor,0);
+  const confirmedStripeReversals = stripeTransfers.filter(row=>row.kind === "transfer_reversal" && row.status === "confirmed").reduce((sum,row)=>sum+row.amount_minor,0);
+  const paidTransfersMinor = db.prepare("SELECT COALESCE(SUM(amount_minor),0) n FROM payout_batches WHERE restaurant_id=? AND status='paid'").get(restaurantId).n + Math.max(0,confirmedStripeTransfers-confirmedStripeReversals);
+  const pendingTransfersMinor = stripeTransfers.filter(row=>row.kind === "merchant_transfer" && ["pending","unknown","delayed"].includes(row.status)).reduce((sum,row)=>sum+row.amount_minor,0);
   const inTransitTransfersMinor = db.prepare("SELECT COALESCE(SUM(amount_minor),0) n FROM payout_batches WHERE restaurant_id=? AND status='in_transit'").get(restaurantId).n;
   const successfulCollectionsMinor = db.prepare("SELECT COALESCE(SUM(amount_minor),0) n FROM cash_collections WHERE restaurant_id=? AND status='succeeded'").get(restaurantId).n;
   const completedCardNet = allOrders.filter((row) => row.payment_method !== "cash" && row.status === "completed").reduce((sum, row) => sum + orderNet(db, row).net, 0);
@@ -88,14 +92,23 @@ export function buildFinanceSummary(db, restaurantId, url = null) {
   const cashCommission = allOrders.filter((row) => row.payment_method === "cash").reduce((sum, row) => sum + orderNet(db, row).commission, 0);
   const heldOrders = allOrders.filter((row) => {
     const operation = db.prepare("SELECT status FROM marketplace_operations WHERE operation_key=?").get(`order:${row.id}:settlement-eligible`);
-    return operation?.status === "held";
+    if (operation?.status === "held") return true;
+    if (row.payment_method !== "card") return false;
+    const payment = db.prepare("SELECT provider_mode FROM stripe_order_payments WHERE order_id=?").get(row.id);
+    const ready = payment && db.prepare("SELECT 1 FROM stripe_account_readiness r JOIN provider_accounts a ON a.restaurant_id=r.restaurant_id AND a.provider_mode=r.provider_mode AND a.provider_reference=r.provider_account_id WHERE r.restaurant_id=? AND r.provider_mode=? AND r.charges_enabled=1 AND r.payouts_enabled=1 AND a.status='enabled'").get(restaurantId,payment.provider_mode);
+    return !ready || Boolean(db.prepare("SELECT 1 FROM refund_cases WHERE order_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(row.id)) || Boolean(db.prepare("SELECT 1 FROM marketplace_operations WHERE order_id=? AND kind='merchant_transfer' AND status='held'").get(row.id));
   });
   const heldMinor = heldOrders.reduce((sum, row) => sum + orderNet(db, row).net, 0);
   const heldCardMinor = heldOrders.filter((row) => row.payment_method !== "cash").reduce((sum, row) => sum + orderNet(db, row).net, 0);
   const next = db.prepare("SELECT * FROM payout_batches WHERE restaurant_id=? AND status IN ('scheduled','pending') ORDER BY scheduled_for LIMIT 1").get(restaurantId);
+  const providerModes = [...new Set(db.prepare("SELECT DISTINCT provider_mode FROM marketplace_operations WHERE restaurant_id=? AND amount_minor>0").all(restaurantId).map(row=>row.provider_mode))];
+  const hasBankPayouts = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='stripe_connected_payouts'").get());
+  const bankPaidMinor = hasBankPayouts ? db.prepare("SELECT COALESCE(SUM(amount_minor),0) n FROM stripe_connected_payouts WHERE restaurant_id=? AND status='paid'").get(restaurantId).n : 0;
+  const bankPendingMinor = hasBankPayouts ? db.prepare("SELECT COALESCE(SUM(amount_minor),0) n FROM stripe_connected_payouts WHERE restaurant_id=? AND status IN ('pending','in_transit')").get(restaurantId).n : 0;
+  const providerCostsPendingCount = hasBankPayouts ? db.prepare("SELECT COUNT(*) n FROM stripe_order_payments p JOIN orders o ON o.id=p.order_id WHERE o.restaurant_id=? AND p.status='captured' AND p.provider_cost_minor IS NULL AND o.status IN ('accepted','preparing','ready','out_for_delivery','completed')").get(restaurantId).n : 0;
 
   return {
-    restaurantId, currency: "GBP", providerMode: "local_simulator",
+    restaurantId, currency: "GBP", providerMode: providerModes.length > 1 ? "mixed" : providerModes[0] ?? "local_simulator", providerModes,
     grossSalesMinor,
     commissionMinor,
     historicalGrossSalesMinor,
@@ -107,11 +120,15 @@ export function buildFinanceSummary(db, restaurantId, url = null) {
     cashCollectedMinor: rangedOperations.filter((row) => row.kind === "cash_sale_recorded" && row.status === "held").reduce((sum, row) => sum + row.amount_minor, 0),
     cashCommissionOutstandingMinor: Math.max(0, cashCommission - successfulCollectionsMinor),
     pendingMinor,
-    availableMinor: Math.max(0, completedCardNet - heldCardMinor - paidTransfersMinor - inTransitTransfersMinor),
+    availableMinor: Math.max(0, completedCardNet - heldCardMinor - paidTransfersMinor - inTransitTransfersMinor - pendingTransfersMinor),
     heldMinor,
     providerCostMinor,
+    providerCostsPendingCount,
     paidTransfersMinor,
     inTransitTransfersMinor,
+    pendingTransfersMinor,
+    bankPaidMinor,
+    bankPendingMinor,
     nextPayout: next ? { scheduledFor: next.scheduled_for, estimatedAmountMinor: next.amount_minor, status: next.status } : null
   };
 }

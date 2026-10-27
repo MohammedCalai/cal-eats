@@ -133,6 +133,31 @@ test("ambiguous retrieval is retried after restart without changing financial st
   } finally { await f.close(); }
 });
 
+test("Connect account and bank payout events persist authoritative readiness and payout state",async()=>{
+  const f=await journeyFixture();
+  try{
+    applyProviderEventsMigration(f.db);
+    const restaurantId=f.db.prepare("SELECT id FROM restaurants ORDER BY created_at LIMIT 1").get().id;
+    const now=new Date(NOW_SECONDS*1000).toISOString();
+    f.db.prepare(`INSERT INTO provider_accounts(id,restaurant_id,provider_mode,status,capabilities,requirements,provider_reference,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(restaurant_id) DO UPDATE SET provider_mode=excluded.provider_mode,provider_reference=excluded.provider_reference,updated_at=excluded.updated_at`)
+      .run(randomUUID(),restaurantId,"stripe_test","pending","[]","[]","acct_connect_events",now,now);
+    assert.equal(f.db.prepare("SELECT COUNT(*) count FROM provider_accounts WHERE provider_mode='stripe_test' AND provider_reference='acct_connect_events'").get().count,1);
+    const adapter={
+      async refreshConnectedAccount({accountId}){assert.equal(accountId,"acct_connect_events");return{ok:true,status:"confirmed",providerReference:accountId,chargesEnabled:true,payoutsEnabled:false,capabilities:["card_payments"],requirements:[]};},
+      async retrievePayout({payoutId,accountId}){assert.equal(payoutId,"po_connect_events");assert.equal(accountId,"acct_connect_events");return{ok:true,status:"pending",paymentState:"pending",providerReference:payoutId,amountMinor:4321,arrivalAt:"2026-01-03T00:00:00.000Z"};}
+    };
+    const config=providerConfig(adapter);
+    await deliver(f.db,config,stripeEvent({id:"evt_account_ready",type:"account.updated",object:{id:"acct_connect_events",object:"account"},account:"acct_connect_events"}));
+    const accountSummary=await runProviderEventReconciliation(f.db,config,{workerId:"account-worker"});
+    assert.equal(accountSummary.completed,1,JSON.stringify({accountSummary,event:f.db.prepare("SELECT status,error FROM provider_events WHERE provider_event_id='evt_account_ready'").get()}));
+    assert.deepEqual({...f.db.prepare("SELECT provider_account_id,charges_enabled,payouts_enabled FROM stripe_account_readiness WHERE restaurant_id=? AND provider_mode='stripe_test'").get(restaurantId)},{provider_account_id:"acct_connect_events",charges_enabled:1,payouts_enabled:0});
+    await deliver(f.db,config,stripeEvent({id:"evt_payout_pending",type:"payout.updated",object:{id:"po_connect_events",object:"payout"},account:"acct_connect_events"}));
+    assert.equal((await runProviderEventReconciliation(f.db,config,{workerId:"payout-worker"})).completed,1);
+    assert.deepEqual({...f.db.prepare("SELECT restaurant_id,provider_account_id,amount_minor,status,arrival_at,failure FROM stripe_connected_payouts WHERE id=?").get("po_connect_events")},{restaurant_id:restaurantId,provider_account_id:"acct_connect_events",amount_minor:4321,status:"pending",arrival_at:"2026-01-03T00:00:00.000Z",failure:null});
+  }finally{await f.close();}
+});
+
 test("local simulator mode never accepts events or invokes an injected adapter", async () => {
   const f = await journeyFixture();
   try {

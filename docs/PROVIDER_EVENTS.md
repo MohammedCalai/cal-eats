@@ -1,6 +1,6 @@
-# Test provider events and reconciliation
+# Stripe provider events and reconciliation
 
-This module is an intentionally unregistered integration boundary for Stripe **test mode only**. It adds durable webhook intake and read-only provider reconciliation without changing Cal-Eats' default `local_simulator` behaviour. It contains no key, performs no call during migration or import, and does not make a simulated order provider-paid.
+This module is registered in the app and background cycle. It supports strictly separated Stripe test/live modes, gated configuration, platform and connected-account signing secrets, authoritative Checkout authorization, account readiness and bank-payout snapshots. The default remains `local_simulator`; importing or migrating makes no provider call. The examples below use test mode; see [current configuration and activation gates](PAYMENT_PROVIDER.md) for live mode and migration 22.
 
 ## Integration contract
 

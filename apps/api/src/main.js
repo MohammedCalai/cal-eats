@@ -10,6 +10,7 @@ import { assertHostedPreviewSafe } from "./seed.js";
 import { runMessageRetention } from "./order-messaging.js";
 import { runPromotionMaintenance } from "./loyalty.js";
 import { notificationStreamHub } from "./notification-stream.js";
+import { runStripeConnectWorker } from "./payments/stripe-connect.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -27,6 +28,7 @@ async function runWorkers() {
     runMessageRetention(db, config);
     runPromotionMaintenance(db, config);
     await runProviderEventReconciliation(db, config);
+    await runStripeConnectWorker(db, config);
   } catch (error) {
     console.error("Background worker cycle failed", error instanceof Error ? error.message : "unknown error");
   } finally {

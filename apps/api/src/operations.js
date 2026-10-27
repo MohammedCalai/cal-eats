@@ -19,9 +19,10 @@ function statement(db, restaurantId) {
   const entries = db.prepare("SELECT * FROM ledger_entries WHERE restaurant_id=? ORDER BY created_at,rowid").all(restaurantId).map(ledgerDto);
   const sum = (...kinds) => entries.filter((entry) => kinds.includes(entry.kind)).reduce((total, entry) => total + entry.amountMinor, 0);
   const commissionMockMinor = sum("commission_mock", "commission_mock_refund");
+  const commissionStripeMinor = sum("commission_stripe", "commission_stripe_refund");
   const cashReceivableMinor = sum("commission_cash_receivable", "commission_cash_refund");
   const cashSettledMinor = sum("cash_settlement");
-  return { restaurantId, commissionMockMinor, cashReceivableMinor, cashSettledMinor, cashOutstandingMinor: cashReceivableMinor - cashSettledMinor, entries };
+  return { restaurantId, commissionMockMinor, commissionStripeMinor, commissionCardMinor: commissionMockMinor + commissionStripeMinor, cashReceivableMinor, cashSettledMinor, cashOutstandingMinor: cashReceivableMinor - cashSettledMinor, entries };
 }
 
 function audit(db, actorId, entityType, entityId, action, details, now) {
@@ -129,6 +130,7 @@ async function createRefund({ req, res, db, config, session, orderId }) {
   const result = withTransaction(db, () => {
     const order = db.prepare("SELECT * FROM orders WHERE id=?").get(orderId);
     if (!order) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    if (order.payment_method === "card") throw new HttpError(409, "TRACKED_REFUND_REQUIRED", "Use the order's refund case so the provider refund and restaurant transfer are reconciled together");
     if (db.prepare("SELECT 1 FROM refund_cases WHERE order_id=? AND status NOT IN ('rejected','refunded','refund_failed') LIMIT 1").get(order.id)) throw new HttpError(409, "REFUND_CASE_ACTIVE", "Use the linked refund case workflow");
     const allowed = order.payment_method === "mock_card" ? ["mock_captured", "mock_partially_refunded"] : ["cash_collected", "cash_partially_refunded"];
     if (!allowed.includes(order.payment_status)) throw new HttpError(409, "REFUND_NOT_ALLOWED", "Payment is not eligible for refund");
@@ -183,7 +185,7 @@ async function createSettlement({ req, res, db, config, session, restaurantId })
 export function runExpiryWorker(db, config) {
   const nowDate = config.now(); const now = nowDate.toISOString(); const cutoff = new Date(nowDate.getTime() - config.orderExpiryMinutes * 60_000).toISOString();
   return withTransaction(db, () => {
-    const rows = db.prepare("SELECT * FROM orders WHERE status='placed' AND created_at<=? ORDER BY created_at").all(cutoff);
+    const rows = db.prepare("SELECT * FROM orders WHERE status='placed' AND payment_method<>'card' AND created_at<=? ORDER BY created_at").all(cutoff);
     for (const order of rows) {
       const payment = order.payment_method === "mock_card" ? "mock_cancelled" : "cash_cancelled";
       db.prepare("UPDATE orders SET status='rejected',payment_status=?,updated_at=? WHERE id=? AND status='placed'").run(payment, now, order.id);

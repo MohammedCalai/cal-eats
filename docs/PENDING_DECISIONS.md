@@ -20,3 +20,7 @@ Live payments are disabled in this project. The following remain business decisi
 Do not add VAT, platform fees, promotional subsidies or direct debits by assumption. Do not report gross commission as net profit. A margin estimate must disclose the cost inputs and that they are estimates.
 
 To activate a future provider sandbox, use a separate Calai Eats project and credentials after access is authorized; verify webhooks, retries, captures, refunds, transfer reversals and reconciliation against that actual sandbox. Production additionally requires approved terms, secure bootstrap/MFA, HTTPS, recovery/monitoring, appropriate data retention and market-specific review. Native iOS build/device validation and store submission remain later work; no success is claimed here.
+
+## Stripe integration update — 27 October 2026
+
+Card checkout, capture/cancellation, Connect onboarding, weekly Monday payout configuration, refund/reversal workers and bank-payout oversight are now implemented locally. No separate Cal-Eats Stripe account exists yet. The default is still the simulator; sandbox network verification, secure account configuration, approved non-demo restaurant terms and explicit hosted/live activation remain required. Cash commission remains a receivable: a real Bacs mandate/notice/collection flow is not connected. See [current payment implementation and evidence](PAYMENT_PROVIDER.md).

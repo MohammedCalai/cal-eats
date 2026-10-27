@@ -3,11 +3,13 @@ import { openOrderMessaging } from "./order-messaging.js";
 import { mountDisputeResolution } from "./dispute-resolution.js";
 import { promotionBadge } from "./loyalty-ui.js";
 import { mountMarketingPreferences, mountFirstOrderPromotions, mountCheckoutQuote } from "./customer-additions.js";
+import { beginStripeCheckout, enhancePaymentChoices, refreshReturnedPayment } from "./stripe-ui.js";
 import { AUTH_SUBMIT_SELECTOR, ORDER_FLOW, availabilityMessage, canDeliver, cartLines, cartTotals, createRequestKey, currentSelections, estimatedMargin, money, nextOrderStatuses, orderItemPayload, parseMenuCsv, recognisedCommission, restaurantMatches, sanitizeCartDraft, serializeModifierRows, serializeOpeningRows, statusLabel, validateModifierSelection } from "./model.js";
 
 const main = document.querySelector("#main");
 const account = document.querySelector("#account");
 const toast = document.querySelector("#toast");
+let paymentConfig = { providerMode: null, cardAvailable: false, stripeMode: null };
 const state = { user: null, runtime: { mode:"local", demoShortcuts:false, simulatedPayments:true }, view: "discover", restaurants: [], selected: null, menu: [], cart: {}, modifiers: {}, pendingDraft:null, addresses:[], fulfillment: "delivery", fulfillmentExplicit: false, postcode: "", search: "", cuisine: "", orders: [], refundCases: [], offers: [], selectedOffer: null, notifications: [], unreadCount: 0, workspace: {}, workspaceTab:"orders", generation: 0, poll: null, notificationPoll: null, orderKey: null, submitting: false, pendingCheckout: false, dialogReturnFocus: null, accessFlow: null, focusOrderId: null, soundEnabled:false, soundContext:null, seenOrderIds:new Set(), seenNotificationIds:null, pendingPhoto:null };
 const e = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const shortId = (id) => id ? id.slice(0, 8).toUpperCase() : "—";
@@ -53,15 +55,19 @@ function consumeAccessFragment() {
 }
 
 async function boot() {
+  let paymentReturnNotice="", returnedPayment=null;
   consumeAccessFragment();
   const entry = new URLSearchParams(location.search);
   const postcode = (entry.get("postcode") || "").trim().toUpperCase();
   if (/^[A-Z0-9 ]{2,10}$/.test(postcode)) state.postcode = postcode;
   try { state.runtime=await api("/api/runtime"); } catch { /* secure defaults keep demo shortcuts hidden */ }
+  try { paymentConfig=await api("/api/payments/config"); } catch { /* simulator-safe defaults */ }
+  try { const returned=await refreshReturnedPayment({api}); returnedPayment=returned; if(returned) paymentReturnNotice=returned.cancelled?"Stripe checkout was cancelled. Payment status was refreshed.":`Payment status: ${statusLabel(returned.payment.status)}.`; } catch(error) { paymentReturnNotice=`Payment status could not be refreshed: ${error.message}`; }
   const runtimeBanner=document.querySelector("#runtime-banner");
-  if(state.runtime.mode==="hosted-preview"){runtimeBanner.hidden=false;runtimeBanner.textContent="Hosted preview · simulated payments · no real orders or provider email";}
+  if(state.runtime.mode==="hosted-preview"){runtimeBanner.hidden=paymentConfig.providerMode==="stripe_live";runtimeBanner.textContent=paymentConfig.providerMode==="stripe_test"?"Stripe test checkout · no real money moves":"Hosted preview · simulated payments · no real orders or provider email";}
   setAccount();
   try { const result = await api("/api/auth/me"); resetIdentity(result.user); } catch { resetIdentity(null); }
+  if(paymentReturnNotice)message(paymentReturnNotice);
   if (state.accessFlow) return renderAccessFlow();
   if (entry.get("view") === "register-restaurant") {
     renderAuth("Start a restaurant application. Your restaurant stays private until reviewed and approved.");
@@ -71,7 +77,8 @@ async function boot() {
     document.querySelector("#restaurant-register-form input")?.focus();
     return;
   }
-  await navigate(entry.get("view") === "account" ? "account" : "discover");
+  if(returnedPayment&&state.user?.role==="customer"){state.focusOrderId=returnedPayment.orderId;if(["authorized","captured"].includes(returnedPayment.payment.status))clearDraft();await navigate("orders");}
+  else await navigate(entry.get("view") === "account" ? "account" : "discover");
 }
 
 async function navigate(view) {
@@ -127,6 +134,7 @@ function renderCheckout() {
   document.querySelector("#checkout-form").insertAdjacentHTML("afterbegin", `<div class="checkout-items"><strong>Your order</strong>${lines.map((line)=>{const choices=selectedModifierNames(line);return `<p><span>${line.quantity} × ${e(line.name)}${choices.length?` · ${choices.map(e).join(", ")}`:""}</span><b>${money(line.lineTotalMinor)}</b></p>`;}).join("")}</div>`);
   if (state.selectedOffer?.restaurantId === state.selected.id) document.querySelector("#checkout-form").insertAdjacentHTML("afterbegin", `<div class="offer-summary"><strong>${e(promotionBadge(state.selectedOffer))}</strong><span>${e(state.selectedOffer.title)} · restaurant funded</span><small>Applies when paid food reaches ${money(state.selectedOffer.minSubtotalMinor)}. Eligibility is checked when you place the order.</small></div>`);
   state.quoteController?.close();state.quoteController=mountCheckoutQuote(document.querySelector("#checkout-form"),{api,body:checkoutQuoteBody});
+  enhancePaymentChoices(document.querySelector("#checkout-form"),paymentConfig);
 
 }
 
@@ -137,7 +145,7 @@ async function submitOrder(form) {
   const body = { restaurantId: state.selected.id, items: orderItemPayload(lines), paymentMethod: data.get("paymentMethod"), fulfillment: state.fulfillment, ...(state.selectedOffer?.restaurantId === state.selected.id ? { offerId: state.selectedOffer.id } : {}), ...(data.get("customerPhone") ? { customerPhone: data.get("customerPhone") } : {}), ...(data.get("deliveryInstructions") ? { deliveryInstructions: data.get("deliveryInstructions") } : {}), ...(data.get("allergyNotes") ? { allergyNotes: data.get("allergyNotes") } : {}) };
   if (state.fulfillment === "delivery") body.deliveryAddress = { line1: data.get("line1"), ...(data.get("line2") ? { line2: data.get("line2") } : {}), city: data.get("city"), postcode: data.get("postcode") };
   state.orderKey ??= createRequestKey();
-  try { const order = await api("/api/orders", { method: "POST", headers: { "Idempotency-Key": state.orderKey }, body: JSON.stringify(body) }); state.orderKey = null; state.cart = {}; state.selectedOffer = null; clearDraft(); renderConfirmation(order); }
+  try { const order = await api("/api/orders", { method: "POST", headers: { "Idempotency-Key": state.orderKey }, body: JSON.stringify(body) }); if(body.paymentMethod==="card"){button.textContent="Opening secure Stripe checkout…";await beginStripeCheckout({api,orderId:order.id,key:`checkout-${order.id}`});return;} state.orderKey = null; state.cart = {}; state.selectedOffer = null; clearDraft(); renderConfirmation(order); }
   catch (error) { const box = document.querySelector("#checkout-error"); box.className = "error"; box.textContent = `${error.message} You can retry safely; the same request key will be used.`; button.disabled = false; button.textContent = "Retry order"; }
   finally { state.submitting = false; }
 }
@@ -204,9 +212,10 @@ function orderCard(order) {
   const cases=state.refundCases.filter((item)=>item.orderId===order.id),latest=cases.at(-1);
   return `<article class="card order-card" data-order-id="${e(order.id)}"><div class="order-top"><div><span class="badge">${e(statusLabel(order.status))}</span><h3>${e(order.restaurantName)}</h3><span class="meta">${e(shortId(order.id))} · ${date(order.createdAt)}</span></div><strong>${money(order.totalMinor)}</strong></div><div class="timeline" aria-label="Order progress">${flow.map((step, index) => `<span class="timeline-step ${index <= current ? "done" : ""}">${e(statusLabel(step))}</span>`).join("")}</div><p class="meta">${order.items.map((item) => `${item.quantity} × ${e(item.name)}`).join(" · ")}</p><p class="meta">${e(statusLabel(order.paymentStatus))} · ${e(statusLabel(order.fulfillment))}</p>${latest?`<div class="refund-summary"><span class="badge">${e(statusLabel(latest.phase??latest.status))}</span><strong>Refund case ${e(latest.reference)}</strong><span class="meta">Updated ${date(latest.updatedAt)}</span></div>`:""}<div class="card-actions">${(order.messagingAvailable??["placed","accepted","preparing","ready","out_for_delivery"].includes(order.status))?`<button class="primary" data-action="message-restaurant" data-id="${e(order.id)}">Message restaurant</button>`:""}${order.restaurantPhone?`<a class="secondary" href="tel:${e(order.restaurantPhone.replace(/[^+0-9]/g,""))}">Call restaurant</a>`:""}<button class="secondary" data-action="print-receipt" data-id="${e(order.id)}">Print receipt</button><button class="secondary" data-action="reorder" data-id="${e(order.id)}">Reorder with current prices</button><button class="secondary" data-action="refund-case-new" data-id="${e(order.id)}">Report an order issue</button>${latest?`<button class="secondary" data-action="refund-case-view" data-id="${e(latest.id)}">View case</button>`:""}</div></article>`;
 }
-function renderOrders() { main.innerHTML = `<section class="section"><div class="section-head"><div><div class="eyebrow">Updates every 5 seconds</div><h1>Your orders</h1></div></div><div id="orders-list" class="grid">${state.orders.length ? state.orders.map(orderCard).join("") : `<div class="empty">No orders yet. Your first local meal can start from Find food.</div>`}</div></section>`; focusRequestedOrder(); }
+function renderOrders() { main.innerHTML = `<section class="section"><div class="section-head"><div><div class="eyebrow">Updates every 5 seconds</div><h1>Your orders</h1></div></div><div id="orders-list" class="grid">${state.orders.length ? state.orders.map(orderCard).join("") : `<div class="empty">No orders yet. Your first local meal can start from Find food.</div>`}</div></section>`; enhancePaymentRecovery(); focusRequestedOrder(); }
 function focusRequestedOrder() { if (!state.focusOrderId) return; const card=document.querySelector(`[data-order-id="${CSS.escape(state.focusOrderId)}"]`); state.focusOrderId=null; if(card){card.classList.add("order-highlight");card.setAttribute("tabindex","-1");card.scrollIntoView({behavior:"smooth",block:"center"});card.focus({preventScroll:true});} }
-function updateOrderCards() { const list = document.querySelector("#orders-list"); if (list) list.innerHTML = state.orders.length ? state.orders.map(orderCard).join("") : `<div class="empty">No orders yet.</div>`; }
+function updateOrderCards() { const list = document.querySelector("#orders-list"); if (list) { list.innerHTML = state.orders.length ? state.orders.map(orderCard).join("") : `<div class="empty">No orders yet.</div>`; enhancePaymentRecovery(); } }
+function enhancePaymentRecovery(){for(const order of state.orders.filter((item)=>item.paymentMethod==="card")){const card=document.querySelector(`[data-order-id="${CSS.escape(order.id)}"]`),actions=card?.querySelector(".card-actions");if(!actions)continue;const status=order.payment?.status||order.paymentStatus;actions.insertAdjacentHTML("afterbegin",`${order.payment?.checkoutAvailable&&["pending","unknown","failed"].includes(status)?`<button class="primary" data-action="payment-checkout" data-id="${e(order.id)}">Continue secure card checkout</button>`:""}<button class="secondary" data-action="payment-refresh" data-id="${e(order.id)}">Refresh payment status</button>`);}}
 async function reorder(id) { const order = state.orders.find((item) => item.id === id); if (!order) return; await openMenu(order.restaurantId); let needsChoices = false; for (const prior of order.items.filter((item) => !item.isOfferItem)) { const fresh = state.menu.find((item) => item.id === prior.menuItemId); if (fresh) { state.cart[fresh.id] = prior.quantity; state.modifiers[fresh.id] = currentSelections(fresh, prior.selectedModifiers ?? []); if (!validateModifierSelection(fresh, state.modifiers[fresh.id]).ok) needsChoices = true; } } state.fulfillment = order.fulfillment; state.fulfillmentExplicit = true; renderMenu(); message(needsChoices ? "Basket updated. Choose the current required options before checkout." : "Basket rebuilt with current paid items and available choices."); }
 
 function showRefundCaseForm(order) {
@@ -270,7 +279,7 @@ function modifierGroup(group={id:"",name:"",minSelections:0,maxSelections:1,opti
 function enhanceModifiers(form) { const textarea=form?.querySelector('textarea[name="modifierGroups"]');if(!textarea)return;let groups=[];try{groups=JSON.parse(textarea.value)||[];}catch{}const editor=document.createElement("div");editor.className="full simple-editor modifier-editor";editor.innerHTML=`<div class="editor-heading"><strong>Choices and extras</strong><button type="button" class="secondary" data-action="add-modifier-group">Add choice group</button></div><p class="meta">For optional choices use minimum 0. For a required choice use minimum 1.</p><div class="modifier-groups">${groups.map(modifierGroup).join("")}</div>`;textarea.closest("label").replaceWith(editor); }
 function readHours(form){return serializeOpeningRows([...form.querySelectorAll(".hours-row")].map((row)=>({day:row.querySelector(".hour-day").value,open:row.querySelector(".hour-open").value,close:row.querySelector(".hour-close").value})));}
 function readModifiers(form){return serializeModifierRows([...form.querySelectorAll(".modifier-editor-group")].map((group)=>({id:group.querySelector(".group-id").value,name:group.querySelector(".group-name").value,minSelections:group.querySelector(".group-min").value,maxSelections:group.querySelector(".group-max").value,options:[...group.querySelectorAll(".option-row")].map((option)=>({id:option.querySelector(".option-id").value,name:option.querySelector(".option-name").value,extraPrice:option.querySelector(".option-price").value,available:option.querySelector(".option-available").checked}))})));}
-function financeHtml(contract, statement) { return `<div><h2>Development terms</h2>${contract ? `<div class="card"><span class="badge">Demo only</span><h3>${contract.rateBasisPoints / 100}% commission for ${contract.durationMonths} months</h3><p>Policy ${e(contract.policyVersion)}. This seeded local record is not a live legal agreement or activation.</p></div>` : `<div class="notice">No demo contract record is available.</div>`}<h2>Statement</h2>${statement ? `<div class="kpis"><div class="card kpi">Mock-card commission<strong>${money(statement.commissionMockMinor)}</strong></div><div class="card kpi">Cash receivable<strong>${money(statement.cashReceivableMinor)}</strong></div><div class="card kpi">Cash settled<strong>${money(statement.cashSettledMinor)}</strong></div><div class="card kpi">Outstanding / credit<strong>${money(statement.cashOutstandingMinor)}</strong></div></div>` : `<div class="notice">Statement endpoint is not available in this local API yet.</div>`}</div>`; }
+function financeHtml(contract, statement) { const cardCommission=(statement?.commissionStripeMinor??statement?.commissionCardMinor??0)+(statement?.commissionMockMinor??0);return `<div><h2>Development terms</h2>${contract ? `<div class="card"><span class="badge">Demo only</span><h3>${contract.rateBasisPoints / 100}% commission for ${contract.durationMonths} months</h3><p>Policy ${e(contract.policyVersion)}. This seeded local record is not a live legal agreement or activation.</p></div>` : `<div class="notice">No demo contract record is available.</div>`}<h2>Statement</h2>${statement ? `<div class="kpis"><div class="card kpi">Card commission<strong>${money(cardCommission)}</strong></div><div class="card kpi">Cash receivable<strong>${money(statement.cashReceivableMinor)}</strong></div><div class="card kpi">Cash settled<strong>${money(statement.cashSettledMinor)}</strong></div><div class="card kpi">Outstanding / credit<strong>${money(statement.cashOutstandingMinor)}</strong></div></div>` : `<div class="notice">Statement endpoint is not available in this local API yet.</div>`}</div>`; }
 
 async function loadAdminWorkspace(generation) {
   const paths = { restaurants: "/api/admin/restaurants", orders: "/api/admin/orders", ledger: "/api/admin/ledger", contracts: "/api/admin/contracts", statements: "/api/admin/statements", audit: "/api/admin/audit", jobs: "/api/admin/jobs", integrations: "/api/admin/integrations", support: "/api/admin/support", deletion: "/api/admin/deletion-requests" };
@@ -342,6 +351,8 @@ document.addEventListener("click", async (event) => {
   if (action === "back-menu") return renderMenu();
   if (action === "reload-orders") return loadOrders();
   if (action === "reload-workspace") return loadWorkspace();
+  if (action === "payment-refresh") { button.disabled=true; try { const result=await api(`/api/orders/${encodeURIComponent(button.dataset.id)}/payment/refresh`,{method:"POST",body:"{}"}); message(`Payment status: ${statusLabel(result.payment?.status||result.status)}.`); await loadOrders(); } catch(error){message(error.message);button.disabled=false;} return; }
+  if (action === "payment-checkout") { button.disabled=true; try { await beginStripeCheckout({api,orderId:button.dataset.id,key:`checkout-${button.dataset.id}`}); } catch(error){message(`${error.message} You can retry without creating another order.`);button.disabled=false;} return; }
   if (action === "reorder") return reorder(button.dataset.id);
   if (action === "refund-case-new") { const order=state.orders.find((item)=>item.id===button.dataset.id); if(order)return showRefundCaseForm(order); }
   if (action === "message-restaurant") return showOrderConversation(button.dataset.id);

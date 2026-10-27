@@ -7,12 +7,12 @@ export function ownerNavigation(permission = "owner") {
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
     ["Customers & Loyalty", "/owner/customers"], ["Printers", "/owner/printers"],
   ];
-  if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Refund cases", "/owner/refunds"], ["Settings", "/owner/settings"]);
+  if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Stripe setup", "/owner/stripe"], ["Refund cases", "/owner/refunds"], ["Settings", "/owner/settings"]);
   return core;
 }
 export const adminNavigation = [
   ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Orders", "/admin/orders"],
-  ["Finance", "/admin/finance"], ["Refund cases", "/admin/refunds"], ["Access & deadlines", "/admin/governance"], ["Operations", "/admin/operations"],
+  ["Finance", "/admin/finance"], ["Stripe readiness", "/admin/stripe"], ["Refund cases", "/admin/refunds"], ["Access & deadlines", "/admin/governance"], ["Operations", "/admin/operations"],
 ];
 
 export function parseMenuCsv(text) {

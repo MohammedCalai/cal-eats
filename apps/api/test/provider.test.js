@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { createStripeTestAdapter, parseStripeWebhook, STRIPE_API_VERSION, StripeTestConfigurationError, verifyStripeWebhook } from "../src/payments/stripe-test.js";
+import { createStripeAdapter, createStripeTestAdapter, parseStripeWebhook, STRIPE_API_VERSION, StripeTestConfigurationError, verifyStripeWebhook } from "../src/payments/stripe-test.js";
 
 const KEY = "sk_test_unit_only_not_a_real_key";
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -13,6 +13,16 @@ test("configuration is test-only and rejects live or custom production transport
   assert.throws(() => createStripeTestAdapter({ secretKey: KEY, baseUrl: "https://stripe.invalid", allowTestTransport:true }), /injected test fetch/);
 });
 
+test("generic adapter requires matching mode keys and an explicit live gate",()=>{assert.throws(()=>createStripeAdapter({secretKey:"sk_live_unit",mode:"live"}),/liveEnabled/);assert.throws(()=>createStripeAdapter({secretKey:KEY,mode:"live",liveEnabled:true}),/matching secret/);const adapter=createStripeAdapter({secretKey:"sk_live_unit",mode:"live",liveEnabled:true,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"acct_live",livemode:true,charges_enabled:true,payouts_enabled:true})});assert.equal(adapter.mode,"stripe_live");});
+
+test("platform identity is normalized without exposing credentials",async()=>{const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"acct_platform123",country:"GB",charges_enabled:true,payouts_enabled:false})});const account=await adapter.retrievePlatformAccount();assert.equal(account.accountId,"acct_platform123");assert.equal(account.mode,"stripe_test");assert.equal(account.chargesEnabled,true);assert.equal(account.payoutsEnabled,false);assert.ok(!JSON.stringify(account).includes(KEY));});
+
+test("hosted checkout uses manual capture and retrieval normalizes expanded payment details",async()=>{const calls=[],responses=[jsonResponse({id:"cs_test123",livemode:false,status:"open",payment_status:"unpaid",url:"https://checkout.stripe.test/session",expires_at:1_800_000_000}),jsonResponse({id:"cs_test123",livemode:false,status:"complete",payment_status:"paid",url:null,payment_intent:{id:"pi_test123",status:"requires_capture",latest_charge:{id:"ch_test123",balance_transaction:{fee:41,available_on:1_800_000_100}}}})];const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(url,init)=>{calls.push({url:String(url),init});return responses.shift();}});const created=await adapter.createCheckoutSession({orderId:"order-1",amountMinor:1200,restaurantId:"restaurant-1",successUrl:"https://example.test/success",cancelUrl:"https://example.test/cancel",transferGroup:"order-1",idempotencyKey:"checkout-order-1"});assert.equal(created.providerReference,"cs_test123");assert.equal(created.checkoutUrl,"https://checkout.stripe.test/session");assert.match(String(calls[0].init.body),/payment_intent_data%5Bcapture_method%5D=manual/);const retrieved=await adapter.retrieveCheckoutSession({sessionId:"cs_test123"});assert.equal(retrieved.paymentState,"authorized");assert.equal(retrieved.paymentIntentId,"pi_test123");assert.equal(retrieved.latestChargeId,"ch_test123");assert.equal(retrieved.providerCostMinor,41);assert.match(calls[1].url,/expand%5B%5D=payment_intent.latest_charge.balance_transaction/);});
+
+test("checkout retrieval exposes immutable amount currency tenant and capture metadata",async()=>{const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"cs_testmeta",livemode:false,status:"complete",payment_status:"paid",amount_total:1200,currency:"gbp",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"},payment_intent:{id:"pi_testmeta",status:"requires_capture",capture_method:"manual",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"},latest_charge:null}})});const result=await adapter.retrieveCheckoutSession({sessionId:"cs_testmeta"});assert.equal(result.amountMinor,1200);assert.equal(result.currency,"GBP");assert.equal(result.orderId,"order-1");assert.equal(result.restaurantId,"restaurant-1");assert.equal(result.captureMethod,"manual");assert.equal(result.paymentIntentId,"pi_testmeta");});
+
+test("hosted checkout expiration is idempotent, mode checked and normalized",async()=>{let call;const adapter=createStripeTestAdapter({secretKey:KEY,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(url,init)=>{call={url:String(url),init};return jsonResponse({id:"cs_testexpire",object:"checkout.session",livemode:false,status:"expired",payment_status:"unpaid",amount_total:1200,currency:"gbp",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"}});}});const result=await adapter.expireCheckoutSession({sessionId:"cs_testexpire",idempotencyKey:"expire-checkout-order-1"});assert.match(call.url,/\/v1\/checkout\/sessions\/cs_testexpire\/expire$/);assert.equal(call.init.method,"POST");assert.equal(call.init.headers["Idempotency-Key"],"expire-checkout-order-1");assert.equal(result.providerReference,"cs_testexpire");assert.equal(result.paymentState,"expired");assert.equal(result.amountMinor,1200);assert.equal(result.currency,"GBP");assert.equal(result.orderId,"order-1");assert.equal(result.restaurantId,"restaurant-1");});
+
 test("mutations pin version, require idempotency and encode manual authorization", async () => {
   let captured;
   const adapter = createStripeTestAdapter({ secretKey: KEY, allowTestTransport: true, baseUrl: "https://stripe.invalid", fetchImpl: async (url, init) => {
@@ -21,7 +31,7 @@ test("mutations pin version, require idempotency and encode manual authorization
   }});
   await assert.rejects(adapter.authorizePayment({ amountMinor: 1200, paymentMethodId: "pm_test123", transferGroup: "order-group", orderId: "order-1" }), /idempotencyKey/);
   const result = await adapter.authorizePayment({ amountMinor: 1200, paymentMethodId: "pm_test123", transferGroup: "order-group", orderId: "order-1", idempotencyKey: "authorize-order-1" });
-  assert.deepEqual(result, { ok: true, providerCostMinor: undefined, status: "confirmed", paymentState:"authorized", providerReference: "pi_test123", latestChargeId:undefined, availableOn:undefined, errorCode: undefined });
+  assert.deepEqual(result, { ok: true, providerCostMinor: undefined, status: "confirmed", paymentState:"authorized", providerReference: "pi_test123", paymentIntentId:"pi_test123", latestChargeId:undefined, availableOn:undefined, errorCode: undefined });
   assert.equal(captured.init.headers["Stripe-Version"], STRIPE_API_VERSION);
   assert.equal(captured.init.headers["Idempotency-Key"], "authorize-order-1");
   assert.equal(captured.init.redirect, "error");
@@ -85,13 +95,22 @@ test("transfers require captured source transaction and payouts are account scop
   assert.equal(payouts.items[0].status,"confirmed");
 });
 
+test("transfer retrieval exposes immutable settlement binding fields",async()=>{const adapter=createStripeTestAdapter({secretKey:KEY,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"tr_testbind",object:"transfer",livemode:false,amount:875,currency:"gbp",destination:"acct_test123",source_transaction:"ch_test123",transfer_group:"order:123",reversed:false})});const result=await adapter.retrieveTransfer({transferId:"tr_testbind"});assert.equal(result.transferId,"tr_testbind");assert.equal(result.amountMinor,875);assert.equal(result.currency,"GBP");assert.equal(result.destinationAccountId,"acct_test123");assert.equal(result.sourceTransactionId,"ch_test123");assert.equal(result.transferGroup,"order:123");});
+
+test("transfer reversal create and retrieval preserve transfer amount and currency",async()=>{const calls=[],adapter=createStripeTestAdapter({secretKey:KEY,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(url)=>{calls.push(String(url));return jsonResponse({id:"trr_test123",object:"transfer_reversal",livemode:false,transfer:"tr_test123",amount:400,currency:"gbp"});}});const created=await adapter.reverseTransfer({transferId:"tr_test123",amountMinor:400,idempotencyKey:"reverse-transfer-123"});assert.equal(created.reversalId,"trr_test123");assert.equal(created.transferId,"tr_test123");assert.equal(created.amountMinor,400);assert.equal(created.currency,"GBP");const retrieved=await adapter.retrieveTransferReversal({transferId:"tr_test123",reversalId:"trr_test123"});assert.equal(retrieved.providerReference,"trr_test123");assert.equal(retrieved.transferId,"tr_test123");assert.equal(retrieved.amountMinor,400);assert.match(calls[1],/\/v1\/transfers\/tr_test123\/reversals\/trr_test123$/);});
+
+test("refund retrieval exposes payment amount currency and tenant metadata",async()=>{const adapter=createStripeTestAdapter({secretKey:KEY,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"re_test123",object:"refund",livemode:false,status:"succeeded",payment_intent:"pi_test123",amount:325,currency:"gbp",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"}})});const result=await adapter.retrieveRefund({refundId:"re_test123"});assert.equal(result.paymentIntentId,"pi_test123");assert.equal(result.amountMinor,325);assert.equal(result.currency,"GBP");assert.equal(result.orderId,"order-1");assert.equal(result.restaurantId,"restaurant-1");});
+
 test("connected account result exposes capability and requirement state", async () => {
-  const adapter = createStripeTestAdapter({ secretKey: KEY, allowTestTransport: true, baseUrl: "https://stripe.invalid", fetchImpl: async () => jsonResponse({ id: "acct_test123", livemode: false, charges_enabled: false, payouts_enabled: false, capabilities: { transfers: "active", card_payments: "pending" }, requirements: { currently_due: ["company.tax_id"], past_due: [] } }) });
+  const adapter = createStripeTestAdapter({ secretKey: KEY, allowTestTransport: true, baseUrl: "https://stripe.invalid", fetchImpl: async () => jsonResponse({ id: "acct_test123", object:"account", charges_enabled: false, payouts_enabled: false, capabilities: { transfers: "active", card_payments: "pending" }, requirements: { currently_due: ["company.tax_id"], past_due: [] } }) });
   const result = await adapter.refreshConnectedAccount({ accountId: "acct_test123" });
   assert.equal(result.status, "pending");
+  assert.equal(result.chargesEnabled,false);assert.equal(result.payoutsEnabled,false);
   assert.deepEqual(result.capabilities, ["transfers"]);
   assert.deepEqual(result.requirements, ["company.tax_id"]);
 });
+
+test("weekly payout schedule uses pinned balance-settings fields",async()=>{let body;const adapter=createStripeTestAdapter({secretKey:KEY,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(_url,init)=>{body=String(init.body);return jsonResponse({object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:["monday"]}}});}});await adapter.configureWeeklyPayouts({accountId:"acct_test123",weeklyAnchor:"monday",idempotencyKey:"weekly-payouts-1"});assert.match(body,/payouts%5Bschedule%5D%5Binterval%5D=weekly/);assert.match(body,/payouts%5Bschedule%5D%5Bweekly_payout_days%5D%5B%5D=monday/);assert.doesNotMatch(body,/payments%5B/);});
 
 test("webhook verification uses raw bytes, timestamp tolerance and rejects live events", () => {
   const secret = "whsec_test_only_secret";

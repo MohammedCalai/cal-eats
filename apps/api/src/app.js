@@ -19,6 +19,7 @@ import { routeProviderEventWebhook } from "./payments/provider-events.js";
 import { routeOrderMessaging } from "./order-messaging.js";
 import { routeLoyalty } from "./loyalty.js";
 import { routeDisputeResolution } from "./dispute-resolution.js";
+import { routeStripeConnect } from "./payments/stripe-connect.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -67,7 +68,7 @@ export function createApp({ db, config }) {
       const url = new URL(req.url, config.origin);
       const healthcheckHostAllowed = req.method === "GET" && ["/health/live", "/health/ready"].includes(url.pathname) && config.runMode === "hosted-preview" && config.healthcheckHost && req.headers.host === config.healthcheckHost;
       if (req.headers.host !== config.expectedHost && !healthcheckHostAllowed) throw new HttpError(403, "INVALID_HOST", "Request host is not allowed");
-      if (req.method === "GET" && url.pathname === "/api/runtime") return sendJson(res, 200, { data: { mode: config.runMode, demoShortcuts: config.demoShortcuts, simulatedPayments: true } });
+      if (req.method === "GET" && url.pathname === "/api/runtime") return sendJson(res, 200, { data: { mode: config.runMode, demoShortcuts: config.demoShortcuts, simulatedPayments: config.paymentProviderMode !== "stripe_live", paymentProviderMode: config.paymentProviderMode } });
       if (req.method === "GET" && url.pathname === "/health/live") return sendJson(res, 200, { data: { status: "ok", service: "calai-eats-api" } });
       if (req.method === "GET" && url.pathname === "/health/ready") {
         const ready = isDatabaseReady(db);
@@ -162,6 +163,7 @@ export function createApp({ db, config }) {
       if (await routeOrderMessaging({ req, res, url, db, config, session })) return;
       if (await routeLoyalty({ req, res, url, db, config, session })) return;
       if (await routeDisputeResolution({ req, res, url, db, config, session })) return;
+      if (await routeStripeConnect({ req, res, url, db, config, session })) return;
       const polishHandled = await routePolish({ req, res, url, db, config, session });
       if (polishHandled || res.writableEnded || res.headersSent) return;
       const marketplaceHandled = await routeMarketplace({ req, res, url, db, config, session });

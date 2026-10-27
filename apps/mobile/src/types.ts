@@ -1,5 +1,5 @@
 export type Fulfillment = "delivery" | "collection";
-export type PaymentMethod = "mock_card" | "cash";
+export type PaymentMethod = "mock_card" | "card" | "cash";
 
 export interface User {
   id: string;
@@ -89,6 +89,7 @@ export interface Order {
   totalMinor: number;
   paymentMethod: PaymentMethod;
   paymentStatus: string;
+  payment?: { providerMode: string; status: string; checkoutAvailable: boolean };
   fulfillment: Fulfillment;
   deliveryAddress?: Address | null;
   items: OrderItem[];
