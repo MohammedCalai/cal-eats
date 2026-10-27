@@ -82,6 +82,7 @@ async function boot() {
 }
 
 async function navigate(view) {
+  if (state.user && state.user.role !== "customer") { stopPolling(); window.location.replace("/business/"); return; }
   state.quoteController?.close();state.quoteController=null;if (view !== "orders") stopOrderPolling();
   state.view = view;
   document.querySelectorAll("[data-view]").forEach((node) => node.setAttribute("aria-current", node.dataset.view === view ? "page" : "false"));
@@ -153,7 +154,7 @@ async function submitOrder(form) {
 function renderConfirmation(order) { main.innerHTML = `<section class="section"><div class="card"><div class="food-mark" aria-hidden="true">✓</div><div class="eyebrow">Order received</div><h1>Thanks, ${e(state.user.name)}.</h1><p>${e(order.restaurantName)} has your ${e(order.fulfillment)} order. Reference <strong>${e(shortId(order.id))}</strong>.</p><p class="badge">${e(statusLabel(order.status))}</p><div class="totals"><div class="grand"><span>Total</span><span>${money(order.totalMinor)}</span></div></div><div class="card-actions"><button class="primary" data-view="orders">Track order</button><button class="secondary" data-action="print-receipt" data-id="${e(order.id)}">Print receipt</button></div></div></section>`; }
 
 function renderAuth(note = "") {
-  const shortcuts=state.runtime.demoShortcuts ? `<p class="muted">Local demo shortcuts</p><div class="card-actions"><button type="button" class="secondary" data-demo="customer">Customer demo</button><button type="button" class="secondary" data-demo="restaurant">Restaurant demo</button><button type="button" class="secondary" data-demo="admin">Admin demo</button></div>` : "";
+  const shortcuts=state.runtime.demoShortcuts ? `<p class="muted">Local demo shortcuts</p><div class="card-actions"><button type="button" class="secondary" data-demo="customer">Customer demo</button></div>` : "";
   stopPolling(); main.innerHTML = `<section class="section"><div class="section-head"><div><div class="eyebrow">Your account</div><h1>Sign in to Cal-Eats</h1></div></div>${note ? `<div class="notice">${e(note)}</div>` : ""}<div class="grid"><form class="card stack" id="login-form"><h2>Welcome back</h2><label>Email<input class="field" name="email" type="email" required autocomplete="email"></label><label>Password<input class="field" name="password" type="password" minlength="12" required autocomplete="current-password"></label><div class="form-error"></div><button class="primary">Sign in</button><button type="button" class="quiet" data-action="forgot-password">Forgot password?</button>${shortcuts}</form><form class="card stack" id="register-form"><h2>Create a customer account</h2><label>Name<input class="field" name="name" required autocomplete="name"></label><label>Email<input class="field" name="email" type="email" required autocomplete="email"></label><label>Password<input class="field" name="password" type="password" minlength="12" required autocomplete="new-password"></label><div class="form-error"></div><button class="primary">Create account</button></form><form class="card stack" id="restaurant-register-form"><h2>List your restaurant</h2><label>Your name<input class="field" name="name" required autocomplete="name"></label><label>Restaurant name<input class="field" name="restaurantName" required></label><label>Email<input class="field" name="email" type="email" required autocomplete="email"></label><label>Password<input class="field" name="password" type="password" minlength="12" required autocomplete="new-password"></label><div class="form-error"></div><button class="primary">Create pending application</button><p class="muted">Registration starts an admin-reviewed application. It does not publish the restaurant.</p></form></div>${state.runtime.demoShortcuts ? `<p class="muted">Demo buttons use public local fixture accounts.</p>` : ""}</section>`;
 }
 
@@ -237,9 +238,9 @@ function refundCaseDetailHtml(item) {
 function renderDenied(text) { stopOrderPolling(); main.innerHTML = `<section class="section"><div class="error"><strong>That area isn’t available to this account.</strong><br>${e(text)}</div><button class="primary" data-view="discover">Back to food</button></section>`; }
 
 async function loadWorkspace() {
-  stopOrderPolling(); if (state.user.role === "customer") return renderDenied("Restaurant and admin workspaces require the matching role.");
-  loading("Opening workspace"); const generation = state.generation;
-  try { if (state.user.role === "restaurant") await loadRestaurantWorkspace(generation); else if (state.user.role === "admin") await loadAdminWorkspace(generation); else renderDenied("Unknown account role."); } catch (error) { if (generation === state.generation) showError(error, "reload-workspace"); }
+  stopPolling();
+  if (!state.user || state.user.role === "customer") return renderDenied("Restaurant tools are available in the business platform.");
+  window.location.replace("/business/");
 }
 
 async function loadRestaurantWorkspace(generation) {

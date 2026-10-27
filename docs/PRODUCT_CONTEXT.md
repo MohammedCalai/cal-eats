@@ -1,5 +1,7 @@
 # Retrieved product context (source may be truncated)
 
+**Current user correction, 27 October 2026:** deliver exactly two products: one Cal-Eats customer app, and one Cal-Eats business platform for restaurant tablets. Cal-Eats administrator controls are a restricted role inside that same business platform, using its shared sign-in. The older three-interface wording below is historical context, not a request for a third product or separate administrator app. Menu items, prices, photos and availability are managed on the business tablet.
+
 Source: earlier chat "Delivery App Startup Plan", retrieved 2026-10-24 when the user asked to preserve the Calai theme and complete the local build. This is background design context; current user constraints override external-service suggestions. No external action is authorized by this document.
 
 **Paste this into GPT-6 Sol.** It tells it to build the actual foundation—not just produce another plan—and prepare the external services without touching your existing Calai products.

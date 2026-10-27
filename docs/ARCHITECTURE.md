@@ -1,5 +1,9 @@
 # Calai Eats: local foundation and first journey
 
+## Current product split — 27 October 2026
+
+There are exactly two user-facing products: the Cal-Eats customer app and the Cal-Eats business tablet platform. Restaurant owners/staff and Cal-Eats administrators use the same business platform and sign-in, with different permissions and menus. Administrator routes are a restricted area of that platform, not a third app. The customer browser preview and native customer source implement the same customer product. Backend, payment and printer services are supporting components.
+
 Current implementation: foundation, delivery journey, finance, product operations, recipient notifications, tailored offers, local account recovery and guarded hosted-preview controls are complete through schema v9. The original scope below records the initial design; subsequent contracts in LOCAL_COMPLETION.md, PRODUCT_OPERATIONS_API.md, OFFERS_API.md, ACCOUNT_ACCESS_API.md, HOSTED_PREVIEW.md and FINAL_POLISH_API.md extend it. Phone installation assets and a container recipe are prepared; real-device and container verification remain outstanding. Current fixtures use Luton LU1/LU2 and GBP. Restaurant signup creates a pending application with an owner membership. Refunds, staff permissions, support and export are implemented. Delivery uses restaurant-owned drivers; no Calai dispatch fleet is planned in this phase. Automatic loyalty is deferred by the user. STATUS.md records verification and remaining limits.
 
 ## Scope and authority
@@ -10,7 +14,8 @@ No GitHub pushes, Actions, Codespaces, Expo EAS, paid services, live payments, c
 ## Architecture
 - Node.js 24 (installed 24.19.0), ESM JavaScript, npm workspaces, no downloaded runtime dependencies for this milestone.
 - `apps/api`: local HTTP server, domain services, repository, migrations and tests. Node built-in SQLite, crypto and test runner. Explicit SQL migrations, parameterized queries, foreign keys and transactional writes.
-- `apps/web`: responsive browser customer/restaurant/admin portal; plain modules with shared API contracts. Same-origin static assets served by API. No credentials persisted by browser JavaScript.
+- `apps/web`: public landing page and browser preview of the customer app. Business/admin sessions are directed to the business platform; customer ordering has no operational workspace entry.
+- `apps/portal`: the single business tablet platform, including restaurant menu/photo/price/availability tools, orders, earnings and restricted administrator controls. One build and shared sign-in, with server-enforced roles and restaurant isolation.
 - `packages/contracts`: shared roles, statuses, validation bounds and money rules. Define API shapes here and in API.md before frontend implementation.
 - `data/calai-eats.sqlite`: ignored local database. Test databases use temporary directories and must not touch demo data.
 - Default server: `127.0.0.1:4310`. Local mode rejects production environment and non-loopback binding. Explicit hosted-preview mode requires a normalized HTTPS public origin, Secure cookies and exact Origin on every write; it refuses known demo accounts and seed operations. Authentication throttles persist in SQLite. Initial admin creation is an empty-admin-only secret-input CLI. External providers remain disabled. API endpoints under `/api`; health at `/health/live`, `/health/ready`.

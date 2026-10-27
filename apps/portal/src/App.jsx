@@ -42,7 +42,7 @@ function App() {
     } catch { setSession((s) => s.generation === generation ? { loading: false, user: null, generation } : s); }
   }, [session.generation]);
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  if (session.loading) return <PageState text="Opening portal…" />;
+  if (session.loading) return <PageState text="Opening business platform…" />;
   return <SessionContext.Provider value={{ ...session, refresh, setSession }}><Routes>
     <Route path="/login" element={<Login />} />
     <Route element={<RequireSession />}>
@@ -91,7 +91,7 @@ function Login() {
     try { await api("/api/auth/login", json("POST", { email: data.get("email"), password: data.get("password") })); await refresh(); navigate("/"); }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
-  return <main className="auth"><section className="auth-card"><Brand /><p className="eyebrow">Restaurant operations</p><h1>Sign in to your portal</h1><p>Use your Cal-Eats owner, staff or administrator account.</p>{error && <Alert>{error}</Alert>}<form onSubmit={submit}><Field label="Email" name="email" type="email" required autoComplete="email"/><Field label="Password" name="password" type="password" required autoComplete="current-password"/><button className="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">Local preview. Payments, payouts and device printing are simulated unless explicitly labelled otherwise.</p></section></main>;
+  return <main className="auth"><section className="auth-card"><Brand /><p className="eyebrow">Cal-Eats Business</p><h1>Sign in to the business platform</h1><p>Restaurant teams and Cal-Eats administrators use this same platform. Your account determines the tools you can access.</p>{error && <Alert>{error}</Alert>}<form onSubmit={submit}><Field label="Email" name="email" type="email" required autoComplete="email"/><Field label="Password" name="password" type="password" required autoComplete="current-password"/><button className="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">Local preview. Payments, payouts and device printing are simulated unless explicitly labelled otherwise.</p></section></main>;
 }
 
 function OwnerBootstrap() {

@@ -1,5 +1,7 @@
 # Cal-Eats
 
+Cal-Eats has two products: **one customer app** for ordering, and **one business tablet platform** for menus, photos, prices, availability, orders and earnings. Cal-Eats administrators use a restricted area within the same business platform and shared sign-in; there is no separate administrator app. The browser customer preview represents the same customer product as the native app source.
+
 The expanded 25 October brief is tracked in the [acceptance map](docs/EXPANSION_ACCEPTANCE.md) and [next-phase record](docs/NEXT_PHASE.md). The local customer app, business portal, marketplace/refund API, native source, print-bridge simulator, governance controls and test-provider boundaries are implemented locally. Live payments/payouts, a signed iPhone build, physical printing and deployment remain unverified. Internal package names, environment variables and storage identifiers retain their existing names for compatibility.
 
 Local milestone implementation using Node.js 24 only. It provides persistent authentication plus the full restaurant approval, menu, collection/delivery ordering, status, receipt and commission journey.
