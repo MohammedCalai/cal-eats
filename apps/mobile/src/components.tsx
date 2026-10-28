@@ -7,7 +7,7 @@ export function Brand() {
 }
 
 export function Field({ label, hint, ...props }: TextInputProps & { label: string; hint?: string }) {
-  return <View style={styles.fieldWrap}><Text style={styles.label}>{label}</Text><TextInput {...props} placeholderTextColor="#8492A4" style={[styles.input, props.multiline && styles.multiline, props.style]}/>{hint ? <Text style={styles.hint}>{hint}</Text> : null}</View>;
+  return <View style={styles.fieldWrap}><Text style={styles.label}>{label}</Text><TextInput {...props} accessibilityLabel={props.accessibilityLabel ?? label} placeholderTextColor="#8492A4" style={[styles.input, props.multiline && styles.multiline, props.style]}/>{hint ? <Text style={styles.hint}>{hint}</Text> : null}</View>;
 }
 
 export function Button({ children, onPress, disabled, tone = "primary", busy, accessibilityLabel }: PropsWithChildren<{ onPress: () => void; disabled?: boolean; tone?: "primary" | "secondary" | "danger" | "quiet"; busy?: boolean; accessibilityLabel?: string }>) {
@@ -28,7 +28,7 @@ export function SectionTitle({ eyebrow, title, action }: { eyebrow?: string; tit
 
 const styles = StyleSheet.create({
   brand: { alignSelf: "flex-start", width: 230, maxWidth: "92%", aspectRatio: 4.096, overflow: "hidden" },
-  brandLogo: { width: "100%", height: "100%" },
+  brandLogo: { width: "100%", height: "100%", transform: [{ scale: 1.45 }] },
   fieldWrap: { gap: 6 }, label: { color: colours.ink, fontWeight: "700", fontSize: 14 },
   input: { minHeight: 48, borderWidth: 1, borderColor: colours.line, borderRadius: radii.small, paddingHorizontal: 13, paddingVertical: 11, color: colours.ink, backgroundColor: colours.panel, fontSize: 16 },
   multiline: { minHeight: 96, textAlignVertical: "top" }, hint: { fontSize: 12, color: colours.muted },

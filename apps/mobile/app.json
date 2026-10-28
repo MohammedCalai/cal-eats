@@ -2,17 +2,26 @@
   "expo": {
     "name": "Cal-Eats",
     "slug": "cal-eats",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "platforms": ["ios", "android"],
-    "android": { "package": "uk.co.calai.caleats", "permissions": [] },
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "android": {
+      "package": "uk.co.calai.caleats",
+      "permissions": [],
+      "versionCode": 1,
+      "softwareKeyboardLayoutMode": "resize"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.co.calai.caleats",
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "1"
     },
     "plugins": [
       [
@@ -28,7 +37,26 @@
           "cameraPermission": "Allow Cal-Eats to take a refund evidence photo.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
+          }
+        }
       ]
-    ]
+    ],
+    "scheme": "caleats",
+    "icon": "./assets/app-icon.png",
+    "backgroundColor": "#121212",
+    "primaryColor": "#2865E9",
+    "owner": "yankee1707",
+    "extra": {
+      "eas": {
+        "projectId": "5bf59184-c670-44f4-be78-5229cbd02300"
+      }
+    }
   }
 }

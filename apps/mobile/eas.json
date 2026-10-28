@@ -1,0 +1,47 @@
+{
+  "cli": {
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://eats.calai.info"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "simulator": {
+      "extends": "preview",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://eats.calai.info",
+        "CAL_EATS_PUBLIC_RELEASE_BUILD": "true"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "store-test": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://eats.calai.info",
+        "CAL_EATS_STORE_DISTRIBUTION": "testing",
+        "CAL_EATS_PUBLIC_RELEASE_BUILD": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

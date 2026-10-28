@@ -39,7 +39,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     return payload.data as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if ((error as Error).name === "AbortError") throw new ApiError("The request timed out. Check the local API and try again.", 0, "TIMEOUT");
+    if ((error as Error).name === "AbortError") throw new ApiError("The request timed out. Check your connection and try again.", 0, "TIMEOUT");
     throw new ApiError("Could not reach the configured Cal-Eats API.", 0, "NETWORK_ERROR");
   } finally { clearTimeout(timeout); }
 }

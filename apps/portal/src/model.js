@@ -1,6 +1,14 @@
 export const pounds = (minor) => new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format((Number(minor) || 0) / 100);
 export const shortDate = (value) => value ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }).format(new Date(value)) : "—";
 export const listItems = (value) => Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
+export function poundsInputMinor(value, label = "Price") {
+  const text = String(value ?? "").trim().replace(",", ".");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) throw new Error(`${label} must be an amount such as 3.50, with at most two decimal places.`);
+  const [whole, fraction = ""] = text.split(".");
+  const minor = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  if (!Number.isSafeInteger(minor) || minor < 0 || minor > 10_000_000) throw new Error(`${label} must be between £0 and £100,000.`);
+  return minor;
+}
 export const roleHome = (role) => role === "admin" ? "/admin/dashboard" : "/owner/dashboard";
 export function ownerNavigation(permission = "owner") {
   const core = [

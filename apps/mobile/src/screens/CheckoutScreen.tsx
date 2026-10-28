@@ -11,9 +11,9 @@ type Quote = { grossFoodMinor:number; restaurantDiscountMinor:number; subtotalMi
 type PaymentConfig = { providerMode:string; cardAvailable:boolean; stripeMode:"test"|"live"|null };
 function stripeCheckoutUrl(value:string){const url=new URL(value);if(url.protocol!=="https:"||url.hostname!=="checkout.stripe.com"||url.username||url.password)throw Error("Stripe returned an unexpected checkout destination.");return url.toString();}
 
-export function CheckoutScreen({ token, restaurant, cart, fulfillment, onBack, onOrdered }: { token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onOrdered: (order: Order) => void }) {
+export function CheckoutScreen({ token, restaurant, cart, fulfillment, onBack, onOrdered, initialOfferId }: { initialOfferId?: string; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onOrdered: (order: Order) => void }) {
   const [firstOffers,setFirstOffers]=useState<Offer[]>([]);
-  const [addresses, setAddresses] = useState<Address[]>([]); const [offers, setOffers] = useState<Offer[]>([]); const [selectedOffer, setSelectedOffer] = useState<string | undefined>();
+  const [addresses, setAddresses] = useState<Address[]>([]); const [offers, setOffers] = useState<Offer[]>([]); const [selectedOffer, setSelectedOffer] = useState<string | undefined>(initialOfferId);
   const [address, setAddress] = useState<Address>({ label: "Home", line1: "", line2: "", city: "", postcode: "" }); const [saveAddress, setSaveAddress] = useState(false);
   const [phone, setPhone] = useState(""); const [instructions, setInstructions] = useState(""); const [allergyNotes, setAllergyNotes] = useState(""); const [payment, setPayment] = useState<PaymentMethod>("mock_card");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [key, setKey] = useState(() => requestKey("ios-order"));

@@ -2,18 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { absoluteMediaUrl, api } from "../api";
 import { Button, Card, Empty, ErrorBanner, Field, Pill, SectionTitle } from "../components";
-import { cartTotals, money, validateSelections } from "../model";
+import { cartTotals, money, refreshCart, toggleSelection, validateSelections } from "../model";
 import { colours } from "../theme";
 import type { CartEntry, Fulfillment, MenuItem, Restaurant, Selections } from "../types";
 
 interface Props {
   token: string; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
   restaurant: Restaurant | null; cart: CartEntry[]; onRestaurant: (restaurant: Restaurant | null) => void;
-  onCart: (entries: CartEntry[]) => void; onCheckout: () => void;
+  onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
 export function DiscoverScreen(props: Props) {
   const [postcode, setPostcode] = useState(""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(false); const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const totals = useMemo(() => cartTotals(props.cart, props.fulfillment, props.restaurant), [props.cart, props.fulfillment, props.restaurant]);
 
   async function loadRestaurants() {
@@ -23,9 +23,13 @@ export function DiscoverScreen(props: Props) {
   }
   useEffect(() => { void loadRestaurants(); }, [props.fulfillment]);
 
-  async function chooseRestaurant(restaurant: Restaurant) {
+  useEffect(() => { if (props.focusRestaurantId) void chooseRestaurant({ id: props.focusRestaurantId }, props.restaurant?.id === props.focusRestaurantId).then(() => props.onRestaurantFocused?.()); }, [props.focusRestaurantId]);
+
+  useEffect(() => { if (!props.focusRestaurantId && props.restaurant && !menu.length) void chooseRestaurant(props.restaurant, true); }, [props.restaurant?.id, props.focusRestaurantId]);
+
+  async function chooseRestaurant(restaurant: Pick<Restaurant, "id">, refresh = false) {
     setLoading(true); setError("");
-    try { const result = await api<{ restaurant: Restaurant; items: MenuItem[] }>(`/api/restaurants/${encodeURIComponent(restaurant.id)}/menu`, { token: props.token }); props.onRestaurant(result.restaurant); props.onCart([]); setMenu(result.items); }
+    try { const result = await api<{ restaurant: Restaurant; items: MenuItem[] }>(`/api/restaurants/${encodeURIComponent(restaurant.id)}/menu`, { token: props.token }); props.onRestaurant(result.restaurant); props.onCart(refresh ? refreshCart(props.cart, result.items) : []); setMenu(result.items); setNotice(refresh ? "Menu refreshed. Your basket is kept using current prices and available choices." : ""); }
     catch (caught) { setError((caught as Error).message); } finally { setLoading(false); }
   }
 
@@ -38,24 +42,24 @@ export function DiscoverScreen(props: Props) {
   function toggleOption(item: MenuItem, groupId: string, optionId: string, max: number) {
     const current = props.cart.find((entry) => entry.item.id === item.id) ?? { item, quantity: 1, selections: {} as Selections };
     const selected = current.selections[groupId] ?? [];
-    const nextIds = max === 1 ? [optionId] : selected.includes(optionId) ? selected.filter((id) => id !== optionId) : [...selected, optionId].slice(0, max);
+    const nextIds = toggleSelection(selected, optionId, max);
     const updated = { ...current, selections: { ...current.selections, [groupId]: nextIds } };
     props.onCart([...props.cart.filter((entry) => entry.item.id !== item.id), updated]);
   }
 
-  if (props.restaurant) return <View style={{ flex: 1 }}><ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void chooseRestaurant(props.restaurant!)}/> }>
+  if (props.restaurant) return <View style={{ flex: 1 }}><ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void chooseRestaurant(props.restaurant!, true)}/> }>
     <Button tone="quiet" onPress={() => { props.onRestaurant(null); props.onCart([]); setMenu([]); }}>← Restaurants</Button>
     <SectionTitle eyebrow={props.restaurant.profile.cuisine || "Local menu"} title={props.restaurant.name}/>
     <Text style={styles.meta}>{props.fulfillment === "delivery" ? `${props.restaurant.profile.estimatedDeliveryMinutes ?? "—"} min · ${money(props.restaurant.delivery.deliveryFeeMinor)} delivery` : `${props.restaurant.profile.estimatedCollectionMinutes ?? "—"} min collection`}</Text>
     <Card tone="warning"><Text style={styles.allergyStrong}>Allergy safety</Text><Text style={styles.meta}>Allergen details are supplied by restaurants. Add an allergy note at checkout and contact the restaurant if you need confirmation.</Text></Card>
-    <ErrorBanner message={error}/>
+    <ErrorBanner message={error}/>{notice ? <Card tone="info"><Text style={styles.meta}>{notice}</Text></Card> : null}
     {menu.length ? menu.map((item) => { const entry = props.cart.find((line) => line.item.id === item.id); const validity = validateSelections(item, entry?.selections ?? {}); return <Card key={item.id}>
       <View style={styles.row}>{item.photoUrl ? <Image style={styles.foodImage} source={{ uri: absoluteMediaUrl(item.photoUrl) }}/> : <View style={styles.foodFallback}><Text style={{ fontSize: 28 }}>🍽️</Text></View>}<View style={{ flex: 1, gap: 5 }}><Pill>{item.category || "Menu"}</Pill><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.meta}>{item.description}</Text><Text style={styles.price}>{money(item.priceMinor)}</Text></View></View>
       {item.dietaryTags.length ? <Text style={styles.meta}>{item.dietaryTags.join(" · ")}</Text> : null}
       <Text style={item.allergens.length ? styles.allergy : styles.meta}>{item.allergens.length ? `Allergens: ${item.allergens.join(", ")} · restaurant supplied` : "No allergens listed — ask the restaurant."}</Text>
       {item.modifierGroups.map((group) => <View key={group.id} style={styles.options}><Text style={styles.optionTitle}>{group.name} · choose {group.minSelections}{group.maxSelections !== group.minSelections ? `–${group.maxSelections}` : ""}</Text><View style={styles.wrap}>{group.options.map((option) => { const active = entry?.selections[group.id]?.includes(option.id); return <Pressable key={option.id} disabled={!option.available} onPress={() => toggleOption(item, group.id, option.id, group.maxSelections)} style={[styles.choice, active && styles.choiceActive, !option.available && { opacity: .4 }]}><Text style={[styles.choiceText, active && { color: colours.white }]}>{option.name}{option.priceMinor ? ` +${money(option.priceMinor)}` : ""}</Text></Pressable>; })}</View></View>)}
       {entry && !validity.ok ? <Text style={styles.errorText}>{validity.reason}</Text> : null}
-      <View style={styles.qty}><Button tone="secondary" disabled={!entry} onPress={() => changeQuantity(item, -1)}>−</Button><Text style={styles.quantity}>{entry?.quantity ?? 0}</Text><Button tone="secondary" onPress={() => changeQuantity(item, 1)}>+</Button></View>
+      <View style={styles.qty}><Button tone="secondary" disabled={!entry} onPress={() => changeQuantity(item, -1)}>−</Button><Text style={styles.quantity}>{entry?.quantity ?? 0}</Text><Button tone="secondary" disabled={!item.available} onPress={() => changeQuantity(item, 1)}>+</Button></View>
     </Card>; }) : <Empty>No menu items are available right now.</Empty>}
   </ScrollView>{props.cart.length ? <View style={styles.basketBar}><View><Text style={styles.basketTitle}>{props.cart.reduce((sum, entry) => sum + entry.quantity, 0)} item(s)</Text><Text style={styles.meta}>{money(totals.totalMinor)}</Text></View><Button onPress={props.onCheckout}>Review basket</Button></View> : null}</View>;
 

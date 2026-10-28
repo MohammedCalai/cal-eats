@@ -1,0 +1,13 @@
+{
+  "publicReleaseApproved": false,
+  "backendUpdateDeployedAndReviewed": false,
+  "livePaymentsAndRestaurantPayoutsVerified": false,
+  "accountRecoveryEmailVerified": false,
+  "privacyAndTermsApproved": false,
+  "accountDeletionCompletedAndVerified": false,
+  "backgroundNotificationsVerified": false,
+  "iosPhysicalDeviceVerified": false,
+  "androidPhysicalDeviceVerified": false,
+  "weakTestPasswordsReplaced": false,
+  "storeListingsAndReviewAccessApproved": false
+}

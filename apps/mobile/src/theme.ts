@@ -3,7 +3,7 @@ export const colours = {
   blue: "#2865E9",
   blueDark: "#1D4FC4",
   sky: "#18263F",
-  cream: "#0E0E10",
+  cream: "#121212",
   panel: "#18191D",
   white: "#FFFFFF",
   line: "#303139",

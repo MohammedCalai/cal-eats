@@ -1,4 +1,4 @@
-# Cal-Eats native iPhone client
+# Cal-Eats native iOS and Android customer client
 
 `apps/mobile` is an independent Expo/React Native customer app for the Cal-Eats API. It contains no original Calai host, token, device setting, analytics SDK, payment credential, EAS project, cloud update configuration or live-provider integration.
 
@@ -95,3 +95,18 @@ npx expo export --platform ios --output-dir <temporary-directory>
 This phase performs JavaScript/TypeScript and offline Metro bundle verification only. It does **not** run EAS, create an Apple signing identity, provision an App Store/TestFlight build, contact a live payment service or claim physical-iPhone verification. Windows cannot produce or install a signed iOS binary. The configured `uk.co.calai.caleats` bundle identifier is a development choice and ownership must be confirmed before signing.
 
 Before release, verify on supported iPhones: Keychain persistence/logout, camera and limited-library permission paths, Dynamic Type/VoiceOver, slow/offline recovery, evidence upload constraints, foreground/background resume, status refresh, API TLS trust, legal copy, retention obligations and the actual operator support route. Push is not implemented; “Inbox” means server-backed in-app notifications fetched while the app is open.
+
+
+## Customer journey and store preparation — 28 October 2026
+
+The owner confirmed both Apple Developer and Google Play accounts exist and selected the Expo account `yankee1707` because `bondu17` has exhausted its allowance. The independent project is `@yankee1707/cal-eats`, ID `5bf59184-c670-44f4-be78-5229cbd02300`; the local CLI identity and resolved project were verified. No store submission has been performed at this documentation update.
+
+The customer app now retains its basket when refreshing a menu or returning from another tab, refreshes current menu prices and availability, permits deselecting optional single-choice extras, shows foreground unread updates, and opens a personalised offer directly at its restaurant with the selected offer carried into checkout. Keyboard avoidance and accessible field labels were added. Inbox refresh pauses while the app is inactive; this is not APNs/FCM background delivery.
+
+The shared Cal-Eats logo is the exact flat-background image approved by the owner on 28 October (`exec-f3122580-2089-4dc2-81fb-9ecb1348f906.png`), copied into web/customer/business assets. Original white lettering and blue emblem remain, with matching charcoal surfaces. A separate square emblem asset is configured for store packaging. The damaged transparent export attempts were not used.
+
+Local phone-browser walkthroughs verified dish and extra prices entered with a decimal comma, owner-set £2.75 delivery, customer dish search, a £16.25 delivery order, customer-to-restaurant message and restaurant reply, confirmed arrival ETA, and a selected-recipient 10% offer reducing a £12.75 collection basket to £11.48. A combined native-session/backend regression covers discovery through offer redemption, pricing snapshots and owner-only delivery changes. UI screenshots remain in ignored artifacts.
+
+`app.json` includes both platforms, version/build metadata, approved independent identifiers, a square icon and Android API 36 settings matching the pinned React Native dependency. `eas.json` separates internal previews, store test builds and public production. `.easignore` excludes private runtime data and credentials. Run `npm run store:check --workspace=@cal-eats/mobile` for configuration checks; public production additionally requires the real evidence in `release-readiness.json`. A passing local check is not a signed build, device test or public release approval.
+
+Public-release evidence is deliberately pending: deployed updated backend, live payment/payout verification (Stripe owner task is deferred), delivered account-recovery emails, approved privacy/terms and store declarations, completed deletion, background notification/device checks, replacement of the owner-requested weak test passwords, and final review access/listings. Use the `store-test` profile for TestFlight/Play testing without declaring public release ready. Never buy or upgrade a hosting/build plan without the owner’s approval.

@@ -47,3 +47,8 @@ html,body{background:#121212}a{color:#91b8ff}button{min-height:44px}button:disab
 .new-order-confirm input{min-width:0;max-width:100%}
 .eta-quick-choices{min-width:0;grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:600px){.new-order-dialog{max-width:min(500px,calc(100vw - .8rem))}.new-order-body .order-sound-controls .button-row{grid-template-columns:repeat(2,minmax(0,1fr))}.new-order-body .order-sound-controls button{min-width:0;white-space:normal}}
+
+.delivery-settings{margin-bottom:1rem}.delivery-settings .full{grid-column:1/-1}.delivery-settings small{font-size:.8rem;line-height:1.5;color:var(--muted)}
+@media(max-width:850px){input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}.menu-editor>.primary{min-height:48px;bottom:env(safe-area-inset-bottom,0px)}.form-grid>label{min-width:0}.modifier-editor-heading,.modifier-option-row{min-width:0}}
+
+.brand{overflow:hidden}.brand-logo{object-fit:cover;transform:scale(1.45);transform-origin:center;mix-blend-mode:lighten}.sidebar,.topbar{background:#121212}

@@ -29,6 +29,22 @@ export function entryUnitMinor(entry: CartEntry): number {
   return entry.item.priceMinor + extras;
 }
 
+export function refreshCart(entries: CartEntry[], menu: MenuItem[]): CartEntry[] {
+  return entries.flatMap(entry => {
+    const item = menu.find(candidate => candidate.id === entry.item.id && candidate.available);
+    if (!item) return [];
+    const selections = Object.fromEntries(item.modifierGroups.map(group => [group.id,
+      (entry.selections[group.id] ?? []).filter(id => group.options.some(option => option.id === id && option.available)).slice(0, group.maxSelections)
+    ]));
+    return [{ ...entry, item, selections }];
+  });
+}
+
+export function toggleSelection(selected: string[], optionId: string, maximum: number): string[] {
+  if (selected.includes(optionId)) return selected.filter(id => id !== optionId);
+  return maximum === 1 ? [optionId] : [...selected, optionId].slice(0, maximum);
+}
+
 export function cartTotals(entries: CartEntry[], fulfillment: Fulfillment, restaurant?: Restaurant | null) {
   const subtotalMinor = entries.reduce((sum, entry) => sum + entryUnitMinor(entry) * entry.quantity, 0);
   const deliveryFeeMinor = fulfillment === "delivery" ? restaurant?.delivery.deliveryFeeMinor ?? 0 : 0;
@@ -41,6 +57,7 @@ export function canCheckout(entries: CartEntry[], fulfillment: Fulfillment, rest
   if (entries.some((entry) => !Number.isSafeInteger(entry.quantity) || entry.quantity < 1 || entry.quantity > 20)) return { ok: false, reason: "Basket quantities must be between 1 and 20." };
   if (restaurant.suspended || restaurant.profile.paused || !restaurant.acceptingOrders) return { ok: false, reason: restaurant.closedReason || "This restaurant cannot accept orders now." };
   for (const entry of entries) {
+    if (!entry.item.available) return { ok: false, reason: `${entry.item.name} is no longer available. Refresh the menu before ordering.` };
     const validity = validateSelections(entry.item, entry.selections);
     if (!validity.ok) return validity;
   }

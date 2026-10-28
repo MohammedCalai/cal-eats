@@ -11,3 +11,5 @@
 @media(max-width:480px){.brand-art{width:38px;height:42px}.brand-art img{width:172px;left:-32px;top:-37px}}
 .brand-logo{display:block;width:220px;aspect-ratio:4.096/1;height:auto;max-height:58px;object-fit:cover}.footer-brand .brand-logo{width:210px}
 @media(max-width:480px){.brand-logo{width:min(176px,49vw);max-height:48px}.footer-brand .brand-logo{width:190px;max-width:70vw}}
+
+.site-header,footer{background:#121212}.brand{overflow:hidden}.brand-logo{object-fit:cover;transform:scale(1.45);transform-origin:center;mix-blend-mode:lighten}

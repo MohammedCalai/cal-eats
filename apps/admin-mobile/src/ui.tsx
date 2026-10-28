@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "./api";
 import type { PageInfo } from "./model";
 
-export const colour = { background: "#0E0E10", panel: "#1b1b1f", elevated: "#242429", border: "#34343b", text: "#fafafa", muted: "#a1a1aa", blue: "#2563eb", cyan: "#38bdf8", success: "#86efac", danger: "#fca5a5" };
+export const colour = { background: "#121212", panel: "#1b1b1f", elevated: "#242429", border: "#34343b", text: "#fafafa", muted: "#a1a1aa", blue: "#2563eb", cyan: "#38bdf8", success: "#86efac", danger: "#fca5a5" };
 export function Button({ children, onPress, quiet, disabled, busy }: { children: ReactNode; onPress: () => void; quiet?: boolean; disabled?: boolean; busy?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(disabled || busy), busy }} disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [styles.button, quiet && styles.quiet, (disabled || busy) && { opacity: .5 }, pressed && { opacity: .75 }]}>{busy ? <ActivityIndicator color={colour.text}/> : <Text style={styles.buttonText}>{children}</Text>}</Pressable>;
 }

@@ -1,0 +1,9 @@
+Cal-Eats approved brand assets — 28 October 2026
+
+Built-in imagegen was used. Selected full wordmark: exec-f3122580-2089-4dc2-81fb-9ecb1348f906.png. The owner explicitly selected this version. Final project files: apps/web/assets/cal-eats-logo.png; apps/mobile/assets/cal-eats-logo.png; apps/admin-mobile/assets/cal-eats-logo.png. Square app emblem: apps/mobile/assets/app-icon.png (exec-b2688d82-18bb-46e1-b7b4-08f7124a75fd.png). Public SVG icons embed that emblem.
+
+Final wordmark prompt: Edit ONLY the BACKGROUND of the existing Cal-Eats logo. Preserve the original white and blue artwork and exact Cal-Eats layout. Replace the navy rectangle, black bars, glow, shadows and negative spaces with a single opaque charcoal #121212 background. No alpha segmentation, erosion, cracks, speckles, added text or tagline. Keep smooth solid lettering and the original cyan-to-blue gradient inside the artwork. Place against matching charcoal app headers.
+
+Icon prompt: Centre only the original blue speech/phone emblem, with three holes and curved tail, on a uniform charcoal square. No wordmark, tagline, inset rectangle, border, glow, shadow or outside corner rounding. Preserve the original emblem gradient and use app-icon safe margins.
+
+Transparent cutout attempts were rejected due to damaged edges and are not used by the product. The selected opaque generated image has minimal pixel variation; matching app surfaces and the header’s blend treatment remove a visible rectangular boundary. The approved original-style wordmark remains the common logo; the square emblem is packaging artwork.

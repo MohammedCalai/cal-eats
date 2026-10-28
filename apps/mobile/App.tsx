@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { useForegroundRefresh } from "./src/useForegroundRefresh";
 import { ApiError, api } from "./src/api";
 import { Brand, Button, ErrorBanner } from "./src/components";
 import { sessionStore } from "./src/session";
@@ -19,8 +20,14 @@ const tabs: Array<{ id: Tab; label: string; icon: string }> = [
 ];
 
 export default function App() {
+  const [unread, setUnread] = useState(0); const [focusRestaurantId, setFocusRestaurantId] = useState<string | null>(null); const [preferredOffer, setPreferredOffer] = useState<{ restaurantId: string; offerId: string } | null>(null);
   const [token, setToken] = useState<string | null>(null); const [user, setUser] = useState<User | null>(null); const [booting, setBooting] = useState(true); const [bootError, setBootError] = useState("");
   const [tab, setTab] = useState<Tab>("discover"); const [checkout, setCheckout] = useState(false); const [restaurant, setRestaurant] = useState<Restaurant | null>(null); const [cart, setCart] = useState<CartEntry[]>([]); const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery"); const [focusOrder, setFocusOrder] = useState<string | null>(null);
+
+  async function refreshUnread() { if (token) { const result = await api<{unreadCount:number}>("/api/notifications", { token }); setUnread(result.unreadCount); } }
+  useForegroundRefresh(refreshUnread, Boolean(token));
+  useEffect(() => { if (token) void refreshUnread().catch(() => undefined); else setUnread(0); }, [token]);
+  function useOffer(restaurantId: string, offerId: string) { const open = () => { setPreferredOffer({restaurantId,offerId}); setFocusRestaurantId(restaurantId); setTab("discover"); setCheckout(false); if (restaurant?.id !== restaurantId) { setRestaurant(null); setCart([]); } }; if (cart.length && restaurant?.id !== restaurantId) Alert.alert("Start a new basket?", "This offer is for another restaurant. Continuing replaces your current basket.", [{text:"Keep basket",style:"cancel"},{text:"Use offer",onPress:open}]); else open(); }
 
   async function restore() {
     setBooting(true); setBootError("");
@@ -32,20 +39,20 @@ export default function App() {
   }
   useEffect(() => { void restore(); }, []);
   async function authenticated(nextToken: string, nextUser: User) { await sessionStore.set(nextToken); setToken(nextToken); setUser(nextUser); }
-  async function logout() { if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); setToken(null); setUser(null); setCart([]); setRestaurant(null); setCheckout(false); setTab("discover"); }
+  async function logout() { if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); setToken(null); setUser(null); setUnread(0); setFocusRestaurantId(null); setPreferredOffer(null); setCart([]); setRestaurant(null); setCheckout(false); setTab("discover"); }
   function openOrder(id: string) { setFocusOrder(id); setCheckout(false); setTab("orders"); }
 
   if (booting) return <SafeAreaView style={styles.center}><StatusBar style="light"/><Brand/><ActivityIndicator size="large" color={colours.blue}/><Text style={styles.muted}>Opening Cal-Eats…</Text></SafeAreaView>;
   if (bootError && !user) return <SafeAreaView style={styles.center}><Brand/><ErrorBanner message={bootError}/><Button onPress={() => void restore()}>Try again</Button><Button tone="quiet" onPress={() => { void sessionStore.clear(); setBootError(""); }}>Use another account</Button></SafeAreaView>;
   if (!token || !user) return <><StatusBar style="light"/><AuthScreen onAuthenticated={authenticated}/></>;
-  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><CheckoutScreen token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => setCheckout(false)} onOrdered={(order) => { setCart([]); setCheckout(false); openOrder(order.id); }}/></SafeAreaView>;
+  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}><CheckoutScreen initialOfferId={preferredOffer?.restaurantId === restaurant.id ? preferredOffer.offerId : undefined} token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => setCheckout(false)} onOrdered={(order) => { setCart([]); setPreferredOffer(null); setCheckout(false); openOrder(order.id); }}/></KeyboardAvoidingView></SafeAreaView>;
 
-  return <SafeAreaView style={styles.shell}><StatusBar style="light"/><View style={styles.content}>
-    {tab === "discover" ? <DiscoverScreen token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setCheckout(true)}/> : null}
+  return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    {tab === "discover" ? <DiscoverScreen focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setCheckout(true)}/> : null}
     {tab === "orders" ? <OrdersScreen token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
-    {tab === "inbox" ? <InboxScreen token={token} onOpenOrder={openOrder}/> : null}
+    {tab === "inbox" ? <InboxScreen token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onUnreadChange={setUnread}/> : null}
     {tab === "account" ? <AccountScreen token={token} user={user} onUser={setUser} onLogout={logout}/> : null}
-  </View><View style={styles.nav}>{tabs.map((item) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === item.id }} key={item.id} onPress={() => { setCheckout(false); setTab(item.id); }} style={styles.navItem}><Text style={[styles.navIcon, tab === item.id && styles.navActive]}>{item.icon}</Text><Text style={[styles.navLabel, tab === item.id && styles.navActive]}>{item.label}</Text></Pressable>)}</View></SafeAreaView>;
+  </KeyboardAvoidingView><View style={styles.nav}>{tabs.map((item) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === item.id }} key={item.id} onPress={() => { setCheckout(false); setTab(item.id); }} style={styles.navItem}><Text style={[styles.navIcon, tab === item.id && styles.navActive]}>{item.icon}</Text><Text style={[styles.navLabel, tab === item.id && styles.navActive]}>{item.label}{item.id === "inbox" && unread > 0 ? ` (${Math.min(unread, 99)}${unread > 99 ? "+" : ""})` : ""}</Text></Pressable>)}</View></SafeAreaView>;
 }
 
 const styles = StyleSheet.create({ shell: { flex: 1, backgroundColor: colours.cream }, content: { flex: 1 }, center: { flex: 1, padding: 30, gap: 22, justifyContent: "center", alignItems: "stretch", backgroundColor: colours.cream }, muted: { color: colours.muted, textAlign: "center" }, nav: { minHeight: 66, paddingBottom: 4, borderTopWidth: 1, borderTopColor: "#183251", backgroundColor: "#06101F", flexDirection: "row" }, navItem: { flex: 1, justifyContent: "center", alignItems: "center", gap: 2 }, navIcon: { fontSize: 20, color: "#AFC3D9", fontWeight: "700" }, navLabel: { fontSize: 11, color: "#AFC3D9", fontWeight: "700" }, navActive: { color: "#26A7FF" } });
