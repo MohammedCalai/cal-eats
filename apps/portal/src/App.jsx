@@ -3,6 +3,7 @@ import { CustomerDirectory, CustomerInbox, WorkspaceDialog } from "./CustomerWor
 import SupportWorkspace from "./SupportWorkspace.jsx";
 import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
+import OwnerDashboardView from "./OwnerDashboard.jsx";
 import { OrderAlertProvider, OrderAlertBar, useOrderAlerts } from "./NewOrderAlerts.jsx";
 import { businessOrderTransitions } from "./order-alert-model.js";
 import OrderConfirmationAlerts from "./OrderConfirmationAlerts.jsx";
@@ -135,10 +136,7 @@ function Shell({ kind }) {
 
 function OwnerDashboard() {
   const { restaurant, permission } = React.useContext(RestaurantContext);
-  const orders = useLoad(() => api(`/api/restaurant/restaurants/${restaurant.id}/orders`), [restaurant.id]);
-  const finance = useLoad(() => permission === "owner" ? api(`/api/restaurant/restaurants/${restaurant.id}/finance/summary`) : Promise.resolve(null), [restaurant.id, permission]);
-  useEffect(()=>connectLiveNotifications({onRefresh:()=>{orders.reload();finance.reload();}}),[orders.reload,finance.reload]);
-  const items = listItems(orders.value); return <Page title="Dashboard" intro="A live operational view of this restaurant."><Simulation/><div className="stats"><Stat label="Open orders" value={items.filter((o) => !["completed","rejected","cancelled"].includes(o.status)).length}/><Stat label="Orders loaded" value={items.length}/>{permission === "owner" && <Stat label="Available balance" value={finance.loading ? "…" : finance.error ? "Unavailable" : pounds(finance.value?.availableMinor)}/>}<Stat label="Restaurant status" value={restaurant.paused ? "Paused" : restaurant.approvalStatus || restaurant.status || "Pending"}/></div>{finance.error && <Alert>Earnings could not be loaded: {finance.error}</Alert>}{orders.error && <Alert>{orders.error}</Alert>}<Section title="Recent orders"><OrderTable items={items.slice(0, 8)} /></Section></Page>;
+  return <OwnerDashboardView key={`${restaurant.id}:${permission}`} restaurant={restaurant} permission={permission}/>;
 }
 
 function Orders() {
@@ -178,7 +176,137 @@ const newEditorId=prefix=>`${prefix}-${crypto.randomUUID().slice(0,8)}`;
 function CustomerTools({view}){const {restaurant,permission}=React.useContext(RestaurantContext);if(permission!=="owner")return <Denied message="Owner permission is required for customer tools."/>;return view==="inbox"?<CustomerInbox key={restaurant.id} restaurantId={restaurant.id}/>:view==="offers"?<Loyalty key={restaurant.id} restaurantId={restaurant.id}/>:<CustomerDirectory key={restaurant.id} restaurantId={restaurant.id}/>;}
 function OwnerSupport(){const{restaurant}=React.useContext(RestaurantContext);return <SupportWorkspace kind="restaurant" restaurantId={restaurant.id}/>;}
 
-function Printers(){const{restaurant,permission}=React.useContext(RestaurantContext);const root=`/api/restaurant/restaurants/${restaurant.id}`;const result=useLoad(()=>api(`${root}/printers`),[restaurant.id]);const orders=useLoad(()=>api(`${root}/orders`),[restaurant.id]);const[notice,setNotice]=useState("");const[error,setError]=useState("");async function add(e){e.preventDefault();const f=new FormData(e.currentTarget);try{await api(`${root}/printers`,json("POST",{name:f.get("name"),enabled:true}));e.currentTarget.reset();result.reload()}catch(x){setError(x.message)}}async function pair(id){try{const d=await api(`${root}/printers/${id}/pairing-code`,json("POST",{}));setNotice(`Pairing code ${d.code} expires ${shortDate(d.expiresAt)}. It is shown once.`)}catch(x){setError(x.message)}}async function toggle(p){try{await api(`${root}/printers/${p.id}`,json("PATCH",{enabled:!p.enabled}));result.reload()}catch(x){setError(x.message)}}async function reprint(e){e.preventDefault();const f=new FormData(e.currentTarget);try{await api(`${root}/printers/${f.get("printerId")}/reprints`,json("POST",{orderId:f.get("orderId")}));setNotice("A labelled manual reprint job was queued. Device outcome is still pending.")}catch(x){setError(x.message)}}return <Page title="Printer management" intro="Pair scoped devices and monitor reported status. Browser status does not prove paper printed."><Simulation/>{error&&<Alert>{error}</Alert>}{notice&&<Alert tone="success">{notice}</Alert>}{permission==="owner"&&<Section title="Add printer"><form className="inline-form" onSubmit={add}><Field label="Printer name" name="name" required/><button className="primary">Add printer</button></form></Section>}<Section title="Configured printers"><DataTable headers={["Name","Enabled","Status","Last seen","Action"]} rows={listItems(result.value).map(p=>[p.name,p.enabled?"Yes":"No",p.status||"Awaiting device",shortDate(p.lastSeenAt),permission==="owner"?<div className="button-row"><button className="quiet" onClick={()=>pair(p.id)}>Pair</button><button className="quiet" onClick={()=>toggle(p)}>{p.enabled?"Disable":"Enable"}</button></div>:"View only"])} loading={result.loading} error={result.error}/></Section>{permission==="owner"&&<Section title="Manual reprint"><form className="inline-form" onSubmit={reprint}><label>Printer<select name="printerId" required>{listItems(result.value).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Order<select name="orderId" required>{listItems(orders.value).map(o=><option key={o.id} value={o.id}>{o.id.slice(0,8)} · {o.customerName||"Customer"}</option>)}</select></label><button className="primary">Queue labelled reprint</button></form></Section>}</Page>}
+function Printers() {
+  const { restaurant, permission } = React.useContext(RestaurantContext);
+  return <PrinterWorkspace key={restaurant.id} restaurant={restaurant} permission={permission}/>;
+}
+
+function PrinterWorkspace({ restaurant, permission }) {
+  const root = `/api/restaurant/restaurants/${restaurant.id}`;
+  const result = useLoad(() => api(`${root}/printers`), [restaurant.id]);
+  const orders = useLoad(() => api(`${root}/orders`), [restaurant.id]);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const printers = listItems(result.value);
+  const printable = printers.filter(p => p.enabled && !p.revoked);
+  const confirmedOrders = listItems(orders.value).filter(o => ["accepted", "preparing", "ready", "out_for_delivery", "completed"].includes(o.status));
+  const needsReview = printers.reduce((total, p) => total + (p.jobs?.failed || 0) + (p.jobs?.uncertain || 0), 0);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => { if (!document.hidden) void result.reload(); };
+    const timer = window.setInterval(refreshWhenVisible, 15000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [result.reload]);
+
+  async function refresh() {
+    setRefreshing(true);
+    try { await Promise.all([result.reload(), orders.reload()]); }
+    finally { setRefreshing(false); }
+  }
+  async function add(e) {
+    e.preventDefault();
+    if (busy) return;
+    const form = e.currentTarget, data = new FormData(form);
+    setBusy("add"); setError(""); setNotice("");
+    try {
+      await api(`${root}/printers`, json("POST", { name: data.get("name"), enabled: true }));
+      form.reset();
+      setNotice("Printer added with auto-print on. Pair its Cal-Eats bridge to receive confirmed orders.");
+      await result.reload();
+    } catch (x) { setError(x.message); }
+    finally { setBusy(""); }
+  }
+  async function pair(id) {
+    if (busy) return;
+    setBusy(id); setError(""); setNotice("");
+    try {
+      const data = await api(`${root}/printers/${id}/pairing-code`, json("POST", {}));
+      setNotice(`Pairing code ${data.code} expires ${shortDate(data.expiresAt)}. It is shown once. Enter it in the Cal-Eats printer bridge on the connected tablet.`);
+    } catch (x) { setError(x.message); }
+    finally { setBusy(""); }
+  }
+  async function toggle(printer) {
+    if (busy) return;
+    setBusy(printer.id); setError(""); setNotice("");
+    try {
+      await api(`${root}/printers/${printer.id}`, json("PATCH", { enabled: !printer.enabled }));
+      setNotice(printer.enabled ? "Auto-print is off for this printer." : "Auto-print is on for this printer. New confirmed orders will be queued automatically.");
+      await result.reload();
+    } catch (x) { setError(x.message); }
+    finally { setBusy(""); }
+  }
+  async function reprint(e) {
+    e.preventDefault();
+    if (busy) return;
+    const data = new FormData(e.currentTarget);
+    setBusy("reprint"); setError(""); setNotice("");
+    try {
+      await api(`${root}/printers/${data.get("printerId")}/reprints`, json("POST", { orderId: data.get("orderId") }));
+      setNotice("A labelled manual reprint was queued. Check the printer before requesting another copy.");
+      await result.reload();
+    } catch (x) { setError(x.message); }
+    finally { setBusy(""); }
+  }
+  const connectionLabel = {
+    disabled: "Disabled", revoked: "Revoked", awaiting_device: "Not paired", online: "Connected", offline: "Offline"
+  };
+  return <Page title="Receipt printers" intro="Automatically send a receipt to each enabled printer when your business confirms an order.">
+    <Simulation/>
+    {error && <Alert>{error}</Alert>}
+    {notice && <Alert tone="success">{notice}</Alert>}
+    <Section title="Print after confirmation">
+      <p>Confirming an order queues its original receipt automatically. Opening an order, changing its preparation status or retrying confirmation does not create another original copy.</p>
+      <p className="fine">Keep the Cal-Eats printer bridge running on the tablet connected to your printer. Receipts wait in the queue while it is offline. A recent bridge connection does not prove the printer has paper or has produced a receipt.</p>
+      {needsReview > 0 && <Alert>Some receipts need review. Check the printer and its bridge before requesting a labelled reprint, especially when an earlier result is uncertain.</Alert>}
+    </Section>
+    {permission === "owner" && <Section title="Add printer">
+      <form className="inline-form" onSubmit={add}>
+        <Field label="Printer name" name="name" required maxLength={100}/>
+        <button className="primary" disabled={Boolean(busy)}>{busy === "add" ? "Adding…" : "Add printer"}</button>
+      </form>
+    </Section>}
+    <Section title="Configured printers">
+      <div className="workspace-toolbar">
+        <p className="fine">Connection and receipt reports refresh while this page is open.</p>
+        <button className="quiet" disabled={refreshing || result.loading} onClick={() => void refresh()}>{refreshing ? "Refreshing…" : "Refresh"}</button>
+      </div>
+      {!result.loading && !result.error && !printers.length && <p>Add a printer, pair its Cal-Eats bridge, then confirm a test order. No receipt printer is configured for this restaurant yet.</p>}
+      <DataTable headers={["Name", "Auto-print", "Connection", "Last contact", "Receipt queue", "Action"]} rows={printers.map(printer => {
+        const jobs = printer.jobs || {}, status = printer.status || (printer.revoked ? "revoked" : !printer.enabled ? "disabled" : "awaiting_device");
+        return [
+          printer.name,
+          printer.revoked ? "Revoked" : printer.enabled ? "On" : "Off",
+          <div><strong>{connectionLabel[status] || "Not connected"}</strong><div className="fine">{printer.pairedDeviceCount || 0} paired device{printer.pairedDeviceCount === 1 ? "" : "s"}</div></div>,
+          printer.lastSeenAt ? shortDate(printer.lastSeenAt) : "Never connected",
+          <div><div>{jobs.queued || 0} waiting · {jobs.claimed || 0} in progress</div><div className="fine">{jobs.printed || 0} reported complete · {jobs.failed || 0} failed · {jobs.uncertain || 0} uncertain</div></div>,
+          permission === "owner" && !printer.revoked ? <div className="button-row">
+            <button className="quiet" disabled={Boolean(busy) || !printer.enabled} onClick={() => void pair(printer.id)}>Pair bridge</button>
+            <button className="quiet" disabled={Boolean(busy)} onClick={() => void toggle(printer)}>{printer.enabled ? "Turn off" : "Turn on"}</button>
+          </div> : "View only"
+        ];
+      })} loading={result.loading} error={result.error}/>
+      <p className="fine">Reported complete is the bridge's acknowledgement; simulator reports do not prove paper output. An uncertain result needs a check before reprinting.</p>
+    </Section>
+    {permission === "owner" && <Section title="Manual reprint">
+      <p className="fine">Use this for an extra copy of a confirmed order. Every manual copy is labelled as a reprint.</p>
+      {orders.error && <Alert>{orders.error}</Alert>}
+      {!printable.length ? <p>Enable a printer to queue a manual reprint.</p> : orders.loading ? <p>Loading confirmed orders…</p> : !confirmedOrders.length ? <p>No confirmed orders are available to reprint.</p> : <form className="inline-form" onSubmit={reprint}>
+        <label>Printer<select name="printerId" required>{printable.map(printer => <option key={printer.id} value={printer.id}>{printer.name}</option>)}</select></label>
+        <label>Order<select name="orderId" required>{confirmedOrders.map(order => <option key={order.id} value={order.id}>{order.id.slice(0, 8)} · {order.customerName || "Customer"}</option>)}</select></label>
+        <button className="primary" disabled={Boolean(busy) || orders.loading}>{busy === "reprint" ? "Queueing…" : "Queue labelled reprint"}</button>
+      </form>}
+    </Section>}
+  </Page>;
+}
+
 
 function Earnings(){const{restaurant}=React.useContext(RestaurantContext);const root=`/api/restaurant/restaurants/${restaurant.id}/finance`;const summary=useLoad(()=>api(`${root}/summary`),[restaurant.id]);const orders=useLoad(()=>api(`${root}/orders`),[restaurant.id]);const payouts=useLoad(()=>api(`${root}/payouts`),[restaurant.id]);const policy=useLoad(()=>api(`${root}/commission-policy`),[restaurant.id]);const mandate=useLoad(()=>api(`${root}/cash-mandate`),[restaurant.id]);const provider=useLoad(()=>api(`${root}/provider-account`),[restaurant.id]);const[error,setError]=useState("");const paymentSetup=useLoad(()=>api("/api/payments/config"),[]);const s=summary.value||{};async function post(path,body,label){setError("");try{await api(`${root}/${path}`,json("POST",body,newKey(label)));summary.reload();policy.reload();mandate.reload();provider.reload()}catch(x){setError(x.message)}}return <Page title="Earnings & payouts" intro="Reconciled marketplace earnings, separate cash receivables and payout state."><Simulation mode={paymentSetup.value?.providerMode??s.providerMode}/>{(summary.error||error)&&<Alert>{summary.error||error}</Alert>}<div className="stats"><Stat label="Gross sales" value={pounds(s.grossSalesMinor)}/><Stat label="Recognised commission" value={pounds(s.commissionMinor)}/><Stat label="Net earnings" value={pounds(s.netEarningsMinor)}/><Stat label="Available" value={pounds(s.availableMinor)}/><Stat label="Pending" value={pounds(s.pendingMinor)}/><Stat label="Held" value={pounds(s.heldMinor)}/><Stat label="Cash commission due" value={pounds(s.cashCommissionOutstandingMinor)}/></div><Section title="Development commission agreement"><p>{policy.value?`${policy.value.rateBasisPoints/100}% of ${policy.value.base?.replaceAll("_"," ")} · ${policy.value.durationMonths} months · ${policy.value.developmentAssumption?"development assumption":"approved policy"}`:"No policy available."}</p>{policy.value&&!policy.value.acceptedAt&&<button className="primary" onClick={()=>post("commission-policy/accept",{},"policy")}>Accept displayed development agreement</button>}</Section><Section title="Provider and cash collection">{paymentSetup.value?.providerMode==="local_simulator"?<><p>Provider account: <strong>{provider.value?.status||"not configured"}</strong>. Cash mandate: <strong>{mandate.value?.status||"not authorised"}</strong>.</p><div className="button-row"><button className="quiet" onClick={()=>post("provider-account",{action:"create_test"},"provider")}>Create test provider account</button><button className="quiet" onClick={()=>post("provider-account",{action:"refresh"},"provider-refresh")}>Refresh provider status</button><button className="quiet" onClick={()=>post("cash-mandate",{action:"create"},"mandate")}>Create simulated mandate</button><button className="quiet" onClick={()=>post("cash-mandate",{action:"authorize_simulation"},"mandate-authorize")}>Authorise simulation</button><button className="quiet" onClick={()=>post("cash-mandate",{action:"revoke"},"mandate-revoke")}>Revoke mandate</button></div><p className="fine">No real bank mandate or provider onboarding is completed by these local actions.</p></>:<><p>Card onboarding, verification and bank payout status are managed through Stripe setup.</p><NavLink to="/owner/stripe">Open Stripe setup and payouts</NavLink><p className="fine">Cash is paid directly to the restaurant. Cash commission remains a separate receivable; an automatic bank debit is not activated by this screen.</p></>}</Section><Section title="Order earnings"><DataTable headers={["Order","Total","Refunds","Commission","Merchant net","Settlement"]} rows={listItems(orders.value).map(o=>[o.orderId.slice(0,8),pounds(o.orderTotalMinor),pounds(o.refundsMinor),pounds(o.commissionMinor),pounds(o.merchantNetMinor),o.settlementState])} loading={orders.loading} error={orders.error}/></Section><Section title="Payouts"><DataTable headers={["Payout","Amount","Status","Required action"]} rows={listItems(payouts.value).map(p=>[(p.id||"").slice(0,8),pounds(p.amountMinor),p.status,p.requiredAction||"—"])} loading={payouts.loading} error={payouts.error}/><a className="button-link" href={`${root}/statement.csv`}>Download statement CSV</a></Section></Page>}
 

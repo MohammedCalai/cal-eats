@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { createGraphMailAdapter, graphMailReadiness, loadGraphMailConfig } from "./graph-mail.js";
+import { mailAttachments } from "./mail-attachments.js";
 
 const HOSTS = new Set(["smtp.ionos.co.uk", "smtp.ionos.com"]);
 const email = value => typeof value === "string" && /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/.test(value) && value.length <= 254;
@@ -35,7 +36,9 @@ export function createOrderAlertEmailAdapter(settings, { transportFactory, graph
   let transport;
   const graph = settings.mode === "graph" ? createGraphMailAdapter(settings.graph, graphOptions) : null;
   return async (message, { beforeSend = () => true } = {}) => {
-    if (!/^[A-Za-z0-9-]{1,80}$/.test(message.id) || !email(message.to) || !email(message.from) || message.from.toLowerCase() !== settings.from.toLowerCase() || /[\r\n\0]/.test(message.subject) || !/^<cal-eats-(?:order-alert|customer-email)-[A-Za-z0-9-]+@[A-Za-z0-9.-]+>$/.test(message.messageId)) return { status: "failed", errorCode: "EMAIL_MESSAGE_INVALID" };
+    if (!/^[A-Za-z0-9-]{1,80}$/.test(message.id) || !email(message.to) || !email(message.from) || message.from.toLowerCase() !== settings.from.toLowerCase() || /[\r\n\0]/.test(message.subject) || !/^<cal-eats-(?:order-alert|customer-email|business-statement)-[A-Za-z0-9-]+@[A-Za-z0-9.-]+>$/.test(message.messageId)) return { status: "failed", errorCode: "EMAIL_MESSAGE_INVALID" };
+    let attachments;
+    try { attachments = mailAttachments(message.attachments); } catch { return { status: "failed", errorCode: "EMAIL_ATTACHMENT_INVALID" }; }
     if (settings.mode === "off") return { status: "failed", errorCode: "EMAIL_DISABLED" };
     if (graph) return graph(message, { beforeSend });
     if (settings.mode === "smtp" && (!HOSTS.has(settings.host) || ![465,587].includes(settings.port))) return {status:"failed",errorCode:"SMTP_CONFIGURATION_INVALID"};
@@ -43,7 +46,9 @@ export function createOrderAlertEmailAdapter(settings, { transportFactory, graph
       if (!beforeSend()) return { status: "cancelled" };
       const boundary = `cal-eats-${message.id}`;
       const body = message.html ? `Content-Type: multipart/alternative; boundary="${boundary}"\r\n\r\n--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(message.text).toString("base64")}\r\n--${boundary}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(message.html).toString("base64")}\r\n--${boundary}--\r\n` : `Content-Type: text/plain; charset=utf-8\r\n\r\n${message.text.replace(/\r?\n/g,"\r\n")}\r\n`;
-      const content = `From: Cal-Eats <${message.from}>\r\nTo: ${message.to}\r\nSubject: =?UTF-8?B?${Buffer.from(message.subject).toString("base64")}?=\r\nMessage-ID: ${message.messageId}\r\nMIME-Version: 1.0\r\n${body}`;
+      const mixedBoundary = `${boundary}-mixed`;
+      const fullBody = attachments.length ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"\r\n\r\n--${mixedBoundary}\r\n${body}\r\n${attachments.map(item => `--${mixedBoundary}\r\nContent-Type: text/csv; charset=utf-8; name="${item.filename}"\r\nContent-Disposition: attachment; filename="${item.filename}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${item.contentBase64.match(/.{1,76}/g).join("\r\n")}\r\n`).join("")}--${mixedBoundary}--\r\n` : body;
+      const content = `From: Cal-Eats <${message.from}>\r\nTo: ${message.to}\r\nSubject: =?UTF-8?B?${Buffer.from(message.subject).toString("base64")}?=\r\nMessage-ID: ${message.messageId}\r\nMIME-Version: 1.0\r\n${fullBody}`;
       try {
         fs.mkdirSync(settings.localDirectory, { recursive: true });
         const filename = path.join(settings.localDirectory, `${message.id}.eml`);
@@ -64,7 +69,7 @@ export function createOrderAlertEmailAdapter(settings, { transportFactory, graph
       }
       // Dependencies/DNS preparation can yield; recheck the order at the final dispatch boundary.
       if (!beforeSend()) return { status: "cancelled" };
-      const result = await transport.sendMail({ from: { name: "Cal-Eats", address: message.from }, to: message.to, subject: message.subject, text: message.text, ...(message.html ? { html: message.html } : {}), messageId: message.messageId, disableFileAccess: true, disableUrlAccess: true });
+      const result = await transport.sendMail({ from: { name: "Cal-Eats", address: message.from }, to: message.to, subject: message.subject, text: message.text, ...(message.html ? { html: message.html } : {}), ...(attachments.length ? { attachments: attachments.map(item => ({ filename: item.filename, contentType: item.contentType, content: Buffer.from(item.contentBase64,"base64") })) } : {}), messageId: message.messageId, disableFileAccess: true, disableUrlAccess: true });
       const accepted = Array.isArray(result?.accepted) && result.accepted.some(value => (typeof value === "string" ? value : value?.address)?.toLowerCase() === message.to.toLowerCase());
       return accepted ? { status: "sent" } : { status: "failed", errorCode: "SMTP_RECIPIENT_NOT_ACCEPTED" };
     } catch (error) {

@@ -10,6 +10,20 @@ No original route, hostname, token, MAC, IP, installer identity, process rule or
 
 The bridge rejects the original Calai host family. The simulator also rejects non-loopback APIs. Its process, files, logs and optional Windows task use Cal-Eats-only identities.
 
+## Automatic printing after business confirmation
+
+The owner's confirmed trigger is successful business confirmation (`placed` to `accepted`), through either the tablet/browser business platform or the native Cal-Eats Admin app. The order transaction creates one original receipt job per enabled, non-revoked restaurant printer after its payment decision succeeds. Checkout, rejected/failed confirmation, later preparation/delivery updates, receipt views and repeated confirmation requests do not enqueue another original. Original jobs have a unique order/printer operation key. Offline devices leave receipts queued for their bridge to claim.
+
+The business Printers page now shows auto-print state, pairing, recent bridge contact, queue counts and device-reported outcomes. Connection means an authenticated heartbeat within 60 seconds, not paper readiness. An unpaired or offline printer is visible rather than silently appearing ready. Explicit manual reprints require an enabled printer and a confirmed-or-later order and are labelled separately.
+
+On 28 October 2026, two focused regressions passed for browser/native confirmations, failed capture, duplicate confirmation, later states, disabled/revoked/other-restaurant exclusion, manual-reprint restrictions, heartbeat expiry, queue outcomes and secret-free owner summaries. No physical printer was contacted.
+
+## Existing Intune reference
+
+The requested chat, **Explain computer access**, records the original **Calai Tablets - Print Bridge Source File** policy, with per-tablet IP/MAC configuration. Its managed script copies the supplied original `print-bridge.js` into `C:\ProgramData\CalaiPrintBridge`, verifies its hash and clears the old shared configuration; it does not itself start or prove a working printer. A live read-only Intune inspection on 28 October confirmed the policy is assigned to two groups and reports two successful device executions, zero errors. These are script-execution results, not proof of paper output or of a Cal-Eats connection.
+
+Original Calai's program, kiosk rules, assignments, printer IP/MAC values and startup task were not changed. The current GitHub connection/browser cannot access `calai-operation/calai-platform` (404), so the code comparison uses the pinned source snapshot above plus the actual previously deployed source-file script. Before a Cal-Eats hardware rollout, verify the specific tablet's allowed runner, per-device configuration and printer transport. Do not overwrite the working original Calai setup or reuse its token against Cal-Eats.
+
 ## Frozen API
 
 The bridge implements `docs/MARKETPLACE_API.md`:

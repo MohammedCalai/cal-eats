@@ -119,6 +119,8 @@ Acceptance evidence should show atomic single-device claims, no cross-tenant rec
 
 ## Unresolved source, operational and hardware questions
 
+Follow-up, 28 October 2026: the owner selected **business order confirmation** as Cal-Eats' auto-print trigger and identified the Windows tablet/Intune arrangement in **Explain computer access**. Its live source-file policy was inspected without changes; it reports two successful device executions. Current GitHub access to the original repository returns 404, so this source audit remains pinned to the recorded commit. The Cal-Eats confirmation queue and current printer-status improvements are documented in `PRINT_BRIDGE.md`; successful queue tests do not establish physical printer operation.
+
 1. Is this snapshot the complete and currently deployed bridge source, or is there another bridge repository/package? Which of the two different default API-host variants is actually deployed?
 2. Are deployed printers using the custom Node poll protocol, native Star CloudPRNT, raw TCP 9100, a Windows driver, USB, or a mixture?
 3. What exact printer makes/models, firmware, paper width, printable columns/DPI, interfaces, code pages, cutter commands and status-query capabilities are supported?

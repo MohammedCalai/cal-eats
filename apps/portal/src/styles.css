@@ -40,6 +40,8 @@ html,body{background:#121212}a{color:#91b8ff}button{min-height:44px}button:disab
 .new-order-body{min-width:0;grid-template-columns:minmax(0,1fr)}
 .new-order-body>*{min-width:0;max-width:100%}
 .pending-selector,.pending-selector label,.new-order-confirm{min-width:0;grid-template-columns:minmax(0,1fr)}
+.order-alert-bar:not(.has-pending){position:static;box-shadow:none}
+@media(max-width:700px){.order-alert-bar:not(.has-pending){display:flex;align-items:center;padding:.65rem .8rem;gap:.5rem}.order-alert-bar:not(.has-pending) small{display:none}.order-alert-bar:not(.has-pending) .order-alert-bar-actions{margin-left:auto;flex-wrap:nowrap}}
 .pending-selector select{display:block;width:100%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .new-order-restaurant,.new-order-customer strong,.new-order-item>span{min-width:0;overflow-wrap:anywhere}
 .new-order-customer .section-head{min-width:0;flex-wrap:wrap}

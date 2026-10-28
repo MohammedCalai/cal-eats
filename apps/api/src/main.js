@@ -14,12 +14,14 @@ import { notificationStreamHub } from "./notification-stream.js";
 import { runStripeConnectWorker } from "./payments/stripe-connect.js";
 import { runOrderConfirmationAlerts } from "./order-confirmation.js";
 import { initializeCustomerEmailDelivery, runCustomerTransactionalEmails } from "./customer-emails.js";
+import { initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "./business-weekly-statements.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
 migrateDatabase(db);
 assertHostedPreviewSafe(db, config);
 initializeCustomerEmailDelivery(db,config);
+initializeBusinessWeeklyStatements(db,config);
 let workerRunning = false;
 let currentWorker = Promise.resolve();
 let alertRunning = false;
@@ -42,6 +44,7 @@ async function runWorkers() {
     runPromotionMaintenance(db, config);
     await runProviderEventReconciliation(db, config);
     await runStripeConnectWorker(db, config);
+    await runBusinessWeeklyStatements(db, config);
   } catch (error) {
     console.error("Background worker cycle failed", error instanceof Error ? error.message : "unknown error");
   } finally {

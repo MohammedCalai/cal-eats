@@ -22,6 +22,8 @@ import { routeDisputeResolution } from "./dispute-resolution.js";
 import { routeStripeConnect } from "./payments/stripe-connect.js";
 import { routeSupportCases } from "./support-cases.js";
 import { initializeCustomerEmailDelivery } from "./customer-emails.js";
+import { routeBusinessDashboard } from "./business-dashboard.js";
+import { handleBusinessStatementRoutes } from "./business-weekly-statements.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -163,6 +165,8 @@ export function createApp({ db, config }) {
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
+      if (await routeBusinessDashboard({ req, res, url, db, config, session })) return;
+      if (await handleBusinessStatementRoutes({ req, res, url, db, config, session })) return;
       if (await routeOrderMessaging({ req, res, url, db, config, session })) return;
       if (await routeLoyalty({ req, res, url, db, config, session })) return;
       if (await routeDisputeResolution({ req, res, url, db, config, session })) return;

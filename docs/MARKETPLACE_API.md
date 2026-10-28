@@ -22,6 +22,16 @@ Additional read-only admin surfaces are `GET /api/admin/users` → `{data:[{id,n
 
 ## Provider boundary
 
+### Business dashboard
+
+`GET /api/restaurant/restaurants/:id/dashboard?period=today|yesterday|this_week|last_week&page=1&pageSize=20` is restaurant-membership scoped. Owners receive finance; staff receive operational summaries and order rows with no monetary/payment/payout fields. Customer/admin sessions cannot use this restaurant route. Page size is bounded to 100; orders are queried with SQL date bounds and pagination, and top items are limited to five.
+
+`range` reports inclusive London `fromDate`/`toDate`, UTC `from`/`toExclusive`, `timeZone:"Europe/London"`, `basis:"order_created_at"`, and Monday week starts. This week runs Monday through today; last week is the complete preceding Monday–Sunday. DST uses calendar-midnight boundaries rather than fixed 24-hour subtraction.
+
+`summary` contains placed/confirmed/completed/cancelled order counts. `operations` is the current restaurant workload, independent of the selected period: pending/overdue confirmation, active orders, actual unread customer messages and open refund cases (owner-only). Owner `finance.period` totals confirmed/captured orders placed in the chosen dates, including their currently recorded refunds and commission reversals. These cohort figures can change if an older order receives a later refund; they are distinct from an event-date accounting statement. `finance.balance` reuses the existing point-in-time finance summary and is explicitly `basis:"all_time"`.
+
+`orders.items` is paged with `orders.pagination:{page,pageSize,total,totalPages}`. Owner rows include total/refunds/commission/net, payment state and a truthful payout progress label. Cash is received directly by the restaurant; mock payments never imply a bank payout; a confirmed merchant transfer means transfer to the connected Stripe balance, not bank payment. Reported bank payout totals may themselves be test records and must be shown in their provider-mode context. No bank payout is inferred for an individual order without provider evidence.
+
 The default deterministic adapter is `local_simulator`. Stripe is `stripe_test` only and rejects live keys/mode. Provider onboarding status is informational until capability/requirements confirmation: `GET/POST /api/restaurant/restaurants/:id/finance/provider-account`, POST `{action:"create_test"|"refresh"}`. Return URLs never mark onboarding complete. No API accepts credentials. Persisted Stripe-test results distinguish operation `status` from `paymentState`; only `paymentState:"captured"` establishes capture, and settlement additionally requires provider availability evidence (`latestChargeId`/`availableOn`). Generic `status:"confirmed"` never turns an authorised-only payment into captured funds.
 
 ## Refund cases
@@ -44,6 +54,8 @@ Case DTO: `{id,reference,orderId,restaurantId,status,reason,itemIds,description,
 - Device bearer-token routes: `POST /api/devices/heartbeat` `{}`; `POST /api/devices/jobs/claim` `{}` → `{data:{job:null}}` or `{data:{job:{id,claimToken,leaseExpiresAt,attempt,receipt,manualReprint}}}`; `POST /api/devices/jobs/:id/ack` `{claimToken,outcome:"printed"|"failed"|"uncertain",detail?}`.
 
 Device tokens and pairing/claim tokens are stored hashed. Claims are atomic leases. `uncertain` is terminal until an owner explicitly creates a labelled reprint; the API never infers physical success.
+
+Printer list items additionally return `status` (`disabled`, `revoked`, `awaiting_device`, `online`, `offline`), `lastSeenAt`, `pairedDeviceCount` and `jobs:{queued,claimed,printed,failed,uncertain}`. Only active devices count toward pairing/contact; online means bridge heartbeat within 60 seconds. No receipt, device token or claim token is returned. Successful business confirmation automatically queues one original per enabled/non-revoked printer in the order transaction. Manual reprints reject disabled printers (`PRINTER_DISABLED`) and orders that have not reached confirmation (`ORDER_NOT_CONFIRMED`), after membership and tenant checks.
 
 ## Preparation estimates
 

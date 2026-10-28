@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { mailAttachments } from "./mail-attachments.js";
 import path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
@@ -86,6 +87,8 @@ export async function createGraphMailClient(settings, { allowCreateKey = false }
 export function createGraphMailAdapter(settings, { fetchImpl = fetch, clientFactory = createGraphMailClient } = {}) {
   let clientPromise;
   return async (message, { beforeSend = () => true } = {}) => {
+    let attachments;
+    try { attachments = mailAttachments(message.attachments); } catch { return { status: "failed", errorCode: "EMAIL_ATTACHMENT_INVALID" }; }
     if (!graphMailReadiness(settings)) return { status: "failed", errorCode: "GRAPH_NOT_CONFIGURED" };
     if (message.from.toLowerCase() !== settings.sender.toLowerCase()) return { status: "failed", errorCode: "GRAPH_SENDER_MISMATCH" };
     let token;
@@ -105,7 +108,7 @@ export function createGraphMailAdapter(settings, { fetchImpl = fetch, clientFact
       const response = await fetchImpl("https://graph.microsoft.com/v1.0/me/sendMail", {
         method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: { subject: message.subject, from: { emailAddress: { name: "Cal-Eats", address: settings.sender } }, toRecipients: [{ emailAddress: { address: message.to } }], body: { contentType: message.html ? "HTML" : "Text", content: message.html || message.text }, internetMessageHeaders: [{ name: "x-cal-eats-event-id", value: message.id }] }, saveToSentItems: true })
+        body: JSON.stringify({ message: { subject: message.subject, from: { emailAddress: { name: "Cal-Eats", address: settings.sender } }, toRecipients: [{ emailAddress: { address: message.to } }], body: { contentType: message.html ? "HTML" : "Text", content: message.html || message.text }, ...(attachments.length ? { attachments: attachments.map(item => ({ "@odata.type": "#microsoft.graph.fileAttachment", name: item.filename, contentType: item.contentType, contentBytes: item.contentBase64 })) } : {}), internetMessageHeaders: [{ name: "x-cal-eats-event-id", value: message.id }] }, saveToSentItems: true })
       });
       if (response.status === 202) return { status: "sent" };
       let providerCode = "";
