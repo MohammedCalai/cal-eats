@@ -65,6 +65,7 @@ input::placeholder,textarea::placeholder{color:#979ba5}
 @media(min-width:1050px){.discovery-shelf{grid-auto-columns:250px}}
 @media(max-width:760px){body:has(.discovery-header) .topbar{min-height:0;flex-wrap:nowrap;padding:8px 16px;gap:8px}body:has(.discovery-header) .topbar .brand{padding:0;min-height:0}body:has(.discovery-header) .brand-logo{max-height:38px;max-width:148px}body:has(.discovery-header) .topbar #account{gap:5px}body:has(.discovery-header) .account-button{font-size:11px;max-width:76px;padding:8px 5px}.discovery-cuisines .chip{padding:3px 7px;gap:3px}.discovery-cuisines .chip>span{width:32px;height:32px;font-size:23px}.discovery-feed .restaurant-photo{aspect-ratio:1.7}}
 /* Restaurant menus: compact dishes and section navigation that follows the scroll. */
+@media(max-width:760px){.dialog-backdrop:has(.menu-section-sheet),.dialog-backdrop:has(.menu-item-sheet){align-items:end;padding:0;background:#0009}.dialog:has(.menu-section-sheet),.dialog:has(.menu-item-sheet){width:100%;max-width:620px;max-height:88dvh;border-radius:24px 24px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom))}.dialog:has(.menu-section-sheet)>[data-action=close-dialog]{width:100%;margin-top:12px;min-height:48px}}
 .restaurant-dish .dish-visual{position:relative}.restaurant-dish .dish-visual>.dish-quantity{top:auto;bottom:7px;right:7px}.restaurant-dish.dish-with-photo{padding-bottom:0}
 .restaurant-menu-page{max-width:1000px;margin:auto;padding-bottom:90px;background:#121212}
 body:has(.restaurant-menu-page) .topbar{position:relative}
