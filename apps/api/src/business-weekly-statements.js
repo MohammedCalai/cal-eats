@@ -47,7 +47,8 @@ export function buildWeeklyStatementSnapshot(db, restaurantId, period, config) {
   const movementCount = db.prepare("SELECT COUNT(*) n FROM journal_postings WHERE restaurant_id=? AND source_type IN ('merchant_transfer','transfer_reversal') AND direction='debit' AND created_at>=? AND created_at<?").get(restaurantId,from,toExclusive).n;
   const payoutCount = db.prepare("SELECT COUNT(*) n FROM payout_batches WHERE restaurant_id=? AND updated_at>=? AND updated_at<?").get(restaurantId,from,toExclusive).n + db.prepare("SELECT COUNT(*) n FROM stripe_connected_payouts WHERE restaurant_id=? AND ((updated_at>=? AND updated_at<?) OR (arrival_at>=? AND arrival_at<?))").get(restaurantId,from,toExclusive,from,toExclusive).n;
   if (activityCount + movementCount + payoutCount > 50000) throw new Error("WEEKLY_STATEMENT_TOO_LARGE");
-  const orders = db.prepare("SELECT id,status,payment_method,payment_status,total_minor,commission_minor,created_at FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<? ORDER BY created_at,id").all(restaurantId, from, toExclusive);
+  const orders = db.prepare("SELECT id,status,payment_method,payment_status,total_minor,commission_minor,created_at,gross_food_minor,restaurant_discount_minor,subtotal_minor,delivery_fee_minor,contract_rate_bps,commission_base,promotion_snapshot,offer_snapshot FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<? ORDER BY created_at,id").all(restaurantId, from, toExclusive);
+  const freeItemValues=new Map(db.prepare("SELECT i.order_id,SUM(i.base_price_minor*i.quantity) AS retail_value_minor FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND i.is_offer_item=1 GROUP BY i.order_id").all(restaurantId,from,toExclusive).map(row=>[row.order_id,row.retail_value_minor]));
   const operations = db.prepare("SELECT m.*,o.payment_method FROM marketplace_operations m LEFT JOIN orders o ON o.id=m.order_id WHERE m.restaurant_id=? AND m.created_at>=? AND m.created_at<? ORDER BY m.created_at,m.id").all(restaurantId, from, toExclusive);
   const movements = db.prepare("SELECT * FROM journal_postings WHERE restaurant_id=? AND source_type IN ('merchant_transfer','transfer_reversal') AND direction='debit' AND created_at>=? AND created_at<? ORDER BY created_at,id").all(restaurantId,from,toExclusive);
   const refunds = db.prepare("SELECT r.* FROM refunds r JOIN orders o ON o.id=r.order_id WHERE o.restaurant_id=? AND r.created_at>=? AND r.created_at<? ORDER BY r.created_at,r.id").all(restaurantId, from, toExclusive);
@@ -79,15 +80,18 @@ export function buildWeeklyStatementSnapshot(db, restaurantId, period, config) {
     bankPendingRecordedMinor: sum(bank.filter(row => ["pending", "in_transit"].includes(row.status))),
     simulatedPayoutRecordedMinor: sum(payouts.filter(row => row.status === "paid" && row.provider_mode === "local_simulator"))
   };
-  const rows = [["activity", "reference", "orderId", "status", "amountMinor", "commissionReversalMinor", "currency", "providerMode", "occurredAt"]];
-  for (const row of orders) rows.push(["order_placed", row.id, row.id, row.status, row.total_minor, "", "GBP", row.payment_method === "mock_card" ? "local_simulator" : row.payment_method, row.created_at]);
+  const rows = [["activity", "reference", "orderId", "status", "amountMinor", "commissionReversalMinor", "currency", "providerMode", "occurredAt","foodBeforePromotionMinor","restaurantDiscountMinor","foodChargedMinor","deliveryFeeMinor","commissionRateBasisPoints","commissionBase","originalCommissionMinor","promotionTitle","promotionType","freeItemRetailValueMinor"]];
+  for (const row of orders) {
+    const promotion=parse(row.promotion_snapshot)||parse(row.offer_snapshot);
+    rows.push(["order_placed",row.id,row.id,row.status,row.total_minor,"","GBP",row.payment_method==="mock_card"?"local_simulator":row.payment_method,row.created_at,Math.max(row.gross_food_minor||0,row.subtotal_minor+(row.restaurant_discount_minor||0)),row.restaurant_discount_minor||0,row.subtotal_minor,row.delivery_fee_minor,row.contract_rate_bps,row.commission_base,row.commission_minor,clean(promotion?.title||""),clean(promotion?.offerType||""),freeItemValues.get(row.id)||0]);
+  }
   for (const row of events) rows.push([`order_${row.kind}`, row.id, row.order_id, row.to_status, "", "", "GBP", "", row.created_at]);
   for (const row of operations) rows.push([row.kind, row.id, row.order_id, row.status, row.amount_minor, "", row.currency, row.provider_mode, row.created_at]);
   for (const row of movements) rows.push([`${row.source_type}_confirmed`, row.id, row.order_id, "journal_recorded", row.amount_minor, "", row.currency, row.provider_mode, row.created_at]);
   for (const row of refunds) rows.push(["refund_recorded", row.id, row.order_id, "refunded", row.food_amount_minor + row.delivery_amount_minor, row.commission_reversal_minor, "GBP", "", row.created_at]);
   for (const row of payouts) rows.push(["payout_record_update", row.id, "", row.status, row.amount_minor, "", "GBP", row.provider_mode, row.updated_at]);
   for (const row of bank) rows.push(["bank_payout_record_update", row.id, "", row.status, row.amount_minor, "", "GBP", row.provider_mode || "not_verified", row.updated_at]);
-  const csv = rows.map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  const csv = rows.map(row => Array.from({length:rows[0].length},(_,index)=>row[index]??"").map(csvCell).join(",")).join("\r\n") + "\r\n";
   if (Buffer.byteLength(csv) > 10 * 1024 * 1024) throw new Error("WEEKLY_STATEMENT_TOO_LARGE");
   return { summary, csv };
 }

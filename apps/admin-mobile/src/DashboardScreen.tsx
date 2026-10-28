@@ -17,7 +17,7 @@ type Dashboard = {
 };
 const periods: Array<[Period, string]> = [["today", "Today"], ["yesterday", "Yesterday"], ["this_week", "This week"], ["last_week", "Last week"]];
 
-export function DashboardScreen({ token, restaurantId, canManage, onNavigate, onOrder }: { token: string; restaurantId: string; canManage: boolean; onNavigate: (screen: Destination) => void; onOrder: (id: string) => void }) {
+export function DashboardScreen({ token, restaurantId, canManage, onNavigate, onOrder, onFinance }: { token: string; restaurantId: string; canManage: boolean; onNavigate: (screen: Destination) => void; onOrder: (id: string) => void; onFinance: () => void }) {
   const [period, setPeriod] = useState<Period>("today"), [page, setPage] = useState(1);
   const result = useRemote<Dashboard>(`/api/restaurant/restaurants/${restaurantId}/dashboard?period=${period}&page=${page}&pageSize=20`, token);
   useForegroundRefresh(result.reload, 30000);
@@ -47,6 +47,7 @@ export function DashboardScreen({ token, restaurantId, canManage, onNavigate, on
       {finance && <Card><Text style={styles.heading}>Current balance · all dates</Text>
         <Metric label="Available" value={money(finance.balance.availableMinor)}/><Metric label="Pending" value={money(finance.balance.pendingMinor)}/><Metric label="Held" value={money(finance.balance.heldMinor)}/><Metric label="Bank payouts recorded" value={money(finance.balance.bankPaidMinor)}/><Metric label="Bank payouts pending" value={money(finance.balance.bankPendingMinor)}/>
         <Text style={styles.hint}>A transfer to your connected balance is separate from a payout to your bank. {finance.balance.providerMode !== "stripe_live" ? "This preview uses test or simulated payment records." : ""}</Text>
+        <Button onPress={onFinance}>Bank details and payout history</Button>
       </Card>}
       {canManage && <WeeklyStatement token={token} restaurantId={restaurantId}/>}
       {current.topItems.length > 0 && <Card><Text style={styles.heading}>Popular items</Text>{current.topItems.slice(0, 5).map(item => <Metric key={item.name} label={item.name} value={`${item.quantity} sold`}/>)}</Card>}

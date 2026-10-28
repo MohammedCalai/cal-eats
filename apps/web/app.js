@@ -5,6 +5,7 @@ import { mountDisputeResolution } from "./dispute-resolution.js";
 import { promotionBadge } from "./loyalty-ui.js";
 import { mountMarketingPreferences, mountFirstOrderPromotions, mountCheckoutQuote } from "./customer-additions.js";
 import { beginStripeCheckout, enhancePaymentChoices, refreshReturnedPayment } from "./stripe-ui.js";
+import { createCheckoutAttempt } from "./checkout-attempt.js";
 import { AUTH_SUBMIT_SELECTOR, ORDER_FLOW, availabilityMessage, canDeliver, cartLines, cartTotals, createRequestKey, currentSelections, estimatedMargin, money, nextOrderStatuses, orderItemPayload, parseMenuCsv, recognisedCommission, restaurantMatches, sanitizeCartDraft, serializeModifierRows, serializeOpeningRows, statusLabel, validateModifierSelection } from "./model.js";
 
 const main = document.querySelector("#main");
@@ -15,6 +16,8 @@ const state = { user: null, runtime: { mode:"local", demoShortcuts:false, simula
 const e = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const shortId = (id) => id ? id.slice(0, 8).toUpperCase() : "—";
 const date = (value) => new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+const checkoutAttempt = createCheckoutAttempt(createRequestKey);
+window.addEventListener("beforeunload", event => { if (checkoutAttempt.pending) { event.preventDefault(); event.returnValue=""; } });
 const message = (text) => { toast.textContent = text; toast.classList.add("show"); clearTimeout(message.timer); message.timer = setTimeout(() => toast.classList.remove("show"), 3500); };
 
 async function api(path, options = {}) {
@@ -44,7 +47,7 @@ function draftKey(){return `calai-cart:${state.user?.id||"guest"}`;}
 function clearDraft(){try{localStorage.removeItem(draftKey());}catch{}state.pendingDraft=null;}
 function saveDraft(){if(!state.selected)return;const draft=sanitizeCartDraft({savedAt:Date.now(),restaurantId:state.selected.id,fulfillment:state.fulfillment,quantities:state.cart,modifiers:state.modifiers});try{draft?localStorage.setItem(draftKey(),JSON.stringify(draft)):localStorage.removeItem(draftKey());}catch{}}
 function readDraft(restaurantId){try{const draft=sanitizeCartDraft(JSON.parse(localStorage.getItem(draftKey())));return draft?.restaurantId===restaurantId?draft:null;}catch{return null;}}
-function resetIdentity(user) { const changed=(state.user?.id||null)!==(user?.id||null); if(changed)clearDraft(); stopPolling();state.soundContext?.close().catch(()=>{});state.soundContext=null;state.soundEnabled=false;state.seenNotificationIds=null;state.seenOrderIds=new Set();state.pendingPhoto=null;state.workspaceTab="orders"; clearTimeout(message.timer); toast.textContent = ""; toast.classList.remove("show"); state.generation += 1; state.user = user; state.orders = []; state.refundCases = []; state.offers = []; state.selectedOffer = null; state.notifications = []; state.unreadCount = 0; state.workspace = {}; state.orderKey = null; state.addresses=[]; setAccount(); if (user) { state.notificationStop=connectLiveNotifications({onRefresh:loadNotifications}); } }
+function resetIdentity(user) { const changed=(state.user?.id||null)!==(user?.id||null); if(changed)clearDraft(); stopPolling();state.soundContext?.close().catch(()=>{});state.soundContext=null;state.soundEnabled=false;state.seenNotificationIds=null;state.seenOrderIds=new Set();state.pendingPhoto=null;state.workspaceTab="orders"; clearTimeout(message.timer); toast.textContent = ""; toast.classList.remove("show"); state.generation += 1; state.user = user; state.orders = []; state.refundCases = []; state.offers = []; state.selectedOffer = null; state.notifications = []; state.unreadCount = 0; state.workspace = {}; state.orderKey = null; checkoutAttempt.clear(); state.submitting=false; state.addresses=[]; setAccount(); if (user) { state.notificationStop=connectLiveNotifications({onRefresh:loadNotifications}); } }
 
 function consumeAccessFragment() {
   const fragment=location.hash.slice(1), separator=fragment.indexOf("=");
@@ -132,6 +135,7 @@ async function boot() {
 }
 
 async function navigate(view) {
+  if (state.submitting || checkoutAttempt.pending) { message("Resolve the original checkout or choose Check Orders before changing your basket."); return; }
   if (state.user && state.user.role !== "customer") { stopPolling(); window.location.replace("/business/"); return; }
   state.navigationVersion++;state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.quoteController?.close();state.quoteController=null;if (view !== "orders") stopOrderPolling();
   state.view = view;
@@ -196,16 +200,62 @@ function renderCheckout() {
 
 }
 
+function checkoutFormValues(form) { return { get(name) { return form.elements.namedItem(name)?.value ?? null; } }; }
+function lockCheckoutForm(form, locked) {
+  for (const control of form.querySelectorAll("input,select,textarea")) {
+    if (locked) { control.dataset.checkoutDisabled ??= control.disabled ? "1" : "0"; control.disabled=true; }
+    else if (control.dataset.checkoutDisabled !== undefined) { control.disabled=control.dataset.checkoutDisabled === "1"; delete control.dataset.checkoutDisabled; }
+  }
+}
+function restartCheckoutQuote(form) {
+  state.quoteController?.close(); form.querySelector(".server-quote")?.remove();
+  state.quoteController=mountCheckoutQuote(form,{api,body:checkoutQuoteBody});
+}
+async function sendCheckoutAttempt(record) {
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  try { return await api("/api/orders",{method:"POST",headers:{"Idempotency-Key":record.key},body:record.serializedBody,signal:controller.signal}); }
+  catch(error) { if(controller.signal.aborted){const timeout=new Error("The order response timed out.");timeout.status=0;timeout.code="TIMEOUT";throw timeout;}throw error; }
+  finally { clearTimeout(timer); }
+}
 async function submitOrder(form) {
-  if (state.submitting) return; if (!await state.quoteController?.confirm()) return; state.submitting = true;
-  const button = form.querySelector("button[type=submit],#place-order"); button.disabled = true; button.textContent = "Placing order…";
-  const data = new FormData(form); const lines = cartLines(state.menu, state.cart, state.modifiers);
-  const body = { restaurantId: state.selected.id, expectedTotalMinor: state.quoteController.totalMinor, items: orderItemPayload(lines), paymentMethod: data.get("paymentMethod"), fulfillment: state.fulfillment, ...(state.selectedOffer?.restaurantId === state.selected.id ? { offerId: state.selectedOffer.id } : {}), ...(data.get("customerPhone") ? { customerPhone: data.get("customerPhone") } : {}), ...(data.get("deliveryInstructions") ? { deliveryInstructions: data.get("deliveryInstructions") } : {}), ...(data.get("allergyNotes") ? { allergyNotes: data.get("allergyNotes") } : {}) };
-  if (state.fulfillment === "delivery") body.deliveryAddress = { line1: data.get("line1"), ...(data.get("line2") ? { line2: data.get("line2") } : {}), city: data.get("city"), postcode: data.get("postcode") };
-  state.orderKey ??= createRequestKey();
-  try { const order = await api("/api/orders", { method: "POST", headers: { "Idempotency-Key": state.orderKey }, body: JSON.stringify(body) }); if(body.paymentMethod==="card"){button.textContent="Opening secure Stripe checkout…";await beginStripeCheckout({api,orderId:order.id,key:`checkout-${order.id}`});return;} state.orderKey = null; state.cart = {}; state.selectedOffer = null; clearDraft(); renderConfirmation(order); }
-  catch (error) { if(error.code==="PRICE_CHANGED")await state.quoteController?.refresh(); const box = document.querySelector("#checkout-error"); box.className = "error"; box.textContent = `${error.message} You can retry safely; the same request key will be used.`; button.disabled = false; button.textContent = "Retry order"; }
-  finally { state.submitting = false; }
+  if (state.submitting) return;
+  const generation=state.generation,original=checkoutAttempt.pending;
+  if (!original) { const choice=form.querySelector('input[name="paymentMethod"]:checked');if(!choice||choice.disabled){message("Choose an available payment method.");return;} }
+  state.submitting=true;lockCheckoutForm(form,true);
+  const button=form.querySelector("#place-order"),box=form.querySelector("#checkout-error");
+  try {
+    let body=null;
+    if (!original) {
+      if (!await state.quoteController?.confirm()) return;
+      if(generation!==state.generation||!form.isConnected)return;
+      const data=checkoutFormValues(form),lines=cartLines(state.menu,state.cart,state.modifiers);
+      body={restaurantId:state.selected.id,expectedTotalMinor:state.quoteController.totalMinor,items:orderItemPayload(lines),paymentMethod:data.get("paymentMethod"),fulfillment:state.fulfillment,...(state.selectedOffer?.restaurantId===state.selected.id?{offerId:state.selectedOffer.id}:{}),...(data.get("customerPhone")?{customerPhone:data.get("customerPhone")} :{}),...(data.get("deliveryInstructions")?{deliveryInstructions:data.get("deliveryInstructions")} :{}),...(data.get("allergyNotes")?{allergyNotes:data.get("allergyNotes")} :{})};
+      if(state.fulfillment==="delivery")body.deliveryAddress={line1:data.get("line1"),...(data.get("line2")?{line2:data.get("line2")} :{}),city:data.get("city"),postcode:data.get("postcode")};
+    }
+    state.quoteController?.close();state.quoteController=null;
+    button.disabled=true;button.textContent=original?"Checking original order…":"Placing order…";
+    const method=original?JSON.parse(original.serializedBody).paymentMethod:body.paymentMethod;
+    const order=await checkoutAttempt.submit(body,sendCheckoutAttempt);
+    if(generation!==state.generation)return;
+    state.orderKey=null;state.cart={};state.selectedOffer=null;clearDraft();
+    if(method==="card") {
+      button.textContent="Opening secure Stripe checkout…";
+      try { await beginStripeCheckout({api,orderId:order.id,key:`checkout-${order.id}`}); }
+      catch { state.submitting=false;state.focusOrderId=order.id;await navigate("orders");message("Your order is saved. Continue secure payment from Orders; do not place another copy."); }
+      return;
+    }
+    renderConfirmation(order);
+  } catch(error) {
+    if(generation!==state.generation||!form.isConnected)return;
+    box.className="error";box.replaceChildren(document.createTextNode(error.message));
+    if(checkoutAttempt.pending) {
+      box.append(document.createTextNode(" Your order result is not confirmed. Retry the original request with the same items, address and reviewed total, or check Orders before starting another basket."));
+      const check=document.createElement("button");check.type="button";check.className="quiet";check.dataset.action="check-order-attempt";check.textContent="Check Orders before changing basket";box.append(check);
+      button.disabled=false;button.textContent="Retry original order";
+    } else { button.textContent="Place order";restartCheckoutQuote(form); }
+  } finally {
+    if(generation===state.generation) {state.submitting=false;if(form.isConnected)lockCheckoutForm(form,Boolean(checkoutAttempt.pending));}
+  }
 }
 
 function renderConfirmation(order) { state.view="confirmation";main.innerHTML = `<section class="section"><div class="card"><div class="food-mark" aria-hidden="true">✓</div><div class="eyebrow">Order received</div><h1>Thanks, ${e(state.user.name)}.</h1><p>${e(order.restaurantName)} has your ${e(order.fulfillment)} order. Reference <strong>${e(shortId(order.id))}</strong>.</p><p class="badge">${e(statusLabel(order.status))}</p><div class="totals"><div class="grand"><span>Total</span><span>${money(order.totalMinor)}</span></div></div><div class="card-actions"><button class="primary" data-view="orders">Track order</button><button class="secondary" data-action="print-receipt" data-id="${e(order.id)}">Print receipt</button></div></div></section>`; }
@@ -392,6 +442,8 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest("button,[data-view]"); if (!button) return;
   if (button.dataset.view) { state.accessFlow=null; return navigate(button.dataset.view); }
   const action = button.dataset.action;
+  if (action === "check-order-attempt") { if (state.submitting) return; checkoutAttempt.clear(); state.orderKey=null; state.cart={}; state.selectedOffer=null; clearDraft(); return navigate("orders"); }
+  if ((state.submitting || checkoutAttempt.pending) && action && !["logout", "close-dialog"].includes(action)) { event.preventDefault(); message("Retry the original checkout or choose Check Orders before starting another basket."); return; }
   if(action==="retry-email-link")return resumeCustomerEmailLink();
   if (action === "home" || action === "back-discover" || action === "reload-discover") { state.accessFlow=null; return navigate("discover"); }
   if (action === "remove-editor-row") { button.closest(".editor-row")?.remove(); return; }
@@ -494,6 +546,6 @@ document.addEventListener("keydown", (event) => { const dialog=document.querySel
 boot();
 if("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
 
-function checkoutQuoteBody(){const data=new FormData(document.querySelector("#checkout-form"));return{restaurantId:state.selected.id,items:orderItemPayload(cartLines(state.menu,state.cart,state.modifiers)),fulfillment:state.fulfillment,...(state.selectedOffer?.restaurantId===state.selected.id?{offerId:state.selectedOffer.id}:{}),...(state.fulfillment==="delivery"?{deliveryAddress:{line1:data.get("line1"),...(data.get("line2")?{line2:data.get("line2")}:{}),city:data.get("city"),postcode:data.get("postcode")}}:{})};}
+function checkoutQuoteBody(){const data=checkoutFormValues(document.querySelector("#checkout-form"));return{restaurantId:state.selected.id,items:orderItemPayload(cartLines(state.menu,state.cart,state.modifiers)),fulfillment:state.fulfillment,...(state.selectedOffer?.restaurantId===state.selected.id?{offerId:state.selectedOffer.id}:{}),...(state.fulfillment==="delivery"?{deliveryAddress:{line1:data.get("line1"),...(data.get("line2")?{line2:data.get("line2")}:{}),city:data.get("city"),postcode:data.get("postcode")}}:{})};}
 async function showOrderConversation(orderId){closeDialog();showDialog('<h2 id="dialog-title" tabindex="-1">Message restaurant</h2><div id="order-message-panel"></div>');const generation=state.generation,token=Symbol("order-contact"),container=document.querySelector("#order-message-panel");state.contactToken=token;try{const controller=await openOrderMessaging({api,orderId,container,onClose:()=>{if(state.contactToken===token)closeDialog();}});if(generation!==state.generation||state.contactToken!==token||!container.isConnected){controller.close();return;}state.messagePanel=controller;}catch(error){if(container.isConnected&&generation===state.generation)container.textContent=error.message;}}
 window.addEventListener("cal-eats-notifications-read",()=>{if(state.user)void loadNotifications();});

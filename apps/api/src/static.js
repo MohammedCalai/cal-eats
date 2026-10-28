@@ -12,6 +12,7 @@ const assets = new Map([
   ["/landing.css", ["landing.css", "text/css; charset=utf-8"]],
   ["/landing.js", ["landing.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
+  ["/checkout-attempt.js", ["checkout-attempt.js", "text/javascript; charset=utf-8"]],
   ["/model.js", ["model.js", "text/javascript; charset=utf-8"]],
   ["/live-notifications.js", ["live-notifications.js", "text/javascript; charset=utf-8"]],
   ["/order-messaging.js", ["order-messaging.js", "text/javascript; charset=utf-8"]],

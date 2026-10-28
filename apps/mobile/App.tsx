@@ -31,9 +31,7 @@ export default function App() {
 
   async function restore() {
     setBooting(true); setBootError("");
-    const saved = await sessionStore.get();
-    if (!saved) { setBooting(false); return; }
-    try { const result = await api<{ user: User; session: { id: string; createdAt: string; expiresAt: string } }>("/api/native/auth/me", { token: saved }); setToken(saved); setUser(result.user); }
+    try { const saved = await sessionStore.get(); if (!saved) return; const result = await api<{ user: User; session: { id: string; createdAt: string; expiresAt: string } }>("/api/native/auth/me", { token: saved }); setToken(saved); setUser(result.user); }
     catch (caught) { if (caught instanceof ApiError && caught.status === 401) await sessionStore.clear(); else setBootError((caught as Error).message); }
     finally { setBooting(false); }
   }
@@ -45,7 +43,7 @@ export default function App() {
   if (booting) return <SafeAreaView style={styles.center}><StatusBar style="light"/><Brand/><ActivityIndicator size="large" color={colours.blue}/><Text style={styles.muted}>Opening Cal-Eats…</Text></SafeAreaView>;
   if (bootError && !user) return <SafeAreaView style={styles.center}><Brand/><ErrorBanner message={bootError}/><Button onPress={() => void restore()}>Try again</Button><Button tone="quiet" onPress={() => { void sessionStore.clear(); setBootError(""); }}>Use another account</Button></SafeAreaView>;
   if (!token || !user) return <><StatusBar style="light"/><AuthScreen onAuthenticated={authenticated}/></>;
-  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}><CheckoutScreen initialOfferId={preferredOffer?.restaurantId === restaurant.id ? preferredOffer.offerId : undefined} token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => setCheckout(false)} onOrdered={(order) => { setCart([]); setPreferredOffer(null); setCheckout(false); openOrder(order.id); }}/></KeyboardAvoidingView></SafeAreaView>;
+  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}><CheckoutScreen initialOfferId={preferredOffer?.restaurantId === restaurant.id ? preferredOffer.offerId : undefined} token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => setCheckout(false)} onCheckOrders={() => { setCart([]); setPreferredOffer(null); setCheckout(false); setTab("orders"); }} onOrdered={(order) => { setCart([]); setPreferredOffer(null); setCheckout(false); openOrder(order.id); }}/></KeyboardAvoidingView></SafeAreaView>;
 
   return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     {tab === "discover" ? <DiscoverScreen focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setCheckout(true)}/> : null}

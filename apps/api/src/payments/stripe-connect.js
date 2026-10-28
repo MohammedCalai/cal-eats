@@ -82,7 +82,7 @@ export async function routeStripeConnect(ctx) {
     const access = ownedCardOrder(db,session,match[1],config); await ensurePlatform(config);
     return match[2] === "checkout" ? checkout({ ...ctx, ...access }) : refreshPayment({ ...ctx, ...access });
   }
-  match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/stripe(?:\/(onboarding|refresh|dashboard|payouts))?$/);
+  match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/stripe(?:\/(onboarding|refresh|dashboard|payouts|banking))?$/);
   if (match) {
     const owner = requireRestaurantOwner(db,session,match[1]), mode = stripeMode(config);
     if (req.method === "GET" && !match[2]) {
@@ -90,9 +90,10 @@ export async function routeStripeConnect(ctx) {
       return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,configured:configured(config),account:accountDto(db,row),payoutSchedule:schedule}});
     }
     if (req.method === "GET" && match[2] === "payouts") {
-      if (!mode || !accountForMode(db,match[1],config)?.provider_reference) return sendJson(res,200,{data:{items:[]}});
+      if (!mode || !configured(config) || !accountForMode(db,match[1],config)?.provider_reference) return sendJson(res,200,{data:{items:[],hasMore:false,nextCursor:null,providerMode:config.paymentProviderMode,configured:false}});
       await ensurePlatform(config); return listPayouts({ ...ctx, restaurantId:match[1] });
     }
+    if (req.method === "GET" && match[2] === "banking") return bankingDetails({ ...ctx, restaurantId:match[1] });
     if (req.method === "POST" && ["onboarding","refresh","dashboard"].includes(match[2])) { await ensurePlatform(config); return accountAction({ ...ctx, owner, restaurantId:match[1], action:match[2] }); }
   }
   if (req.method === "GET" && url.pathname === "/api/admin/finance/stripe/readiness") {
@@ -163,13 +164,38 @@ async function accountAction({ req, res, db, config, owner, restaurantId, action
   if (!result?.actionUrl || result.ok === false) throw new HttpError(503,"STRIPE_LINK_UNAVAILABLE","Stripe dashboard is unavailable. Try again");
   return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode}});
 }
-async function listPayouts({ res, db, config, restaurantId }) {
+async function bankingDetails({ res, db, config, restaurantId }) {
+  const mode=stripeMode(config),row=mode?accountForMode(db,restaurantId,config):null;
+  const base={providerMode:config.paymentProviderMode,configured:configured(config),connected:Boolean(row?.provider_reference),canManageBankDetails:Boolean(configured(config)&&row?.provider_reference),account:accountDto(db,row),bankDetailsAvailable:false,bankAccounts:[],payoutSchedule:schedule,refreshedAt:null};
+  if(!mode||!configured(config)||!row?.provider_reference)return sendJson(res,200,{data:{...base,note:"No Stripe bank details are connected to this payment mode. Complete Stripe setup to view bank and payout information."}});
+  await ensurePlatform(config);
+  const adapter=provider(config),account=await adapter.refreshConnectedAccount({accountId:row.provider_reference});
+  if(account?.providerReference!==row.provider_reference||account.ok===false)throw new HttpError(503,"STRIPE_BANKING_UNAVAILABLE","Stripe account details could not be refreshed");
+  const fresh=saveAccount(db,config,restaurantId,account);
+  let banks=account.bankAccounts,available=Boolean(account.bankDetailsAvailable);
+  if(typeof adapter.listExternalBankAccounts==="function"){
+    const result=await adapter.listExternalBankAccounts({accountId:row.provider_reference});
+    if(result?.ok!==false&&result?.providerReference===row.provider_reference&&Array.isArray(result.items)){banks=result.items;available=true;}
+    else{banks=[];available=false;}
+  }
+  const masked=(Array.isArray(banks)?banks:[]).filter(bank=>/^ba_[A-Za-z0-9_]+$/.test(bank?.id||"")).map(bank=>({id:bank.id,bankName:typeof bank.bankName==="string"?bank.bankName.slice(0,150):"Bank account",last4:/^\d{4}$/.test(bank.last4||"")?bank.last4:null,country:/^[A-Z]{2}$/.test(bank.country||"")?bank.country:null,currency:/^[A-Z]{3}$/.test(bank.currency||"")?bank.currency:null,status:typeof bank.status==="string"?bank.status.slice(0,60):"unknown",defaultForCurrency:Boolean(bank.defaultForCurrency)}));
+  return sendJson(res,200,{data:{...base,account:accountDto(db,fresh),bankDetailsAvailable:available,bankAccounts:masked,refreshedAt:now(config),note:available?"Only masked bank details are displayed. View or change bank details securely in Stripe.":"Stripe bank details are unavailable through this connection. Open Stripe to view or change them; no additional access has been granted."}});
+}
+async function listPayouts({ res, url, db, config, restaurantId }) {
   const row = accountForMode(db,restaurantId,config);
-  const result = await provider(config).listPayouts({accountId:row.provider_reference,limit:50});
+  const pageSize=Number(url.searchParams.get("pageSize")??20),startingAfter=url.searchParams.get("startingAfter")||null;
+  if(!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100||(startingAfter&&!/^po_[A-Za-z0-9_]+$/.test(startingAfter)))throw new HttpError(400,"VALIDATION_ERROR","Payout pagination is invalid");
+  if(startingAfter&&!db.prepare("SELECT 1 FROM stripe_connected_payouts WHERE id=? AND restaurant_id=? AND provider_account_id=?").get(startingAfter,restaurantId,row.provider_reference))throw new HttpError(404,"NOT_FOUND","Payout cursor is unavailable");
+  const result = await provider(config).listPayouts({accountId:row.provider_reference,limit:pageSize,...(startingAfter?{startingAfter}:{})});
   if (result?.ok === false || !Array.isArray(result?.items)) throw new HttpError(503,"STRIPE_PAYOUTS_UNAVAILABLE","Bank payout status could not be refreshed");
-  const stamp = now(config), items = result.items.map(item=>({id:item.providerReference,amountMinor:item.amountMinor,status:item.paymentState ?? item.status,arrivalAt:item.arrivalAt,failure:safeProviderError(item.errorCode)}));
-  withTransaction(db,()=>{for(const item of items) db.prepare("INSERT INTO stripe_connected_payouts VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,arrival_at=excluded.arrival_at,failure=excluded.failure,updated_at=excluded.updated_at").run(item.id,restaurantId,row.provider_reference,item.amountMinor,item.status,item.arrivalAt ?? null,item.failure,stamp,stamp);});
-  return sendJson(res,200,{data:{items}});
+  const stamp=now(config),items=result.items.map(item=>{
+    const status=item.paymentState??item.status,currency=item.currency;
+    if(!/^po_[A-Za-z0-9_]+$/.test(item.providerReference||"")||!Number.isSafeInteger(item.amountMinor)||item.amountMinor<0||!["paid","pending","in_transit","failed","canceled"].includes(status)||currency!=="GBP")throw new HttpError(503,"STRIPE_PAYOUT_DATA_INVALID","Stripe payout details could not be verified");
+    const paid=db.prepare("SELECT provider_created_at FROM provider_events WHERE provider=? AND restaurant_id=? AND provider_account_reference=? AND object_id=? AND event_type='payout.paid' AND status='completed' ORDER BY provider_created_at DESC LIMIT 1").get(stripeMode(config),restaurantId,row.provider_reference,item.providerReference);
+    return{id:item.providerReference,amountMinor:item.amountMinor,currency,status,createdAt:item.createdAt??null,arrivalAt:item.arrivalAt??null,expectedArrivalAt:item.arrivalAt??null,paidAt:paid?.provider_created_at??null,updatedAt:stamp,failure:safeProviderError(item.errorCode)};
+  });
+  withTransaction(db,()=>{for(const item of items){const existing=db.prepare("SELECT * FROM stripe_connected_payouts WHERE id=?").get(item.id);if(existing&&(existing.restaurant_id!==restaurantId||existing.provider_account_id!==row.provider_reference||existing.amount_minor!==item.amountMinor))throw new HttpError(409,"STRIPE_PAYOUT_BINDING_MISMATCH","Stripe payout does not match this restaurant");db.prepare("INSERT INTO stripe_connected_payouts VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,arrival_at=excluded.arrival_at,failure=excluded.failure,updated_at=excluded.updated_at").run(item.id,restaurantId,row.provider_reference,item.amountMinor,item.status,item.arrivalAt,item.failure,stamp,stamp);}});
+  return sendJson(res,200,{data:{items,hasMore:Boolean(result.hasMore),nextCursor:result.hasMore&&items.length?items.at(-1).id:null,providerMode:stripeMode(config),configured:true}});
 }
 
 export async function runStripeConnectWorker(db, config, { workerId = randomUUID(), limit = 25 } = {}) {

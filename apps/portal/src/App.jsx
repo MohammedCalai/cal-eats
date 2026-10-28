@@ -4,6 +4,9 @@ import SupportWorkspace from "./SupportWorkspace.jsx";
 import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
 import OwnerDashboardView from "./OwnerDashboard.jsx";
+import EarningsPage from "./EarningsPage.jsx";
+import OrderFinancialBreakdown from "./OrderFinancialBreakdown.jsx";
+import { useFinanceResource } from "./finance-resource.js";
 import { OrderAlertProvider, OrderAlertBar, useOrderAlerts } from "./NewOrderAlerts.jsx";
 import { businessOrderTransitions } from "./order-alert-model.js";
 import OrderConfirmationAlerts from "./OrderConfirmationAlerts.jsx";
@@ -163,20 +166,78 @@ function OwnerDashboard() {
 }
 
 function Orders() {
-  const { restaurant } = React.useContext(RestaurantContext); const alerts=useOrderAlerts();const result=useLoad(()=>api(`/api/restaurant/restaurants/${restaurant.id}/orders`),[restaurant.id]);
-  const[active,setActive]=useState(null),[error,setError]=useState(""),[progressing,setProgressing]=useState(""),[params,setParams]=useSearchParams(),selectedOrder=params.get("order");const selectedRef=useRef(selectedOrder),restaurantRef=useRef(restaurant.id),priorRestaurant=useRef(restaurant.id);selectedRef.current=selectedOrder;restaurantRef.current=restaurant.id;
-  useEffect(()=>connectLiveNotifications({onRefresh:result.reload}),[result.reload]);
-  useEffect(()=>{const refresh=()=>void result.reload();addEventListener("cal-eats-orders-updated",refresh);return()=>removeEventListener("cal-eats-orders-updated",refresh);},[result.reload]);
-  useEffect(()=>{if(priorRestaurant.current!==restaurant.id){priorRestaurant.current=restaurant.id;setActive(null);setError("");setProgressing("");setParams({});}},[restaurant.id]);
-  useEffect(()=>{if(!selectedOrder){setActive(null);return;}const order=listItems(result.value).find(item=>item.id===selectedOrder&&item.restaurantId===restaurant.id);if(order)setActive(order);},[selectedOrder,result.value,restaurant.id]);
-  async function update(order,status){
-    if(progressing)return;if(status==="accepted"){setParams({});alerts.openOrder(order);return;}setError("");setProgressing(status);
-    try{const value=await api(`/api/restaurant/orders/${order.id}/status`,json("PATCH",{status})),updated=value.order||value;if(selectedRef.current===order.id&&restaurantRef.current===order.restaurantId)setActive(updated);if(restaurantRef.current===order.restaurantId)await result.reload();}
-    catch(e){if(restaurantRef.current===order.restaurantId){setError(e.message);await result.reload();}}finally{if(restaurantRef.current===order.restaurantId)setProgressing("");}
+  const { restaurant, permission } = React.useContext(RestaurantContext), alerts = useOrderAlerts();
+  const [, setParams] = useSearchParams(), priorRestaurant = useRef(restaurant.id);
+  useEffect(() => { if (priorRestaurant.current !== restaurant.id) { priorRestaurant.current = restaurant.id; setParams({}); } }, [restaurant.id]);
+  return <OrdersWorkspace key={restaurant.id} restaurant={restaurant} permission={permission} alerts={alerts}/>;
+}
+function OrdersWorkspace({ restaurant, permission, alerts }) {
+  const [page, setPage] = useState(1), [status, setStatus] = useState("all");
+  const query = new URLSearchParams({ page: String(page), pageSize: "25", status });
+  const result = useFinanceResource(`/api/restaurant/restaurants/${restaurant.id}/orders?${query}`);
+  const [active, setActive] = useState(null), [error, setError] = useState(""), [progressing, setProgressing] = useState(""), [detailLoading, setDetailLoading] = useState(false);
+  const [params, setParams] = useSearchParams(), selectedOrder = params.get("order");
+  const selectedRef = useRef(selectedOrder), restaurantRef = useRef(restaurant.id);
+  selectedRef.current = selectedOrder; restaurantRef.current = restaurant.id;
+  useEffect(() => setError(""), [selectedOrder]);
+  useEffect(() => connectLiveNotifications({ onRefresh: result.reload }), [result.reload]);
+  useEffect(() => { const refresh = () => void result.reload(); addEventListener("cal-eats-orders-updated", refresh); return () => removeEventListener("cal-eats-orders-updated", refresh); }, [result.reload]);
+  useEffect(() => {
+    if (!selectedOrder) { setActive(null); setDetailLoading(false); return; }
+    const loaded = listItems(result.value).find(order => order.id === selectedOrder && order.restaurantId === restaurant.id);
+    if (loaded) { setActive(loaded); setDetailLoading(false); return; }
+    const controller = new AbortController(), requestedOrder = selectedOrder, requestedRestaurant = restaurant.id;
+    const timer = window.setTimeout(() => controller.abort(), 20000);
+    let current = true;
+    setActive(previous => previous?.id === requestedOrder && previous.restaurantId === requestedRestaurant ? previous : null); setDetailLoading(true);
+    void api(`/api/orders/${encodeURIComponent(requestedOrder)}`, { signal: controller.signal }).then(order => {
+      if (!current || selectedRef.current !== requestedOrder || restaurantRef.current !== requestedRestaurant) return;
+      if (order.restaurantId !== requestedRestaurant) throw new Error("This order is not available in the selected restaurant.");
+      setActive(order);
+    }).catch(caught => {
+      if (current && selectedRef.current === requestedOrder && restaurantRef.current === requestedRestaurant) { setActive(null); setError(caught.name === "AbortError" ? "The order took too long to load. Close it and try again." : caught.message); }
+    }).finally(() => { window.clearTimeout(timer); if (current) setDetailLoading(false); });
+    return () => { current = false; window.clearTimeout(timer); controller.abort(); };
+  }, [selectedOrder, result.value, restaurant.id]);
+  async function update(order, next) {
+    if (progressing) return;
+    if (next === "accepted") { setParams({}); alerts.openOrder(order); return; }
+    setError(""); setProgressing(next);
+    try {
+      const value = await api(`/api/restaurant/orders/${order.id}/status`, json("PATCH", { status: next })), updated = value.order || value;
+      if (selectedRef.current === order.id && restaurantRef.current === order.restaurantId) setActive(updated);
+      if (restaurantRef.current === order.restaurantId) await result.reload();
+    } catch (caught) { if (restaurantRef.current === order.restaurantId) { setError(caught.message); await result.reload(); } }
+    finally { if (restaurantRef.current === order.restaurantId) setProgressing(""); }
   }
-  async function estimate(order,value){if(progressing)return;setError("");setProgressing("eta");try{const updated=await api(`/api/restaurant/orders/${order.id}/preparation`,json("PATCH",{estimatedReadyAt:new Date(value).toISOString()}));if(selectedRef.current===order.id&&restaurantRef.current===order.restaurantId)setActive(updated.order||updated);if(restaurantRef.current===order.restaurantId)await result.reload();}catch(e){if(restaurantRef.current===order.restaurantId)setError(e.message);}finally{if(restaurantRef.current===order.restaurantId)setProgressing("");}}
-  const actionLabel=(status,order)=>({accepted:"Confirm order",preparing:"Start preparing",ready:"Mark ready",out_for_delivery:"Out for delivery",completed:order.fulfillment==="delivery"?"Mark delivered":"Mark collected"})[status]||status.replaceAll("_"," ");
-  return <Page title="Orders" intro="Confirm new orders, keep the customer’s ETA clear and update each step.">{error&&!active&&<Alert>{error}</Alert>}{result.loading?<Skeleton/>:result.error?<PageState error={result.error} retry={result.reload}/>:<OrderTable items={listItems(result.value)} onOpen={order=>{setError("");setParams({order:order.id});}}/>}{active&&<Dialog title={`Order ${active.id.slice(0,8).toUpperCase()}`} onClose={()=>setParams({})}>{error&&<Alert>{error}</Alert>}<OrderDetail order={active}/>{(active.messagingAvailable??["placed","accepted","preparing","ready","out_for_delivery"].includes(active.status))&&<OrderConversation key={active.id} orderId={active.id}/>}<div className="button-row order-progress-actions">{nextStatuses(active.status,active.fulfillment).map(status=><button type="button" className="primary" key={status} disabled={Boolean(progressing)} onClick={()=>void update(active,status)}>{progressing===status?"Updating…":actionLabel(status,active)}</button>)}</div>{["accepted","preparing"].includes(active.status)&&<form className="order-eta-update" onSubmit={e=>{e.preventDefault();const value=new FormData(e.currentTarget).get("eta");if(value)void estimate(active,value);}}><label>{active.fulfillment==="delivery"?"Expected delivery arrival":"Ready for collection"}<input name="eta" type="datetime-local" required disabled={Boolean(progressing)}/></label><button className="quiet" disabled={Boolean(progressing)}>{progressing==="eta"?"Updating ETA…":"Update customer ETA"}</button></form>}</Dialog>}</Page>;
+  async function estimate(order, value) {
+    if (progressing) return; setError(""); setProgressing("eta");
+    try {
+      const updated = await api(`/api/restaurant/orders/${order.id}/preparation`, json("PATCH", { estimatedReadyAt: new Date(value).toISOString() }));
+      if (selectedRef.current === order.id && restaurantRef.current === order.restaurantId) setActive(updated.order || updated);
+      if (restaurantRef.current === order.restaurantId) await result.reload();
+    } catch (caught) { if (restaurantRef.current === order.restaurantId) setError(caught.message); }
+    finally { if (restaurantRef.current === order.restaurantId) setProgressing(""); }
+  }
+  const actionLabel = (next, order) => ({ accepted: "Confirm order", preparing: "Start preparing", ready: "Mark ready", out_for_delivery: "Out for delivery", completed: order.fulfillment === "delivery" ? "Mark delivered" : "Mark collected" })[next] || next.replaceAll("_", " ");
+  const pagination = result.value?.pagination;
+  useEffect(() => { if (pagination && page > Math.max(1, pagination.totalPages)) setPage(Math.max(1, pagination.totalPages)); }, [pagination?.totalPages, page]);
+  const statuses = [["all", "All orders"], ["placed", "Awaiting confirmation"], ["accepted", "Confirmed"], ["preparing", "Preparing"], ["ready", "Ready"], ["out_for_delivery", "Out for delivery"], ["completed", "Completed"], ["rejected", "Rejected"]];
+  return <Page title="Orders" intro="Confirm new orders, keep the customer’s ETA clear and update each step.">
+    <div className="workspace-toolbar"><label>Order status<select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button className="quiet" disabled={result.loading} onClick={() => void result.reload()}>Refresh orders</button></div>
+    {error && !active && <Alert>{error}</Alert>}
+    {result.loading && !result.value ? <Skeleton/> : result.error ? <PageState error={result.error} retry={result.reload}/> : <OrderTable items={listItems(result.value)} onOpen={order => { setError(""); setParams({ order: order.id }); }}/>}
+    {pagination && <div className="finance-pagination" aria-label="Order pages"><button className="quiet" disabled={page <= 1 || result.loading} onClick={() => setPage(value => value - 1)}>Previous orders</button><span>{pagination.total} orders · Page {page} of {Math.max(1, pagination.totalPages)}</span><button className="quiet" disabled={!pagination.hasNext || result.loading} onClick={() => setPage(value => value + 1)}>Next orders</button></div>}
+    {selectedOrder && detailLoading && !active && <Dialog title={`Order ${selectedOrder.slice(0, 8).toUpperCase()}`} onClose={() => setParams({})}><p role="status">Loading order…</p></Dialog>}
+    {active?.id === selectedOrder && active.restaurantId === restaurant.id && <Dialog title={`Order ${active.id.slice(0, 8).toUpperCase()}`} onClose={() => setParams({})}>
+      {error && <Alert>{error}</Alert>}
+      <OrderDetail order={active}/>
+      {permission === "owner" && <OrderFinancialBreakdown key={`${restaurant.id}:${active.id}`} restaurantId={restaurant.id} orderId={active.id}/>}
+      {(active.messagingAvailable ?? ["placed", "accepted", "preparing", "ready", "out_for_delivery"].includes(active.status)) && <OrderConversation key={active.id} orderId={active.id}/>}
+      <div className="button-row order-progress-actions">{nextStatuses(active.status, active.fulfillment).map(next => <button type="button" className="primary" key={next} disabled={Boolean(progressing)} onClick={() => void update(active, next)}>{progressing === next ? "Updating…" : actionLabel(next, active)}</button>)}</div>
+      {["accepted", "preparing"].includes(active.status) && <form className="order-eta-update" onSubmit={event => { event.preventDefault(); const value = new FormData(event.currentTarget).get("eta"); if (value) void estimate(active, value); }}><label>{active.fulfillment === "delivery" ? "Expected delivery arrival" : "Ready for collection"}<input name="eta" type="datetime-local" required disabled={Boolean(progressing)}/></label><button className="quiet" disabled={Boolean(progressing)}>{progressing === "eta" ? "Updating ETA…" : "Update customer ETA"}</button></form>}
+    </Dialog>}
+  </Page>;
 }
 
 function Menu(){const {restaurant,permission}=React.useContext(RestaurantContext);return <RefinedMenu key={restaurant.id} restaurantId={restaurant.id} permission={permission} Editor={MenuItemEditor} imageBody={imageBody}/>;}
@@ -331,7 +392,7 @@ function PrinterWorkspace({ restaurant, permission }) {
 }
 
 
-function Earnings(){const{restaurant}=React.useContext(RestaurantContext);const root=`/api/restaurant/restaurants/${restaurant.id}/finance`;const summary=useLoad(()=>api(`${root}/summary`),[restaurant.id]);const orders=useLoad(()=>api(`${root}/orders`),[restaurant.id]);const payouts=useLoad(()=>api(`${root}/payouts`),[restaurant.id]);const policy=useLoad(()=>api(`${root}/commission-policy`),[restaurant.id]);const mandate=useLoad(()=>api(`${root}/cash-mandate`),[restaurant.id]);const provider=useLoad(()=>api(`${root}/provider-account`),[restaurant.id]);const[error,setError]=useState("");const paymentSetup=useLoad(()=>api("/api/payments/config"),[]);const s=summary.value||{};async function post(path,body,label){setError("");try{await api(`${root}/${path}`,json("POST",body,newKey(label)));summary.reload();policy.reload();mandate.reload();provider.reload()}catch(x){setError(x.message)}}return <Page title="Earnings & payouts" intro="Reconciled marketplace earnings, separate cash receivables and payout state."><Simulation mode={paymentSetup.value?.providerMode??s.providerMode}/>{(summary.error||error)&&<Alert>{summary.error||error}</Alert>}<div className="stats"><Stat label="Gross sales" value={pounds(s.grossSalesMinor)}/><Stat label="Recognised commission" value={pounds(s.commissionMinor)}/><Stat label="Net earnings" value={pounds(s.netEarningsMinor)}/><Stat label="Available" value={pounds(s.availableMinor)}/><Stat label="Pending" value={pounds(s.pendingMinor)}/><Stat label="Held" value={pounds(s.heldMinor)}/><Stat label="Cash commission due" value={pounds(s.cashCommissionOutstandingMinor)}/></div><Section title="Development commission agreement"><p>{policy.value?`${policy.value.rateBasisPoints/100}% of ${policy.value.base?.replaceAll("_"," ")} · ${policy.value.durationMonths} months · ${policy.value.developmentAssumption?"development assumption":"approved policy"}`:"No policy available."}</p>{policy.value&&!policy.value.acceptedAt&&<button className="primary" onClick={()=>post("commission-policy/accept",{},"policy")}>Accept displayed development agreement</button>}</Section><Section title="Provider and cash collection">{paymentSetup.value?.providerMode==="local_simulator"?<><p>Provider account: <strong>{provider.value?.status||"not configured"}</strong>. Cash mandate: <strong>{mandate.value?.status||"not authorised"}</strong>.</p><div className="button-row"><button className="quiet" onClick={()=>post("provider-account",{action:"create_test"},"provider")}>Create test provider account</button><button className="quiet" onClick={()=>post("provider-account",{action:"refresh"},"provider-refresh")}>Refresh provider status</button><button className="quiet" onClick={()=>post("cash-mandate",{action:"create"},"mandate")}>Create simulated mandate</button><button className="quiet" onClick={()=>post("cash-mandate",{action:"authorize_simulation"},"mandate-authorize")}>Authorise simulation</button><button className="quiet" onClick={()=>post("cash-mandate",{action:"revoke"},"mandate-revoke")}>Revoke mandate</button></div><p className="fine">No real bank mandate or provider onboarding is completed by these local actions.</p></>:<><p>Card onboarding, verification and bank payout status are managed through Stripe setup.</p><NavLink to="/owner/stripe">Open Stripe setup and payouts</NavLink><p className="fine">Cash is paid directly to the restaurant. Cash commission remains a separate receivable; an automatic bank debit is not activated by this screen.</p></>}</Section><Section title="Order earnings"><DataTable headers={["Order","Total","Refunds","Commission","Merchant net","Settlement"]} rows={listItems(orders.value).map(o=>[o.orderId.slice(0,8),pounds(o.orderTotalMinor),pounds(o.refundsMinor),pounds(o.commissionMinor),pounds(o.merchantNetMinor),o.settlementState])} loading={orders.loading} error={orders.error}/></Section><Section title="Payouts"><DataTable headers={["Payout","Amount","Status","Required action"]} rows={listItems(payouts.value).map(p=>[(p.id||"").slice(0,8),pounds(p.amountMinor),p.status,p.requiredAction||"—"])} loading={payouts.loading} error={payouts.error}/><a className="button-link" href={`${root}/statement.csv`}>Download statement CSV</a></Section></Page>}
+function Earnings(){const{restaurant}=React.useContext(RestaurantContext);return <EarningsPage key={restaurant.id} restaurantId={restaurant.id}/>;}
 
 function OwnerRefunds(){
   const{restaurant}=React.useContext(RestaurantContext);const result=useLoad(()=>api(`/api/restaurant/restaurants/${restaurant.id}/refund-cases`),[restaurant.id]);const[params,setParams]=useSearchParams(),caseId=params.get("case"),[active,setActive]=useState(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);

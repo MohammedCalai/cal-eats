@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { absoluteMediaUrl, api } from "../api";
 import { Button, Card, Empty, ErrorBanner, Field, Pill, SectionTitle } from "../components";
@@ -13,42 +13,56 @@ interface Props {
 }
 export function DiscoverScreen(props: Props) {
   const [postcode, setPostcode] = useState(""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const mounted = useRef(false), discoveryRequest = useRef(0), menuRequest = useRef(0), latest = useRef(props), latestCart = useRef(props.cart);
+  latest.current = props; latestCart.current = props.cart;
+  const loading = discoveryLoading || menuLoading;
   const totals = useMemo(() => cartTotals(props.cart, props.fulfillment, props.restaurant), [props.cart, props.fulfillment, props.restaurant]);
 
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; discoveryRequest.current++; menuRequest.current++; }; }, []);
+  function updateCart(entries: CartEntry[]) { latestCart.current = entries; latest.current.onCart(entries); }
+
   async function loadRestaurants() {
-    setLoading(true); setError("");
-    try { const params = new URLSearchParams({ fulfillment: props.fulfillment }); if (postcode.trim()) params.set("postcode", postcode.trim()); if (query.trim()) params.set("q", query.trim()); setRestaurants(await api<Restaurant[]>(`/api/restaurants?${params}`, { token: props.token })); }
-    catch (caught) { setError((caught as Error).message); } finally { setLoading(false); }
+    const request = ++discoveryRequest.current, fulfillment = props.fulfillment, token = props.token;
+    const current = () => mounted.current && discoveryRequest.current === request && latest.current.fulfillment === fulfillment && latest.current.token === token;
+    setDiscoveryLoading(true); setError("");
+    try { const params = new URLSearchParams({ fulfillment }); if (postcode.trim()) params.set("postcode", postcode.trim()); if (query.trim()) params.set("q", query.trim()); const result = await api<Restaurant[]>(`/api/restaurants?${params}`, { token }); if (current()) setRestaurants(result); }
+    catch (caught) { if (current() && !latest.current.restaurant) setError((caught as Error).message); } finally { if (current()) setDiscoveryLoading(false); }
   }
   useEffect(() => { void loadRestaurants(); }, [props.fulfillment]);
 
-  useEffect(() => { if (props.focusRestaurantId) void chooseRestaurant({ id: props.focusRestaurantId }, props.restaurant?.id === props.focusRestaurantId).then(() => props.onRestaurantFocused?.()); }, [props.focusRestaurantId]);
+  useEffect(() => { const focused = props.focusRestaurantId; if (focused) void chooseRestaurant({ id: focused }, props.restaurant?.id === focused).then(() => { if (mounted.current && latest.current.focusRestaurantId === focused) latest.current.onRestaurantFocused?.(); }); }, [props.focusRestaurantId]);
 
   useEffect(() => { if (!props.focusRestaurantId && props.restaurant && !menu.length) void chooseRestaurant(props.restaurant, true); }, [props.restaurant?.id, props.focusRestaurantId]);
 
   async function chooseRestaurant(restaurant: Pick<Restaurant, "id">, refresh = false) {
-    setLoading(true); setError("");
-    try { const result = await api<{ restaurant: Restaurant; items: MenuItem[] }>(`/api/restaurants/${encodeURIComponent(restaurant.id)}/menu`, { token: props.token }); props.onRestaurant(result.restaurant); props.onCart(refresh ? refreshCart(props.cart, result.items) : []); setMenu(result.items); setNotice(refresh ? "Menu refreshed. Your basket is kept using current prices and available choices." : ""); }
-    catch (caught) { setError((caught as Error).message); } finally { setLoading(false); }
+    const request = ++menuRequest.current, token = props.token;
+    const current = () => mounted.current && menuRequest.current === request && latest.current.token === token && (!latest.current.focusRestaurantId || latest.current.focusRestaurantId === restaurant.id);
+    setMenuLoading(true); setError("");
+    try {
+      const result = await api<{ restaurant: Restaurant; items: MenuItem[] }>(`/api/restaurants/${encodeURIComponent(restaurant.id)}/menu`, { token });
+      if (!current()) return;
+      latest.current.onRestaurant(result.restaurant); updateCart(refresh ? refreshCart(latestCart.current, result.items) : []); setMenu(result.items); setNotice(refresh ? "Menu refreshed. Your basket is kept using current prices and available choices." : "");
+    }
+    catch (caught) { if (current()) setError((caught as Error).message); } finally { if (current()) setMenuLoading(false); }
   }
 
   function changeQuantity(item: MenuItem, delta: number) {
-    const current = props.cart.find((entry) => entry.item.id === item.id);
+    const cart = latestCart.current, current = cart.find((entry) => entry.item.id === item.id);
     const next = Math.max(0, Math.min(20, (current?.quantity ?? 0) + delta));
     const selections = current?.selections ?? {};
-    props.onCart(next ? [...props.cart.filter((entry) => entry.item.id !== item.id), { item, quantity: next, selections }] : props.cart.filter((entry) => entry.item.id !== item.id));
+    updateCart(next ? [...cart.filter((entry) => entry.item.id !== item.id), { item, quantity: next, selections }] : cart.filter((entry) => entry.item.id !== item.id));
   }
   function toggleOption(item: MenuItem, groupId: string, optionId: string, max: number) {
-    const current = props.cart.find((entry) => entry.item.id === item.id) ?? { item, quantity: 1, selections: {} as Selections };
+    const cart = latestCart.current, current = cart.find((entry) => entry.item.id === item.id) ?? { item, quantity: 1, selections: {} as Selections };
     const selected = current.selections[groupId] ?? [];
     const nextIds = toggleSelection(selected, optionId, max);
     const updated = { ...current, selections: { ...current.selections, [groupId]: nextIds } };
-    props.onCart([...props.cart.filter((entry) => entry.item.id !== item.id), updated]);
+    updateCart([...cart.filter((entry) => entry.item.id !== item.id), updated]);
   }
 
   if (props.restaurant) return <View style={{ flex: 1 }}><ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void chooseRestaurant(props.restaurant!, true)}/> }>
-    <Button tone="quiet" onPress={() => { props.onRestaurant(null); props.onCart([]); setMenu([]); }}>← Restaurants</Button>
+    <Button tone="quiet" onPress={() => { menuRequest.current++; setMenuLoading(false); props.onRestaurant(null); updateCart([]); setMenu([]); setError(""); setNotice(""); }}>← Restaurants</Button>
     <SectionTitle eyebrow={props.restaurant.profile.cuisine || "Local menu"} title={props.restaurant.name}/>
     <Text style={styles.meta}>{props.fulfillment === "delivery" ? `${props.restaurant.profile.estimatedDeliveryMinutes ?? "—"} min · ${money(props.restaurant.delivery.deliveryFeeMinor)} delivery` : `${props.restaurant.profile.estimatedCollectionMinutes ?? "—"} min collection`}</Text>
     <Card tone="warning"><Text style={styles.allergyStrong}>Allergy safety</Text><Text style={styles.meta}>Allergen details are supplied by restaurants. Add an allergy note at checkout and contact the restaurant if you need confirmation.</Text></Card>
@@ -57,7 +71,7 @@ export function DiscoverScreen(props: Props) {
       <View style={styles.row}>{item.photoUrl ? <Image style={styles.foodImage} source={{ uri: absoluteMediaUrl(item.photoUrl) }}/> : <View style={styles.foodFallback}><Text style={{ fontSize: 28 }}>🍽️</Text></View>}<View style={{ flex: 1, gap: 5 }}><Pill>{item.category || "Menu"}</Pill><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.meta}>{item.description}</Text><Text style={styles.price}>{money(item.priceMinor)}</Text></View></View>
       {item.dietaryTags.length ? <Text style={styles.meta}>{item.dietaryTags.join(" · ")}</Text> : null}
       <Text style={item.allergens.length ? styles.allergy : styles.meta}>{item.allergens.length ? `Allergens: ${item.allergens.join(", ")} · restaurant supplied` : "No allergens listed — ask the restaurant."}</Text>
-      {item.modifierGroups.map((group) => <View key={group.id} style={styles.options}><Text style={styles.optionTitle}>{group.name} · choose {group.minSelections}{group.maxSelections !== group.minSelections ? `–${group.maxSelections}` : ""}</Text><View style={styles.wrap}>{group.options.map((option) => { const active = entry?.selections[group.id]?.includes(option.id); return <Pressable key={option.id} disabled={!option.available} onPress={() => toggleOption(item, group.id, option.id, group.maxSelections)} style={[styles.choice, active && styles.choiceActive, !option.available && { opacity: .4 }]}><Text style={[styles.choiceText, active && { color: colours.white }]}>{option.name}{option.priceMinor ? ` +${money(option.priceMinor)}` : ""}</Text></Pressable>; })}</View></View>)}
+      {item.modifierGroups.map((group) => <View key={group.id} style={styles.options}><Text style={styles.optionTitle}>{group.name} · choose {group.minSelections}{group.maxSelections !== group.minSelections ? `–${group.maxSelections}` : ""}</Text><View style={styles.wrap}>{group.options.map((option) => { const active = entry?.selections[group.id]?.includes(option.id); return <Pressable key={option.id} disabled={!item.available || !option.available} onPress={() => toggleOption(item, group.id, option.id, group.maxSelections)} style={[styles.choice, active && styles.choiceActive, (!item.available || !option.available) && { opacity: .4 }]}><Text style={[styles.choiceText, active && { color: colours.white }]}>{option.name}{option.priceMinor ? ` +${money(option.priceMinor)}` : ""}</Text></Pressable>; })}</View></View>)}
       {entry && !validity.ok ? <Text style={styles.errorText}>{validity.reason}</Text> : null}
       <View style={styles.qty}><Button tone="secondary" disabled={!entry} onPress={() => changeQuantity(item, -1)}>−</Button><Text style={styles.quantity}>{entry?.quantity ?? 0}</Text><Button tone="secondary" disabled={!item.available} onPress={() => changeQuantity(item, 1)}>+</Button></View>
     </Card>; }) : <Empty>No menu items are available right now.</Empty>}

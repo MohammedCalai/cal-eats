@@ -24,6 +24,7 @@ import { routeSupportCases } from "./support-cases.js";
 import { initializeCustomerEmailDelivery } from "./customer-emails.js";
 import { routeBusinessDashboard } from "./business-dashboard.js";
 import { handleBusinessStatementRoutes } from "./business-weekly-statements.js";
+import { routeFinanceDetails } from "./finance-details.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -171,6 +172,7 @@ export function createApp({ db, config }) {
       if (await routeLoyalty({ req, res, url, db, config, session })) return;
       if (await routeDisputeResolution({ req, res, url, db, config, session })) return;
       if (await routeStripeConnect({ req, res, url, db, config, session })) return;
+      if (await routeFinanceDetails({ req, res, url, db, config, session })) return;
       const polishHandled = await routePolish({ req, res, url, db, config, session });
       if (polishHandled || res.writableEnded || res.headersSent) return;
       const marketplaceHandled = await routeMarketplace({ req, res, url, db, config, session });
