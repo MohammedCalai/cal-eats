@@ -10,6 +10,7 @@ test("business credentials can target the separate Cal-Eats API but never origin
 
 test("menu prices and offers use exact minor units and reject malformed money", () => {
   assert.equal(minorUnits("9.29"), 929);
+  assert.equal(minorUnits("9,29"), 929);
   assert.equal(minorUnits("0.05"), 5);
   assert.equal(minorUnits("10"), 1000);
   for (const value of ["-1", "1.001", "£10", "NaN", "1e3", "100000.01"]) assert.throws(() => minorUnits(value));

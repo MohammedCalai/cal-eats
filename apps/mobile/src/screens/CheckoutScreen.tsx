@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { api } from "../api";
+import { ApiError, api } from "../api";
 import { Button, Card, ErrorBanner, Field, Pill, SectionTitle } from "../components";
 import { canCheckout, cartTotals, entryUnitMinor, money, orderItems, requestKey } from "../model";
 import { checkoutPayment, configurePaymentChoices, paymentChoices } from "../payments";
@@ -45,6 +45,7 @@ export function CheckoutScreen({ token, restaurant, cart, fulfillment, onBack, o
       if(current.totalMinor!==quote.totalMinor){setQuote(current);throw Error("Your price changed. Review the updated total, then place the order.");}
       const body = {
         restaurantId: restaurant.id,
+        expectedTotalMinor: current.totalMinor,
         items: orderItems(cart),
         paymentMethod: checkoutPayment(payment),
         fulfillment,
@@ -62,6 +63,7 @@ export function CheckoutScreen({ token, restaurant, cart, fulfillment, onBack, o
       }
       onOrdered(order);
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "PRICE_CHANGED") { const refreshed = await api<Quote>("/api/orders/quote", { method: "POST", token, body: JSON.stringify(quoteBody()) }).catch(() => null); if (refreshed) setQuote(refreshed); }
       const message = (caught as Error).message; setError(`${message} You can retry safely; the same checkout key will be reused.`);
     } finally { setBusy(false); }
   }

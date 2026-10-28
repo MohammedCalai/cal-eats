@@ -296,7 +296,7 @@ async function createOrder({ req, res, db, config, session }) {
   const key = typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"].trim() : "";
   if (!key || key.length > VALIDATION.idempotencyKeyMax) throw new HttpError(400, "VALIDATION_ERROR", "Idempotency-Key is required and invalid");
   const body = await readJson(req, config.bodyLimit);
-  exactObject(body, ["restaurantId", "items", "paymentMethod", "fulfillment", "deliveryAddress", "customerPhone", "deliveryInstructions", "allergyNotes", "offerId"]);
+  exactObject(body, ["restaurantId", "items", "paymentMethod", "fulfillment", "deliveryAddress", "customerPhone", "deliveryInstructions", "allergyNotes", "offerId", "expectedTotalMinor"]);
   if (typeof body.restaurantId !== "string" || !Array.isArray(body.items) || !body.items.length || body.items.length > VALIDATION.orderItemsMax || !["mock_card", "card", "cash"].includes(body.paymentMethod) || !["collection", "delivery"].includes(body.fulfillment)) throw new HttpError(400, "VALIDATION_ERROR", "Order is invalid");
   if(["stripe_test","stripe_live"].includes(config.paymentProviderMode)&&body.paymentMethod==="mock_card")throw new HttpError(409,"MOCK_PAYMENT_DISABLED","Mock card payments are disabled while Stripe mode is selected");
   if (body.fulfillment === "collection" && body.deliveryAddress !== undefined) throw new HttpError(400, "VALIDATION_ERROR", "Collection orders cannot include a delivery address");
@@ -308,7 +308,8 @@ async function createOrder({ req, res, db, config, session }) {
   const allergyNotes = body.allergyNotes === undefined ? "" : text(body.allergyNotes, 0, 500, "Allergy notes");
   if (body.fulfillment === "collection" && deliveryInstructions) throw new HttpError(400, "VALIDATION_ERROR", "Collection orders cannot include delivery instructions");
   const offerId = body.offerId === undefined ? null : text(body.offerId, 1, 100, "Offer");
-  const canonicalBody = { restaurantId: body.restaurantId, items: normalizedItems, paymentMethod: body.paymentMethod, fulfillment: body.fulfillment, customerPhone, deliveryInstructions, allergyNotes, ...(offerId ? { offerId } : {}), ...(address ? { deliveryAddress: address } : {}) };
+  const expectedTotalMinor = body.expectedTotalMinor === undefined ? null : integer(body.expectedTotalMinor, 0, VALIDATION.priceMaxMinor * 2, "Reviewed total");
+  const canonicalBody = { restaurantId: body.restaurantId, items: normalizedItems, paymentMethod: body.paymentMethod, fulfillment: body.fulfillment, customerPhone, deliveryInstructions, allergyNotes, ...(expectedTotalMinor === null ? {} : { expectedTotalMinor }), ...(offerId ? { offerId } : {}), ...(address ? { deliveryAddress: address } : {}) };
   const hash = requestHash(canonicalBody);
   const outcome = withTransaction(db, () => {
   const prior = db.prepare("SELECT * FROM orders WHERE customer_id=? AND idempotency_key=?").get(user.id, key);
@@ -367,6 +368,7 @@ async function createOrder({ req, res, db, config, session }) {
     quote = promotionQuote(db, { grant, menu, grossSubtotal, now });
   }
   const subtotal = quote.netSubtotalMinor;
+  if (expectedTotalMinor !== null && expectedTotalMinor !== subtotal + fee) throw new HttpError(409, "PRICE_CHANGED", "Your order price changed. Review the updated total before placing your order.");
   if (body.paymentMethod === "mock_card" && !authorizeMockPayment({ amountMinor: subtotal + fee }).ok) throw new HttpError(409, "PAYMENT_DECLINED", "Mock payment was declined");
   if (body.paymentMethod === "card" && subtotal + fee < 30) throw new HttpError(409,"CARD_MINIMUM_TOTAL","Card orders must total at least £0.30. Add an item or choose an available cash option");
   const deliveryAddress = address ? Object.fromEntries(Object.entries(address).filter(([key]) => key !== "outcode")) : null;

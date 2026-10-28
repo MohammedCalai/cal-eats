@@ -10,7 +10,7 @@ export function validateBase(raw: string): string {
 }
 
 export function minorUnits(value: string, label = "Amount"): number {
-  const input = value.trim();
+  const input = value.trim().replace(",", ".");
   if (!/^\d+(?:\.\d{1,2})?$/.test(input)) throw new Error(`${label} must be a positive number with at most two decimal places.`);
   const [whole, fraction = ""] = input.split(".");
   const result = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));

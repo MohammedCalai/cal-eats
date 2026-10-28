@@ -29,3 +29,6 @@ Microsoft accepted the controlled connection email from caleats-support@calai.in
 The new permissions initially required propagation. [Microsoft documents up to 60 minutes for mailbox permission changes](https://learn.microsoft.com/en-us/office365/admin/add-users/give-mailbox-permissions-to-another-user?view=o365-worldwide).
 
 See [Microsoft's shared-sender requirements](https://learn.microsoft.com/en-us/graph/outlook-send-mail-from-other-user), [MSAL browser authorization](https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/dev/lib/msal-node/docs/request.md), [the confirmation worker](ORDER_CONFIRMATION_BACKEND.md) and [customer transactional emails](CUSTOMER_TRANSACTIONAL_EMAIL.md).
+
+
+28 October follow-up: Exchange message trace found the single connection-check message at 12:36 UTC with status Delivered. Its message events show external sending to gmail-smtp-in.l.google.com for the approved administrator recipient. This confirms delivery to the Gmail provider, not placement in the recipient’s Inbox. No second accepted check was sent, no inbox-reading permission was added, and the dispatch journal remains guarded. The hosted preview source has now been updated; the private Graph cache/key and automatic external-mail configuration have not been provisioned on Railway.
