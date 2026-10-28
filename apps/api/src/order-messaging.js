@@ -7,6 +7,9 @@ import { notificationStreamHub } from "./notification-stream.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
 
 export const DEFAULT_QUICK_RESPONSES = ["We’re preparing your order now.", "Sorry for the delay, we’re very busy.", "Your order will be ready shortly.", "Your driver is on the way.", "Your order is ready for collection.", "Thank you for ordering."];
+export function quickResponsesForOrder(responses,fulfillment) {
+  return [...new Set(responses.map(text=>fulfillment==="delivery"&&text==="Your order is ready for collection."?"Your order is ready for dispatch.":fulfillment==="collection"&&text==="Your driver is on the way."?"Your order is ready for collection.":text))];
+}
 const ACTIVE = new Set(["placed", "accepted", "preparing", "ready", "out_for_delivery"]);
 const RETENTION_MS = 30 * 86400_000;
 const MAX_SUPPORT_MINUTES = 1440;
@@ -137,7 +140,7 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const rows = before ? db.prepare("SELECT * FROM order_messages WHERE order_id=? AND expires_at>? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT ?").all(granted.order.id, now, before, before, url.searchParams.get("beforeId") ?? "~", limit) : db.prepare("SELECT * FROM order_messages WHERE order_id=? AND expires_at>? ORDER BY created_at DESC,id DESC LIMIT ?").all(granted.order.id, now, limit);
     if (granted.role === "admin") auditAdminRead(db, granted.user.id, granted.order.id, granted.adminReason, now);
     const items = []; for (const row of rows.reverse()) items.push(await dto(config, row));
-    return sendJson(res, 200, { data: { items, unreadCount: unreadCount(db, granted.order.id, granted.user.id, now), isOpen: state.open, closedAt: state.closesAt, restaurantPhone: granted.role === "customer" ? (db.prepare("SELECT phone FROM restaurants WHERE id=?").get(granted.order.restaurant_id)?.phone || null) : null, quickResponses: granted.role === "restaurant" ? settings(db, granted.order.restaurant_id, config).quickResponses : [], nextCursor: rows.length === limit ? { before: rows[0].created_at, beforeId: rows[0].id } : null } });
+    return sendJson(res, 200, { data: { items, unreadCount: unreadCount(db, granted.order.id, granted.user.id, now), isOpen: state.open, closedAt: state.closesAt, restaurantPhone: granted.role === "customer" ? (db.prepare("SELECT phone FROM restaurants WHERE id=?").get(granted.order.restaurant_id)?.phone || null) : null, quickResponses: granted.role === "restaurant" ? quickResponsesForOrder(settings(db, granted.order.restaurant_id, config).quickResponses,granted.order.fulfillment) : [], nextCursor: rows.length === limit ? { before: rows[0].created_at, beforeId: rows[0].id } : null } });
   }
   if (req.method === "POST") {
     const granted = access(db, session, match[1]); if (granted.role === "admin") throw new HttpError(403, "FORBIDDEN", "Administrators cannot send order messages");

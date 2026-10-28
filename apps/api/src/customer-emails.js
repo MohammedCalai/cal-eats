@@ -3,8 +3,9 @@ import { withTransaction } from "./db/index.js";
 import { requireRole } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { createOrderAlertEmailAdapter, orderAlertEmailTransportReadiness } from "./order-alert-email.js";
+import { supportEmailSource } from "./support-email-source.js";
 
-const TYPES = new Map([["order_status","order_update"],["order_eta","order_update"],["order_refund","order_update"],["order_expired","order_update"],["order_message","order_message"],["customer_message","customer_message"],["support_reply","support_reply"],["dispute_restaurant_reply","case_update"],["dispute_remedy_proposed","case_update"]]);
+const TYPES = new Map([["order_status","order_update"],["order_eta","order_update"],["order_refund","order_update"],["order_expired","order_update"],["order_message","order_message"],["customer_message","customer_message"],["support_reply","support_reply"],["support_request","support_update"],["support_receipt","support_update"],["support_status","support_update"],["dispute_restaurant_reply","case_update"],["dispute_remedy_proposed","case_update"]]);
 const STATUS_LABELS = { accepted:"Order confirmed",preparing:"Your order is being prepared",ready:"Your order is ready",out_for_delivery:"Out for delivery",completed:"Order completed",rejected:"Order cancelled",refunded:"Order refund recorded" };
 const email = value => typeof value === "string" && /^[^\s<>@,;\r\n]+@[^\s<>@,;\r\n]+\.[A-Za-z]{2,}$/.test(value) && value.length<=254;
 const demoRecipient = value => /(?:\.(?:invalid|local|test)|@example\.(?:com|net|org))$/i.test(value);
@@ -21,6 +22,11 @@ export function initializeCustomerEmailDelivery(db,config) {
 
 function sourceData(db,notification) {
   const kind=TYPES.get(notification.type);if(!kind)return null;
+  if(kind==="support_reply"||kind==="support_update"){
+    const source=supportEmailSource(db,notification),delivery=db.prepare("SELECT * FROM customer_email_delivery_settings WHERE id=1").get();
+    if(!source||!email(source.user.email)||!delivery)return null;
+    return {kind,user:source.user,payload:{...source.payload,notificationType:notification.type,simulation:delivery.payment_provider_mode!=="stripe_live"},mode:delivery.mode,sourceMessageId:source.sourceMessageId,orderId:null,conversationId:null,supportCaseId:source.support.id,refundCaseId:null};
+  }
   const user=db.prepare("SELECT id,email FROM users WHERE id=? AND role='customer' AND account_enabled=1").get(notification.user_id);
   if(!user||!email(user.email))return null;
   const delivery=db.prepare("SELECT * FROM customer_email_delivery_settings WHERE id=1").get(),parts=notification.event_key.split(":"),sourceMessageId=kind==="order_message"||kind==="customer_message"?parts[1]:kind==="support_reply"?parts.at(-1):null;
@@ -66,6 +72,17 @@ export function queueCustomerEmailForNotification(db,userId,eventKey) {
 }
 
 function sourceIsCurrent(db,row,config) {
+  if(row.event_kind==="support_reply"||row.event_kind==="support_update"){
+    const notification=db.prepare("SELECT * FROM user_notifications WHERE id=? AND user_id=? AND event_key=? AND support_case_id=?").get(row.notification_id,row.customer_id,row.source_key,row.support_case_id);
+    const source=notification&&supportEmailSource(db,notification),payload=parse(row.payload);
+    if(!source||source.user.email.toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"SUPPORT_RECIPIENT_OR_SOURCE_CHANGED"};
+    if(TYPES.get(notification.type)!==row.event_kind||row.source_message_id!==source.sourceMessageId)return{ok:false,code:"SUPPORT_EMAIL_SOURCE_MISMATCH"};
+    if((payload?.recipientRole||"customer")!==source.user.role)return{ok:false,code:"SUPPORT_RECIPIENT_ROLE_CHANGED"};
+    if(row.mode!==config.orderAlertEmail.mode)return{ok:false,code:"EMAIL_MODE_CHANGED"};
+    if(row.mode!=="local"&&demoRecipient(row.recipient))return{ok:false,code:"DEMO_RECIPIENT_EXTERNAL_SEND_DISABLED"};
+    if(!payload)return{ok:false,code:"EMAIL_PAYLOAD_INVALID"};
+    return{ok:true,payload};
+  }
   const user=db.prepare("SELECT email FROM users WHERE id=? AND role='customer' AND account_enabled=1").get(row.customer_id);
   if(!user||user.email.toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"CUSTOMER_RECIPIENT_CHANGED_OR_DISABLED"};
   if(row.mode!==config.orderAlertEmail.mode)return{ok:false,code:"EMAIL_MODE_CHANGED"};
@@ -100,8 +117,8 @@ function sourceIsCurrent(db,row,config) {
 
 export function buildCustomerEmail(row,config) {
   const payload=parse(row.payload);if(!payload)throw new Error("Invalid customer email payload");
-  const sender=config.orderAlertEmail.from,order=payload.order,link=new URL("/order/",config.origin),logo=new URL("/assets/cal-eats-logo.png",config.origin).href;
-  if(row.support_case_id)link.searchParams.set("supportCaseId",row.support_case_id);
+  const sender=config.orderAlertEmail.from,order=payload.order,link=new URL(row.support_case_id&&payload.recipientRole==="admin"?"/business/admin/support":row.support_case_id&&payload.recipientRole==="restaurant"?"/business/owner/support":"/order/",config.origin),logo=new URL("/assets/cal-eats-logo.png",config.origin).href;
+  if(row.support_case_id)link.searchParams.set(["admin","restaurant"].includes(payload.recipientRole)?"case":"supportCaseId",row.support_case_id);
   else if(row.conversation_id)link.searchParams.set("conversationId",row.conversation_id);
   else if(row.order_id){link.searchParams.set("orderId",row.order_id);if(row.event_kind==="order_message")link.searchParams.set("messages","1");if(row.refund_case_id)link.searchParams.set("caseId",row.refund_case_id);}
   const title=row.event_kind==="order_update"&&payload.notificationType!=="order_eta"?(STATUS_LABELS[payload.orderStatus]??payload.title):payload.title,restaurant=order?.restaurantName??payload.restaurantName??"Cal-Eats support",eta=order?.etaAt?new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/London",weekday:"short",hour:"2-digit",minute:"2-digit"}).format(new Date(order.etaAt)):null;

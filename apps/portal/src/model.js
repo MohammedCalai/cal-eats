@@ -10,6 +10,11 @@ export function poundsInputMinor(value, label = "Price") {
   return minor;
 }
 export const roleHome = (role) => role === "admin" ? "/admin/dashboard" : "/owner/dashboard";
+export function businessReturnPath(raw,role) {
+  const home=roleHome(role),prefix=role==="admin"?"/admin/":"/owner/";
+  if(typeof raw!=="string"||!raw.startsWith("/")||raw.startsWith("//")||/[\\\r\n]/.test(raw))return home;
+  try{const target=new URL(raw,"https://cal-eats.invalid");return target.origin==="https://cal-eats.invalid"&&target.pathname.startsWith(prefix)?`${target.pathname}${target.search}`:home;}catch{return home;}
+}
 export function ownerNavigation(permission = "owner") {
   const core = [
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],

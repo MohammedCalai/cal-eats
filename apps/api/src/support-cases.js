@@ -10,16 +10,18 @@ const text = (value, min, max, label) => {
   if (result.length < min || result.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
   return result;
 };
-const query = `SELECT s.*,u.name AS customer_name,r.name AS restaurant_name FROM support_cases s JOIN users u ON u.id=s.user_id LEFT JOIN restaurants r ON r.id=s.restaurant_id`;
+const query = `SELECT s.*,u.name AS customer_name,u.role AS requester_role,r.name AS restaurant_name,origin.name AS requester_restaurant_name FROM support_cases s JOIN users u ON u.id=s.user_id LEFT JOIN restaurants r ON r.id=s.restaurant_id LEFT JOIN restaurants origin ON origin.id=s.requester_restaurant_id`;
 export const supportSummary = row => ({
   id: row.id, reference: row.id.slice(0, 8).toUpperCase(), userId: row.user_id,
   customerName: row.customer_name, orderId: row.order_id, restaurantId: row.restaurant_id ?? null,
-  recipient: row.restaurant_name || "Cal-Eats support", subject: row.subject, message: row.message,
+  requesterRole: row.requester_role, requesterName: row.customer_name, requesterRestaurantId: row.requester_restaurant_id ?? null, requesterRestaurantName: row.requester_restaurant_name ?? null,
+  assignedTo: row.requester_role === "customer" && row.restaurant_id ? "restaurant" : "platform",
+  recipient: row.requester_role === "customer" && row.restaurant_id ? row.restaurant_name || "Restaurant team" : "Cal-Eats support", subject: row.subject, message: row.message,
   status: row.status, waitingFor: row.status === "resolved" ? "none" : row.waiting_for || "team",
   createdAt: row.created_at, updatedAt: row.updated_at
 });
 function participants(db, row) {
-  const team = row.restaurant_id
+  const team = row.requester_role === "customer" && row.restaurant_id
     ? db.prepare(`SELECT u.id FROM restaurant_memberships m JOIN users u ON u.id=m.user_id WHERE m.restaurant_id=? AND u.account_enabled=1 AND u.role='restaurant'`).all(row.restaurant_id)
     : [];
   return team.length ? team : db.prepare("SELECT id FROM users WHERE role='admin' AND account_enabled=1").all();
@@ -33,7 +35,7 @@ function notify(db, row, recipients, kind, title, message, event, stamp) {
 function access(db, session, caseId) {
   const user = requireUser(session), row = db.prepare(`${query} WHERE s.id=?`).get(caseId);
   if (!row) throw new HttpError(404, "NOT_FOUND", "Support request not found");
-  const isTeam = user.role === "admin" || (user.role === "restaurant" && row.restaurant_id && db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(row.restaurant_id, user.id));
+  const isTeam = user.role === "admin" || (row.requester_role === "customer" && user.role === "restaurant" && row.restaurant_id && db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(row.restaurant_id, user.id));
   if (row.user_id !== user.id && !isTeam) throw new HttpError(404, "NOT_FOUND", "Support request not found");
   return { user, row, isTeam: Boolean(isTeam) && row.user_id !== user.id };
 }
@@ -55,6 +57,11 @@ function list(db, url, where, args) {
   if (status && !["open", "resolved"].includes(status)) throw new HttpError(400, "VALIDATION_ERROR", "Support status is invalid");
   if (search.length > 100) throw new HttpError(400, "VALIDATION_ERROR", "Search is too long");
   if (status) { where += " AND s.status=?"; args.push(status); }
+  const assignedTo=url.searchParams.get("assignedTo"),waitingFor=url.searchParams.get("waitingFor");
+  if(assignedTo && !["platform","restaurant"].includes(assignedTo))throw new HttpError(400,"VALIDATION_ERROR","Support recipient is invalid");
+  if(assignedTo)where+=assignedTo==="platform"?" AND (s.restaurant_id IS NULL OR u.role<>'customer')":" AND s.restaurant_id IS NOT NULL AND u.role='customer'";
+  if(waitingFor && !["team","customer","none"].includes(waitingFor))throw new HttpError(400,"VALIDATION_ERROR","Support waiting status is invalid");
+  if(waitingFor){where+=" AND s.waiting_for=?";args.push(waitingFor);}
   if (search) { where += " AND (instr(lower(s.subject),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(s.id),lower(?))>0)"; args.push(search, search, search); }
   const total = db.prepare(`SELECT COUNT(*) AS n FROM support_cases s JOIN users u ON u.id=s.user_id WHERE ${where}`).get(...args).n;
   const items = db.prepare(`${query} WHERE ${where} ORDER BY s.updated_at DESC,s.id DESC LIMIT ? OFFSET ?`).all(...args, pageSize, offset).map(supportSummary);
@@ -80,21 +87,23 @@ export async function routeSupportCases({ req, res, url, db, config, session }) 
   if ((ownList || adminList || restaurantList) && req.method === "GET") {
     const user = requireUser(session); let where = "s.user_id=?", args = [user.id];
     if (adminList) { requireRole(session, "admin"); where = "1=1"; args = []; }
-    if (restaurantList) { requireRestaurantMembership(db, session, restaurantList[1]); where = "s.restaurant_id=?"; args = [restaurantList[1]]; }
+    if (restaurantList) { requireRestaurantMembership(db, session, restaurantList[1]); where = "s.restaurant_id=? AND u.role='customer'"; args = [restaurantList[1]]; }
     const result = list(db, url, where, args);
     return sendJson(res, 200, { data: url.searchParams.has("page") || url.searchParams.has("pageSize") ? result : result.items, pagination: { ...result, items: undefined } });
   }
   if (ownList && req.method === "POST") {
-    const user = requireUser(session), body = await readJson(req, config.bodyLimit); exactObject(body, ["subject", "message", "orderId"]);
+    const user = requireUser(session), body = await readJson(req, config.bodyLimit); exactObject(body, ["subject", "message", "orderId", "restaurantId"]);
     const subject = text(body.subject, 1, 150, "Subject"), message = text(body.message, 1, 2000, "Message"), requestKey = req.headers["idempotency-key"] ? text(req.headers["idempotency-key"], 8, 150, "Retry key") : null;
-    let orderId = null, restaurantId = null;
+    let orderId = null, restaurantId = null, requesterRestaurantId = null;
+    if(body.restaurantId){if(user.role!=="restaurant")throw new HttpError(400,"VALIDATION_ERROR","Restaurant context is for business support");requesterRestaurantId=text(body.restaurantId,1,100,"Restaurant");requireRestaurantMembership(db,session,requesterRestaurantId);}
     if (body.orderId) {
       orderId = text(body.orderId, 1, 100, "Order"); const order = db.prepare("SELECT * FROM orders WHERE id=?").get(orderId);
       const member = order && user.role === "restaurant" && db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(order.restaurant_id, user.id);
       if (!order || (user.role !== "admin" && order.customer_id !== user.id && !member)) throw new HttpError(404, "NOT_FOUND", "Order not found");
       if (user.role === "customer") restaurantId = order.restaurant_id;
+      if (user.role === "restaurant") requesterRestaurantId = order.restaurant_id;
     }
-    const hash = createHash("sha256").update(JSON.stringify({ subject, message, orderId })).digest("hex");
+    const hash = createHash("sha256").update(JSON.stringify({ subject, message, orderId, ...(requesterRestaurantId?{requesterRestaurantId}:{}) })).digest("hex");
     const prior = requestKey && db.prepare("SELECT * FROM support_cases WHERE user_id=? AND idempotency_key=?").get(user.id, requestKey);
     if (prior) {
       if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "This retry key belongs to another request");
@@ -103,10 +112,10 @@ export async function routeSupportCases({ req, res, url, db, config, session }) 
     const stamp = config.now().toISOString(), id = randomUUID();
     withTransaction(db, () => {
       rate(db, user.id, config);
-      db.prepare(`INSERT INTO support_cases(id,user_id,order_id,subject,message,status,created_at,updated_at,restaurant_id,waiting_for,idempotency_key,request_hash) VALUES(?,?,?,?,?,'open',?,?,?,'team',?,?)`).run(id, user.id, orderId, subject, message, stamp, stamp, restaurantId, requestKey, hash);
+      db.prepare(`INSERT INTO support_cases(id,user_id,order_id,subject,message,status,created_at,updated_at,restaurant_id,waiting_for,idempotency_key,request_hash,requester_restaurant_id) VALUES(?,?,?,?,?,'open',?,?,?,'team',?,?,?)`).run(id, user.id, orderId, subject, message, stamp, stamp, restaurantId, requestKey, hash, requesterRestaurantId);
       const row = db.prepare(`${query} WHERE s.id=?`).get(id);
       notify(db, row, participants(db, row).filter(x => x.id !== user.id), "support_request", "New help request", `Request ${id.slice(0, 8).toUpperCase()}: ${subject}`, `support:${id}:created`, stamp);
-      notify(db, row, [{ id: user.id }], "support_receipt", "Help request received", `${row.restaurant_name || "Cal-Eats support"} has received request ${id.slice(0, 8).toUpperCase()}.`, `support:${id}:receipt`, stamp);
+      notify(db, row, [{ id: user.id }], "support_receipt", "Your request was sent", `${supportSummary(row).recipient} has received request ${id.slice(0, 8).toUpperCase()}. You can follow replies in this support conversation.`, `support:${id}:receipt`, stamp);
     });
     return sendJson(res, 201, { data: supportSummary(db.prepare(`${query} WHERE s.id=?`).get(id)) });
   }

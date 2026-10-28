@@ -1,6 +1,8 @@
 import Loyalty, { AdminPromotionActivity } from "./Loyalty.jsx";
 import { CustomerDirectory, CustomerInbox, WorkspaceDialog } from "./CustomerWorkspace.jsx";
 import SupportWorkspace from "./SupportWorkspace.jsx";
+import AdminSupportOverview from "./AdminSupportOverview.jsx";
+import { businessReturnPath } from "./model.js";
 import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
 import OwnerDashboardView from "./OwnerDashboard.jsx";
@@ -93,18 +95,18 @@ function App() {
   </Routes></SessionContext.Provider>;
 }
 
-function RequireSession() { const { user } = React.useContext(SessionContext); return user ? <Outlet /> : <Navigate to="/login" replace />; }
+function RequireSession() { const { user } = React.useContext(SessionContext); const location=useLocation(); return user ? <Outlet /> : <Navigate to="/login" state={{returnTo:`${location.pathname}${location.search}`}} replace />; }
 function PortalHome() { const { user } = React.useContext(SessionContext); return BUSINESS_ROLES.has(user?.role) ? <Navigate to={roleHome(user.role)} replace /> : <BusinessAccessUnavailable />; }
 function RequireRole({ role }) { const { user } = React.useContext(SessionContext); return user?.role === role ? <Outlet /> : BUSINESS_ROLES.has(user?.role) ? <Denied /> : <BusinessAccessUnavailable />; }
 function OwnerOnly({ children }) { const { permission } = React.useContext(RestaurantContext); return permission === "owner" ? children : <Denied message="Owner permission is required." />; }
 
 function Login() {
-  const { user, refresh } = React.useContext(SessionContext); const navigate = useNavigate();
+  const { user, refresh } = React.useContext(SessionContext); const navigate = useNavigate(); const location=useLocation();
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  if (user) return BUSINESS_ROLES.has(user.role) ? <Navigate to={roleHome(user.role)} replace /> : <BusinessAccessUnavailable />;
+  if (user) return BUSINESS_ROLES.has(user.role) ? <Navigate to={businessReturnPath(location.state?.returnTo,user.role)} replace /> : <BusinessAccessUnavailable />;
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError(""); const data = new FormData(event.currentTarget);
-    try { await api("/api/auth/login", json("POST", { email: data.get("email"), password: data.get("password") })); await refresh(); navigate("/"); }
+    try { const signed=await api("/api/auth/login", json("POST", { email: data.get("email"), password: data.get("password") })); const target=businessReturnPath(location.state?.returnTo,signed.user?.role); await refresh(); navigate(target,{replace:true}); }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   return <main className="auth"><section className="auth-card"><Brand /><p className="eyebrow">Cal-Eats Business</p><h1>Sign in to the business platform</h1><p>Restaurant teams and Cal-Eats administrators use this same platform. Your account determines the tools you can access.</p>{error && <Alert>{error}</Alert>}<form onSubmit={submit}><Field label="Email" name="email" type="email" required autoComplete="email"/><Field label="Password" name="password" type="password" required autoComplete="current-password"/><button className="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">Local preview. Payments, payouts and device printing are simulated unless explicitly labelled otherwise.</p></section></main>;
@@ -258,7 +260,7 @@ const splitEditorList=value=>value.split(",").map(entry=>entry.trim()).filter(Bo
 const newEditorId=prefix=>`${prefix}-${crypto.randomUUID().slice(0,8)}`;
 
 function CustomerTools({view}){const {restaurant,permission}=React.useContext(RestaurantContext);if(permission!=="owner")return <Denied message="Owner permission is required for customer tools."/>;return view==="inbox"?<CustomerInbox key={restaurant.id} restaurantId={restaurant.id}/>:view==="offers"?<Loyalty key={restaurant.id} restaurantId={restaurant.id}/>:<CustomerDirectory key={restaurant.id} restaurantId={restaurant.id}/>;}
-function OwnerSupport(){const{restaurant}=React.useContext(RestaurantContext);return <SupportWorkspace kind="restaurant" restaurantId={restaurant.id}/>;}
+function OwnerSupport(){const{restaurant}=React.useContext(RestaurantContext);return <SupportWorkspace key={restaurant.id} kind="restaurant" restaurantId={restaurant.id}/>;}
 
 function Printers() {
   const { restaurant, permission } = React.useContext(RestaurantContext);
@@ -413,7 +415,7 @@ function Settings(){
 function adminFinanceTotals(value){const items=listItems(value);const commissionMinor=items.reduce((sum,item)=>sum+(item.commissionMinor||0),0),providerCostMinor=value?.actualProviderCostMinor??items.reduce((sum,item)=>sum+(item.providerCostMinor||0),0);return{items,grossSalesMinor:items.reduce((sum,item)=>sum+(item.grossSalesMinor||0),0),commissionMinor,providerCostMinor,marginMinor:value?.marginMinor??commissionMinor-providerCostMinor,providerCostsPendingCount:items.reduce((sum,item)=>sum+(item.providerCostsPendingCount||0),0),providerMode:new Set(items.flatMap(item=>item.providerModes||[item.providerMode]).filter(Boolean)).size>1?"mixed":items[0]?.providerMode}}
 function adminMoney(result,value){return result.loading?"Loading…":result.error?"Unavailable":pounds(value)}
 
-function AdminDashboard(){const summary=useLoad(()=>api("/api/admin/finance/summary"),[]);const restaurants=useLoad(()=>api("/api/admin/restaurants"),[]);const totals=adminFinanceTotals(summary.value);return <Page title="Marketplace dashboard" intro="Restaurants, reconciled platform finance and operational exceptions."><Simulation mode={totals.providerMode}/>{totals.providerCostsPendingCount>0&&<Alert>Processing fees are still being confirmed for {totals.providerCostsPendingCount} card order(s). The margin remains an estimate.</Alert>}<AdminPromotionActivity/>{summary.error&&<Alert>Marketplace finance is unavailable: {summary.error}</Alert>}{restaurants.error&&<Alert>Restaurant totals are unavailable: {restaurants.error}</Alert>}<div className="stats"><Stat label="Restaurants" value={restaurants.loading?"Loading…":restaurants.error?"Unavailable":listItems(restaurants.value).length}/><Stat label="Gross marketplace sales" value={adminMoney(summary,totals.grossSalesMinor)}/><Stat label="Recognised commission" value={adminMoney(summary,totals.commissionMinor)}/><Stat label="Provider costs" value={adminMoney(summary,totals.providerCostMinor)}/><Stat label="Estimated margin" value={adminMoney(summary,totals.marginMinor)}/></div></Page>}
+function AdminDashboard(){const summary=useLoad(()=>api("/api/admin/finance/summary"),[]);const restaurants=useLoad(()=>api("/api/admin/restaurants"),[]);const totals=adminFinanceTotals(summary.value);return <Page title="Marketplace dashboard" intro="Restaurants, reconciled platform finance and operational exceptions."><Simulation mode={totals.providerMode}/>{totals.providerCostsPendingCount>0&&<Alert>Processing fees are still being confirmed for {totals.providerCostsPendingCount} card order(s). The margin remains an estimate.</Alert>}<AdminSupportOverview/><AdminPromotionActivity/>{summary.error&&<Alert>Marketplace finance is unavailable: {summary.error}</Alert>}{restaurants.error&&<Alert>Restaurant totals are unavailable: {restaurants.error}</Alert>}<div className="stats"><Stat label="Restaurants" value={restaurants.loading?"Loading…":restaurants.error?"Unavailable":listItems(restaurants.value).length}/><Stat label="Gross marketplace sales" value={adminMoney(summary,totals.grossSalesMinor)}/><Stat label="Recognised commission" value={adminMoney(summary,totals.commissionMinor)}/><Stat label="Provider costs" value={adminMoney(summary,totals.providerCostMinor)}/><Stat label="Estimated margin" value={adminMoney(summary,totals.marginMinor)}/></div></Page>}
 
 function AdminRestaurants(){
   const r=useLoad(()=>api("/api/admin/restaurants"),[]);const[error,setError]=useState("");const[active,setActive]=useState(null);

@@ -10,6 +10,7 @@ import { customerMessageSequenceMigration25 } from "../customer-message-sequence
 import { orderConfirmationMigration26 } from "../order-confirmation-migration.js";
 import { customerEmailMigration27 } from "../customer-email-migration.js";
 import { businessWeeklyStatementsMigration28 } from "../business-weekly-statements-migration.js";
+import { supportRoutingMigration29 } from "../support-routing-migration.js";
 
 export const migrations = [
   {
@@ -259,5 +260,6 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
   customerMessageSequenceMigration25,
   orderConfirmationMigration26,
   customerEmailMigration27,
-  businessWeeklyStatementsMigration28
+  businessWeeklyStatementsMigration28,
+  supportRoutingMigration29
 ];
