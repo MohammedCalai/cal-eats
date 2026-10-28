@@ -1,17 +1,19 @@
+import { DiscoveryBrowse, type BrowsingFilters } from "./DiscoveryBrowse";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { absoluteMediaUrl, api } from "../api";
 import { Button, Card, Empty, ErrorBanner, Field, Pill, SectionTitle } from "../components";
 import { cartTotals, money, refreshCart, toggleSelection, validateSelections } from "../model";
 import { colours } from "../theme";
-import type { CartEntry, Fulfillment, MenuItem, Restaurant, Selections } from "../types";
+import type { CartEntry, Fulfillment, MenuItem, Restaurant, Selections, Offer } from "../types";
 
 interface Props {
-  token: string; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
+  token: string; onUseOffer?: (restaurantId:string,offerId:string)=>void; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
   restaurant: Restaurant | null; cart: CartEntry[]; onRestaurant: (restaurant: Restaurant | null) => void;
   onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
 export function DiscoverScreen(props: Props) {
+  const [offers,setOffers]=useState<Offer[]>([]); const [browsingFilters,setBrowsingFilters]=useState<BrowsingFilters>({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});
   const [postcode, setPostcode] = useState(""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);
   const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const mounted = useRef(false), discoveryRequest = useRef(0), menuRequest = useRef(0), latest = useRef(props), latestCart = useRef(props.cart);
@@ -26,10 +28,10 @@ export function DiscoverScreen(props: Props) {
     const request = ++discoveryRequest.current, fulfillment = props.fulfillment, token = props.token;
     const current = () => mounted.current && discoveryRequest.current === request && latest.current.fulfillment === fulfillment && latest.current.token === token;
     setDiscoveryLoading(true); setError("");
-    try { const params = new URLSearchParams({ fulfillment }); if (postcode.trim()) params.set("postcode", postcode.trim()); if (query.trim()) params.set("q", query.trim()); const result = await api<Restaurant[]>(`/api/restaurants?${params}`, { token }); if (current()) setRestaurants(result); }
+    try { const params = new URLSearchParams({ fulfillment }); if (postcode.trim()) params.set("postcode", postcode.trim()); if (query.trim()) params.set("q", query.trim()); const [result,availableOffers] = await Promise.all([api<Restaurant[]>(`/api/restaurants?${params}`, { token }),api<Offer[]>("/api/offers",{token}).catch(()=>[])]); if (current()) {setRestaurants(result);setOffers(availableOffers);} }
     catch (caught) { if (current() && !latest.current.restaurant) setError((caught as Error).message); } finally { if (current()) setDiscoveryLoading(false); }
   }
-  useEffect(() => { void loadRestaurants(); }, [props.fulfillment]);
+  useEffect(() => { const timer=setTimeout(()=>void loadRestaurants(),query.trim()?350:0); return()=>clearTimeout(timer); }, [props.fulfillment,query]);
 
   useEffect(() => { const focused = props.focusRestaurantId; if (focused) void chooseRestaurant({ id: focused }, props.restaurant?.id === focused).then(() => { if (mounted.current && latest.current.focusRestaurantId === focused) latest.current.onRestaurantFocused?.(); }); }, [props.focusRestaurantId]);
 
@@ -77,14 +79,7 @@ export function DiscoverScreen(props: Props) {
     </Card>; }) : <Empty>No menu items are available right now.</Empty>}
   </ScrollView>{props.cart.length ? <View style={styles.basketBar}><View><Text style={styles.basketTitle}>{props.cart.reduce((sum, entry) => sum + entry.quantity, 0)} item(s)</Text><Text style={styles.meta}>{money(totals.totalMinor)}</Text></View><Button onPress={props.onCheckout}>Review basket</Button></View> : null}</View>;
 
-  return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void loadRestaurants()}/> }>
-    <SectionTitle eyebrow="Discover" title="What are you craving?"/>
-    <View style={styles.segment}><Pressable onPress={() => props.onFulfillment("delivery")} style={[styles.segmentButton, props.fulfillment === "delivery" && styles.segmentActive]}><Text style={[styles.segmentText, props.fulfillment === "delivery" && styles.segmentTextActive]}>Delivery</Text></Pressable><Pressable onPress={() => props.onFulfillment("collection")} style={[styles.segmentButton, props.fulfillment === "collection" && styles.segmentActive]}><Text style={[styles.segmentText, props.fulfillment === "collection" && styles.segmentTextActive]}>Collection</Text></Pressable></View>
-    <Field label="Postcode" value={postcode} onChangeText={setPostcode} autoCapitalize="characters" placeholder="e.g. E1 6AN"/>
-    <Field label="Search" value={query} onChangeText={setQuery} placeholder="Restaurant or cuisine" returnKeyType="search" onSubmitEditing={() => void loadRestaurants()}/>
-    <Button busy={loading} onPress={() => void loadRestaurants()}>Find restaurants</Button><ErrorBanner message={error}/>
-    {restaurants.length ? restaurants.map((restaurant) => <Pressable accessibilityRole="button" key={restaurant.id} onPress={() => void chooseRestaurant(restaurant)}><Card><View style={styles.row}>{restaurant.coverImageUrl ? <Image style={styles.restaurantImage} source={{ uri: absoluteMediaUrl(restaurant.coverImageUrl) }}/> : <View style={styles.restaurantImage}><Text style={{ fontSize: 30 }}>🥘</Text></View>}<View style={{ flex: 1, gap: 5 }}><Text style={styles.itemTitle}>{restaurant.name}</Text><Text style={styles.meta}>{restaurant.profile.cuisine || "Independent restaurant"}</Text><Text style={styles.meta}>{restaurant.profile.description}</Text><Pill tone={restaurant.acceptingOrders ? "green" : "amber"}>{restaurant.acceptingOrders ? "Taking orders" : restaurant.closedReason || "Closed"}</Pill></View></View></Card></Pressable>) : !loading ? <Empty>No restaurants match these filters. Try collection or a nearby postcode.</Empty> : null}
-  </ScrollView>;
+  return <DiscoveryBrowse restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
 }
 
 const styles = StyleSheet.create({ page: { padding: 18, paddingBottom: 110, gap: 14, backgroundColor: colours.cream }, row: { flexDirection: "row", gap: 13 }, wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, meta: { color: colours.muted, lineHeight: 20 }, price: { color: colours.ink, fontWeight: "800", fontSize: 17 }, itemTitle: { color: colours.ink, fontSize: 19, fontWeight: "800" }, restaurantImage: { width: 92, height: 92, borderRadius: 14, backgroundColor: colours.sky, alignItems: "center", justifyContent: "center" }, foodImage: { width: 84, height: 84, borderRadius: 12 }, foodFallback: { width: 84, height: 84, borderRadius: 12, backgroundColor: colours.sky, justifyContent: "center", alignItems: "center" }, allergy: { color: colours.amber, lineHeight: 19 }, allergyStrong: { color: colours.amber, fontWeight: "800" }, options: { gap: 8, paddingTop: 3 }, optionTitle: { color: colours.ink, fontWeight: "700" }, choice: { paddingHorizontal: 11, paddingVertical: 9, borderWidth: 1, borderColor: colours.line, borderRadius: 99, backgroundColor: colours.panel }, choiceActive: { backgroundColor: colours.blue, borderColor: colours.blue }, choiceText: { color: colours.ink, fontWeight: "600" }, errorText: { color: colours.danger }, qty: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 16 }, quantity: { minWidth: 25, textAlign: "center", fontSize: 18, color: colours.ink, fontWeight: "800" }, basketBar: { position: "absolute", left: 12, right: 12, bottom: 8, minHeight: 74, borderRadius: 18, padding: 12, backgroundColor: colours.panel, borderWidth: 1, borderColor: colours.line, flexDirection: "row", justifyContent: "space-between", alignItems: "center", shadowOpacity: .12, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, basketTitle: { color: colours.ink, fontWeight: "800" }, segment: { flexDirection: "row", padding: 4, backgroundColor: colours.sky, borderRadius: 14 }, segmentButton: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 11 }, segmentActive: { backgroundColor: colours.panel }, segmentText: { color: colours.muted, fontWeight: "700" }, segmentTextActive: { color: colours.blue } });
