@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { hashPassword } from "./auth/passwords.js";
 import { requireUser } from "./auth/authorization.js";
+import { revokeUserSessions } from "./auth/session-management.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { VALIDATION } from "../../../packages/contracts/src/index.js";
@@ -51,7 +52,7 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
       db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, row.user_id);
       db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE user_id=? AND purpose='password_reset' AND consumed_at IS NULL").run(now, row.user_id);
       db.prepare("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now, row.user_id);
-      db.prepare("UPDATE native_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now, row.user_id);
+      revokeUserSessions(db, row.user_id, now);
     });
     return sendJson(res, 200, { data: { passwordReset: true } });
   }

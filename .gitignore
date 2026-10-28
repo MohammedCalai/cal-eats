@@ -16,6 +16,8 @@ coverage/
 .env
 .cal-eats-message-key
 **/.cal-eats-message-key
+**/.cal-eats-mail-key
+**/cal-eats-mail.cache
 .env.*
 !.env.example
 

@@ -1,15 +1,16 @@
 export const colours = {
-  ink: "#10243E",
-  blue: "#1167D8",
-  blueDark: "#074798",
-  sky: "#EAF3FF",
-  cream: "#FFF9EF",
+  ink: "#F3F4F6",
+  blue: "#2865E9",
+  blueDark: "#1D4FC4",
+  sky: "#18263F",
+  cream: "#0E0E10",
+  panel: "#18191D",
   white: "#FFFFFF",
-  line: "#D8E1EC",
-  muted: "#5A6A7C",
-  danger: "#A82727",
-  success: "#16764C",
-  amber: "#9A5C00"
+  line: "#303139",
+  muted: "#A5A7B3",
+  danger: "#FF9B9B",
+  success: "#7FE0AF",
+  amber: "#F6C46A"
 } as const;
 
 export const radii = { small: 10, medium: 16, large: 24 } as const;

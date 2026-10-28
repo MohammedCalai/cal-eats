@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Cal-Eats Admin",
+    "slug": "cal-eats-admin",
+    "scheme": "caleatsadmin",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "info.calai.caleatsadmin",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "info.calai.caleatsadmin",
+      "permissions": []
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a photo for a Cal-Eats menu item.",
+          "cameraPermission": "Take a photo for a Cal-Eats menu item.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
+    ]
+  }
+}

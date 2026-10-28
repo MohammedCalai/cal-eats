@@ -1,5 +1,8 @@
 # Calai Eats local version handover
 
+**28 October 2026 current phase:** see [the phone, CRM and order-notification record](BUSINESS_PHONE_PHASE_2026-10-28.md). Local schema27 includes native business/customer phone updates, 20 cuisine fixtures, routed support, order confirmation/ETA/exact Calai sounds, and durable owner/customer email queues. The existing hosted preview received additive fictional marketplace data; the new source remains local while Railway capacity is unavailable. The older milestone notes below are historical.
+
+
 ## Expansion update — 25 October 2026
 
 Landing follow-up: `/` now serves a responsive Cal-Eats landing page; customer ordering/PWA launch moves to `/order/`, while `/business/` remains the business/admin portal. Postcode hand-off, restaurant application entry and legacy account-link forwarding were verified in the browser. Three focused hosting checks and the portal production build passed. Screenshots 43–44 show the phone and desktop landing. The user owns `calai.info`; proposed separate host `eats.calai.info` remains unconfigured, with no DNS or live-system changes. See `LANDING_AND_DOMAIN.md`.

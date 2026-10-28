@@ -1,0 +1,42 @@
+:root{color-scheme:dark;--navy:#f5f6fa;--blue:#2865e9;--blue-dark:#8bb7ff;--sky:#182642;--bg:#0e0e10;--line:#2a2b32;--muted:#a0a4af;--white:#18191d;--ink:#ecedf2;--danger:#ff9e98;--shadow:0 12px 36px #0003}
+body{background:var(--bg);color:var(--ink)}
+.topbar{background:#121212;border-bottom:1px solid var(--line)}
+.brand-logo{object-fit:contain}.topbar nav button,.account-button{color:var(--ink)}
+.topbar nav button[aria-current=page]{color:#fff;background:#213d75}
+.customer-hero,.menu-banner,.restaurant-tile,.card,.menu-item,.basket,.mobile-basket,.dialog,.notification,.radio-card,.address-search,.customer-search,.auth-panel{background:#18191d;color:var(--ink)}
+.customer-hero{border:1px solid var(--line);border-radius:1rem;margin-top:1.25rem}
+.customer-head h1{font-size:clamp(1.5rem,5vw,2.3rem);letter-spacing:-.035em}
+.customer-search,.address-search input{background:#202126;border-color:var(--line);color:var(--ink)}
+input,select,textarea,.field{background:#202126;color:var(--ink);border-color:#3b3c44}
+input::placeholder,textarea::placeholder{color:#979ba5}
+.card,.restaurant-tile,.menu-item,.dialog{border-color:var(--line);box-shadow:none}
+.secondary,.quiet,.chip,.fulfillment-switch{background:#222329;border-color:#383a43;color:var(--ink)}
+.search-box,.qty button,.tabs button{background:#222329;color:var(--ink)}.empty,.restaurant-open{background:#18191d;color:var(--ink)}
+.primary,.address-search button,.chip.active,.fulfillment-switch button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.badge,.notice{background:#1b2b47;color:#c4dcff;border-color:#2a426c}
+.error{background:#361d21;color:#ffbeb9}.danger{color:#ffb2ab;border-color:#8f4445;background:#321d22}
+.bottom-nav,.bottom-nav:not([hidden]){background:#16171b;border-color:var(--line);grid-template-columns:repeat(5,minmax(0,1fr))}
+.bottom-nav button{background:transparent;color:var(--muted);font-size:.72rem}.bottom-nav button[aria-current=page]{color:#9cc5ff;background:#1c2b49}
+.restaurant-photo{position:relative}.restaurant-photo img{width:100%;height:180px;object-fit:cover}
+.restaurant-photo figcaption{background:#111b;color:#eee;font-size:.65rem}
+.restaurant-promo{position:absolute;top:12px;left:12px;max-width:88%;padding:.45rem .7rem;border-radius:.6rem;background:#2865e9;color:#fff;font-size:.8rem;font-weight:750;box-shadow:0 3px 14px #0005}
+.restaurant-copy p{max-height:2.9em;overflow:hidden}.restaurant-copy h3{letter-spacing:-.02em}
+.restaurant-grid{gap:1.1rem}.restaurant-open{color:inherit}
+.cuisine-chips{display:flex;gap:.5rem;overflow-x:auto;flex-wrap:nowrap;padding:.25rem 0 .6rem;scrollbar-width:thin}.cuisine-chips .chip{white-space:nowrap;flex-shrink:0}
+.contact-thread{display:grid;gap:1rem}.contact-thread h2{margin:0}.contact-messages{display:grid;gap:.8rem;max-height:46vh;overflow:auto;padding:.25rem}
+.contact-bubble{background:#22252c;border:1px solid #323743;border-radius:1rem;padding:.85rem;max-width:94%;overflow-wrap:anywhere}
+.contact-bubble.mine{background:#1b3158;border-color:#314c79;justify-self:end}.contact-bubble.theirs{justify-self:start}
+.contact-bubble p{white-space:pre-wrap;margin:.4rem 0}.contact-bubble small{color:var(--muted)}
+.contact-thread textarea{width:100%;min-height:90px}.contact-thread .form-error:empty{display:none}
+.contact-thread>header.section-head{display:flex;flex-direction:row;align-items:flex-start;justify-content:space-between}.contact-thread>header.section-head>div{flex:1;min-width:0}.contact-thread>header.section-head>button{flex:none;align-self:flex-start}
+@keyframes order-highlight{from{background:#213657}to{background:#18191d}}
+.contact-thread [data-contact-resolve]{justify-self:start}.support-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:1rem}
+.support-card h3{margin:.4rem 0}.inbox-row{display:flex;gap:1rem;align-items:center;justify-content:space-between;margin-bottom:.8rem}.inbox-row h3{margin:0}.inbox-row p{margin:.35rem 0}
+.unread-count{padding:.3rem .6rem;border-radius:1rem;background:#2865e9;color:white;font-size:.75rem;white-space:nowrap}
+.account-help-intro{padding:1rem;border-left:3px solid #2865e9;background:#1b263b;border-radius:.5rem;margin:1rem 0}
+.mobile-basket .basket-cta{border-color:#285dc1;background:#2865e9;color:#fff}
+@media(max-width:760px){.customer-hero{margin:.75rem .75rem 0;padding:1rem}.customer-hero .address-search{margin-top:.8rem}.topbar{padding:.55rem .85rem}.brand-logo{max-height:42px;max-width:160px}.topbar .account-button{max-width:90px}.restaurant-photo img{height:175px}.restaurant-grid{gap:1rem}.section{padding:1.25rem .9rem}.dialog{max-height:calc(100dvh - 24px);padding:1rem;border-radius:1rem}.inbox-row{flex-wrap:wrap}.inbox-row>div{flex:1 1 65%}.contact-thread .section-head{gap:.5rem}.contact-thread form .section-head{align-items:end}.contact-thread form small{max-width:60%;font-size:.75rem}.bottom-nav{padding-bottom:env(safe-area-inset-bottom)}.support-cards{grid-template-columns:1fr}}
+
+.address-search>div{background:#202126;border:1px solid #3b3c44}.customer-order-eta{display:flex;align-items:center;justify-content:space-between;gap:1rem;border:1px solid #304e80;background:#182642;border-radius:.75rem;padding:.9rem;margin-top:1rem}.customer-order-eta span{color:#b9cceb;font-size:.85rem}.customer-order-eta strong{font-size:1.35rem;color:#fff}.order-card{scroll-margin-top:1rem}@media(max-width:760px){.timeline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem .45rem;padding:1rem 0}.timeline-step{min-width:0;text-align:left;padding:1.15rem 0 .2rem;line-height:1.3;font-size:.72rem}.timeline-step:before{top:0;left:0;background:#252a34;border-color:#626a7b}.timeline-step:after{display:none}.order-card .order-top{gap:.75rem}.order-card .card-actions{gap:.6rem}}
+
+@media(max-width:760px){.customer-head{flex-direction:column;align-items:flex-start;gap:.7rem}.customer-head h1{margin:.2rem 0}.fulfillment-switch{align-self:flex-start}.bottom-nav:not([hidden]) button{background:transparent;color:var(--muted)}.bottom-nav:not([hidden]) button[aria-current=page]{color:#9cc5ff;background:#1c2b49}}

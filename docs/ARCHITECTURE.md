@@ -1,8 +1,10 @@
 # Calai Eats: local foundation and first journey
 
-## Current product split — 27 October 2026
+## Current product split — 28 October 2026
 
-There are exactly two user-facing products: the Cal-Eats customer app and the Cal-Eats business tablet platform. Restaurant owners/staff and Cal-Eats administrators use the same business platform and sign-in, with different permissions and menus. Administrator routes are a restricted area of that platform, not a third app. The customer browser preview and native customer source implement the same customer product. Backend, payment and printer services are supporting components.
+The customer product has its browser preview and native customer app. The restaurant business product has the tablet platform and the separately requested **Cal-Eats Admin native phone app** for iPhone/Android. Both business clients share one backend, accounts, scoped memberships and operational data. Platform-wide administrator tools remain a restricted role in the business platform, rather than a second privileged data store. The original Calai system stays independent and read-only; a versioned export/identity mapping handoff prepares the owner's development team for future consolidation.
+
+The 28 October update reaches schema 27: paged CRM and tenant-specific statuses, persistent encrypted customer conversations with durable ingestion/read sequence, routed support correspondence, separate business native sessions and phone-friendly operations. Earlier milestone sections below are historical; current verification is in BUSINESS_PHONE_PORTAL.md, MARKETPLACE_DEMO_DATA.md and apps/admin-mobile/README.md.
 
 Current implementation: foundation, delivery journey, finance, product operations, recipient notifications, tailored offers, local account recovery and guarded hosted-preview controls are complete through schema v9. The original scope below records the initial design; subsequent contracts in LOCAL_COMPLETION.md, PRODUCT_OPERATIONS_API.md, OFFERS_API.md, ACCOUNT_ACCESS_API.md, HOSTED_PREVIEW.md and FINAL_POLISH_API.md extend it. Phone installation assets and a container recipe are prepared; real-device and container verification remain outstanding. Current fixtures use Luton LU1/LU2 and GBP. Restaurant signup creates a pending application with an owner membership. Refunds, staff permissions, support and export are implemented. Delivery uses restaurant-owned drivers; no Calai dispatch fleet is planned in this phase. Automatic loyalty is deferred by the user. STATUS.md records verification and remaining limits.
 

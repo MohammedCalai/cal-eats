@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listItems, ownerNavigation, parseMenuCsv, roleHome } from "../src/model.js";
+import { customerQuery, listItems, ownerMobileNavigation, ownerNavigation, parseMenuCsv, roleHome } from "../src/model.js";
 
 test("normalizes existing arrays and new cursor lists", () => {
   assert.deepEqual(listItems([{ id: 1 }]), [{ id: 1 }]);
@@ -13,6 +13,20 @@ test("staff navigation omits owner-only finance, refunds and settings", () => {
   assert.ok(labels.includes("Orders"));
   assert.ok(!labels.includes("Earnings & payouts"));
   assert.ok(!labels.includes("Settings"));
+  assert.ok(!labels.includes("Customers"));
+  assert.ok(!labels.includes("Inbox"));
+  assert.ok(!ownerMobileNavigation("staff").some(([,path])=>path==="/owner/customers"));
+});
+
+test("customer searches keep filters literal and request a bounded server page", () => {
+  const query=new URLSearchParams(customerQuery({q:"  A&B + VIP  ",segment:"needs_attention",status:"follow_up",page:2,unread:true}));
+  assert.equal(query.get("q"),"A&B + VIP");
+  assert.equal(query.get("pageSize"),"25");
+  assert.equal(query.get("page"),"2");
+  assert.equal(query.get("segment"),"needs_attention");
+  assert.equal(query.get("status"),"follow_up");
+  assert.equal(query.get("unread"),"true");
+  assert.equal(new URLSearchParams(customerQuery({page:-1})).get("page"),"1");
 });
 
 test("role homes are explicit", () => {

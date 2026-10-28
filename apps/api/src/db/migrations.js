@@ -4,6 +4,11 @@ import { orderMessagingMigration19 } from "../order-messaging-migration.js";
 import { loyaltyMigration20 } from "../loyalty-migration.js";
 import { disputeResolutionMigration21 } from "../dispute-resolution-migration.js";
 import { stripeConnectMigration22 } from "../payments/stripe-connect-migration.js";
+import { businessSupportMigration24 } from "../business-support-migration.js";
+import { customerRelationshipsMigration23 } from "../customer-relationships-migration.js";
+import { customerMessageSequenceMigration25 } from "../customer-message-sequence-migration.js";
+import { orderConfirmationMigration26 } from "../order-confirmation-migration.js";
+import { customerEmailMigration27 } from "../customer-email-migration.js";
 
 export const migrations = [
   {
@@ -247,5 +252,10 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
   orderMessagingMigration19,
   loyaltyMigration20,
   disputeResolutionMigration21,
-  stripeConnectMigration22
+  stripeConnectMigration22,
+  customerRelationshipsMigration23,
+  businessSupportMigration24,
+  customerMessageSequenceMigration25,
+  orderConfirmationMigration26,
+  customerEmailMigration27
 ];

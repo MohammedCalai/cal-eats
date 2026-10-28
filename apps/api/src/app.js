@@ -20,6 +20,8 @@ import { routeOrderMessaging } from "./order-messaging.js";
 import { routeLoyalty } from "./loyalty.js";
 import { routeDisputeResolution } from "./dispute-resolution.js";
 import { routeStripeConnect } from "./payments/stripe-connect.js";
+import { routeSupportCases } from "./support-cases.js";
+import { initializeCustomerEmailDelivery } from "./customer-emails.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -42,6 +44,7 @@ function validateIdentity(body) {
 function clientKey(req, email = "") { return `${req.socket.remoteAddress ?? "unknown"}|${email}`; }
 
 export function createApp({ db, config }) {
+  if(isDatabaseReady(db))initializeCustomerEmailDelivery(db,config);
   function incrementRateBucket(key, now) {
     const entry = db.prepare("SELECT * FROM auth_rate_limits WHERE bucket_key=?").get(key);
     if (!entry || now - entry.window_start_ms >= config.rateLimit.windowMs) db.prepare("INSERT INTO auth_rate_limits(bucket_key,window_start_ms,attempt_count) VALUES(?,?,1) ON CONFLICT(bucket_key) DO UPDATE SET window_start_ms=excluded.window_start_ms,attempt_count=1").run(key, now);
@@ -79,7 +82,7 @@ export function createApp({ db, config }) {
       const token = parseSessionCookie(req.headers.cookie);
       const nativeSession = bearerProvided ? readNativeSession(db, req, config) : null;
       const session = bearerProvided ? nativeSession : readSession(db, token, config);
-      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/auth/forgot-password","/api/native/auth/reset-password"].includes(url.pathname);
+      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/auth/forgot-password","/api/native/auth/reset-password"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
       const pairingRoute = url.pathname === "/api/devices/pair";
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute;
@@ -172,6 +175,7 @@ export function createApp({ db, config }) {
       if (governanceHandled || res.writableEnded || res.headersSent) return;
       const offersHandled = await routeOffers({ req, res, url, db, config, session });
       if (offersHandled || res.writableEnded || res.headersSent) return;
+      if (await routeSupportCases({ req, res, url, db, config, session })) return;
       const productHandled = await routeProduct({ req, res, url, db, config, session });
       if (productHandled || res.writableEnded || res.headersSent) return;
       if (url.pathname === "/api/native/account/export" && req.method === "GET") {

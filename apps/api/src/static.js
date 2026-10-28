@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web");
 const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../portal/dist");
-const portalTypes = new Map([[".html", "text/html; charset=utf-8"], [".js", "text/javascript; charset=utf-8"], [".css", "text/css; charset=utf-8"], [".webmanifest", "application/manifest+json; charset=utf-8"], [".png", "image/png"], [".svg", "image/svg+xml"]]);
+const portalTypes = new Map([[".html", "text/html; charset=utf-8"], [".js", "text/javascript; charset=utf-8"], [".css", "text/css; charset=utf-8"], [".webmanifest", "application/manifest+json; charset=utf-8"], [".png", "image/png"], [".svg", "image/svg+xml"], [".wav", "audio/wav"]]);
 const assets = new Map([
   ["/", ["landing.html", "text/html; charset=utf-8"]],
   ["/order", ["index.html", "text/html; charset=utf-8"]],
@@ -19,6 +19,8 @@ const assets = new Map([
   ["/loyalty-ui.js", ["loyalty-ui.js", "text/javascript; charset=utf-8"]],
   ["/customer-additions.js", ["customer-additions.js", "text/javascript; charset=utf-8"]],
   ["/stripe-ui.js", ["stripe-ui.js", "text/javascript; charset=utf-8"]],
+  ["/customer-contact.js", ["customer-contact.js", "text/javascript; charset=utf-8"]],
+  ["/calai-theme.css", ["calai-theme.css", "text/css; charset=utf-8"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json; charset=utf-8"]],
   ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],

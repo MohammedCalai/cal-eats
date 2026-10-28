@@ -5,15 +5,31 @@ export const roleHome = (role) => role === "admin" ? "/admin/dashboard" : "/owne
 export function ownerNavigation(permission = "owner") {
   const core = [
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
-    ["Customers & Loyalty", "/owner/customers"], ["Printers", "/owner/printers"],
+    ["Printers", "/owner/printers"],
   ];
-  if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Stripe setup", "/owner/stripe"], ["Refund cases", "/owner/refunds"], ["Settings", "/owner/settings"]);
+  if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Offers", "/owner/offers"], ["Refund cases", "/owner/refunds"], ["Support", "/owner/support"]);
+  if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Stripe setup", "/owner/stripe"], ["Settings", "/owner/settings"]);
   return core;
 }
+export const ownerMobileNavigation = permission => permission === "owner"
+  ? [["Menu", "/owner/menu"], ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Offers", "/owner/offers"], ["Cases", "/owner/refunds"]]
+  : [["Home", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"]];
 export const adminNavigation = [
   ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Orders", "/admin/orders"],
-  ["Finance", "/admin/finance"], ["Stripe readiness", "/admin/stripe"], ["Refund cases", "/admin/refunds"], ["Access & deadlines", "/admin/governance"], ["Operations", "/admin/operations"],
+  ["Finance", "/admin/finance"], ["Stripe readiness", "/admin/stripe"], ["Refund cases", "/admin/refunds"], ["Support", "/admin/support"], ["Access & deadlines", "/admin/governance"], ["Operations", "/admin/operations"],
 ];
+
+export function customerQuery({ q = "", segment, status = "all", page = 1, unread = false } = {}) {
+  const query = new URLSearchParams({ page: String(Math.max(1, Math.floor(Number(page) || 1))), pageSize: "25" });
+  if (q.trim()) query.set("q", q.trim().slice(0, 100));
+  if (segment && segment !== "all") query.set("segment", segment);
+  if (status !== "all") query.set("status", status);
+  if (unread) query.set("unread", "true");
+  return query.toString();
+}
+export function customerStatusLabel(value) {
+  return ({new:"First-time",active:"Active",returning:"Returning",regular:"Regular",lapsed:"Lapsed",vip:"VIP",follow_up:"Follow up",needs_attention:"Needs attention",awaiting_customer:"Waiting for customer",awaiting_restaurant:"Needs reply",open:"Open",resolved:"Resolved",first_order:"First order",percent_off:"Percentage off",fixed_off:"Money off",free_item:"Free item"})[value] || String(value || "Active").replaceAll("_", " ");
+}
 
 export function parseMenuCsv(text) {
   const source = String(text || "").replace(/^\uFEFF/, "");

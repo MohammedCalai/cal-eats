@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
+import { routeCustomerRelationships } from "./customer-relationships.js";
+import { notificationRecipientAllowed } from "./notification-stream.js";
+import { markMerchantOrderVisible, routeOrderConfirmationAlerts } from "./order-confirmation.js";
+import { queueCustomerEmailForNotification, routeCustomerTransactionalEmails } from "./customer-emails.js";
 
 const clean = (value, min, max, label) => {
   const result = typeof value === "string" ? value.trim() : "";
@@ -11,17 +15,22 @@ const clean = (value, min, max, label) => {
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}` : JSON.stringify(value);
 const fingerprint = (value) => createHash("sha256").update(canonical(value)).digest("hex");
 
-export function addNotification(db, { userId, type, title, message, orderId = null, offerId = null, restaurantId = null, eventKey, now }) {
-  db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,?,?,?,?,?,NULL)").run(randomUUID(), userId, type, title, message, orderId, offerId, restaurantId, eventKey, now);
+export function addNotification(db, { userId, type, title, message, orderId = null, offerId = null, restaurantId = null, conversationId = null, customerId = null, eventKey, now }) {
+  const inserted=db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,conversation_id,customer_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NULL)").run(randomUUID(), userId, type, title, message, orderId, offerId, restaurantId, conversationId, customerId, eventKey, now);
+  if(inserted.changes)queueCustomerEmailForNotification(db,userId,eventKey);
 }
 
 export function notifyNewOrder(db, order, now) {
+  if (!markMerchantOrderVisible(db,order.id,now)) return;
   for (const member of db.prepare("SELECT user_id FROM restaurant_memberships WHERE restaurant_id=?").all(order.restaurant_id)) addNotification(db, { userId: member.user_id, type: "new_order", title: "New order", message: `New ${order.fulfillment} order from ${order.customer_name}`, orderId: order.id, restaurantId: order.restaurant_id, eventKey: `order:${order.id}:new`, now });
 }
 
 export function notifyOrderStatus(db, order, status, now, type = "order_status", eventSuffix = "") {
-  const labels = { accepted: "accepted", preparing: "being prepared", ready: "ready", out_for_delivery: "out for delivery", completed: "completed", rejected: "rejected", refunded: "refunded" };
-  addNotification(db, { userId: order.customer_id, type, title: status === "refunded" ? "Order refund recorded" : "Order update", message: status === "refunded" ? "A refund was recorded for your order" : `Your order is ${labels[status] ?? status}`, orderId: order.id, restaurantId: order.restaurant_id, eventKey: `order:${order.id}:${status}${eventSuffix}`, now });
+  const labels = { accepted: "confirmed", preparing: "being prepared", ready: "ready", out_for_delivery: "out for delivery", completed: "completed", rejected: "rejected", refunded: "refunded" };
+  const eta = order.estimated_ready_at ? new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/London",weekday:"short",hour:"2-digit",minute:"2-digit"}).format(new Date(order.estimated_ready_at)) : null;
+  const etaText = eta ? ` Estimated ${order.fulfillment === "delivery" ? "delivery" : "collection"}: ${eta}.` : "";
+  const title = status === "accepted" ? "Order confirmed" : status === "out_for_delivery" ? "Out for delivery" : status === "refunded" ? "Order refund recorded" : "Order update";
+  addNotification(db, { userId: order.customer_id, type, title, message: status === "refunded" ? "A refund was recorded for your order" : `Your order is ${labels[status] ?? status}.${["accepted","out_for_delivery"].includes(status)?etaText:""}`, orderId: order.id, restaurantId: order.restaurant_id, eventKey: `order:${order.id}:${status}${eventSuffix}`, now });
 }
 
 export function releaseOfferForOrder(db, order, now) {
@@ -38,7 +47,7 @@ export function redeemOfferForOrder(db, order, now) {
 }
 
 function notificationDto(row) {
-  return { id: row.id, type: row.type, title: row.title, message: row.message, ...(row.order_id ? { orderId: row.order_id } : {}), ...(row.offer_id ? { offerId: row.offer_id } : {}), ...(row.restaurant_id ? { restaurantId: row.restaurant_id } : {}), createdAt: row.created_at, readAt: row.read_at };
+  return { id: row.id, type: row.type, title: row.title, message: row.message, ...(row.order_id ? { orderId: row.order_id } : {}), ...(row.offer_id ? { offerId: row.offer_id } : {}), ...(row.restaurant_id ? { restaurantId: row.restaurant_id } : {}), ...(row.conversation_id ? { conversationId: row.conversation_id } : {}), ...(row.customer_id ? { customerId: row.customer_id } : {}), ...(row.support_case_id ? { supportCaseId: row.support_case_id } : {}), createdAt: row.created_at, readAt: row.read_at };
 }
 function campaignDto(db, row) {
   const counts = db.prepare("SELECT COUNT(*) recipientCount,SUM(viewed_at IS NOT NULL) openedCount,SUM(status='reserved') reservedCount,SUM(status='redeemed') redeemedCount FROM offer_grants WHERE campaign_id=?").get(row.id);
@@ -50,23 +59,35 @@ function grantDto(row, now) {
 }
 
 export async function routeOffers({ req, res, url, db, config, session }) {
+  if (await routeCustomerTransactionalEmails({req,res,url,db,config,session})) return true;
+  if (await routeOrderConfirmationAlerts({req,res,url,db,config,session})) return true;
+  if (await routeCustomerRelationships({ req, res, url, db, config, session })) return true;
   if (req.method === "GET" && url.pathname === "/api/notifications") {
-    const user = requireUser(session); const permitsOffers = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); const rows = db.prepare(`SELECT * FROM user_notifications WHERE user_id=? ${permitsOffers ? "" : "AND type<>'offer'"} ORDER BY created_at DESC,rowid DESC`).all(user.id);
-    return sendJson(res, 200, { data: { items: rows.map(notificationDto), unreadCount: rows.filter((row) => !row.read_at).length } });
+    const user = requireUser(session), permitsOffers = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed);
+    const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 100, before = url.searchParams.get("before"), beforeId = url.searchParams.get("beforeId");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (before && Number.isNaN(Date.parse(before))) || (beforeId && (!before || beforeId.length > 100))) throw new HttpError(400,"VALIDATION_ERROR","Notification pagination is invalid");
+    const params = { uid: user.id, role: user.role, permitsOffers: Number(permitsOffers) };
+    const allowed = `user_id=$uid AND (type<>'offer' OR $permitsOffers=1)
+      AND ($role<>'restaurant' OR restaurant_id IS NULL OR EXISTS(SELECT 1 FROM restaurant_memberships mm WHERE mm.restaurant_id=user_notifications.restaurant_id AND mm.user_id=$uid))
+      AND (type<>'customer_message' OR EXISTS(SELECT 1 FROM restaurant_customer_threads t WHERE t.id=user_notifications.conversation_id AND (t.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships cm WHERE cm.restaurant_id=t.restaurant_id AND cm.user_id=$uid AND cm.permission='owner'))))
+      AND (type<>'order_message' OR EXISTS(SELECT 1 FROM orders o WHERE o.id=user_notifications.order_id AND (o.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships om WHERE om.restaurant_id=o.restaurant_id AND om.user_id=$uid))))
+      AND (support_case_id IS NULL OR EXISTS(SELECT 1 FROM support_cases sc WHERE sc.id=user_notifications.support_case_id AND (sc.user_id=$uid OR $role='admin' OR ($role='restaurant' AND EXISTS(SELECT 1 FROM restaurant_memberships sm WHERE sm.restaurant_id=sc.restaurant_id AND sm.user_id=$uid)))))`;
+    const cursor = before ? " AND (created_at<$before OR (created_at=$before AND id<$beforeId))" : "";
+    const rows = db.prepare(`SELECT * FROM user_notifications WHERE ${allowed}${cursor} ORDER BY created_at DESC,id DESC LIMIT $limit`).all({ ...params, ...(before ? { before, beforeId: beforeId ?? "~" } : {}), limit: limit + 1 });
+    const hasMore = rows.length > limit, selected = rows.slice(0, limit), oldest = selected.at(-1);
+    const unreadCount = db.prepare(`SELECT COUNT(*) n FROM user_notifications WHERE ${allowed} AND read_at IS NULL`).get(params).n;
+    const unreadMessageCount = db.prepare(`SELECT COUNT(*) n FROM user_notifications WHERE ${allowed} AND read_at IS NULL AND type IN ('order_message','customer_message')`).get(params).n;
+    const unreadSupportCount = db.prepare(`SELECT COUNT(*) n FROM user_notifications WHERE ${allowed} AND read_at IS NULL AND support_case_id IS NOT NULL`).get(params).n;
+    return sendJson(res, 200, { data: { items: selected.map(notificationDto), unreadCount, unreadMessageCount, unreadSupportCount, nextCursor: hasMore ? { before: oldest.created_at, beforeId: oldest.id } : null } });
   }
   let match = url.pathname.match(/^\/api\/notifications\/([^/]+)$/);
   if (match && req.method === "PATCH") {
     const user = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, ["read"]);
     if (body.read !== true) throw new HttpError(400, "VALIDATION_ERROR", "read must be true");
     const row = db.prepare("SELECT * FROM user_notifications WHERE id=? AND user_id=?").get(match[1], user.id); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    if (!notificationRecipientAllowed(db, row)) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     db.prepare("UPDATE user_notifications SET read_at=COALESCE(read_at,?) WHERE id=?").run(config.now().toISOString(), row.id);
     return sendJson(res, 200, { data: notificationDto(db.prepare("SELECT * FROM user_notifications WHERE id=?").get(row.id)) });
-  }
-  match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/customers$/);
-  if (match && req.method === "GET") {
-    requireRestaurantOwner(db, session, match[1]);
-    const rows = db.prepare("SELECT o.customer_id,u.name,u.merchant_offers,COUNT(*) completed_order_count,SUM(o.total_minor-COALESCE(x.refunded,0)) net_spend_minor,MAX(o.created_at) last_order_at FROM orders o JOIN users u ON u.id=o.customer_id LEFT JOIN (SELECT order_id,SUM(food_amount_minor+delivery_amount_minor) refunded FROM refunds GROUP BY order_id) x ON x.order_id=o.id WHERE o.restaurant_id=? AND o.status='completed' GROUP BY o.customer_id,u.name,u.merchant_offers ORDER BY last_order_at DESC").all(match[1]);
-    return sendJson(res, 200, { data: rows.map((row) => ({ customerId: row.customer_id, name: row.name, merchantOffers: Boolean(row.merchant_offers), completedOrderCount: row.completed_order_count, netSpendMinor: row.net_spend_minor, averageOrderMinor: Math.round(row.net_spend_minor / row.completed_order_count), lastOrderAt: row.last_order_at })) });
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/offers$/);
   if (match && req.method === "GET") { requireRestaurantOwner(db, session, match[1]); return sendJson(res, 200, { data: db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(match[1]).map((row) => campaignDto(db, row)) }); }

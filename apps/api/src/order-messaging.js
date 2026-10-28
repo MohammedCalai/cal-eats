@@ -4,6 +4,7 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { decryptMessage, encryptMessage, messageFingerprint } from "./message-encryption.js";
 import { notificationStreamHub } from "./notification-stream.js";
+import { queueCustomerEmailForNotification } from "./customer-emails.js";
 
 export const DEFAULT_QUICK_RESPONSES = ["We’re preparing your order now.", "Sorry for the delay, we’re very busy.", "Your order will be ready shortly.", "Your driver is on the way.", "Your order is ready for collection.", "Thank you for ordering."];
 const ACTIVE = new Set(["placed", "accepted", "preparing", "ready", "out_for_delivery"]);
@@ -59,7 +60,10 @@ function incidentDto(row) { return { id: row.id, orderId: row.order_id, reporter
 function notifyRecipients(db, order, senderId, messageId, now) {
   const recipients = new Set([order.customer_id, ...db.prepare("SELECT user_id FROM restaurant_memberships WHERE restaurant_id=?").all(order.restaurant_id).map((x) => x.user_id)]);
   recipients.delete(senderId);
-  for (const userId of recipients) db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,?,NULL,?,?,?,NULL)").run(randomUUID(), userId, "order_message", "New order message", "You have a new message about your order.", order.id, order.restaurant_id, `order-message:${messageId}`, now);
+  for (const userId of recipients) {
+    const eventKey=`order-message:${messageId}`,inserted=db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,?,NULL,?,?,?,NULL)").run(randomUUID(), userId, "order_message", "New order message", "You have a new message about your order.", order.id, order.restaurant_id,eventKey,now);
+    if(inserted.changes)queueCustomerEmailForNotification(db,userId,eventKey);
+  }
 }
 
 function auditAdminRead(db, actorId, orderId, reason, now) {
@@ -78,7 +82,7 @@ export function runMessageRetention(db, config) {
 export async function routeOrderMessaging({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/notifications/stream") {
     const user = requireUser(session);
-    return notificationStreamHub(db, { ...config.notificationStream, now: config.now }).subscribe({ req, res, userId: user.id, sessionId: session.sessionId, native: Boolean(session.native), lastEventId: req.headers["last-event-id"] ?? url.searchParams.get("lastEventId") });
+    return notificationStreamHub(db, { ...config.notificationStream, now: config.now }).subscribe({ req, res, userId: user.id, sessionId: session.sessionId, native: Boolean(session.native), nativeAudience: session.nativeAudience, lastEventId: req.headers["last-event-id"] ?? url.searchParams.get("lastEventId") });
   }
   let match = url.pathname.match(/^\/api\/orders\/([^/]+)\/message-incidents$/);
   if (match && req.method === "POST") {

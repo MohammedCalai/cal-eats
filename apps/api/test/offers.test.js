@@ -27,10 +27,10 @@ test("owner campaigns are tenant scoped, idempotent and expose persisted analyti
   const f = await journeyFixture();
   try {
     const s = await setupEligible(f);
-    const defaultDirectory = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/customers`, { cookie: s.owner }); assert.equal(defaultDirectory.body.data[0].merchantOffers, false);
+    const defaultDirectory = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/customers`, { cookie: s.owner }); assert.equal(defaultDirectory.body.data.items[0].merchantOffers, false);
     const directory = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/customers`, { cookie: s.owner });
-    assert.deepEqual(directory.body.data.map((row) => row.customerId), [s.customerId]);
-    assert.equal(directory.body.data[0].completedOrderCount, 1); assert.equal(directory.body.data[0].averageOrderMinor, directory.body.data[0].netSpendMinor);
+    assert.deepEqual(directory.body.data.items.map((row) => row.customerId), [s.customerId]);
+    assert.equal(directory.body.data.items[0].completedOrderCount, 1); assert.equal(directory.body.data.items[0].averageOrderMinor, directory.body.data.items[0].netSpendMinor);
     const body = { customerIds: [s.customerId], title: "A free side", message: "Thanks for ordering locally.", menuItemId: s.gift.id, minSubtotalMinor: 500, expiresInDays: 7 };
     assert.equal((await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "optout-blocked" }, body })).body.error.code, "RECIPIENT_NOT_ELIGIBLE");
     await f.json("/api/account/preferences", { method: "PATCH", cookie: s.customer, body: { merchantOffers: true } });

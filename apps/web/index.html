@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#071b36">
+  <meta name="theme-color" content="#0E0E10">
   <meta name="description" content="Cal-Eats local and hosted browser preview for Luton.">
   <title>Cal-Eats — Luton local demo</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/assets/calai-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/calai-theme.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -18,6 +19,7 @@
       <button type="button" data-view="discover">Find food</button>
       <button type="button" data-view="orders">My orders</button>
       <button type="button" data-view="offers">Offers</button>
+      <button type="button" data-view="messages">Messages</button>
       <button type="button" data-view="account">Account</button>
     </nav>
     <div id="account"></div>
@@ -29,6 +31,7 @@
     <button data-view="discover"><span aria-hidden="true">⌂</span>Browse</button>
     <button data-view="orders"><span aria-hidden="true">▤</span>Orders</button>
     <button data-view="offers"><span aria-hidden="true">◇</span>Offers</button>
+    <button data-view="messages"><span aria-hidden="true">▱</span>Messages</button>
     <button data-view="account"><span aria-hidden="true">◯</span>Account</button>
   </nav>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

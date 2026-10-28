@@ -10,6 +10,8 @@
     "portal:build": "npm run build --workspace=@cal-eats/portal",
     "portal:dev": "npm run dev --workspace=@cal-eats/portal",
     "mobile:check": "npm run typecheck --workspace=@cal-eats/mobile",
+    "admin:mobile:check": "npm run typecheck --workspace=@cal-eats/admin-mobile",
+    "admin:mobile:start": "npm run start --workspace=@cal-eats/admin-mobile",
     "load:local": "node scripts/load-marketplace.js",
     "db:migrate": "node --env-file-if-exists=.env apps/api/src/cli/migrate.js",
     "db:seed": "node --env-file-if-exists=.env apps/api/src/cli/seed.js",
@@ -21,7 +23,11 @@
     "restore:check": "node scripts/restore-check.js",
     "test": "node --test apps/api/test/*.test.js apps/web/test/*.test.js apps/portal/test/*.test.js apps/print-bridge/test/*.test.js scripts/*.test.js",
     "check": "node --check apps/api/src/main.js && node --check apps/api/src/app.js && node --check apps/api/src/journey.js && node --check apps/api/src/operations.js && node --check apps/api/src/product.js && node --check apps/api/src/availability.js && node --check apps/api/src/static.js && node --check apps/api/src/payments/mock.js && node --check apps/api/scripts/smoke.js && node --check scripts/backup.js && node --check scripts/restore-check.js && npm test",
-    "release:check": "node scripts/release-check.js"
+    "release:check": "node scripts/release-check.js",
+    "mail:connect": "node --env-file=.env.order-alerts scripts/connect-service-mail.js --connect --confirm-send-only-mailbox",
+    "mail:check": "node --env-file=.env.order-alerts scripts/connect-service-mail.js",
+    "migration:export": "node scripts/export-migration-package.js",
+    "mail:send-check": "node --env-file=.env.order-alerts scripts/check-service-mail.js"
   },
   "engines": {
     "node": "24.19.0",

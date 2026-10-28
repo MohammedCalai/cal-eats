@@ -4,8 +4,9 @@
     "slug": "cal-eats",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "platforms": ["ios"],
+    "userInterfaceStyle": "dark",
+    "platforms": ["ios", "android"],
+    "android": { "package": "uk.co.calai.caleats", "permissions": [] },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.co.calai.caleats",

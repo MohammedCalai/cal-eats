@@ -10,6 +10,8 @@ reference
 apps/*/dist
 apps/mobile/.expo
 apps/mobile/.bundle-check
+apps/admin-mobile/.expo
+apps/admin-mobile/.bundle-check
 apps/print-bridge/config.json
 apps/print-bridge/var
 data

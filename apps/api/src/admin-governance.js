@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { requireRole } from "./auth/authorization.js";
+import { revokeUserSessions } from "./auth/session-management.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 
@@ -26,7 +27,7 @@ export async function routeAdminGovernance({req,res,url,db,config,session}) {
       if(!body.enabled&&row.id===admin.id)throw new HttpError(409,"SELF_LOCKOUT","You cannot disable your own account");
       if(!body.enabled&&row.role==="admin"&&db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin' AND account_enabled=1 AND id<>?").get(row.id).n===0)throw new HttpError(409,"LAST_ADMIN","The last enabled administrator cannot be disabled");
       db.prepare("UPDATE users SET account_enabled=? WHERE id=?").run(Number(body.enabled),row.id);
-      if(!body.enabled){db.prepare("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now,row.id);db.prepare("UPDATE native_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now,row.id);}
+      if(!body.enabled)revokeUserSessions(db,row.id,now);
       audit(db,admin.id,body.enabled?"account_enabled":"account_disabled","user",row.id,{reason},now);
       return db.prepare("SELECT * FROM users WHERE id=?").get(row.id);
     });

@@ -61,7 +61,7 @@ export async function routeLoyalty({ req, res, url, db, config, session }) {
   let m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty(?:\/(settings|suggestions))?$/);
   if (m) {
     const owner = requireRestaurantOwner(db, session, m[1]);
-    if (req.method === "GET") { const data = analytics(db, m[1], config.now()); return sendJson(res, 200, { data: m[2] === "suggestions" ? { asOf: data.asOf, suggestions: suggestions(data) } : data }); }
+    if (req.method === "GET") { const data = analytics(db, m[1], config.now()); if(url.searchParams.get("includeCustomers")==="false")delete data.customers; return sendJson(res, 200, { data: m[2] === "suggestions" ? { asOf: data.asOf, suggestions: suggestions(data) } : data }); }
     if (req.method === "PATCH" && m[2] === "settings") { const b = await readJson(req, config.bodyLimit); exactObject(b, ["regularOrderCount","regularWindowDays","lapsedAfterDays"]); const now = config.now().toISOString(); const values = [int(b.regularOrderCount,2,100,"Regular order count"),int(b.regularWindowDays,7,730,"Regular window"),int(b.lapsedAfterDays,7,730,"Lapsed period")]; db.prepare("INSERT INTO loyalty_settings VALUES(?,?,?,?,?,?) ON CONFLICT(restaurant_id) DO UPDATE SET regular_order_count=excluded.regular_order_count,regular_window_days=excluded.regular_window_days,lapsed_after_days=excluded.lapsed_after_days,updated_by_user_id=excluded.updated_by_user_id,updated_at=excluded.updated_at").run(m[1],...values,owner.id,now); return sendJson(res,200,{data:analytics(db,m[1],config.now())}); }
   }
   m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty\/promotions$/);

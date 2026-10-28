@@ -83,6 +83,9 @@ export interface Order {
   restaurantDiscountMinor?: number;
   status: string;
   estimatedReadyAt?: string | null;
+  customerEtaAt?: string | null;
+  customerEtaType?: "delivery_arrival" | "collection_ready";
+  confirmedAt?: string | null;
   currency: "GBP";
   subtotalMinor: number;
   deliveryFeeMinor: number;
@@ -107,6 +110,9 @@ export interface NotificationRecord {
   readAt?: string | null;
   orderId?: string | null;
   offerId?: string | null;
+  conversationId?: string | null;
+  supportCaseId?: string | null;
+  customerId?: string | null;
   createdAt: string;
 }
 export interface Offer {
@@ -140,5 +146,5 @@ export interface RefundCase {
   createdAt: string;
   updatedAt: string;
 }
-export interface SupportCase { id: string; orderId?: string | null; subject: string; message: string; status: string; createdAt: string; updatedAt: string }
+export interface SupportCase { id: string; reference?: string; recipient?: string; waitingFor?: string; orderId?: string | null; subject: string; message: string; status: string; createdAt: string; updatedAt: string }
 export interface Page<T> { items: T[]; nextCursor?: string | null }

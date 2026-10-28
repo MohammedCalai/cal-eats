@@ -3,7 +3,7 @@ import { requireRestaurantOwner, requireRole } from "../auth/authorization.js";
 import { withTransaction } from "../db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "../http.js";
 import { finalizeStripeRefund, queueStripeTransferReversal, recordMarketplaceAcceptance } from "../marketplace.js";
-import { releaseOfferForOrder, notifyNewOrder } from "../offers.js";
+import { releaseOfferForOrder, notifyNewOrder, notifyOrderStatus } from "../offers.js";
 import { retrieveAuthoritativeProviderState } from "./provider-events.js";
 import { queueEligibleStripeTransfers } from "./stripe-settlement.js";
 
@@ -340,6 +340,7 @@ async function expireCardOrders(db,config,adapter,{limit}) {
         db.prepare("UPDATE orders SET status='rejected',payment_status=?,updated_at=? WHERE id=?").run(`stripe_${state}`,now(config),order.id);
         db.prepare("INSERT INTO order_events VALUES(?,?,NULL,'payment_expired','placed','rejected',?)").run(randomUUID(),order.id,now(config));
         releaseOfferForOrder(db,fresh,now(config));
+        if(fresh.merchant_visible_at)notifyOrderStatus(db,{...fresh,status:"rejected"},"rejected",now(config),"order_expired");
       });
     } catch (error) {
       const code = safeProviderError(error?.code) ?? "PAYMENT_EXPIRY_UNCONFIRMED";

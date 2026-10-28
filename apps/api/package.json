@@ -3,5 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "dependencies": { "@calai/contracts": "0.1.0" }
+  "dependencies": {
+    "@azure/msal-node": "7.1.2",
+    "@calai/contracts": "0.1.0",
+    "nodemailer": "10.2.1"
+  }
 }

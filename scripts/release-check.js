@@ -10,7 +10,8 @@ const required = [
   "apps/api/src/main.js", "apps/api/scripts/bootstrap-admin.js", "apps/web/index.html",
   "apps/web/manifest.webmanifest", "apps/web/sw.js", "apps/web/offline.html",
   "packages/contracts/src/index.js", "Dockerfile", ".dockerignore", "infra/healthcheck.js",
-  "docs/HOSTED_PREVIEW.md", "docs/CONTAINER_PREVIEW.md", "docs/PHONE_INSTALL.md"
+  "docs/HOSTED_PREVIEW.md", "docs/CONTAINER_PREVIEW.md", "docs/PHONE_INSTALL.md",
+  "apps/admin-mobile/App.tsx", "apps/admin-mobile/app.json", "docs/MIGRATION_HANDOFF.md"
 ];
 
 for (const file of required) if (!existsSync(join(root, file))) failures.push(`Missing required file: ${file}`);
@@ -21,7 +22,7 @@ if (lock && (lock.name !== packageJson.name || lock.lockfileVersion !== 3)) fail
 if (lock && JSON.stringify(lock.packages?.[""]?.workspaces) !== JSON.stringify(packageJson.workspaces)) failures.push("package-lock.json workspace metadata is out of date.");
 if (lock && JSON.stringify(lock.packages?.[""]?.engines) !== JSON.stringify(packageJson.engines)) failures.push("package-lock.json runtime metadata is out of date.");
 if (lock) {
-  for (const workspace of ["apps/api", "apps/web", "apps/portal", "apps/mobile", "apps/print-bridge", "packages/contracts"]) {
+  for (const workspace of ["apps/api", "apps/web", "apps/portal", "apps/mobile", "apps/admin-mobile", "apps/print-bridge", "packages/contracts"]) {
     const manifest = JSON.parse(readFileSync(join(root, workspace, "package.json"), "utf8"));
     const locked = lock.packages?.[workspace];
     if (!locked || locked.name !== manifest.name || locked.version !== manifest.version || JSON.stringify(locked.dependencies || {}) !== JSON.stringify(manifest.dependencies || {})) failures.push(`package-lock.json is out of date for ${workspace}.`);

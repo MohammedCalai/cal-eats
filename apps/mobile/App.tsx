@@ -35,12 +35,12 @@ export default function App() {
   async function logout() { if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); setToken(null); setUser(null); setCart([]); setRestaurant(null); setCheckout(false); setTab("discover"); }
   function openOrder(id: string) { setFocusOrder(id); setCheckout(false); setTab("orders"); }
 
-  if (booting) return <SafeAreaView style={styles.center}><StatusBar style="dark"/><Brand/><ActivityIndicator size="large" color={colours.blue}/><Text style={styles.muted}>Opening Cal-Eats…</Text></SafeAreaView>;
+  if (booting) return <SafeAreaView style={styles.center}><StatusBar style="light"/><Brand/><ActivityIndicator size="large" color={colours.blue}/><Text style={styles.muted}>Opening Cal-Eats…</Text></SafeAreaView>;
   if (bootError && !user) return <SafeAreaView style={styles.center}><Brand/><ErrorBanner message={bootError}/><Button onPress={() => void restore()}>Try again</Button><Button tone="quiet" onPress={() => { void sessionStore.clear(); setBootError(""); }}>Use another account</Button></SafeAreaView>;
-  if (!token || !user) return <><StatusBar style="dark"/><AuthScreen onAuthenticated={authenticated}/></>;
-  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="dark"/><CheckoutScreen token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => setCheckout(false)} onOrdered={(order) => { setCart([]); setCheckout(false); openOrder(order.id); }}/></SafeAreaView>;
+  if (!token || !user) return <><StatusBar style="light"/><AuthScreen onAuthenticated={authenticated}/></>;
+  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><CheckoutScreen token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => setCheckout(false)} onOrdered={(order) => { setCart([]); setCheckout(false); openOrder(order.id); }}/></SafeAreaView>;
 
-  return <SafeAreaView style={styles.shell}><StatusBar style="dark"/><View style={styles.content}>
+  return <SafeAreaView style={styles.shell}><StatusBar style="light"/><View style={styles.content}>
     {tab === "discover" ? <DiscoverScreen token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setCheckout(true)}/> : null}
     {tab === "orders" ? <OrdersScreen token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
     {tab === "inbox" ? <InboxScreen token={token} onOpenOrder={openOrder}/> : null}

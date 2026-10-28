@@ -16,7 +16,7 @@ export function outwardPostcode(value = "") {
 
 export function restaurantMatches(restaurant, query = "", postcode = "", fulfillment = "delivery") {
   const needle = query.trim().toLocaleLowerCase("en-GB");
-  const searchable = [restaurant.name, restaurant.profile?.description, restaurant.profile?.cuisine].filter(Boolean).join(" ").toLocaleLowerCase("en-GB");
+  const searchable = [restaurant.name, restaurant.profile?.description, restaurant.profile?.cuisine, restaurant.searchTerms].filter(Boolean).join(" ").toLocaleLowerCase("en-GB");
   const textMatch = !needle || searchable.includes(needle);
   const outcode = outwardPostcode(postcode);
   const deliveryMatch = fulfillment === "collection" || !outcode || (restaurant.delivery?.enabled && restaurant.delivery.outcodes?.includes(outcode));
@@ -128,6 +128,7 @@ export function nextOrderStatuses(order) {
 }
 
 export function statusLabel(value = "") {
+  if (value === "accepted") return "Confirmed";
   return String(value).replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 

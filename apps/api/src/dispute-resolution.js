@@ -3,6 +3,7 @@ import { VALIDATION } from "../../../packages/contracts/src/index.js";
 import { requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
+import { queueCustomerEmailForNotification } from "./customer-emails.js";
 
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}` : JSON.stringify(value);
 const digest = (value) => createHash("sha256").update(canonical(value)).digest("hex");
@@ -37,7 +38,7 @@ function resolutionDto(db,dispute) {
   return{caseId:dispute.id,orderId:dispute.order_id,restaurantId:dispute.restaurant_id,phase:phase(dispute,proposals,reopened),escalatedAt:dispute.escalated_at,escalationReason:dispute.escalation_reason,resolvedAt:dispute.resolved_at,proposals};
 }
 export function disputeResolutionSummary(db,dispute){const proposals=db.prepare("SELECT * FROM dispute_remedy_proposals WHERE case_id=? ORDER BY created_at,id").all(dispute.id).map((row)=>proposalDto(db,row)),latest=proposals.at(-1),reopen=db.prepare("SELECT created_at FROM refund_case_events WHERE case_id=? AND kind='reopen' ORDER BY created_at DESC,id DESC LIMIT 1").get(dispute.id),reopened=Boolean(reopen&&dispute.escalated_at&&reopen.created_at>=dispute.escalated_at);return{phase:phase(dispute,proposals,reopened),escalatedAt:dispute.escalated_at,escalationReason:dispute.escalation_reason,resolvedAt:dispute.resolved_at,latestProposal:latest?{id:latest.id,type:latest.type,status:latest.status,amountMinor:latest.amountMinor,voucherValueMinor:latest.voucherValueMinor,expiresAt:latest.expiresAt,financialParty:latest.financialParty}:null};}
-function notify(db,{userId,type,title,message,restaurantId,eventKey,now}){db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,NULL,NULL,?,?,?,NULL)").run(randomUUID(),userId,type,title,message,restaurantId,eventKey,now);}
+function notify(db,{userId,type,title,message,restaurantId,eventKey,now}){const inserted=db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,NULL,NULL,?,?,?,NULL)").run(randomUUID(),userId,type,title,message,restaurantId,eventKey,now);if(inserted.changes)queueCustomerEmailForNotification(db,userId,eventKey);}
 function event(db,caseId,actor,kind,details,now){db.prepare("INSERT INTO refund_case_events(id,case_id,actor_user_id,kind,details,created_at) VALUES(?,?,?,?,?,?)").run(randomUUID(),caseId,actor,kind,JSON.stringify(details),now);}
 function remainingRefundable(db,dispute,excludeProposalId=null){
   const order=db.prepare("SELECT * FROM orders WHERE id=? AND restaurant_id=?").get(dispute.order_id,dispute.restaurant_id);

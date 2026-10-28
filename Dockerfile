@@ -6,6 +6,13 @@ COPY packages ./packages
 RUN npm ci --workspace=@cal-eats/portal --include-workspace-root --ignore-scripts --no-audit --no-fund
 RUN npm run build --workspace=@cal-eats/portal
 
+FROM node:24.19.0-bookworm-slim AS api-dependencies
+WORKDIR /build
+COPY package.json package-lock.json ./
+COPY apps ./apps
+COPY packages ./packages
+RUN npm ci --workspace=@calai/api --include-workspace-root --omit=dev --ignore-scripts --no-audit --no-fund
+
 FROM node:24.19.0-bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
 
@@ -21,6 +28,7 @@ COPY --chown=node:node package.json ./
 COPY --chown=node:node apps/api ./apps/api
 COPY --chown=node:node apps/web ./apps/web
 COPY --chown=node:node packages/contracts ./packages/contracts
+COPY --from=api-dependencies --chown=node:node /build/node_modules ./node_modules
 COPY --from=portal-build --chown=node:node /build/apps/portal/dist ./apps/portal/dist
 COPY --chown=node:node infra ./infra
 RUN mkdir -p /data && chown node:node /data

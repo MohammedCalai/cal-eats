@@ -1,0 +1,47 @@
+# Cal-Eats Admin — restaurant phone app
+
+This is the separate **restaurant owner app** for iPhone and Android. It uses the same restaurant memberships, menu, customer relationships, help requests, offers and refund cases as the Cal-Eats tablet business platform. It is native React Native source, with native forms, sheets, photo selection and secure device session storage; it is not a website embedded in a WebView. Platform administrators remain a restricted role in the shared web business platform.
+
+## Implemented screens
+
+- **Orders:** native paged restaurant order list, status filters and authoritative detail refresh. New orders require an explicit Confirm action and a future estimate: customer arrival for delivery, readiness for collection. Accepted orders progress through preparation, ready, out for delivery and delivered, or collected for collection. Estimates can be updated while accepted/preparing. Server responses, rather than opening a popup or changing a sound setting, determine whether an order is confirmed.
+- **Menu:** search/category filters, add/edit item, exact GBP pricing, availability, allergens, dietary labels, option groups and extras, and menu photo selection/upload. Existing choices are preserved when editing. A save whose result is uncertain requires checking the menu before repeating a new-item creation.
+- **Inbox:** a paged restaurant inbox combining order chats and persistent customer service conversations. Order messages retain their 300-character limit and closing window. Customer conversations have their own statuses, read state, chronological history, earlier-message paging and replies. Up to 50 unsent drafts remain in memory during app navigation and are cleared at sign-out; message contents are not written to device storage.
+- **Customers:** server-side name search, segments and 25 customers per page, private follow-up status/note, recent orders/offers/cases, customer messaging and a personal-offer shortcut. No screen loads the whole customer list.
+- **Offers:** percentage, fixed-discount and free-item promotions; selected customers or an existing customer segment; minimum spend, expiry, redemption limit and optional budget; a review step before sending; recipient/open/redemption analytics. Recipient eligibility and promotion consent are enforced by the backend. Retry keys and the original request dates remain stable after an uncertain promotion response.
+- **Cases:** paged refund cases, private case evidence rendered only through the exact authenticated Cal-Eats case path, case replies, remedy proposals, customer-response state and separate fulfilment evidence. This app does not mark an unexecuted refund paid or equate a proposal with fulfilment.
+- **Help requests:** restaurant-scoped customer help list, request details, replies and resolved/reopened state, reached through Account and help and directly from relevant in-app notifications.
+- **Notifications/account:** foreground polling, unread badge and destination routing, restaurant switcher, secure persisted sign-in and sign-out. Customer-message notifications open the correct customer conversation; order messages retain their own thread; help updates open their case.
+
+## Incoming order alerts
+
+A global incoming-order queue runs across all app tabs. It polls the authenticated, server-owned `/api/restaurant/orders/pending-confirmation` endpoint every five seconds while foregrounded, with one queue request at a time. It shows the blue rounded Calai-style popup for a new order and an amber variant for a server-reported overdue confirmation. A persistent review banner retains pending orders when the popup is closed. The queue spans the signed-in account's own restaurant memberships, and opening an order selects its verified restaurant context. The returned limit/total is shown when more than 100 orders await confirmation.
+
+The two local WAV files are byte-identical to the approved Calai/portal notification sounds: `notification.wav` and `unconfirmed-notification.wav`. `expo-audio` 57.0.5 provides foreground looping playback and a saved device mute preference. Audio is configured to play in silent mode while enabled, and pauses/rewinds on app backgrounding, logout/unmount, muting or an empty pending queue. The native config explicitly disables background audio and microphone/recording permissions for this playback feature. The device's actual audio output still requires physical testing.
+
+Viewing, closing or muting an alert never accepts or declines an order. Confirmation sends the chosen future ISO timestamp to the backend; retries keep their original intent until a new estimate is chosen or the old estimate expires. If a confirmation response is uncertain, the app retrieves the authoritative order before displaying a confirmed state. The first committed ETA is protected on the server. Out-for-delivery and customer ETA notifications are server-owned. The app does not send real escalation emails itself.
+
+This is **foreground in-app alerting**. No APNs/FCM registration, background push delivery, lock-screen order alarm or real phone sound playback has been demonstrated. These remain required device/release checks; keeping this source app open is not a substitute for a future background notification service.
+
+## Start locally
+
+1. Install the repository's pinned workspace dependencies from the root. No separate services or data stores are required for this app.
+2. Start the Cal-Eats API using an isolated local fixture database with schema 24 or later (including customer relationships and business native authentication).
+3. Set `EXPO_PUBLIC_API_BASE_URL` to that Cal-Eats API origin before running Expo. For example, a desktop simulator can use `http://127.0.0.1:4313`. An actual phone needs a reachable HTTPS Cal-Eats preview origin; its `localhost` refers to the phone itself.
+4. Run `npm run start --workspace=@cal-eats/admin-mobile` from the repository root. Sign in with an existing restaurant account. The backend must include the new `/api/native/business/auth/login` route before phone sign-in can work.
+
+`https://eats.calai.info` is the intended separate preview host. The currently deployed earlier build does not automatically receive local changes. Deployment remains subject to the owner's Railway-capacity hold. Do not point this app at original Calai; the configuration validator rejects that host and its other subdomains.
+
+Only the API origin is a public Expo setting. Passwords are sent to the Cal-Eats business login endpoint; the bearer token is stored under a business-only SecureStore key. Customer and business session stores are separate. Do not put any passwords, Stripe keys, signing secrets or administrator tokens in Expo configuration.
+
+## Checks and packaging limits
+
+The app has its own `typecheck` and `test` scripts. The focused tests cover original-Calai/transport isolation, exact currency parsing and evidence URL binding. Type checking verifies native source contracts; it does not prove an installed phone run.
+
+Local verification on 28 October 2026: native TypeScript checking passed; the three focused safety/money helper checks passed; offline Metro export produced an iOS JavaScript bundle (612 modules) and an Android JavaScript bundle (610 modules) plus the approved logo asset in ignored `artifacts/admin-mobile-bundle-check`. This export used the loopback development API and disabled Hermes bytecode generation. It verifies module resolution and JavaScript packaging for both configured platforms, not native compilation, signing, device behaviour or a release build. The backend business login/me/logout response shape was reviewed against this client.
+
+Order-alert follow-up on the same date: final native TypeScript checking passed; three additional focused checks passed for ETA bounds/labels, delivery-versus-collection progression and alert lifecycle gates. A fresh offline Metro export packaged iOS (628 modules) and Android (626 modules), the approved logo and both exact WAV assets into ignored `artifacts/admin-mobile-orders-bundle-check`. Portal/native WAV SHA-256 comparisons matched. This proves local JavaScript/asset packaging, not audible playback, popup interaction on a phone, background delivery or a signed native build.
+
+Both iOS and Android platforms, separate native application identifiers, photo permissions, safe-area insets and a separate app scheme are configured. Added native dependencies are Expo-compatible `react-native-safe-area-context` 5.7.0 and `expo-audio` 57.0.5; other packages match the customer app's pinned versions. The app has its own root entry point so it does not rely on a hoisted Expo package finding the correct App file. No Expo cloud build, signed iPhone/Android binary, store listing, native device test or background push registration has been performed. Test on real devices before release, including keyboard/insets, photo selection, screen-reader labels, offline retries and secure sign-out. App-store icon/splash assets and signed production packaging remain release-stage work. Foreground in-app updates do not imply background push delivery.
+
+The future combination with original Calai is not implemented here. The phone and tablet already share one Cal-Eats backend and stable restaurant/customer/order identifiers, so that future migration should migrate the underlying records once rather than duplicate phone-specific copies.

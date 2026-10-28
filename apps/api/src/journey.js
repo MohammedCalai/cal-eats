@@ -12,6 +12,7 @@ import { recordMarketplaceAcceptance, recordMarketplaceCompletion } from "./mark
 import { promotionQuote } from "./loyalty.js";
 import { orderMessageWindow } from "./order-messaging.js";
 import { prepareStripeOrderTransition } from "./payments/stripe-transitions.js";
+import { cancelUnsentOrderConfirmationAlert, defaultCustomerEtaMinutes, orderConfirmationDto, PAYABLE_ORDER_SQL, resolveConfirmationEta } from "./order-confirmation.js";
 
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
@@ -33,7 +34,7 @@ function deliveryFromRow(row) {
 export function restaurantDto(row, { privateDetails = false, now = new Date() } = {}) {
   const availability = restaurantAvailability(row, now);
   const profile = { description: row.description, cuisine: row.cuisine, phone: row.phone, address: row.address, collectionEnabled: Boolean(row.collection_enabled), cashEnabled: Boolean(row.cash_enabled), paused: Boolean(row.paused), busyMinutes: row.busy_minutes, estimatedDeliveryMinutes: row.estimated_delivery_minutes, estimatedCollectionMinutes: row.estimated_collection_minutes, openingHours: JSON.parse(row.opening_hours ?? "[]"), holidayDates: JSON.parse(row.holiday_dates ?? "[]"), alwaysOpen: Boolean(row.always_open) };
-  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, ...availability, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
+  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, ...(row.search_terms ? { searchTerms: row.search_terms } : {}), coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, ...availability, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
 }
 export function itemDto(row) {
   return { id: row.id, restaurantId: row.restaurant_id, name: row.name, description: row.description, priceMinor: row.price_minor, available: Boolean(row.available), category: row.category, allergens: JSON.parse(row.allergens ?? "[]"), dietaryTags: JSON.parse(row.dietary_tags ?? "[]"), modifierGroups: JSON.parse(row.modifier_groups ?? "[]"), sortOrder: row.sort_order ?? 0, photoUrl: row.photo_media_id ? `/api/media/${row.photo_media_id}` : null };
@@ -64,7 +65,8 @@ export function ledgerDto(row) {
 }
 function refundDto(row) { return { id: row.id, foodAmountMinor: row.food_amount_minor, deliveryAmountMinor: row.delivery_amount_minor, totalMinor: row.food_amount_minor + row.delivery_amount_minor, reason: row.reason, mode: row.mode, createdAt: row.created_at }; }
 export function orderDto(db, row, includeLedger = false, includeFinancial = true, config = null) {
-  const restaurantPhone = db.prepare("SELECT phone FROM restaurants WHERE id=?").get(row.restaurant_id)?.phone ?? "";
+  const restaurant = db.prepare("SELECT phone,estimated_delivery_minutes,estimated_collection_minutes,busy_minutes FROM restaurants WHERE id=?").get(row.restaurant_id);
+  const restaurantPhone = restaurant?.phone ?? "";
   const items = db.prepare("SELECT * FROM order_items WHERE order_id=? ORDER BY rowid").all(row.id).map((item) => ({ id: item.id, menuItemId: item.menu_item_id, name: item.name, basePriceMinor: item.base_price_minor, unitPriceMinor: item.unit_price_minor, quantity: item.quantity, lineTotalMinor: item.unit_price_minor * item.quantity, selectedModifiers: JSON.parse(item.selected_modifiers ?? "[]"), allergens: JSON.parse(item.allergens ?? "[]"), category: item.category, isOfferItem: Boolean(item.is_offer_item) }));
   const events = db.prepare("SELECT id,kind,from_status,to_status,created_at FROM order_events WHERE order_id=? ORDER BY created_at,rowid").all(row.id).map((event) => ({ id: event.id, kind: event.kind, fromStatus: event.from_status, toStatus: event.to_status, createdAt: event.created_at }));
   const refunds = db.prepare("SELECT * FROM refunds WHERE order_id=? ORDER BY created_at,rowid").all(row.id);
@@ -73,6 +75,7 @@ export function orderDto(db, row, includeLedger = false, includeFinancial = true
   const stripePayment=row.payment_method==="card"?db.prepare("SELECT * FROM stripe_order_payments WHERE order_id=?").get(row.id):null;
   const result = { id: row.id, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, customerId: row.customer_id, customerName: row.customer_name, customerEmail: row.customer_email, customerPhone: row.customer_phone, deliveryInstructions: row.delivery_instructions, allergyNotes: row.allergy_notes, status: row.status, estimatedReadyAt: row.estimated_ready_at ?? null, currency: row.currency, grossFoodMinor: row.gross_food_minor ?? row.subtotal_minor, restaurantDiscountMinor: row.restaurant_discount_minor ?? 0, subtotalMinor: row.subtotal_minor, deliveryFeeMinor: row.delivery_fee_minor, totalMinor: row.total_minor, deliveryAddress: row.delivery_address ? JSON.parse(row.delivery_address) : null, commissionMinor: row.commission_minor, contract: { rateBasisPoints: row.contract_rate_bps, commissionBase: row.commission_base ?? "food", policyVersion: row.contract_policy_version, demoOnly: Boolean(row.contract_demo_only) }, paymentMethod: row.payment_method, paymentStatus: row.payment_status,...(row.payment_method==="card"?{payment:{providerMode:stripePayment?.provider_mode??"unconfigured",status:stripePayment?.status??"pending",checkoutAvailable:row.status==="placed"&&["pending","unknown","failed"].includes(stripePayment?.status??"pending")}}:{}), fulfillment: row.fulfillment, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor: refundedFoodMinor + refundedDeliveryMinor, refunds: refunds.map(refundDto), ...(row.offer_snapshot ? { offer: JSON.parse(row.offer_snapshot) } : {}), ...(row.promotion_snapshot ? { promotion: JSON.parse(row.promotion_snapshot) } : {}), createdAt: row.created_at, updatedAt: row.updated_at, items, events };
   result.restaurantPhone = restaurantPhone;
+  Object.assign(result,orderConfirmationDto(row,restaurant,config?.now?.() ?? new Date()));
   if (config) Object.assign(result, orderMessageWindow(db, row, config));
   if (includeLedger) result.ledger = db.prepare("SELECT * FROM ledger_entries WHERE order_id=? ORDER BY created_at,rowid").all(row.id).map(ledgerDto);
   if (!includeFinancial) { delete result.commissionMinor; delete result.contract; }
@@ -116,10 +119,11 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     if (fulfillment && !["delivery", "collection"].includes(fulfillment)) throw new HttpError(400, "VALIDATION_ERROR", "Fulfillment filter is invalid");
     let outcode = null;
     if (postcode) { const compact = postcode.trim().toUpperCase().replace(/\s+/g, ""); const matchPostcode = compact.match(/^([A-Z]{1,2}\d[A-Z\d]?)(?:\d[A-Z]{2})?$/); if (!matchPostcode) throw new HttpError(400, "VALIDATION_ERROR", "Postcode is invalid"); outcode = matchPostcode[1]; }
-    const rows = db.prepare("SELECT * FROM restaurants WHERE status='approved' AND suspended=0 ORDER BY name").all().filter((row) => {
+    if ((q?.length || 0) > 100 || (cuisine?.length || 0) > 80) throw new HttpError(400, "VALIDATION_ERROR", "Search is too long");
+    const rows = db.prepare("SELECT r.*,COALESCE((SELECT group_concat(m.name||' '||m.category,' ') FROM menu_items m WHERE m.restaurant_id=r.id AND m.available=1),'') AS search_terms FROM restaurants r WHERE r.status='approved' AND r.suspended=0 ORDER BY r.name").all().filter((row) => {
       if (fulfillment === "delivery" && (!row.delivery_enabled || (outcode && !JSON.parse(row.delivery_outcodes).includes(outcode)))) return false;
       if (fulfillment === "collection" && !row.collection_enabled) return false;
-      if (q && !`${row.name} ${row.description} ${row.cuisine}`.toLowerCase().includes(q)) return false;
+      if (q && !`${row.name} ${row.description} ${row.cuisine} ${row.search_terms}`.toLowerCase().includes(q)) return false;
       if (cuisine && row.cuisine.toLowerCase() !== cuisine) return false;
       return true;
     });
@@ -228,11 +232,25 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     const user = requireRole(session, "customer");
     return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE customer_id=? ORDER BY created_at DESC").all(user.id).map((row) => orderDto(db, row, false, true, config)) });
   }
+  if (req.method === "GET" && url.pathname === "/api/restaurant/orders/pending-confirmation") {
+    const user=requireRole(session,"restaurant"),restaurantId=url.searchParams.get("restaurantId");
+    if(restaurantId)requireRestaurantMembership(db,session,restaurantId);
+    const where=`m.user_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}${restaurantId?" AND o.restaurant_id=?":""}`,parameters=restaurantId?[user.id,restaurantId]:[user.id];
+    const total=db.prepare(`SELECT COUNT(*) n FROM orders o JOIN restaurant_memberships m ON m.restaurant_id=o.restaurant_id WHERE ${where}`).get(...parameters).n;
+    const rows=db.prepare(`SELECT o.*,m.permission FROM orders o JOIN restaurant_memberships m ON m.restaurant_id=o.restaurant_id WHERE ${where} ORDER BY o.confirmation_due_at,o.id LIMIT 100`).all(...parameters);
+    return sendJson(res,200,{data:{items:rows.map(row=>orderDto(db,row,false,row.permission==="owner",config)),total,limit:100}});
+  }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/orders$/);
   if (match && req.method === "GET") {
     const member = requireRestaurantMembership(db, session, match[1]);
     const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(match[1], member.id).permission;
-    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed') ORDER BY created_at DESC").all(match[1]).map((row) => orderDto(db, row, permission === "owner", permission === "owner", config)) });
+    const status=url.searchParams.get("status")??"all",paged=url.searchParams.has("page")||url.searchParams.has("pageSize"),rawPage=url.searchParams.get("page")??"1",rawSize=url.searchParams.get("pageSize")??"25",page=Number(rawPage),pageSize=Number(rawSize);
+    if(!["all","placed","accepted","preparing","ready","out_for_delivery","completed","rejected"].includes(status)||!/^\d+$/.test(rawPage)||!/^\d+$/.test(rawSize)||!Number.isSafeInteger(page)||page<1||page>100000||pageSize<1||pageSize>100)throw new HttpError(400,"VALIDATION_ERROR","Order filters are invalid");
+    const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}`,parameters=status==="all"?[match[1]]:[match[1],status];
+    const rows=db.prepare(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC,id DESC${paged?" LIMIT ? OFFSET ?":""}`).all(...parameters,...(paged?[pageSize,(page-1)*pageSize]:[])).map(row=>orderDto(db,row,permission==="owner",permission==="owner",config));
+    if(!paged)return sendJson(res,200,{data:rows});
+    const total=db.prepare(`SELECT COUNT(*) n FROM orders WHERE ${where}`).get(...parameters).n;
+    return sendJson(res,200,{data:{items:rows,pagination:{page,pageSize,total,totalPages:Math.ceil(total/pageSize),hasNext:page*pageSize<total,hasPrevious:page>1}}});
   }
   if (req.method === "GET" && url.pathname === "/api/admin/orders") {
     requireRole(session, "admin");
@@ -372,13 +390,21 @@ async function createOrder({ req, res, db, config, session }) {
     else notifyNewOrder(db, order, now);
     return { order };
   });
-  const stored = outcome.replay ?? outcome.order;
+  const stored = db.prepare("SELECT * FROM orders WHERE id=?").get((outcome.replay ?? outcome.order).id);
   return sendJson(res, outcome.replay ? 200 : 201, { data: orderDto(db, stored, false, true, config) });
 }
 
 async function updateStatus({ req, res, db, config, session, id }) {
   const user = requireRole(session, "restaurant");
-  const body = await readJson(req, config.bodyLimit); exactObject(body, ["status"]);
+  const body = await readJson(req, config.bodyLimit); exactObject(body, ["status","estimatedReadyAt"]);
+  const initial=db.prepare("SELECT * FROM orders WHERE id=?").get(id),initialMembership=initial&&db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(initial.restaurant_id,user.id);
+  if(!initial||!initialMembership)throw new HttpError(404,"NOT_FOUND","Resource not found");
+  if(body.estimatedReadyAt!==undefined&&body.status!=="accepted")throw new HttpError(400,"VALIDATION_ERROR","Use the preparation endpoint to update an existing customer ETA");
+  if(body.status===initial.status)return sendJson(res,200,{data:orderDto(db,initial,initialMembership.permission==="owner",initialMembership.permission==="owner",config)});
+  const paths = initial.fulfillment === "delivery" ? { placed: ["accepted", "rejected"], accepted: ["preparing"], preparing: ["ready"], ready: ["out_for_delivery"], out_for_delivery: ["completed"] } : { placed: ["accepted", "rejected"], accepted: ["preparing"], preparing: ["ready"], ready: ["completed"] };
+  if(!paths[initial.status]?.includes(body.status))throw new HttpError(409,"INVALID_TRANSITION","Order status transition is not allowed");
+  // Reject malformed promises before a Stripe capture/cancellation can start. Nothing is promised on an unknown provider result.
+  const confirmationEta=body.status==="accepted"?resolveConfirmationEta(db,initial,body.estimatedReadyAt,config):null;
   let stripeTransition=null;
   const stripeOrder=db.prepare("SELECT * FROM orders WHERE id=? AND payment_method='card'").get(id);
   if(stripeOrder&&["accepted","rejected"].includes(body.status)){
@@ -393,7 +419,6 @@ async function updateStatus({ req, res, db, config, session, id }) {
     if(order.payment_method==="card"&&["accepted","rejected"].includes(body.status)&&!db.prepare("SELECT 1 FROM stripe_order_decisions WHERE order_id=? AND desired_status=? AND state='confirmed'").get(order.id,body.status))throw new HttpError(409,"ORDER_DECISION_NOT_CONFIRMED","Card payment decision is not confirmed");
     const totals = db.prepare("SELECT COUNT(*) count,COALESCE(SUM(food_amount_minor),0) AS food,COALESCE(SUM(delivery_amount_minor),0) AS delivery FROM refunds WHERE order_id=?").get(order.id);
     if (totals.count > 0 && totals.food === order.subtotal_minor && totals.delivery === order.delivery_fee_minor) throw new HttpError(409, "ORDER_FULLY_REFUNDED", "Fully refunded orders cannot advance");
-    const paths = order.fulfillment === "delivery" ? { placed: ["accepted", "rejected"], accepted: ["preparing"], preparing: ["ready"], ready: ["out_for_delivery"], out_for_delivery: ["completed"] } : { placed: ["accepted", "rejected"], accepted: ["preparing"], preparing: ["ready"], ready: ["completed"] };
     if (!paths[order.status]?.includes(body.status)) throw new HttpError(409, "INVALID_TRANSITION", "Order status transition is not allowed");
     if (order.status === "placed" && body.status === "accepted" && !db.prepare("SELECT 1 FROM restaurants WHERE id=? AND status='approved' AND suspended=0").get(order.restaurant_id)) throw new HttpError(409, "RESTAURANT_UNAVAILABLE", "Restaurant is not approved or is suspended");
     const now = config.now().toISOString();
@@ -407,11 +432,13 @@ async function updateStatus({ req, res, db, config, session, id }) {
     if (body.status === "rejected") paymentStatus = order.payment_method === "mock_card" ? "mock_cancelled" : "cash_cancelled";
     if(body.status==="rejected"&&order.payment_method==="card"){paymentStatus="stripe_cancelled";db.prepare("UPDATE stripe_order_payments SET status='cancelled',error=NULL,updated_at=? WHERE order_id=?").run(now,order.id);}
     if (body.status === "completed" && order.payment_method === "cash") paymentStatus = "cash_collected";
-    db.prepare("UPDATE orders SET status=?,payment_status=?,updated_at=? WHERE id=?").run(body.status, paymentStatus, now, order.id);
+    if(body.status==="accepted")db.prepare("UPDATE orders SET status=?,payment_status=?,estimated_ready_at=?,confirmed_at=COALESCE(confirmed_at,?),updated_at=? WHERE id=?").run(body.status,paymentStatus,confirmationEta,now,now,order.id);
+    else db.prepare("UPDATE orders SET status=?,payment_status=?,updated_at=? WHERE id=?").run(body.status, paymentStatus, now, order.id);
+    if(["accepted","rejected"].includes(body.status))cancelUnsentOrderConfirmationAlert(db,order.id,now);
     db.prepare("INSERT INTO order_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), order.id, user.id, "status_changed", order.status, body.status, now);
     if (body.status === "rejected") releaseOfferForOrder(db, order, now);
     if (body.status === "completed") redeemOfferForOrder(db, order, now);
-    notifyOrderStatus(db, order, body.status, now);
+    notifyOrderStatus(db, db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), body.status, now);
     if (body.status === "accepted") {
       const kind = order.payment_method === "mock_card" ? "commission_mock" : order.payment_method==="card"?"commission_stripe":"commission_cash_receivable";
       db.prepare("INSERT OR IGNORE INTO ledger_entries(id,order_id,restaurant_id,kind,amount_minor,currency,reference_type,reference_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(), order.id, order.restaurant_id, kind, order.commission_minor, order.currency, "order", order.id, now);

@@ -1,12 +1,12 @@
 {
-  "name": "Cal-Eats Restaurant Portal",
-  "short_name": "Cal-Eats Portal",
-  "description": "Local restaurant and marketplace operations portal.",
+  "name": "Cal-Eats Admin",
+  "short_name": "Cal-Eats Admin",
+  "description": "Manage your restaurant menu, customer messages, offers and cases.",
   "start_url": "/business/owner/dashboard",
   "scope": "/business/",
   "display": "standalone",
-  "background_color": "#07101f",
-  "theme_color": "#071b36",
+  "background_color": "#0E0E10",
+  "theme_color": "#0E0E10",
   "icons": [
     { "src": "/assets/calai-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "/assets/calai-icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
