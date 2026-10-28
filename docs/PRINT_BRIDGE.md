@@ -18,6 +18,8 @@ The business Printers page now shows auto-print state, pairing, recent bridge co
 
 On 28 October 2026, two focused regressions passed for browser/native confirmations, failed capture, duplicate confirmation, later states, disabled/revoked/other-restaurant exclusion, manual-reprint restrictions, heartbeat expiry, queue outcomes and secret-free owner summaries. No physical printer was contacted.
 
+A fresh 28 October local walkthrough also confirmed one fictional collection order through the actual business popup with a 20-minute ETA. Before confirmation the paired file-sink bridge had zero jobs; after confirmation it processed exactly one original at attempt 1 and produced receipt text, ESC/POS bytes and explicitly simulated metadata. The API acknowledgement and bridge journal both completed, with zero reprints or duplicates. This is local simulator evidence, not physical paper or a tablet installation.
+
 ## Existing Intune reference
 
 The requested chat, **Explain computer access**, records the original **Calai Tablets - Print Bridge Source File** policy, with per-tablet IP/MAC configuration. Its managed script copies the supplied original `print-bridge.js` into `C:\ProgramData\CalaiPrintBridge`, verifies its hash and clears the old shared configuration; it does not itself start or prove a working printer. A live read-only Intune inspection on 28 October confirmed the policy is assigned to two groups and reports two successful device executions, zero errors. These are script-execution results, not proof of paper output or of a Cal-Eats connection.

@@ -31,7 +31,7 @@ export function caseEvidencePath(caseId: string, evidence: { id: string; url: st
 }
 
 export type NativeUser = { id: string; name: string; email: string; role: "restaurant" | "admin" | "customer" };
-export type Restaurant = { id: string; name: string; status: string; permission?: "owner" | "staff" };
+export type Restaurant = { id: string; name: string; status: string; suspended?: boolean; permission?: "owner" | "staff" };
 export type Option = { id: string; name: string; priceMinor: number; available: boolean };
 export type Modifier = { id: string; name: string; minSelections: number; maxSelections: number; options: Option[] };
 export type MenuItem = { id: string; name: string; description: string; category: string; priceMinor: number; available: boolean; photoUrl?: string | null; allergens: string[]; dietaryTags: string[]; modifierGroups: Modifier[] };

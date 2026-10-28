@@ -108,14 +108,37 @@ function Login() {
 }
 
 function OwnerBootstrap() {
-  const { user } = React.useContext(SessionContext); const result = useLoad(() => api("/api/restaurant/restaurants"), [user.id]);
-  const restaurants = listItems(result.value); const [selected, setSelected] = useState("");
-  useEffect(() => { if (!selected && restaurants[0]) setSelected(restaurants[0].id); }, [restaurants, selected]);
+  const { user } = React.useContext(SessionContext);
+  return <OwnerRestaurantWorkspace key={user.id} user={user}/>;
+}
+
+function OwnerRestaurantWorkspace({ user }) {
+  const result = useLoad(() => api("/api/restaurant/restaurants"), [user.id]);
+  const storageKey = `cal-eats:business:last-restaurant:${user.id}`;
+  const restaurants = listItems(result.value);
+  const [selected, setSelectedId] = useState(() => {
+    try { return window.localStorage.getItem(storageKey) || ""; } catch { return ""; }
+  });
+  const fallback = restaurants.find(item => (item.approvalStatus || item.status) === "approved" && !item.suspended && !item.paused && !item.profile?.paused) || restaurants[0];
+  const restaurant = restaurants.find(item => item.id === selected) || fallback;
+  useEffect(() => {
+    if (result.loading || result.error) return;
+    if (restaurant && selected !== restaurant.id) setSelectedId(restaurant.id);
+    try {
+      if (restaurant) window.localStorage.setItem(storageKey, restaurant.id);
+      else window.localStorage.removeItem(storageKey);
+    } catch { /* The workspace also works when browser storage is unavailable. */ }
+  }, [restaurant?.id, selected, storageKey, result.loading, result.error]);
+  const setSelected = useCallback(id => {
+    const authorized = restaurants.find(item => item.id === id);
+    if (!authorized) return;
+    setSelectedId(authorized.id);
+    try { window.localStorage.setItem(storageKey, authorized.id); } catch { /* Keep the current in-memory selection. */ }
+  }, [restaurants, storageKey]);
   if (!["restaurant", "owner", "staff"].includes(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
   if (result.loading) return <PageState text="Loading restaurant workspace…"/>;
   if (result.error) return <PageState error={result.error} retry={result.reload}/>;
   if (!restaurants.length) return <PageState text="No restaurant membership is available for this account."/>;
-  const restaurant = restaurants.find((r) => r.id === selected) || restaurants[0];
   const permission = restaurant.permission || restaurant.membershipPermission || "owner";
   return <RestaurantContext.Provider value={{ restaurant, restaurants, setSelected, permission, refreshRestaurants:result.reload }}><Outlet /></RestaurantContext.Provider>;
 }

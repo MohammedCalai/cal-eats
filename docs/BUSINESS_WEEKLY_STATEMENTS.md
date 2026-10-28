@@ -16,6 +16,8 @@ CSV content is attached when it is at most 1 MiB. Larger snapshots include a sam
 
 `CALAI_BUSINESS_STATEMENTS_SEND_ENABLED` defaults to false. Statements therefore use the existing private local `.eml` preview adapter, under its `business-statements` subdirectory, even when another mail transport is configured. Enabling external statement sending additionally requires the existing Cal-Eats service-mail transport to be configured. No external email was sent while implementing or testing this feature. The hosted preview's service-mail connection remains a separate deployment step.
 
+The owner has now separately approved connecting the existing send-only mailbox to the Cal-Eats Railway preview and enabling hosted weekly delivery. Its encrypted sign-in is on private persistent storage and its key is a separate hosting secret. The local fixture remains in preview mode. The first scheduled hosted statement is 2 November 2026 at 09:00 UK time; activation does not send past weeks immediately.
+
 The existing fixed sender is reused; no inbox permission, arbitrary attachment file/URL access, new mail credential or new sign-in grant is added. CSV attachments are bounded and allow-listed for the local, SMTP and Microsoft Graph transports. Sending success means provider acceptance, not inbox confirmation. A stable Message-ID and durable lease record prevent routine duplicate dispatch. If a worker loses its lease after dispatch begins, the outcome becomes `unknown` and is not blindly resent.
 
 Local preview emails are not upgraded and resent when external delivery is later enabled. New statements use the newly selected delivery mode; pending rows whose mode no longer matches are canceled.
