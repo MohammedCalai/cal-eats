@@ -15,11 +15,15 @@
       "bundleIdentifier": "info.calai.caleatsadmin",
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "1"
     },
     "android": {
       "package": "info.calai.caleatsadmin",
-      "permissions": []
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       [
@@ -45,6 +49,15 @@
           "enableBackgroundPlayback": false
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6282b87e-36ae-43bb-80b7-12d69108a411"
+      }
+    },
+    "owner": "yankee1707",
+    "icon": "./assets/app-icon.png",
+    "backgroundColor": "#121212",
+    "primaryColor": "#2865E9"
   }
 }

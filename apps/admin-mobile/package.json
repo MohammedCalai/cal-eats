@@ -7,7 +7,9 @@
   "scripts": {
     "start": "expo start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "store:check": "node scripts/store-preflight.mjs",
+    "eas-build-post-install": "node scripts/store-preflight.mjs"
   },
   "dependencies": {
     "expo": "57.0.31",

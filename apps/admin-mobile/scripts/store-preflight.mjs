@@ -1,0 +1,20 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const { expo } = JSON.parse(fs.readFileSync(path.join(root, "app.json"), "utf8"));
+const eas = JSON.parse(fs.readFileSync(path.join(root, "eas.json"), "utf8"));
+const checks = [];
+const check = (name, passed) => checks.push({ name, passed: Boolean(passed) });
+check("Separate approved Admin Expo project", expo.owner === "yankee1707" && expo.extra?.eas?.projectId === "6282b87e-36ae-43bb-80b7-12d69108a411");
+check("Independent Admin native identifiers", expo.ios.bundleIdentifier === "info.calai.caleatsadmin" && expo.android.package === "info.calai.caleatsadmin");
+check("Version and build metadata", /^\d+\.\d+\.\d+$/.test(expo.version) && Number(expo.ios.buildNumber) > 0 && expo.android.versionCode > 0);
+const icon = fs.readFileSync(path.resolve(root, expo.icon));
+check("Square store icon of at least 1024 pixels", icon.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) && icon.readUInt32BE(16) === icon.readUInt32BE(20) && icon.readUInt32BE(16) >= 1024);
+const store = eas.build["store-test"];
+check("Store-test targets real iOS devices", store.distribution === "store" && store.ios.simulator === false && store.autoIncrement === true && eas.cli.appVersionSource === "remote");
+check("Store-test uses the separate Cal-Eats preview", store.env.EXPO_PUBLIC_API_BASE_URL === "https://eats.calai.info" && store.env.CAL_EATS_STORE_DISTRIBUTION === "testing" && store.env.CAL_EATS_PUBLIC_RELEASE_BUILD === "false");
+check("Public production distribution remains disabled", !eas.build.production && process.env.CAL_EATS_PUBLIC_RELEASE_BUILD !== "true" && process.env.EAS_BUILD_PROFILE !== "production" && !process.argv.includes("--production"));
+console.log(JSON.stringify({ scope: "admin-test-build-configuration", checks, publicReleaseReady: false, limitations: ["Static configuration checks do not prove native compilation, signing, physical-device behavior or TestFlight approval.", "Apple developer access, signing and a separate App Store Connect app record remain required.", "Foreground alerts do not provide background push notifications."] }, null, 2));
+if (checks.some(row => !row.passed)) process.exitCode = 1;
