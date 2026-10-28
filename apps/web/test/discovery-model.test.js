@@ -9,4 +9,5 @@ test("offer shelves exclude expired, future and redeemed personalised offers",()
  assert.equal(availableDiscoveryOffer("one",[offer],now).id,"available");
  for(const change of [{status:"redeemed"},{startsAt:"2026-10-30T12:00Z"},{expiresAt:"2026-10-28T12:00Z"},{expiresAt:"invalid"}])assert.equal(availableDiscoveryOffer("one",[{...offer,...change}],now),null);
  assert.deepEqual(discoveryCollections([{id:"one"},{id:"two"}],[offer],"delivery",now).deals.map(r=>r.id),["one"]);assert.equal(cuisineIcon("Japanese"),"🍣");
+  for(const cuisine of ["constructor","__proto__","New cuisine"])assert.equal(cuisineIcon(cuisine),"🍽️");
 });

@@ -11,5 +11,6 @@ export function discoveryCollections(restaurants,offers=[],fulfillment="delivery
 }
 export function cuisineIcon(cuisine="") {
   const name=cuisine.toLowerCase();
-  return ({indian:"🍛",italian:"🍕",japanese:"🍣",chinese:"🥡",thai:"🍜",turkish:"🥙",american:"🍔",british:"🐟",caribbean:"🍗",greek:"🥗",lebanese:"🧆",mexican:"🌮",korean:"🍲",vietnamese:"🍜",malaysian:"🍚",nigerian:"🍛",ethiopian:"🥘",persian:"🍢",spanish:"🥘",vegan:"🥑"})[name]||"🍽️";
+  const icons={indian:"🍛",italian:"🍕",japanese:"🍣",chinese:"🥡",thai:"🍜",turkish:"🥙",american:"🍔",british:"🐟",caribbean:"🍗",greek:"🥗",lebanese:"🧆",mexican:"🌮",korean:"🍲",vietnamese:"🍜",malaysian:"🍚",nigerian:"🍛",ethiopian:"🥘",persian:"🍢",spanish:"🥘",vegan:"🥑"};
+  return Object.prototype.hasOwnProperty.call(icons,name)?icons[name]:"🍽️";
 }
