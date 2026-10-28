@@ -45,6 +45,10 @@ export function messageEncryptionKey(config) {
 }
 
 const aad = (meta) => Buffer.from([meta.id, meta.orderId, meta.senderUserId, meta.createdAt, meta.expiresAt, meta.keyVersion].join("|"));
+export function messageEncryptionReadiness(config) {
+  try { const {version}=messageEncryptionKey(config);return {configured:true,keyVersion:version}; }
+  catch { return {configured:false,keyVersion:null}; }
+}
 
 export async function encryptMessage(config, plaintext, meta) {
   const { createCipheriv } = await import("node:crypto");

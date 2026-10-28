@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { requireUser, requireRole, requireRestaurantMembership } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
-import { encryptMessage, decryptMessage, messageFingerprint } from "./message-encryption.js";
+import { encryptMessage, decryptMessage, messageFingerprint, messageEncryptionReadiness } from "./message-encryption.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
 
 const text = (value, min, max, label) => {
@@ -79,7 +79,8 @@ async function detail(db, config, session, caseId, url) {
   const rows = before ? db.prepare("SELECT * FROM support_case_messages WHERE case_id=? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT ?").all(row.id, before, before, beforeId, limit + 1)
     : db.prepare("SELECT * FROM support_case_messages WHERE case_id=? ORDER BY created_at DESC,id DESC LIMIT ?").all(row.id, limit + 1);
   const hasMore = rows.length > limit, selected = rows.slice(0, limit), oldest = selected.at(-1);
-  return { ...supportSummary(row), isTeam, canReply: true, currentUserId: user.id, messages: await Promise.all(selected.reverse().map(item => messageDto(config, item))), nextCursor: hasMore ? { before: oldest.created_at, beforeId: oldest.id } : null };
+  const encryption=messageEncryptionReadiness(config);
+  return { ...supportSummary(row), isTeam, canReply: encryption.configured, replyUnavailableReason:encryption.configured?null:"Replies are temporarily unavailable. Your original request is saved; please try again when messaging is restored.", currentUserId: user.id, messages: encryption.configured?await Promise.all(selected.reverse().map(item => messageDto(config, item))):[], nextCursor: hasMore ? { before: oldest.created_at, beforeId: oldest.id } : null };
 }
 export async function routeSupportCases({ req, res, url, db, config, session }) {
   const ownList = url.pathname === "/api/support", adminList = url.pathname === "/api/admin/support";
