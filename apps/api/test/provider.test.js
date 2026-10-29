@@ -6,6 +6,54 @@ import { createStripeAdapter, createStripeTestAdapter, parseStripeWebhook, STRIP
 const KEY = "sk_test_unit_only_not_a_real_key";
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+test("Stripe hosted Checkout preserves its provider fragment on create and retrieval", async () => {
+  const checkoutUrl = "https://checkout.stripe.com/c/pay/cs_test_fragment#fidkdWxOYHwnPyd1blpxYHZxWjA0";
+  const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async () => jsonResponse({
+    id: "cs_test_fragment", object: "checkout.session", livemode: false,
+    status: "open", amount_total: 1200, currency: "gbp", url: checkoutUrl,
+    metadata: { order_id: "order-1", restaurant_id: "restaurant-1" },
+  }) });
+  const created = await adapter.createCheckoutSession({ orderId: "order-1", restaurantId: "restaurant-1", amountMinor: 1200,
+    transferGroup: "order:order-1", successUrl: "https://eats.example.test/order/?success=1",
+    cancelUrl: "https://eats.example.test/order/?cancelled=1", idempotencyKey: "checkout-fragment-1" });
+  assert.equal(created.checkoutUrl, checkoutUrl);
+  assert.equal(created.url, checkoutUrl);
+  const retrieved = await adapter.retrieveCheckoutSession({ sessionId: created.providerReference });
+  assert.equal(retrieved.checkoutUrl, checkoutUrl);
+  assert.equal(retrieved.amountMinor, 1200);
+  assert.equal(retrieved.orderId, "order-1");
+});
+
+test("provider Checkout URLs reject hostile origins, credentials and nondefault ports", async () => {
+  for (const url of [
+    "http://checkout.stripe.com/c/pay/cs_test_hostile#fragment",
+    "https://checkout.stripe.com.attacker.invalid/c/pay/cs_test_hostile#fragment",
+    "https://checkout.stripe.com@attacker.invalid/c/pay/cs_test_hostile#fragment",
+    "https://attacker.invalid@checkout.stripe.com/c/pay/cs_test_hostile#fragment",
+    "https://user:password@checkout.stripe.com/c/pay/cs_test_hostile#fragment",
+    "https://checkout.stripe.com:8443/c/pay/cs_test_hostile#fragment",
+    "https://checkout.stripe.com./c/pay/cs_test_hostile#fragment",
+  ]) {
+    const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async () => jsonResponse({
+      id: "cs_test_hostile", object: "checkout.session", livemode: false, status: "open", url,
+    }) });
+    await assert.rejects(adapter.retrieveCheckoutSession({ sessionId: "cs_test_hostile" }), /Checkout URL must use/);
+  }
+});
+
+test("allowing a Stripe Checkout fragment does not loosen customer return URL validation", async () => {
+  let requests = 0;
+  const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async () => { requests++; throw Error("unexpected request"); } });
+  const input = { orderId: "order-1", restaurantId: "restaurant-1", amountMinor: 1200, transferGroup: "order:order-1",
+    successUrl: "https://eats.example.test/order/", cancelUrl: "https://eats.example.test/order/", idempotencyKey: "checkout-return-1" };
+  for (const property of ["successUrl", "cancelUrl"]) {
+    for (const value of ["https://eats.example.test/order/#fragment", "https://user@eats.example.test/order/", "http://eats.example.test/order/"]) {
+      await assert.rejects(adapter.createCheckoutSession({ ...input, [property]: value }), /HTTPS without credentials or fragment/);
+    }
+  }
+  assert.equal(requests, 0);
+});
+
 test("configuration is test-only and rejects live or custom production transport", () => {
   assert.throws(() => createStripeTestAdapter({ secretKey: "sk_live_forbidden" }), StripeTestConfigurationError);
   assert.throws(() => createStripeTestAdapter({ secretKey: KEY, mode: "live" }), /non-test/);
@@ -17,7 +65,7 @@ test("generic adapter requires matching mode keys and an explicit live gate",()=
 
 test("platform identity is normalized without exposing credentials",async()=>{const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"acct_platform123",country:"GB",charges_enabled:true,payouts_enabled:false})});const account=await adapter.retrievePlatformAccount();assert.equal(account.accountId,"acct_platform123");assert.equal(account.mode,"stripe_test");assert.equal(account.chargesEnabled,true);assert.equal(account.payoutsEnabled,false);assert.ok(!JSON.stringify(account).includes(KEY));});
 
-test("hosted checkout uses manual capture and retrieval normalizes expanded payment details",async()=>{const calls=[],responses=[jsonResponse({id:"cs_test123",livemode:false,status:"open",payment_status:"unpaid",url:"https://checkout.stripe.test/session",expires_at:1_800_000_000}),jsonResponse({id:"cs_test123",livemode:false,status:"complete",payment_status:"paid",url:null,payment_intent:{id:"pi_test123",status:"requires_capture",latest_charge:{id:"ch_test123",balance_transaction:{fee:41,available_on:1_800_000_100}}}})];const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(url,init)=>{calls.push({url:String(url),init});return responses.shift();}});const created=await adapter.createCheckoutSession({orderId:"order-1",amountMinor:1200,restaurantId:"restaurant-1",successUrl:"https://example.test/success",cancelUrl:"https://example.test/cancel",transferGroup:"order-1",idempotencyKey:"checkout-order-1"});assert.equal(created.providerReference,"cs_test123");assert.equal(created.checkoutUrl,"https://checkout.stripe.test/session");assert.match(String(calls[0].init.body),/payment_intent_data%5Bcapture_method%5D=manual/);const retrieved=await adapter.retrieveCheckoutSession({sessionId:"cs_test123"});assert.equal(retrieved.paymentState,"authorized");assert.equal(retrieved.paymentIntentId,"pi_test123");assert.equal(retrieved.latestChargeId,"ch_test123");assert.equal(retrieved.providerCostMinor,41);assert.match(calls[1].url,/expand%5B%5D=payment_intent.latest_charge.balance_transaction/);});
+test("hosted checkout uses manual capture and retrieval normalizes expanded payment details",async()=>{const calls=[],responses=[jsonResponse({id:"cs_test123",livemode:false,status:"open",payment_status:"unpaid",url:"https://checkout.stripe.com/session",expires_at:1_800_000_000}),jsonResponse({id:"cs_test123",livemode:false,status:"complete",payment_status:"paid",url:null,payment_intent:{id:"pi_test123",status:"requires_capture",latest_charge:{id:"ch_test123",balance_transaction:{fee:41,available_on:1_800_000_100}}}})];const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(url,init)=>{calls.push({url:String(url),init});return responses.shift();}});const created=await adapter.createCheckoutSession({orderId:"order-1",amountMinor:1200,restaurantId:"restaurant-1",successUrl:"https://example.test/success",cancelUrl:"https://example.test/cancel",transferGroup:"order-1",idempotencyKey:"checkout-order-1"});assert.equal(created.providerReference,"cs_test123");assert.equal(created.checkoutUrl,"https://checkout.stripe.com/session");assert.match(String(calls[0].init.body),/payment_intent_data%5Bcapture_method%5D=manual/);const retrieved=await adapter.retrieveCheckoutSession({sessionId:"cs_test123"});assert.equal(retrieved.paymentState,"authorized");assert.equal(retrieved.paymentIntentId,"pi_test123");assert.equal(retrieved.latestChargeId,"ch_test123");assert.equal(retrieved.providerCostMinor,41);assert.match(calls[1].url,/expand%5B%5D=payment_intent.latest_charge.balance_transaction/);});
 
 test("checkout retrieval exposes immutable amount currency tenant and capture metadata",async()=>{const adapter=createStripeAdapter({secretKey:KEY,mode:"test",allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async()=>jsonResponse({id:"cs_testmeta",livemode:false,status:"complete",payment_status:"paid",amount_total:1200,currency:"gbp",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"},payment_intent:{id:"pi_testmeta",status:"requires_capture",capture_method:"manual",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"},latest_charge:null}})});const result=await adapter.retrieveCheckoutSession({sessionId:"cs_testmeta"});assert.equal(result.amountMinor,1200);assert.equal(result.currency,"GBP");assert.equal(result.orderId,"order-1");assert.equal(result.restaurantId,"restaurant-1");assert.equal(result.captureMethod,"manual");assert.equal(result.paymentIntentId,"pi_testmeta");});
 
