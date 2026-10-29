@@ -106,13 +106,16 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
   if (req.method !== "GET" || !match) return false;
   const restaurantId = match[1], user = requireRestaurantMembership(db, session, restaurantId);
   const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id).permission, owner = permission === "owner";
+  const view = url.searchParams.get("view") ?? "full";
+  if (!["full", "operations"].includes(view)) throw new HttpError(400, "VALIDATION_ERROR", "Dashboard view is invalid");
+  const includeFinance = owner && view === "full";
   const now = config.now(), range = dashboardRange(url.searchParams.get("period") ?? "today", now), page = pageValue(url.searchParams.get("page"), 1, 1000000), pageSize = pageValue(url.searchParams.get("pageSize"), 20, 100);
   const summary = db.prepare(`SELECT COUNT(*) AS ordersPlaced,COALESCE(SUM(CASE WHEN ${recognized()} THEN 1 ELSE 0 END),0) AS confirmedOrders,COALESCE(SUM(CASE WHEN o.status='completed' THEN 1 ELSE 0 END),0) AS completedOrders,COALESCE(SUM(CASE WHEN o.status IN ('rejected','cancelled','expired') THEN 1 ELSE 0 END),0) AS cancelledOrders FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?`).get(restaurantId, range.from, range.toExclusive);
   const topItems = db.prepare(`SELECT i.name,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()} GROUP BY i.name ORDER BY quantity DESC,i.name LIMIT 5`).all(restaurantId, range.from, range.toExclusive);
   let finance = null;
-  if (owner) {
+  if (includeFinance) {
     const balance = buildFinanceSummary(db, restaurantId);
     finance = { period: periodFinance(db, restaurantId, range), balance: { basis: "all_time", availableMinor: balance.availableMinor, pendingMinor: balance.pendingMinor, heldMinor: balance.heldMinor, bankPaidMinor: balance.bankPaidMinor, bankPendingMinor: balance.bankPendingMinor, nextPayout: balance.nextPayout, providerMode: balance.providerMode, cashCommissionOutstandingMinor: balance.cashCommissionOutstandingMinor } };
   }
-  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString()), finance, ...(owner ? dashboardInsights(db,restaurantId,range,now.toISOString()) : {}), topItems, orders: orderRows(db, restaurantId, range, owner, page, pageSize) } });
+  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString()), finance, ...(includeFinance ? dashboardInsights(db,restaurantId,range,now.toISOString()) : {}), topItems, orders: orderRows(db, restaurantId, range, includeFinance, page, pageSize) } });
 }

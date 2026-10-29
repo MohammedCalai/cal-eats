@@ -83,6 +83,11 @@ test("business dashboard scopes periods, roles, earnings, messages and transfer 
     assert.equal((await f.json(`${root}/dashboard`, { cookie: customer })).status, 403);
     assert.equal((await f.json(`${root}/dashboard?period=unknown`, { cookie: owner })).status, 400);
     assert.equal((await f.json(`${root}/dashboard?pageSize=1000`, { cookie: owner })).status, 400);
+    const operational = (await f.json(`${root}/dashboard?view=operations`, { cookie: owner })).body.data;
+    assert.equal(operational.permission, "owner"); assert.equal(operational.finance, null);
+    assert.equal("comparison" in operational, false); assert.equal("marketing" in operational, false);
+    assert.equal("totalMinor" in operational.orders.items[0], false);
+    assert.equal(operational.operations.liveOrders, 2);
     const staffCreated = await f.json(`${root}/staff`, { method: "POST", cookie: owner, body: { name: "Dashboard staff", email: "dashboard-staff@example.invalid", password: "DashboardStaff!4310" } });
     assert.equal(staffCreated.status, 201, staffCreated.text);
     const staff = await f.login("dashboard-staff@example.invalid", "DashboardStaff!4310");
