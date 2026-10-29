@@ -1,3 +1,4 @@
+import "./BusinessMenu.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { api } from "./api.js";
@@ -5,8 +6,9 @@ import { pounds, shortDate } from "./model.js";
 import { connectLiveNotifications } from "../../web/live-notifications.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import "./OwnerDashboard.css";
+import LiveOrders from "./LiveOrders.jsx";
 
-const periods = [["today", "Today"], ["yesterday", "Yesterday"], ["this_week", "This week"], ["last_week", "Last week"]];
+const periods = [["yesterday", "Yesterday"], ["today", "Today"], ["this_week", "This week"], ["last_week", "Last week"]];
 const readable = value => ({ placed: "Awaiting confirmation", accepted: "Confirmed", preparing: "Preparing", ready: "Ready", out_for_delivery: "Out for delivery", completed: "Completed", rejected: "Rejected", cancelled: "Cancelled", mock_card: "Test card", card: "Card", cash: "Cash" })[value] || String(value || "—").replaceAll("_", " ");
 
 function Metric({ label, value, hint, accent = false }) {
@@ -49,9 +51,10 @@ export default function OwnerDashboard({ restaurant, permission }) {
   useEffect(() => {
     const reload = () => { if (!document.hidden) return refresh.current(); };
     const disconnect = connectLiveNotifications({ onRefresh: reload });
+    const timer = window.setInterval(reload, 5000);
     window.addEventListener("focus", reload);
     window.addEventListener("cal-eats-orders-updated", reload);
-    return () => { disconnect(); window.removeEventListener("focus", reload); window.removeEventListener("cal-eats-orders-updated", reload); };
+    return () => { disconnect(); window.clearInterval(timer); window.removeEventListener("focus", reload); window.removeEventListener("cal-eats-orders-updated", reload); };
   }, [restaurant.id]);
   const data = result.data, isOwner = permission === "owner", finance = isOwner ? data?.finance : null;
   const summary = data?.summary || {}, operations = data?.operations || {}, items = data?.orders?.items || [], pagination = data?.orders?.pagination;
@@ -60,19 +63,17 @@ export default function OwnerDashboard({ restaurant, permission }) {
   const status = restaurant.paused ? "Orders paused" : restaurant.approvalStatus || restaurant.status || "Pending approval";
   function selectPeriod(next) { if (next !== period) { setPeriod(next); setPage(1); } }
   return <div className="business-dashboard">
-    <header className="page-heading dashboard-heading"><div><p className="eyebrow">Cal-Eats Business</p><h1>Your restaurant, at a glance</h1><p>{restaurant.name} · <span className="dashboard-restaurant-status">{readable(status)}</span></p></div><button className="quiet" disabled={result.loading} onClick={() => void result.reload()}>{result.loading && data ? "Refreshing…" : "Refresh"}</button></header>
+    <header className="page-heading dashboard-heading"><div><p className="eyebrow">Cal-Eats Business</p><h1>Overview</h1><p>{restaurant.name} · <span className="dashboard-restaurant-status">{readable(status)}</span></p></div><button className="quiet" disabled={result.loading} onClick={() => void result.reload()}>{result.loading && data ? "Refreshing…" : "Refresh"}</button></header>
+    <LiveOrders operations={data?.operations} unavailable={Boolean(result.error)} generatedAt={data?.generatedAt}/>
     <div className="dashboard-period-toolbar"><div className="dashboard-periods" role="group" aria-label="Dashboard period">{periods.map(([value, label]) => <button key={value} aria-pressed={period === value} className={period === value ? "dashboard-period selected" : "dashboard-period"} onClick={() => selectPeriod(value)}>{label}</button>)}</div><p>{data?.range ? `${data.range.fromDate} – ${data.range.toDate}` : selectedLabel}<small>London time · weeks start Monday</small></p></div>
-    {mode && mode !== "stripe_live" && <p className="dashboard-test-note">{mode === "stripe_test" ? "Stripe test mode" : mode === "mixed" ? "Mixed payment environments" : "Preview payments"} · Test transactions and simulated balances are not real charges or bank payouts.</p>}
+    {mode && mode !== "stripe_live" && <p className="dashboard-test-note">{mode === "stripe_test" ? "Stripe test mode" : mode === "mixed" ? "Mixed payment environments" : "Preview payments"} · Test payments · no real charges or bank payouts.</p>}
     {result.error && <div className="alert" role="alert">Dashboard could not be refreshed: {result.error} <button className="quiet" onClick={() => void result.reload()}>Try again</button></div>}
     {!data ? <section className="panel" role="status">{result.loading ? "Loading your restaurant dashboard…" : "Your dashboard is unavailable. Use Refresh to try again."}</section> : <div aria-busy={result.loading}>
       <section aria-label={`${selectedLabel} overview`}>
-        <div className="dashboard-metrics">
-          <Metric label="Orders placed" value={summary.ordersPlaced || 0} hint={`${summary.confirmedOrders || 0} confirmed · ${summary.cancelledOrders || 0} cancelled`}/>
-          <Metric label="Completed orders" value={summary.completedOrders || 0} hint="Orders placed in this period"/>
-          {finance && <><Metric label="Sales" value={pounds(finance.period.grossSalesMinor)} hint="Confirmed orders, before refunds"/><Metric label="Restaurant earnings" value={pounds(finance.period.netEarningsMinor)} hint="After refunds and commission" accent/></>}
-        </div>
+        <div className="dashboard-hero-grid">{finance&&<article className="dashboard-hero-card"><span>Total sales</span><strong>{pounds(finance.period.grossSalesMinor)}</strong><Growth value={data.comparison?.salesChangePercent}/><footer><small>Net earnings</small><b>{pounds(finance.period.netEarningsMinor)}</b></footer></article>}<article className="dashboard-hero-card"><span>Orders placed</span><strong>{summary.ordersPlaced||0}</strong><Growth value={data.comparison?.ordersChangePercent}/><footer><small>{finance?"Average confirmed order":"Confirmed orders"}</small><b>{finance?pounds(finance.period.averageOrderMinor):summary.confirmedOrders||0}</b></footer></article></div>{data.comparison&&<p className="dashboard-comparison">Compared with {data.comparison.fromDate} – {data.comparison.toDate} · the same period last week</p>}
         <p className="dashboard-caption">Figures follow orders placed in the selected period. Earnings use their current payment and refund state.{data.generatedAt ? ` Updated ${shortDate(data.generatedAt)}.` : ""}</p>
       </section>
+      {data.marketing&&finance&&<section className="panel"><div className="dashboard-section-heading"><h2>Marketing overview</h2><NavLink to="/owner/offers" className="button-link">Manage offers</NavLink></div><div className="dashboard-marketing-grid"><div><small>Sales from offer orders</small><strong>{pounds(data.marketing.offerSalesMinor)}</strong><small>Confirmed orders before refunds</small></div><div><small>Active customer offers</small><strong>{data.marketing.activeOffers}</strong></div><div><small>Orders using offers</small><strong>{data.marketing.offerOrders}</strong></div><div><small>Food discounts</small><strong>{pounds(data.marketing.discountMinor)}</strong><small>Excludes unknown ingredient costs</small></div></div></section>}
       <section className="panel dashboard-operations" aria-labelledby="dashboard-operations-title"><div className="dashboard-section-heading"><div><p className="eyebrow">Live operations · all dates</p><h2 id="dashboard-operations-title">What needs attention</h2></div><NavLink to="/owner/orders" className="button-link">Open orders</NavLink></div><div className="dashboard-task-grid">
         <NavLink to="/owner/orders" className={`dashboard-task${operations.overdueConfirmation ? " urgent" : ""}`}><span>Awaiting confirmation</span><strong>{operations.pendingConfirmation || 0}</strong><small>{operations.overdueConfirmation ? `${operations.overdueConfirmation} over the three-minute deadline` : "Review and confirm new orders"}</small></NavLink>
         <NavLink to="/owner/orders" className="dashboard-task"><span>Active orders</span><strong>{operations.activeOrders || 0}</strong><small>Keep preparation and delivery up to date</small></NavLink>
@@ -85,3 +86,5 @@ export default function OwnerDashboard({ restaurant, permission }) {
     </div>}
   </div>;
 }
+
+function Growth({value}){if(value===undefined)return null;return <small className={value!==null&&value<0?"negative":"positive"}>{value===null?"New":`${value>0?"↑ ":value<0?"↓ ":""}${Math.abs(value)}%`}</small>;}

@@ -67,7 +67,7 @@ test("business dashboard scopes periods, roles, earnings, messages and transfer 
     assert.equal(data.finance.period.cashCollectedMinor, cash.totalMinor);
     assert.equal(data.finance.period.cardSalesMinor, card.totalMinor + stripe.totalMinor);
     assert.equal(data.finance.balance.basis, "all_time"); assert.equal(data.finance.balance.bankPaidMinor, 0);
-    assert.deepEqual(data.operations, { pendingConfirmation: 1, overdueConfirmation: 1, activeOrders: 2, unreadMessages: 1, openRefundCases: 1 });
+    assert.deepEqual(data.operations, { pendingConfirmation: 1, overdueConfirmation: 1, activeOrders: 2, liveOrders: 2, confirmedInKitchen: 1, readyForHandover: 0, unreadMessages: 1, openRefundCases: 1 });
     assert.equal(data.orders.items.length, 2); assert.equal(data.orders.pagination.total, 4); assert.equal(data.orders.pagination.totalPages, 2);
     const second = (await f.json(`${root}/dashboard?period=today&page=2&pageSize=2`, { cookie: owner })).body.data;
     assert.ok(data.orders.items.every(row => !second.orders.items.some(other => row.id === other.id)));
@@ -88,6 +88,7 @@ test("business dashboard scopes periods, roles, earnings, messages and transfer 
     const staff = await f.login("dashboard-staff@example.invalid", "DashboardStaff!4310");
     const staffView = (await f.json(`${root}/dashboard`, { cookie: staff })).body.data;
     assert.equal(staffView.finance, null); assert.equal(staffView.operations.openRefundCases, null);
+    assert.equal("comparison" in staffView, false); assert.equal("marketing" in staffView, false);
     for (const row of staffView.orders.items) for (const field of ["totalMinor", "refundsMinor", "commissionMinor", "netEarningsMinor", "paymentMethod", "paymentState", "payoutState", "payoutLabel", "providerMode"]) assert.equal(field in row, false);
     assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length, 0);
   } finally { await f.close(); }

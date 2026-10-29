@@ -26,13 +26,28 @@ function pageValue(value, fallback, maximum) {
   return Number(value);
 }
 
+export function comparisonRange(range) {
+  const fromDate = shiftDate(range.fromDate, -7), toDate = shiftDate(range.toDate, -7);
+  return { fromDate, toDate, ...parseLondonDateRange(new URL(`http://dashboard.local/?from=${fromDate}&to=${toDate}`)) };
+}
+function growth(current, previous) { return previous ? Math.round((current - previous) / previous * 1000) / 10 : current ? null : 0; }
+function dashboardInsights(db, restaurantId, range, now) {
+  const previous = comparisonRange(range), previousFinance = periodFinance(db, restaurantId, previous), currentFinance = periodFinance(db, restaurantId, range);
+  const previousOrders = db.prepare("SELECT COUNT(*) n FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<?").get(restaurantId, previous.from, previous.toExclusive).n;
+  const currentOrders = db.prepare("SELECT COUNT(*) n FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<?").get(restaurantId, range.from, range.toExclusive).n;
+  const marketing = db.prepare(`SELECT COUNT(*) AS offerOrders,COALESCE(SUM(o.total_minor),0) AS offerSalesMinor,COALESCE(SUM(o.restaurant_discount_minor),0) AS discountMinor FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()} AND (o.offer_grant_id IS NOT NULL OR o.promotion_snapshot IS NOT NULL)`).get(restaurantId, range.from, range.toExclusive);
+  const activeOffers = db.prepare("SELECT COUNT(*) n FROM offer_campaigns WHERE restaurant_id=? AND expires_at>?").get(restaurantId, now).n;
+  return { comparison: { fromDate: previous.fromDate, toDate: previous.toDate, salesChangePercent: growth(currentFinance.grossSalesMinor, previousFinance.grossSalesMinor), ordersChangePercent: growth(currentOrders, previousOrders), previousOrders, previousSalesMinor: previousFinance.grossSalesMinor }, marketing: { ...marketing, activeOffers, basis: "confirmed_orders_before_refunds" } };
+}
+
 function operationalCounts(db, restaurantId, userId, owner, now) {
   const pending = db.prepare(`SELECT COUNT(*) AS pending,SUM(CASE WHEN o.confirmation_due_at<=? THEN 1 ELSE 0 END) AS overdue FROM orders o WHERE o.restaurant_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}`).get(now, restaurantId);
   const active = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready','out_for_delivery') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId).count;
+  const kitchen = db.prepare(`SELECT COUNT(*) AS liveOrders,COALESCE(SUM(CASE WHEN o.status IN ('accepted','preparing') THEN 1 ELSE 0 END),0) AS confirmedInKitchen,COALESCE(SUM(CASE WHEN o.status='ready' THEN 1 ELSE 0 END),0) AS readyForHandover FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId);
   const orderMessages = db.prepare(`SELECT COUNT(*) AS count FROM order_messages m JOIN orders o ON o.id=m.order_id LEFT JOIN order_message_reads r ON r.order_id=m.order_id AND r.user_id=? WHERE o.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND (r.order_id IS NULL OR m.created_at>r.last_read_created_at OR (m.created_at=r.last_read_created_at AND m.id>r.last_read_message_id))`).get(userId, restaurantId, now).count;
   const customerMessages = owner ? db.prepare(`SELECT COUNT(*) AS count FROM restaurant_customer_messages m JOIN restaurant_customer_threads t ON t.id=m.thread_id LEFT JOIN restaurant_customer_message_reads r ON r.thread_id=m.thread_id AND r.user_id=? WHERE t.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND m.ingest_sequence>COALESCE(r.last_read_sequence,0)`).get(userId, restaurantId, now).count : 0;
   return {
-    pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active,
+    pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active, ...kitchen,
     unreadMessages: orderMessages + customerMessages,
     openRefundCases: owner ? db.prepare("SELECT COUNT(*) AS count FROM refund_cases WHERE restaurant_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(restaurantId).count : null
   };
@@ -99,5 +114,5 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
     const balance = buildFinanceSummary(db, restaurantId);
     finance = { period: periodFinance(db, restaurantId, range), balance: { basis: "all_time", availableMinor: balance.availableMinor, pendingMinor: balance.pendingMinor, heldMinor: balance.heldMinor, bankPaidMinor: balance.bankPaidMinor, bankPendingMinor: balance.bankPendingMinor, nextPayout: balance.nextPayout, providerMode: balance.providerMode, cashCommissionOutstandingMinor: balance.cashCommissionOutstandingMinor } };
   }
-  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString()), finance, topItems, orders: orderRows(db, restaurantId, range, owner, page, pageSize) } });
+  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString()), finance, ...(owner ? dashboardInsights(db,restaurantId,range,now.toISOString()) : {}), topItems, orders: orderRows(db, restaurantId, range, owner, page, pageSize) } });
 }

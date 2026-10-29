@@ -24,9 +24,7 @@ export function ownerNavigation(permission = "owner") {
   if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Stripe setup", "/owner/stripe"], ["Settings", "/owner/settings"]);
   return core;
 }
-export const ownerMobileNavigation = permission => permission === "owner"
-  ? [["Menu", "/owner/menu"], ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Offers", "/owner/offers"], ["Cases", "/owner/refunds"]]
-  : [["Home", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"]];
+export const ownerMobileNavigation = permission => permission === "owner" ? [["Home","/owner/dashboard"],["Marketing","/owner/offers"],["Orders","/owner/orders"],["Menu","/owner/menu"]] : [["Home","/owner/dashboard"],["Orders","/owner/orders"],["Menu","/owner/menu"]];
 export const adminNavigation = [
   ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Orders", "/admin/orders"],
   ["Finance", "/admin/finance"], ["Stripe readiness", "/admin/stripe"], ["Refund cases", "/admin/refunds"], ["Support", "/admin/support"], ["Access & deadlines", "/admin/governance"], ["Operations", "/admin/operations"],

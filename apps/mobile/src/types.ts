@@ -45,6 +45,7 @@ export interface Restaurant {
 export interface ModifierOption { id: string; name: string; priceMinor: number; available: boolean }
 export interface ModifierGroup { id: string; name: string; minSelections: number; maxSelections: number; options: ModifierOption[] }
 export interface MenuItem {
+ productType?: string; energyKcal?: number | null; energyKj?: number | null;
   id: string;
   restaurantId: string;
   name: string;
