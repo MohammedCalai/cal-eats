@@ -22,6 +22,7 @@ const assets = new Map([
   ["/restaurant-menu.js", ["restaurant-menu.js", "text/javascript; charset=utf-8"]],
   ["/basket-ui.js", ["basket-ui.js", "text/javascript; charset=utf-8"]],
   ["/customer-panels.css", ["customer-panels.css", "text/css; charset=utf-8"]],
+  ["/customer-light.css", ["customer-light.css", "text/css; charset=utf-8"]],
   ["/model.js", ["model.js", "text/javascript; charset=utf-8"]],
   ["/live-notifications.js", ["live-notifications.js", "text/javascript; charset=utf-8"]],
   ["/order-messaging.js", ["order-messaging.js", "text/javascript; charset=utf-8"]],

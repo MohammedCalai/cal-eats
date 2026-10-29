@@ -33,12 +33,12 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, borderWidth: 1, borderColor: colours.line, borderRadius: radii.small, paddingHorizontal: 13, paddingVertical: 11, color: colours.ink, backgroundColor: colours.panel, fontSize: 16 },
   multiline: { minHeight: 96, textAlignVertical: "top" }, hint: { fontSize: 12, color: colours.muted },
   button: { minHeight: 46, borderRadius: 13, paddingHorizontal: 17, paddingVertical: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colours.blue },
-  button_primary: { backgroundColor: colours.blue }, button_secondary: { backgroundColor: colours.panel }, button_danger: { backgroundColor: "#3B2229", borderColor: "#71424F" }, button_quiet: { backgroundColor: "transparent", borderColor: "transparent", paddingHorizontal: 8 },
+  button_primary: { backgroundColor: colours.blue }, button_secondary: { backgroundColor: colours.panel }, button_danger: { backgroundColor: "#FFF0F2", borderColor: "#EDBDCA" }, button_quiet: { backgroundColor: "transparent", borderColor: "transparent", paddingHorizontal: 8 },
   buttonText: { color: colours.white, fontWeight: "800", fontSize: 15 }, buttonTextAlt: { color: colours.blue }, disabled: { opacity: 0.45 }, pressed: { opacity: 0.78 },
   card: { backgroundColor: colours.panel, borderColor: colours.line, borderWidth: 1, borderRadius: radii.medium, padding: 16, gap: 10 },
-  cardInfo: { backgroundColor: colours.sky, borderColor: "#2E4874" }, cardWarning: { backgroundColor: "#382C19", borderColor: "#6F572E" },
-  pill: { alignSelf: "flex-start", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 99, backgroundColor: colours.sky }, pillGreen: { backgroundColor: "#19392E" }, pillAmber: { backgroundColor: "#40331D" }, pillText: { color: colours.ink, fontSize: 12, fontWeight: "700" },
+  cardInfo: { backgroundColor: colours.sky, borderColor: "#BDDDF5" }, cardWarning: { backgroundColor: "#FFF7E5", borderColor: "#E8D3A6" },
+  pill: { alignSelf: "flex-start", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 99, backgroundColor: colours.sky }, pillGreen: { backgroundColor: "#DEF4E8" }, pillAmber: { backgroundColor: "#FFF1CF" }, pillText: { color: colours.ink, fontSize: 12, fontWeight: "700" },
   empty: { paddingVertical: 30, paddingHorizontal: 18, alignItems: "center" }, emptyText: { color: colours.muted, textAlign: "center", lineHeight: 21 },
-  error: { padding: 12, borderRadius: radii.small, backgroundColor: "#3B2229", borderWidth: 1, borderColor: "#71424F" }, errorText: { color: colours.danger, lineHeight: 20 },
+  error: { padding: 12, borderRadius: radii.small, backgroundColor: "#FFF0F2", borderWidth: 1, borderColor: "#EDBDCA" }, errorText: { color: colours.danger, lineHeight: 20 },
   sectionHead: { flexDirection: "row", gap: 10, alignItems: "center" }, eyebrow: { color: colours.blue, textTransform: "uppercase", fontWeight: "800", fontSize: 11, letterSpacing: 1.1 }, title: { color: colours.ink, fontSize: 26, fontWeight: "800", letterSpacing: -0.5 }
 });

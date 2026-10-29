@@ -4,7 +4,7 @@
     "slug": "cal-eats",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "platforms": [
       "ios",
       "android"
@@ -61,7 +61,7 @@
     ],
     "scheme": "caleats",
     "icon": "./assets/app-icon.png",
-    "backgroundColor": "#121212",
+    "backgroundColor": "#F1F8FF",
     "primaryColor": "#2865E9",
     "owner": "yankee1707",
     "extra": {
