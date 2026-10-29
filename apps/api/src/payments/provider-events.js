@@ -205,6 +205,7 @@ function applyProviderResult(db, event, mapping, result, now) {
     return { ok: true };
   }
   if (event.kind === "payment") {
+    if (mapping.source === "order_payment") return applyOrderPaymentResult(db,event,mapping,result,now);
     const metadata = safeJson(mapping.row.metadata, {});
     if (metadata.paymentState === "captured" && result.paymentState !== "captured") return { ok: true };
     const status = result.paymentState === "captured" ? "confirmed" : ["cancelled", "requires_payment_method"].includes(result.paymentState) || result.status === "failed" ? "failed" : "pending";
@@ -272,12 +273,30 @@ function applyProviderResult(db, event, mapping, result, now) {
   return { ok: false, error: "UNSUPPORTED_RECONCILIATION_KIND" };
 }
 
+function applyOrderPaymentResult(db,event,mapping,result,now) {
+  const payment=mapping.row,order=db.prepare("SELECT * FROM orders WHERE id=? AND restaurant_id=?").get(payment.order_id,mapping.restaurantId);
+  if(!order||result.providerReference!==event.objectId||result.paymentIntentId!==payment.payment_intent_id||result.amountMinor!==order.total_minor||String(result.currency||"").toUpperCase()!==order.currency||result.orderId!==order.id||result.restaurantId!==order.restaurant_id||result.captureMethod!=="manual") return {ok:false,error:"PAYMENT_ORDER_BINDING_MISMATCH"};
+  if(payment.status==="captured"&&result.paymentState!=="captured")return{ok:true};
+  const state=result.paymentState==="authorized"?"authorized":result.paymentState==="captured"?"captured":result.paymentState==="cancelled"?"cancelled":result.paymentState==="requires_payment_method"||result.status==="failed"?"failed":"pending";
+  db.prepare("UPDATE stripe_order_payments SET status=?,latest_charge_id=COALESCE(?,latest_charge_id),provider_cost_minor=COALESCE(?,provider_cost_minor),available_on=COALESCE(?,available_on),error=?,updated_at=? WHERE order_id=? AND provider_mode=? AND payment_intent_id=?").run(state,result.latestChargeId??null,Number.isSafeInteger(result.providerCostMinor)&&result.providerCostMinor>=0?result.providerCostMinor:null,result.availableOn??null,state==="failed"?safeCode(result.errorCode,"PROVIDER_PAYMENT_FAILED"):null,now,order.id,event.provider,event.objectId);
+  const firstPayable=["authorized","captured"].includes(state)&&!["stripe_authorized","stripe_captured","stripe_partially_refunded","stripe_refunded"].includes(order.payment_status);
+  if(["authorized","captured"].includes(state)&&!["stripe_partially_refunded","stripe_refunded"].includes(order.payment_status))db.prepare("UPDATE orders SET payment_status=?,updated_at=? WHERE id=?").run(`stripe_${state}`,now,order.id);
+  if(firstPayable&&order.status==="placed")notifyNewOrder(db,{...order,payment_status:`stripe_${state}`},now);
+  return{ok:true};
+}
+
 function resolveMapping(db, event) {
   if (event.kind === "unsupported") return { state: "ignored" };
   let rows = [];
   if (event.kind === "account") rows = db.prepare("SELECT * FROM provider_accounts WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
   else if(event.kind==="checkout")rows=db.prepare("SELECT * FROM stripe_order_payments WHERE provider_mode=? AND checkout_session_id=?").all(event.provider,event.objectId);
-  else if (["payment", "transfer"].includes(event.kind)) rows = db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+  else if (event.kind === "payment") {
+    const legacy=db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+    const payments=tableExists(db,"stripe_order_payments")?db.prepare("SELECT p.*,o.restaurant_id,'order_payment' AS mapping_source FROM stripe_order_payments p JOIN orders o ON o.id=p.order_id WHERE p.provider_mode=? AND p.payment_intent_id=?").all(event.provider,event.objectId):[];
+    rows=payments.length?payments:legacy;
+    if(payments.length&&legacy.some(row=>row.restaurant_id!==payments[0].restaurant_id||(row.order_id&&row.order_id!==payments[0].order_id)))return{state:"conflict"};
+  }
+  else if (event.kind === "transfer") rows = db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
   else if (event.kind === "payout") {
     if(tableExists(db,"stripe_connected_payouts")) rows=db.prepare("SELECT *, 'connected' AS mapping_source FROM stripe_connected_payouts WHERE id=?").all(event.objectId);
     if(!rows.length)rows=db.prepare("SELECT *, 'legacy' AS mapping_source FROM payout_batches WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);

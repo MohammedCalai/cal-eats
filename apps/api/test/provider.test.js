@@ -6,6 +6,40 @@ import { createStripeAdapter, createStripeTestAdapter, parseStripeWebhook, STRIP
 const KEY = "sk_test_unit_only_not_a_real_key";
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+test("refunds without livemode prove mode through their exact parent payment on create and retrieval", async () => {
+  const calls=[];
+  const refund={id:"re_parentproof",object:"refund",status:"succeeded",payment_intent:"pi_parentproof",amount:600,currency:"gbp",metadata:{order_id:"order-1",restaurant_id:"restaurant-1"}};
+  const adapter=createStripeTestAdapter({secretKey:KEY,fetchImpl:async(url,init)=>{
+    calls.push({url:String(url),method:init.method,key:init.headers["Idempotency-Key"]});
+    return jsonResponse(String(url).includes("/payment_intents/")?{id:"pi_parentproof",object:"payment_intent",livemode:false,amount:600,currency:"gbp"}:refund);
+  }});
+  const created=await adapter.refundPayment({paymentIntentId:"pi_parentproof",amountMinor:600,operationKey:"refund-order-1",idempotencyKey:"refund-order-1",orderId:"order-1",restaurantId:"restaurant-1"});
+  assert.equal(created.status,"confirmed");assert.equal(created.providerReference,"re_parentproof");assert.equal(created.paymentIntentId,"pi_parentproof");assert.equal(created.amountMinor,600);
+  const retrieved=await adapter.retrieveRefund({refundId:"re_parentproof"});assert.equal(retrieved.status,"confirmed");assert.equal(retrieved.orderId,"order-1");
+  assert.deepEqual(calls.map(c=>c.method),["POST","GET","GET","GET"]);assert.equal(calls[0].key,"refund-order-1");
+});
+
+test("refund parent proof rejects live, missing-mode and mismatched payment bindings", async () => {
+  const refund={id:"re_proofbad",object:"refund",status:"succeeded",payment_intent:"pi_proofbad",amount:600,currency:"gbp"};
+  for(const parent of [
+    {id:"pi_proofbad",object:"payment_intent",livemode:true,amount:600,currency:"gbp"},
+    {id:"pi_proofbad",object:"payment_intent",amount:600,currency:"gbp"},
+    {id:"pi_other",object:"payment_intent",livemode:false,amount:600,currency:"gbp"},
+    {id:"pi_proofbad",object:"payment_intent",livemode:false,amount:600,currency:"usd"},
+    {id:"pi_proofbad",object:"payment_intent",livemode:false,amount:500,currency:"gbp"},
+  ]) {
+    const adapter=createStripeTestAdapter({secretKey:KEY,fetchImpl:async(url)=>jsonResponse(String(url).includes("/payment_intents/")?parent:refund)});
+    await assert.rejects(adapter.retrieveRefund({refundId:refund.id}),StripeTestConfigurationError);
+  }
+  const wrong=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>jsonResponse(refund)});
+  await assert.rejects(wrong.refundPayment({paymentIntentId:"pi_other",amountMinor:600,operationKey:"refund-wrong-parent",idempotencyKey:"refund-wrong-parent"}),/does not match/);
+});
+
+test("unavailable refund parent proof retains reference without confirming money state", async () => {
+  const adapter=createStripeTestAdapter({secretKey:KEY,fetchImpl:async(url)=>String(url).includes("/payment_intents/")?jsonResponse({error:{type:"api_error"}},500):jsonResponse({id:"re_unproven",object:"refund",status:"succeeded",payment_intent:"pi_unproven",amount:600,currency:"gbp"})});
+  assert.deepEqual(await adapter.retrieveRefund({refundId:"re_unproven"}),{ok:false,status:"unknown",providerReference:"re_unproven",errorCode:"STRIPE_REFUND_MODE_UNVERIFIED"});
+});
+
 test("Stripe hosted Checkout preserves its provider fragment on create and retrieval", async () => {
   const checkoutUrl = "https://checkout.stripe.com/c/pay/cs_test_fragment#fidkdWxOYHwnPyd1blpxYHZxWjA0";
   const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async () => jsonResponse({

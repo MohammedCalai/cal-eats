@@ -43,6 +43,21 @@ export function createStripeAdapter(config = {}) {
     return { ok: true, body };
   }
 
+  async function refundResult(result, expectedPaymentIntentId) {
+    if (!result.ok) return result;
+    const refund = result.body;
+    const paymentIntentId = ref(typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id, "pi");
+    if (expectedPaymentIntentId && paymentIntentId !== expectedPaymentIntentId) throw new StripeTestConfigurationError("Refund parent PaymentIntent does not match the requested payment");
+    // Stripe Refund objects omit livemode. Prove their mode through the exact
+    // authoritative parent payment instead of treating omission as test mode.
+    if (refund.livemode === undefined) {
+      const parent = await request("GET", `/v1/payment_intents/${paymentIntentId}`, null, { requireTestObject: true });
+      if (!parent.ok) return { ok: false, status: "unknown", providerReference: ref(refund.id, "re"), errorCode: "STRIPE_REFUND_MODE_UNVERIFIED" };
+      if (parent.body.object !== "payment_intent" || parent.body.id !== paymentIntentId || !safeCurrency(refund.currency) || safeCurrency(parent.body.currency) !== safeCurrency(refund.currency) || !Number.isSafeInteger(refund.amount) || refund.amount < 0 || !Number.isSafeInteger(parent.body.amount) || refund.amount > parent.body.amount) throw new StripeTestConfigurationError("Refund parent payment binding could not be verified");
+    }
+    return normalized(refund, { status: mapRefund(refund.status), providerReference: ref(refund.id, "re"), paymentIntentId, amountMinor: safeAmount(refund.amount), currency: safeCurrency(refund.currency), orderId: metadataValue(refund.metadata, "order_id"), restaurantId: metadataValue(refund.metadata, "restaurant_id") });
+  }
+
   return Object.freeze({
     mode: mode==="live"?"stripe_live":"stripe_test", apiVersion: STRIPE_API_VERSION,
     async retrievePlatformAccount(){const result=await request("GET","/v1/account",null);if(!result.ok)return result;const accountId=ref(result.body.id,"acct");return{ok:true,status:"confirmed",providerReference:accountId,accountId,country:typeof result.body.country==="string"?result.body.country.slice(0,2):undefined,chargesEnabled:Boolean(result.body.charges_enabled),payoutsEnabled:Boolean(result.body.payouts_enabled),mode:mode==="live"?"stripe_live":"stripe_test"};},
@@ -79,10 +94,10 @@ export function createStripeAdapter(config = {}) {
     async cancelPayment(input) { return paymentResult(await request("POST", `/v1/payment_intents/${ref(input.paymentIntentId,"pi")}/cancel`, {}, { idempotencyKey: input.idempotencyKey, providerReference: input.paymentIntentId, requireTestObject:true })); },
     async retrievePayment(input) { return paymentResult(await request("GET", `/v1/payment_intents/${ref(input.paymentIntentId,"pi")}`, {"expand[]":"latest_charge.balance_transaction"}, {requireTestObject:true})); },
     async refundPayment(input) {
-      const result = await request("POST", "/v1/refunds", { payment_intent: ref(input.paymentIntentId,"pi"), ...(input.amountMinor == null ? {} : { amount: money(input.amountMinor) }), "metadata[operation_key]": bounded(input.operationKey,1,100,"operationKey"),...(input.orderId?{"metadata[order_id]":bounded(input.orderId,1,100,"orderId")}:{ }),...(input.restaurantId?{"metadata[restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId")}:{ }) }, { idempotencyKey: input.idempotencyKey, providerReference: input.paymentIntentId, requireTestObject:true });
-      return result.ok ? normalized(result.body, { status: mapRefund(result.body.status), providerReference: result.body.id,paymentIntentId:typeof result.body.payment_intent==="string"?result.body.payment_intent:result.body.payment_intent?.id,amountMinor:safeAmount(result.body.amount),currency:safeCurrency(result.body.currency),orderId:metadataValue(result.body.metadata,"order_id"),restaurantId:metadataValue(result.body.metadata,"restaurant_id") }) : result;
+      const result = await request("POST", "/v1/refunds", { payment_intent: ref(input.paymentIntentId,"pi"), ...(input.amountMinor == null ? {} : { amount: money(input.amountMinor) }), "metadata[operation_key]": bounded(input.operationKey,1,100,"operationKey"),...(input.orderId?{"metadata[order_id]":bounded(input.orderId,1,100,"orderId")}:{ }),...(input.restaurantId?{"metadata[restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId")}:{ }) }, { idempotencyKey: input.idempotencyKey, providerReference: input.paymentIntentId, requireTestObject:true,allowModeOmissionForObject:"refund" });
+      return refundResult(result, input.paymentIntentId);
     },
-    async retrieveRefund(input){const result=await request("GET",`/v1/refunds/${ref(input.refundId,"re")}`,null,{requireTestObject:true});return result.ok?normalized(result.body,{status:mapRefund(result.body.status),providerReference:result.body.id,paymentIntentId:typeof result.body.payment_intent==="string"?result.body.payment_intent:result.body.payment_intent?.id,amountMinor:safeAmount(result.body.amount),currency:safeCurrency(result.body.currency),orderId:metadataValue(result.body.metadata,"order_id"),restaurantId:metadataValue(result.body.metadata,"restaurant_id")}):result;},
+    async retrieveRefund(input){const result=await request("GET",`/v1/refunds/${ref(input.refundId,"re")}`,null,{requireTestObject:true,allowModeOmissionForObject:"refund"});return refundResult(result,input.paymentIntentId);},
     async createTransfer(input) {
       const sourceTransactionId=ref(input.sourceTransactionId,"ch");
       const result = await request("POST", "/v1/transfers", { amount: money(input.amountMinor), currency: "gbp", destination: ref(input.destinationAccountId,"acct"), source_transaction:sourceTransactionId, transfer_group: bounded(input.transferGroup,1,100,"transferGroup"), "metadata[operation_key]": bounded(input.operationKey,1,100,"operationKey") }, { idempotencyKey: input.idempotencyKey, requireTestObject:true });

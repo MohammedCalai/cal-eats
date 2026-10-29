@@ -9,6 +9,65 @@ import { PROVIDER_EVENT_WEBHOOK_PATH, routeProviderEventWebhook, runProviderEven
 const SECRET = "whsec_provider_events_test_only";
 const NOW_SECONDS = 1_767_225_600;
 
+function connectOrderPayment(db) {
+  const restaurant=db.prepare("SELECT id,name FROM restaurants ORDER BY created_at LIMIT 1").get();
+  const customer=db.prepare("SELECT id FROM users WHERE role='customer' LIMIT 1").get();
+  const id=randomUUID(),stamp=new Date(NOW_SECONDS*1000).toISOString();
+  db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,delivery_fee_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at) VALUES(?,?,?,?,'placed',600,0,600,42,'card','stripe_pending','collection',?,?,?,?)").run(id,restaurant.id,restaurant.name,customer.id,`fixture:${id}`,id,stamp,stamp);
+  db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,checkout_session_id,payment_intent_id,status,created_at,updated_at) VALUES(?,'stripe_test','cs_order_events','pi_order_events','pending',?,?)").run(id,stamp,stamp);
+  return {id,restaurantId:restaurant.id,facts:{ok:true,status:"confirmed",paymentState:"authorized",providerReference:"pi_order_events",paymentIntentId:"pi_order_events",amountMinor:600,currency:"GBP",orderId:id,restaurantId:restaurant.id,captureMethod:"manual",latestChargeId:"ch_order_events"}};
+}
+
+test("PaymentIntent and refund events map through the order payment without regressing captured or refunded facts", async () => {
+  const f=await journeyFixture();
+  try {
+    const payment=connectOrderPayment(f.db);let state="authorized";
+    const config=providerConfig({retrievePayment:async()=>({...payment.facts,paymentState:state})});
+    await deliver(f.db,config,stripeEvent({id:"evt_order_authorized",type:"payment_intent.amount_capturable_updated",object:{id:"pi_order_events",object:"payment_intent"},account:null}));
+    assert.equal((await runProviderEventReconciliation(f.db,config)).completed,1);
+    assert.equal(f.db.prepare("SELECT payment_status FROM orders WHERE id=?").get(payment.id).payment_status,"stripe_authorized");
+    assert.ok(f.db.prepare("SELECT merchant_visible_at FROM orders WHERE id=?").get(payment.id).merchant_visible_at);
+    state="captured";
+    await deliver(f.db,config,stripeEvent({id:"evt_order_captured",created:NOW_SECONDS+1,object:{id:"pi_order_events",object:"payment_intent"},account:null}));
+    assert.equal((await runProviderEventReconciliation(f.db,config)).completed,1);
+    assert.equal(f.db.prepare("SELECT status FROM stripe_order_payments WHERE order_id=?").get(payment.id).status,"captured");
+    f.db.prepare("UPDATE orders SET payment_status='stripe_refunded' WHERE id=?").run(payment.id);
+    await deliver(f.db,config,stripeEvent({id:"evt_order_refund",type:"refund.updated",created:NOW_SECONDS+2,object:{id:"re_order_events",object:"refund",payment_intent:"pi_order_events"},account:null}));
+    assert.equal((await runProviderEventReconciliation(f.db,config)).completed,1);
+    assert.equal(f.db.prepare("SELECT payment_status FROM orders WHERE id=?").get(payment.id).payment_status,"stripe_refunded");
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM refunds WHERE order_id=?").get(payment.id).n,0,"A PI event cannot finalize a refund");
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM marketplace_operations WHERE order_id=?").get(payment.id).n,0,"Payment event observation cannot fabricate ledger operations");
+  } finally { await f.close(); }
+});
+
+test("order PaymentIntent reconciliation rejects incorrect financial and tenant facts", async () => {
+  const f=await journeyFixture();
+  try {
+    const payment=connectOrderPayment(f.db);let facts=payment.facts;
+    const config=providerConfig({retrievePayment:async()=>facts});
+    for(const [index,override] of [{amountMinor:601},{restaurantId:"different-restaurant"},{orderId:"different-order"},{captureMethod:"automatic"},{paymentIntentId:"pi_wrong"}].entries()) {
+      facts={...payment.facts,...override};
+      const eventId=`evt_order_bad_${index}`;
+      await deliver(f.db,config,stripeEvent({id:eventId,object:{id:"pi_order_events",object:"payment_intent"},account:null}));
+      assert.equal((await runProviderEventReconciliation(f.db,config)).failed,1);
+      assert.equal(f.db.prepare("SELECT error FROM provider_events WHERE provider_event_id=?").get(eventId).error,"PAYMENT_ORDER_BINDING_MISMATCH");
+    }
+    assert.equal(f.db.prepare("SELECT status FROM stripe_order_payments WHERE order_id=?").get(payment.id).status,"pending");
+    assert.equal(f.db.prepare("SELECT payment_status FROM orders WHERE id=?").get(payment.id).payment_status,"stripe_pending");
+  } finally { await f.close(); }
+});
+
+test("a PaymentIntent order binding cannot cross a connected-account event scope", async () => {
+  const f=await journeyFixture();
+  try {
+    connectOrderPayment(f.db);
+    const config=providerConfig({retrievePayment:async()=>assert.fail("Conflicting account must not be queried")});
+    const delivered=await deliver(f.db,config,stripeEvent({id:"evt_wrong_order_account",object:{id:"pi_order_events",object:"payment_intent"},account:"acct_other_restaurant"}));
+    assert.equal(delivered.status,200);
+    assert.equal(f.db.prepare("SELECT status,error FROM provider_events WHERE provider_event_id='evt_wrong_order_account'").get().error,"TENANT_MAPPING_CONFLICT");
+  } finally { await f.close(); }
+});
+
 function signed(event, timestamp = NOW_SECONDS) {
   const rawBody = Buffer.from(JSON.stringify(event));
   const signature = createHmac("sha256", SECRET).update(Buffer.concat([Buffer.from(`${timestamp}.`), rawBody])).digest("hex");
