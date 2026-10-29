@@ -54,3 +54,6 @@ html,body{background:#121212}a{color:#91b8ff}button{min-height:44px}button:disab
 @media(max-width:850px){input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}.menu-editor>.primary{min-height:48px;bottom:env(safe-area-inset-bottom,0px)}.form-grid>label{min-width:0}.modifier-editor-heading,.modifier-option-row{min-width:0}}
 
 .brand{overflow:hidden}.brand-logo{object-fit:cover;transform:scale(1.45);transform-origin:center;mix-blend-mode:lighten}.sidebar,.topbar{background:#121212}
+
+.notification-panel .notification-head{position:sticky;top:0;z-index:3;background:var(--panel,#18191d)}
+.notification-head>strong{flex:1;min-width:0}.notification-dismiss{order:3;flex:none;min-width:44px;min-height:44px;font-size:24px}

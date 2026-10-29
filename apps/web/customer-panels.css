@@ -1,0 +1,27 @@
+/* Dialog controls sit outside the scrolling content, including long notification lists. */
+.dialog[data-dialog]{display:flex;flex-direction:column;padding:0;overflow:hidden;max-height:calc(100dvh - 32px)}
+.dialog-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;min-height:60px;padding:8px 12px 8px 18px;background:#18191d;border-bottom:1px solid var(--line);z-index:2}
+.dialog-toolbar h2{margin:0;min-width:0;flex:1;font-size:21px;line-height:1.25;overflow-wrap:anywhere}
+.dialog-close{display:grid;place-items:center;flex:none;margin-left:auto;width:44px;height:44px;min-height:44px;border:1px solid #3b3c44;border-radius:50%;background:#24252b;color:#fff;font-size:28px;line-height:1;cursor:pointer}
+.dialog-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:18px;-webkit-overflow-scrolling:touch}
+.dialog-bottom-close{margin-top:16px;min-height:44px}
+.dialog .dialog-scroll>.menu-section-sheet+button{width:100%}
+.dialog .menu-item-sheet>.primary{bottom:0}
+body:has(.basket-review-page) .topbar,body:has(.basket-review-page) .bottom-nav{display:none}
+body:has(.basket-review-page){padding-bottom:0}
+.basket-review-page{max-width:760px;min-height:85dvh;margin:0 auto;background:#121212;padding-bottom:110px}
+.basket-review-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#121212f5;backdrop-filter:blur(12px);min-height:62px;padding:8px 16px;border-bottom:1px solid #25262b;color:var(--ink);font-size:14px;font-weight:650}
+.basket-close{width:44px;height:44px;background:transparent;border:0;color:var(--ink);font-size:30px;line-height:1;cursor:pointer}
+.basket-review-content{padding:16px 18px}
+.basket-review-content h1{font-size:28px;line-height:1.2;margin:4px 0 10px}
+.basket-destination{color:var(--muted);font-size:15px;line-height:1.5;margin-bottom:24px}
+.basket-dish{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:12px;align-items:start;padding:20px 0;border-bottom:1px solid var(--line)}
+.basket-dish>img,.basket-photo-placeholder{width:70px;height:70px;object-fit:cover;border-radius:12px;background:#24252b;display:grid;place-items:center;font-size:26px}
+.basket-dish-copy{min-width:0}.basket-dish-copy h2{font-size:16px;line-height:1.35;margin:0 0 5px;font-weight:700}.basket-dish-copy>strong{display:block;font-size:15px;font-weight:600}.basket-dish-copy p{font-size:12px;line-height:1.45;color:var(--muted);margin:7px 0}.basket-dish-copy small{color:var(--muted);font-size:11px}
+.basket-quantity{display:flex;align-items:center;background:#24252b;border-radius:999px;gap:2px;margin-top:2px}.basket-quantity button{width:38px;height:44px;background:transparent;border:0;color:var(--ink);font-size:24px;cursor:pointer}.basket-quantity span{min-width:14px;text-align:center;font-size:14px}.basket-quantity button:disabled{opacity:.35}
+.basket-add-row{display:flex;justify-content:flex-end;padding:18px 0 25px}.basket-add-row button{border-radius:999px;min-height:44px}
+.basket-offers{border-top:5px solid #202126;margin:0 -18px;padding:20px 18px}.basket-offers h2{font-size:22px;margin:0 0 16px}.basket-offer-scroll{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x proximity}.basket-offer{display:flex;flex-direction:column;gap:9px;align-items:flex-start;flex:0 0 200px;scroll-snap-align:start;text-align:left;padding:16px;min-height:145px;background:#202126;color:var(--ink);border:1px solid var(--line);border-radius:16px}.basket-offer strong{font-size:19px;color:#88b7ff}.basket-offer small{color:var(--muted);font-size:11px;line-height:1.5}.basket-offer.selected{border-color:var(--blue);background:#18263f}.basket-offer b{font-size:12px}
+.basket-selected-offer{display:flex;align-items:center;gap:12px;padding:14px;background:#18263f;border-radius:12px;margin:14px 0}.basket-selected-offer>div{flex:1}.basket-selected-offer p{font-size:12px;line-height:1.5;margin:5px 0 0;color:#c6d5ec}.basket-selected-offer>button{min-width:44px;min-height:44px;font-size:24px}
+.basket-prices{padding:18px 0;border-top:1px solid var(--line)}.basket-prices p{display:flex;justify-content:space-between;gap:14px;margin:12px 0;color:var(--muted);font-size:14px}.basket-prices strong{color:var(--ink);font-weight:600}.basket-prices .basket-estimate{font-size:19px;color:var(--ink);padding-top:8px}.basket-prices small{color:var(--muted);font-size:11px;line-height:1.5}
+.basket-review-footer{position:fixed;bottom:0;left:0;right:0;z-index:40;max-width:760px;margin:auto;padding:14px 18px calc(14px + env(safe-area-inset-bottom));background:#18191df7;border-top:1px solid var(--line)}.basket-review-footer button{display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;min-height:54px;font-size:16px;border-radius:13px}
+@media(max-width:760px){.dialog[data-dialog]{max-height:calc(100dvh - 24px)}.dialog[data-dialog]:has(.menu-section-sheet),.dialog[data-dialog]:has(.menu-item-sheet){max-height:90dvh;padding:0}.dialog-scroll{padding:16px}.dialog-toolbar{padding-top:8px}.basket-dish{gap:10px}.basket-review-page .error{margin-top:12px}}
