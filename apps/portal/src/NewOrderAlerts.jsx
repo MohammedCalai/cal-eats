@@ -5,6 +5,7 @@ import { pounds, shortDate } from "./model.js";
 import { WorkspaceDialog } from "./CustomerWorkspace.jsx";
 import { connectLiveNotifications } from "../../web/live-notifications.js";
 import { confirmationPayload, customerEtaLabel, orderEtaDefaultMinutes, orderIsOverdue, orderNeedsConfirmation, orderSoundPath, pendingOrdersFromAuthoritativeQueue } from "./order-alert-model.js";
+import "./OrderSoundReadiness.css";
 
 const OrderAlertsContext=createContext(null);
 const time=value=>new Intl.DateTimeFormat("en-GB",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/London"}).format(new Date(value));
@@ -12,6 +13,7 @@ const preferenceKey=userId=>`cal-eats-order-sound:${userId}`;
 function remembered(userId){try{return localStorage.getItem(preferenceKey(userId))==="on";}catch{return false;}}
 function remember(userId,on){try{localStorage.setItem(preferenceKey(userId),on?"on":"off");}catch{}}
 function stopAudio(audio){if(audio){audio.pause();audio.currentTime=0;audio.loop=false;}}
+function soundFailure(error){return error?.name==="NotAllowedError"?"Tap Enable & test sound to allow ringing in this browser. Pending orders still need confirmation.":"Order sound could not play. Check your connection and device volume, then tap Enable & test sound.";}
 export function useOrderAlerts(){return useContext(OrderAlertsContext);}
 
 export function OrderAlertProvider({enabled,restaurants=[],onSelectRestaurant,onRefreshRestaurants,userId,children}) {
@@ -39,7 +41,7 @@ export function OrderAlertProvider({enabled,restaurants=[],onSelectRestaurant,on
   useEffect(()=>{
     if(!enabled||!orders.length||armed||!soundWanted||soundError||!audio.current)return;
     let cancelled=false;const player=audio.current;player.src=soundPath;player.dataset.source=soundPath;player.loop=true;player.volume=1;
-    void player.play().then(()=>{if(!cancelled)setArmed(true);}).catch(()=>{if(!cancelled)setSoundError("Tap Enable & test sound once to allow ringing in this browser. The order still needs confirmation.");});
+    void player.play().then(()=>{if(!cancelled)setArmed(true);}).catch(error=>{if(!cancelled)setSoundError(soundFailure(error));});
     return()=>{cancelled=true;};
   },[enabled,orders.length,armed,soundWanted,soundError,soundPath]);
   useEffect(()=>{
@@ -48,14 +50,21 @@ export function OrderAlertProvider({enabled,restaurants=[],onSelectRestaurant,on
     const path=ring?soundPath:"/business/notification.wav";
     if(player.dataset.source!==path){player.src=path;player.dataset.source=path;player.load();}
     player.loop=ring;
-    void player.play().catch(()=>{if(scopeRef.current===effectScope){setSoundError("Your browser paused the sound. Tap Enable & test sound to resume alerts.");setArmed(false);setTesting(false);}});
+    void player.play().catch(error=>{if(scopeRef.current===effectScope){setSoundError(soundFailure(error));setArmed(false);setTesting(false);}});
   },[ring,testing,soundPath,enabled,scope]);
+  useEffect(()=>{
+    if(!enabled||!ring)return;const player=audio.current,effectScope=scope;if(!player)return;
+    const resume=()=>{if(document.hidden)return;player.loop=true;void player.play().catch(error=>{if(scopeRef.current===effectScope){setSoundError(soundFailure(error));setArmed(false);setTesting(false);}});};
+    const interrupted=()=>{if(scopeRef.current===effectScope){setSoundError("Order sound was interrupted. Tap Enable & test sound to resume ringing; this order is still pending.");setArmed(false);}};
+    window.addEventListener("focus",resume);document.addEventListener("visibilitychange",resume);player.addEventListener("error",interrupted);
+    return()=>{window.removeEventListener("focus",resume);document.removeEventListener("visibilitychange",resume);player.removeEventListener("error",interrupted);};
+  },[enabled,ring,scope]);
   useEffect(()=>()=>{stopAudio(audio.current);if(audio.current)audio.current.onended=null;},[]);
 
   async function enableAndTest(){
     if(!enabled)return;let player=audio.current;if(!player)return;player.volume=1;player.onended=()=>setTesting(false);
     const actionScope=scope,path=orders.length?soundPath:"/business/notification.wav";player.src=path;player.dataset.source=path;player.loop=orders.length>0;setSoundError("");setSoundWanted(true);remember(userId,true);setArmed(true);setTesting(!orders.length);
-    try{await player.play();}catch{if(scopeRef.current===actionScope){setSoundError("Sound was blocked. Tap Enable & test sound again and check your device volume.");setArmed(false);setTesting(false);}}
+    try{await player.play();}catch(error){if(scopeRef.current===actionScope){setSoundError(soundFailure(error));setArmed(false);setTesting(false);}}
   }
   function mute(){if(!canMuteOrderSound(orders.length))return;setSoundWanted(false);remember(userId,false);setTesting(false);stopAudio(audio.current);}
 
@@ -80,6 +89,13 @@ export function OrderSoundControls({compact=false}) {
   const pending=alerts.orders.length>0;
   return <div className={compact?"order-sound-controls compact":"order-sound-controls"}>{alerts.soundError&&<p role="alert">{alerts.soundError}</p>}<div className="button-row"><button type="button" className="quiet" onClick={()=>void alerts.enableAndTest()}>{alerts.armed&&(pending||alerts.soundWanted)?alerts.testing?"Test playing…":"Test Calai sound":"Enable & test sound"}</button>{!pending&&alerts.soundWanted&&<button type="button" className="quiet" onClick={alerts.mute}>Stop test sound</button>}</div><small>{pending?"Pending orders keep ringing until confirmed or explicitly rejected. Closing this window does not silence them.":alerts.armed?"Calai order alerts are ready. Pending orders cannot be muted.":"Tap once to enable browser sound. Keep this platform open and your device volume audible."}</small></div>;
 }
-export function OrderAlertBar({compact=false}){const alerts=useOrderAlerts();if(!alerts?.available)return null;if(compact&&!alerts.total&&!alerts.error&&!alerts.soundError)return null;const overdue=alerts.orders.some(order=>orderIsOverdue(order,alerts.now));return <section className={`order-alert-bar ${alerts.total?"has-pending":""} ${overdue?"overdue":""}`} aria-label="New order alerts" aria-live="polite"><div><strong>{alerts.total?`${alerts.total} order${alerts.total===1?"":"s"} waiting across your restaurants`:"New order alerts"}</strong>{alerts.total?<small>{alerts.error?`Queue update unavailable: ${alerts.error}`:overdue?"An order has waited over 3 minutes.":"Give each customer a confirmed ETA."}</small>:<small>{alerts.soundError||alerts.error||"All your restaurant memberships are monitored across every screen."}</small>}</div><div className="order-alert-bar-actions">{alerts.total>0&&<button className="primary" type="button" onClick={alerts.openQueue}>Review orders</button>}<button className="quiet" type="button" onClick={()=>void alerts.enableAndTest()}>{alerts.armed&&alerts.soundWanted?"Test sound":"Enable sound"}</button>{!alerts.total&&alerts.armed&&alerts.soundWanted&&<button className="quiet" type="button" onClick={alerts.mute}>Stop test sound</button>}{alerts.loading?<span className="fine">Refreshing…</span>:alerts.error&&<button className="quiet" type="button" onClick={()=>void alerts.refresh()}>Refresh queue</button>}</div></section>}
+export function OrderAlertBar({compact=false}){
+  const alerts=useOrderAlerts();if(!alerts?.available)return null;
+  const soundReady=alerts.armed&&alerts.soundWanted;
+  if(compact&&!alerts.total&&!alerts.error&&!alerts.soundError&&soundReady)return null;
+  const overdue=alerts.orders.some(order=>orderIsOverdue(order,alerts.now));
+  const explanation=alerts.soundError||alerts.error||(!soundReady?"Tap Enable & test sound once in this browser. Keep this page open and your device volume audible.":alerts.total?overdue?"An order has waited over 3 minutes.":"Give each customer a confirmed ETA.":"All your restaurant memberships are monitored across every screen.");
+  return <section className={`order-alert-bar ${alerts.total?"has-pending":""} ${overdue?"overdue":""} ${!soundReady?"needs-sound":""}`} aria-label="New order alerts" aria-live="polite"><div><strong>{alerts.total?`${alerts.total} order${alerts.total===1?"":"s"} waiting across your restaurants`:!soundReady?"Turn on order sound":"New order alerts"}</strong><small>{explanation}</small>{!soundReady&&alerts.total>0&&<small className="sound-required-note">Sound is not ready. Review and confirm the waiting orders.</small>}</div><div className="order-alert-bar-actions">{alerts.total>0&&<button className="primary" type="button" onClick={alerts.openQueue}>Review orders</button>}<button className={soundReady?"quiet":"primary"} type="button" onClick={()=>void alerts.enableAndTest()}>{soundReady?"Test sound":"Enable & test sound"}</button>{!alerts.total&&soundReady&&<button className="quiet" type="button" onClick={alerts.mute}>Stop test sound</button>}{alerts.loading?<span className="fine">Refreshing…</span>:alerts.error&&<button className="quiet" type="button" onClick={()=>void alerts.refresh()}>Refresh queue</button>}</div></section>;
+}
 
 function BellIcon(){return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4M2 5l2-2M20 3l2 2"/></svg>}

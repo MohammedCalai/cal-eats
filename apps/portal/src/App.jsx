@@ -214,6 +214,7 @@ function OrdersWorkspace({ restaurant, permission, alerts }) {
     try {
       const value = await api(`/api/restaurant/orders/${order.id}/status`, json("PATCH", { status: next })), updated = value.order || value;
       if (selectedRef.current === order.id && restaurantRef.current === order.restaurantId) setActive(updated);
+      window.dispatchEvent(new Event("cal-eats-orders-updated"));
       if (restaurantRef.current === order.restaurantId) await result.reload();
     } catch (caught) { if (restaurantRef.current === order.restaurantId) { setError(caught.message); await result.reload(); } }
     finally { if (restaurantRef.current === order.restaurantId) setProgressing(""); }
@@ -223,6 +224,7 @@ function OrdersWorkspace({ restaurant, permission, alerts }) {
     try {
       const updated = await api(`/api/restaurant/orders/${order.id}/preparation`, json("PATCH", { estimatedReadyAt: new Date(value).toISOString() }));
       if (selectedRef.current === order.id && restaurantRef.current === order.restaurantId) setActive(updated.order || updated);
+      window.dispatchEvent(new Event("cal-eats-orders-updated"));
       if (restaurantRef.current === order.restaurantId) await result.reload();
     } catch (caught) { if (restaurantRef.current === order.restaurantId) setError(caught.message); }
     finally { if (restaurantRef.current === order.restaurantId) setProgressing(""); }
@@ -239,11 +241,12 @@ function OrdersWorkspace({ restaurant, permission, alerts }) {
     {selectedOrder && detailLoading && !active && <Dialog title={`Order ${selectedOrder.slice(0, 8).toUpperCase()}`} onClose={() => setParams({})}><p role="status">Loading order…</p></Dialog>}
     {active?.id === selectedOrder && active.restaurantId === restaurant.id && <Dialog title={`Order ${active.id.slice(0, 8).toUpperCase()}`} onClose={() => setParams({})}>
       {error && <Alert>{error}</Alert>}
-      <OrderDetail order={active}/>
-      {permission === "owner" && <OrderFinancialBreakdown key={`${restaurant.id}:${active.id}`} restaurantId={restaurant.id} orderId={active.id}/>}
-      {(active.messagingAvailable ?? ["placed", "accepted", "preparing", "ready", "out_for_delivery"].includes(active.status)) && <OrderConversation key={active.id} orderId={active.id}/>}
+      <section aria-label="Order status and customer"><div className="detail-list"><p><span>Order status</span><strong>{({placed:"Awaiting confirmation",accepted:"Confirmed",preparing:"Preparing",ready:"Ready",out_for_delivery:"Out for delivery",completed:active.fulfillment === "delivery" ? "Delivered" : "Collected",rejected:"Rejected"})[active.status] || active.status?.replaceAll("_", " ")}</strong></p><p><span>Customer</span><strong>{active.customerName || active.contactName || "Customer"}</strong></p>{(active.customerEtaAt || active.estimatedReadyAt) && <p><span>{active.fulfillment === "delivery" ? "Expected delivery arrival" : "Ready for collection"}</span><strong>{shortDate(active.customerEtaAt || active.estimatedReadyAt)}</strong></p>}</div></section>
       <div className="button-row order-progress-actions">{nextStatuses(active.status, active.fulfillment).map(next => <button type="button" className="primary" key={next} disabled={Boolean(progressing)} onClick={() => void update(active, next)}>{progressing === next ? "Updating…" : actionLabel(next, active)}</button>)}</div>
       {["accepted", "preparing"].includes(active.status) && <form className="order-eta-update" onSubmit={event => { event.preventDefault(); const value = new FormData(event.currentTarget).get("eta"); if (value) void estimate(active, value); }}><label>{active.fulfillment === "delivery" ? "Expected delivery arrival" : "Ready for collection"}<input name="eta" type="datetime-local" required disabled={Boolean(progressing)}/></label><button className="quiet" disabled={Boolean(progressing)}>{progressing === "eta" ? "Updating ETA…" : "Update customer ETA"}</button></form>}
+      {(active.messagingAvailable ?? ["placed", "accepted", "preparing", "ready", "out_for_delivery"].includes(active.status)) && <OrderConversation key={active.id} orderId={active.id}/>}
+      <section aria-label="Order items and totals"><h3>Order details</h3><OrderDetail order={active}/></section>
+      {permission === "owner" && <OrderFinancialBreakdown key={`${restaurant.id}:${active.id}`} restaurantId={restaurant.id} orderId={active.id}/>}
     </Dialog>}
   </Page>;
 }

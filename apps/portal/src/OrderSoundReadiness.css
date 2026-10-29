@@ -1,0 +1,4 @@
+.order-alert-bar.needs-sound{border-color:#7b6232;background:#241e13}
+.order-alert-bar.needs-sound strong,.order-alert-bar .sound-required-note{color:#ffe0a3}
+.order-alert-bar.needs-sound small{display:block!important}
+@media(max-width:700px){.order-alert-bar.needs-sound:not(.has-pending){display:grid;align-items:start;gap:.65rem}.order-alert-bar.needs-sound:not(.has-pending) .order-alert-bar-actions{margin-left:0;justify-content:flex-start;flex-wrap:wrap}}
