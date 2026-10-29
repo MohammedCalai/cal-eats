@@ -24,8 +24,8 @@ function sourceData(db,notification) {
   const kind=TYPES.get(notification.type);if(!kind)return null;
   if(kind==="support_reply"||kind==="support_update"){
     const source=supportEmailSource(db,notification),delivery=db.prepare("SELECT * FROM customer_email_delivery_settings WHERE id=1").get();
-    if(!source||!email(source.user.email)||!delivery)return null;
-    return {kind,user:source.user,payload:{...source.payload,notificationType:notification.type,simulation:delivery.payment_provider_mode!=="stripe_live"},mode:delivery.mode,sourceMessageId:source.sourceMessageId,orderId:null,conversationId:null,supportCaseId:source.support.id,refundCaseId:null};
+    if(!source||!email(source.recipient??source.user.email)||!delivery)return null;
+    return {kind,user:source.user,recipient:source.recipient??source.user.email,payload:{...source.payload,notificationType:notification.type,simulation:delivery.payment_provider_mode!=="stripe_live"},mode:delivery.mode,sourceMessageId:source.sourceMessageId,orderId:null,conversationId:null,supportCaseId:source.support.id,refundCaseId:null};
   }
   const user=db.prepare("SELECT id,email FROM users WHERE id=? AND role='customer' AND account_enabled=1").get(notification.user_id);
   if(!user||!email(user.email))return null;
@@ -67,7 +67,7 @@ export function queueCustomerEmailForNotification(db,userId,eventKey) {
   const notification=db.prepare("SELECT * FROM user_notifications WHERE user_id=? AND event_key=?").get(userId,eventKey);if(!notification)return null;
   const data=sourceData(db,notification);if(!data)return null;
   const id=randomUUID();
-  db.prepare("INSERT OR IGNORE INTO customer_transactional_email_outbox(id,customer_id,notification_id,source_key,event_kind,source_message_id,order_id,restaurant_id,conversation_id,support_case_id,refund_case_id,recipient,payload,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)").run(id,data.user.id,notification.id,eventKey,data.kind,data.sourceMessageId,data.orderId,notification.restaurant_id,data.conversationId,data.supportCaseId,data.refundCaseId,data.user.email,JSON.stringify(data.payload),`<cal-eats-customer-email-${id}@calai.info>`,data.mode,notification.created_at,notification.created_at);
+  db.prepare("INSERT OR IGNORE INTO customer_transactional_email_outbox(id,customer_id,notification_id,source_key,event_kind,source_message_id,order_id,restaurant_id,conversation_id,support_case_id,refund_case_id,recipient,payload,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)").run(id,data.user.id,notification.id,eventKey,data.kind,data.sourceMessageId,data.orderId,notification.restaurant_id,data.conversationId,data.supportCaseId,data.refundCaseId,data.recipient??data.user.email,JSON.stringify(data.payload),`<cal-eats-customer-email-${id}@calai.info>`,data.mode,notification.created_at,notification.created_at);
   return db.prepare("SELECT id FROM customer_transactional_email_outbox WHERE customer_id=? AND source_key=?").get(userId,eventKey)?.id??null;
 }
 
@@ -75,7 +75,7 @@ function sourceIsCurrent(db,row,config) {
   if(row.event_kind==="support_reply"||row.event_kind==="support_update"){
     const notification=db.prepare("SELECT * FROM user_notifications WHERE id=? AND user_id=? AND event_key=? AND support_case_id=?").get(row.notification_id,row.customer_id,row.source_key,row.support_case_id);
     const source=notification&&supportEmailSource(db,notification),payload=parse(row.payload);
-    if(!source||source.user.email.toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"SUPPORT_RECIPIENT_OR_SOURCE_CHANGED"};
+    if(!source||(source.recipient??source.user.email).toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"SUPPORT_RECIPIENT_OR_SOURCE_CHANGED"};
     if(TYPES.get(notification.type)!==row.event_kind||row.source_message_id!==source.sourceMessageId)return{ok:false,code:"SUPPORT_EMAIL_SOURCE_MISMATCH"};
     if((payload?.recipientRole||"customer")!==source.user.role)return{ok:false,code:"SUPPORT_RECIPIENT_ROLE_CHANGED"};
     if(row.mode!==config.orderAlertEmail.mode)return{ok:false,code:"EMAIL_MODE_CHANGED"};

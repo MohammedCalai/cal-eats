@@ -1,0 +1,17 @@
+import { money, statusLabel } from "./model.js";
+const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+const paths = {
+  discover: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
+  orders: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h3"/>',
+  offers: '<path d="m3 12 9-9h8v8l-9 10-8-8z"/><circle cx="16" cy="7" r="1"/>',
+  messages: '<path d="M21 11a8 8 0 0 1-8 8H8l-5 3V9a7 7 0 0 1 7-7h3a8 8 0 0 1 8 9zM7 8h10M7 12h7"/>',
+  account: '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+  basket: '<path d="M4 8h16l-1 13H5zM8 8V6a4 4 0 0 1 8 0v2"/>'
+};
+export function customerIcon(name) { return `<svg class="customer-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${Object.hasOwn(paths,name) ? paths[name] : paths.discover}</svg>`; }
+export function customerReceiptHtml(order) {
+  const id = String(order.id), items = Array.isArray(order.items) ? order.items : [];
+  const rows = items.map(item => `<li><div><strong>${escape(item.quantity)} × ${escape(item.name || item.itemName)}</strong>${item.selectedModifiers?.length ? `<small>${item.selectedModifiers.map(value => escape(value.optionName || value.name)).join(" · ")}</small>` : ""}</div><strong>${item.isOfferItem ? "Free offer" : money(item.lineTotalMinor)}</strong></li>`).join("");
+  const date = new Intl.DateTimeFormat("en-GB", {dateStyle:"medium",timeStyle:"short",timeZone:"Europe/London"}).format(new Date(order.createdAt));
+  return `<section class="customer-receipt"><p class="eyebrow">Cal-Eats receipt</p><h3>${escape(order.restaurantName)}</h3><p class="meta">Order ${escape(id.slice(0,8).toUpperCase())} · ${escape(date)}</p><p>${order.fulfillment === "delivery" ? "Delivery" : "Collection"} · ${escape(statusLabel(order.status))}</p><ul class="receipt-items">${rows}</ul><dl class="receipt-totals">${order.restaurantDiscountMinor > 0 ? `<div><dt>Food before offers</dt><dd>${money(order.grossFoodMinor)}</dd></div><div><dt>Restaurant offer</dt><dd>−${money(order.restaurantDiscountMinor)}</dd></div>` : ""}<div><dt>Food</dt><dd>${money(order.subtotalMinor)}</dd></div><div><dt>Delivery</dt><dd>${money(order.deliveryFeeMinor)}</dd></div><div class="receipt-total"><dt>Total paid / due</dt><dd>${money(order.totalMinor)}</dd></div>${order.refundedTotalMinor > 0 ? `<div><dt>Refunded</dt><dd>${money(order.refundedTotalMinor)}</dd></div>` : ""}</dl><p class="meta">${escape(statusLabel(order.paymentStatus))}</p><a class="secondary" href="/api/orders/${encodeURIComponent(id)}/receipt" target="_blank" rel="noopener">Open printable receipt</a></section>`;
+}

@@ -12,6 +12,7 @@ const assets = new Map([
   ["/landing.css", ["landing.css", "text/css; charset=utf-8"]],
   ["/landing.js", ["landing.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
+  ["/customer-ui.js", ["customer-ui.js", "text/javascript; charset=utf-8"]],
   ["/checkout-attempt.js", ["checkout-attempt.js", "text/javascript; charset=utf-8"]],
   ["/discovery-model.js", ["discovery-model.js", "text/javascript; charset=utf-8"]],
   ["/discovery-ui.js", ["discovery-ui.js", "text/javascript; charset=utf-8"]],

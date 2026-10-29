@@ -26,6 +26,8 @@ import { routeBusinessDashboard } from "./business-dashboard.js";
 import { handleBusinessStatementRoutes } from "./business-weekly-statements.js";
 import { routeFinanceDetails } from "./finance-details.js";
 import { routeServiceAreas } from "./service-areas.js";
+import { enforceCustomerOrderHistory } from "./customer-order-history.js";
+import { routeDashboardExports } from "./dashboard-exports.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -86,6 +88,7 @@ export function createApp({ db, config }) {
       const token = parseSessionCookie(req.headers.cookie);
       const nativeSession = bearerProvided ? readNativeSession(db, req, config) : null;
       const session = bearerProvided ? nativeSession : readSession(db, token, config);
+      enforceCustomerOrderHistory({ url, db, config, session });
       const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/auth/forgot-password","/api/native/auth/reset-password"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
       const pairingRoute = url.pathname === "/api/devices/pair";
@@ -168,6 +171,7 @@ export function createApp({ db, config }) {
       }
       if (await serveStatic(req, res, url.pathname)) return;
       if (await routeServiceAreas({ req, res, url, db, config, session, checkRate })) return;
+      if (await routeDashboardExports({ req, res, url, db, config, session })) return;
       if (await routeBusinessDashboard({ req, res, url, db, config, session })) return;
       if (await handleBusinessStatementRoutes({ req, res, url, db, config, session })) return;
       if (await routeOrderMessaging({ req, res, url, db, config, session })) return;

@@ -140,4 +140,88 @@ ol.order-progress{list-style:none;padding:20px 24px 6px;margin:0;display:grid;gr
 @keyframes order-highlight{from{background:#d3e9ff}to{background:#fff}}
 @media(max-width:760px){.topbar .brand{padding:3px 6px}body:has(.discovery-header) .topbar .brand{padding:3px 6px;min-height:38px}.bottom-nav:not([hidden]) button{color:#526b80;background:transparent}.bottom-nav:not([hidden]) button[aria-current=page]{background:#dceeff;color:#104d9e}.order-card{border-radius:18px;scroll-margin-top:12px}.order-status-hero{padding:20px 18px}.order-status-title{font-size:27px}.order-status-eta{padding:12px 14px}.order-restaurant{padding:18px 18px 6px}.order-restaurant h3{font-size:18px}.order-primary-actions{padding:14px 18px 18px;flex-wrap:wrap}.order-primary-actions .primary,.order-primary-actions .secondary{flex:1 1 45%;font-size:13px}.order-secondary-details,.order-more{margin:0 18px 18px}.order-card .refund-summary{margin:0 18px 16px}.order-history>summary{padding:17px 18px}.order-payment-actions{padding:0 18px 14px}.dialog-toolbar h2{color:var(--navy)}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.order-card{animation:none}}
+
+/* One continuous Cal-Eats banner, with independent wordmark motion. */
+.topbar{background:#124b88;color:white;border-color:#2768a9;box-shadow:0 3px 16px #174d7a24;overflow:hidden}
+.topbar .brand,body:has(.discovery-header) .topbar .brand{padding:0;border:0;border-radius:0;background:transparent;min-height:52px;overflow:visible}
+.brand-motion{display:block;position:relative;width:188px;height:52px;overflow:hidden;mix-blend-mode:lighten}
+.brand-layer{position:absolute;inset:0;animation:calai-prefix-drop 30s infinite}
+.brand-prefix{clip-path:inset(0 40% 0 0)}
+.brand-suffix{clip-path:inset(0 0 0 60%);animation-name:calai-suffix-drop}
+.brand-motion .brand-mark-image{position:absolute;display:block;width:162.425%;height:auto;max-width:none;max-height:none;left:-32.036%;top:-48.649%;transform:none;object-fit:fill}
+.topbar nav button{display:inline-flex;align-items:center;gap:7px;color:#f4faff;background:transparent}
+.topbar nav button:hover,.topbar nav button[aria-current=page]{background:#ffffff24;color:white}
+.topbar nav button[aria-current=false]{background:transparent;color:#e5f2ff}
+.topbar .account-button,.topbar .account-button:hover{color:white;background:transparent}
+.topbar #account{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.topbar .notification-bell{color:white;background:#ffffff14;border-color:#91b9df;margin:0}
+.customer-nav-icon{width:23px;height:23px;flex:none;display:block}
+.basket-access{min-height:44px;display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid #aacceb;border-radius:12px;background:#ffffff16;color:white;font-weight:750;white-space:nowrap}
+.basket-access b{display:grid;place-items:center;min-width:21px;height:21px;background:white;color:#124b88;border-radius:50%;font-size:11px}
+.bottom-nav button{min-height:52px;gap:5px!important;padding:6px 3px!important}
+.bottom-nav button .customer-nav-icon{width:25px;height:25px}
+.bottom-nav button .nav-label{font-size:11px;color:inherit}
+.empty-basket{max-width:650px;text-align:center;padding-top:48px}
+.empty-basket .customer-nav-icon{width:64px;height:64px;margin:8px auto;color:#1767d2}
+.empty-basket p{color:#506b82;line-height:1.6}
+
+/* Clear stages with enough space for every label on a phone. */
+ol.order-progress{gap:12px;padding:22px 24px 10px}
+.order-progress-step{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;background:#f1f7fd;border:1px solid #d5e5f2;border-radius:12px;padding:12px 7px;min-height:86px;font-size:12px;line-height:1.45;color:#526b80}
+.order-progress-step::before,.order-progress-step::after{display:none!important}
+.order-progress-step>span:first-child{position:static;display:grid;place-items:center;width:30px;height:30px;font-size:13px;background:white;border:1px solid #b9d1e5;border-radius:50%;font-weight:750;color:#577b97}
+.order-progress-step.done>span:first-child,.order-progress-step.current>span:first-child{background:#1767d2;border-color:#1767d2;color:white}
+.order-progress-step.current{background:#e1efff;border:2px solid #408be0;padding:11px 6px;color:#114f92}
+.order-progress-step.current>span:first-child{box-shadow:0 0 0 4px #c3ddfa}
+.order-card.is-active{border-color:#a8ceef;box-shadow:0 5px 24px #1c6cca12}
+.order-card.is-active .order-status-hero{position:relative;isolation:isolate;overflow:hidden}
+.order-card.is-active .order-status-hero::before{content:"";position:absolute;width:380px;height:380px;left:-100px;top:-190px;border:2px solid #5aa9ef;border-radius:50%;box-shadow:0 0 0 34px #469ce80d,0 0 0 70px #469ce80a,0 0 0 108px #469ce808;z-index:-1;animation:customer-live-radiation 6s ease-out infinite;pointer-events:none}
+.order-card.is-active .order-status-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 25%,#6cb6ff24 48%,transparent 70%);z-index:-1;transform:translateX(-100%);animation:customer-live-sweep 7s linear infinite;pointer-events:none}
+.order-status-eta{position:relative;background:#ffffffed}
+.order-secondary-details summary{font-size:14px;min-height:52px}
+.order-history-heading{font-size:22px!important;margin-top:12px!important}
+
+/* Wide location entry, and an inline receipt that never relies on a popup. */
+.discovery-address .location-picker-panel{position:fixed;left:12px;right:12px;top:92px;width:calc(100% - 24px);max-width:560px;max-height:calc(100dvh - 180px);margin:0 auto;padding:20px;border:1px solid #b6d3eb;border-radius:18px;background:white;box-shadow:0 14px 48px #153d6940;overflow:auto;z-index:75}
+.discovery-address .location-picker-panel .address-search{position:static;display:grid;gap:10px;max-width:none;padding:0;margin:0;box-shadow:none;border:0;border-radius:0;background:white}
+.location-picker-panel .address-search>label{font-size:15px;font-weight:750}
+.location-picker-panel .address-search>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;background:transparent;border:0;padding:0}
+.location-picker-panel .address-search input{font-size:20px;min-height:58px;width:100%;padding:14px;background:#f5faff;border:1px solid #9fc2e0;border-radius:12px;letter-spacing:.035em}
+.location-picker-panel .address-search button{min-height:56px;padding:12px 16px}
+.location-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.location-picker-heading h2{font-size:21px;margin:0}.location-picker-heading button{width:44px;height:44px;min-height:44px;font-size:27px;padding:0;border-radius:50%}
+.location-picker-panel .location-options{padding-top:16px}
+.customer-receipt h3{font-size:23px;margin:8px 0}
+.receipt-items{list-style:none;padding:0;margin:22px 0}
+.receipt-items li{display:flex;justify-content:space-between;gap:18px;padding:14px 0;border-bottom:1px solid #d9e5f0;font-size:14px}
+.receipt-items li>div{min-width:0;flex:1}.receipt-items small{display:block;margin-top:5px;color:#506b82;line-height:1.5}
+.receipt-items li>strong{white-space:nowrap}.receipt-totals{display:grid;gap:12px;margin:20px 0}
+.receipt-totals>div{display:flex;justify-content:space-between;gap:20px}.receipt-totals dd{margin:0;font-weight:750}
+.receipt-total{border-top:2px solid #b6d0e6;padding-top:16px;font-size:19px}
+.basket-dish:not(:has(img)){grid-template-columns:minmax(0,1fr) auto}
+.basket-item-description{font-size:13px;color:#506b82;line-height:1.5}
+.menu-basket .totals[hidden]{display:none}
+.menu-item-sheet>p{white-space:pre-line}.dish-description{-webkit-line-clamp:3;line-height:1.55}
+.account-signout{margin-top:24px}
+@keyframes calai-prefix-drop{0%{transform:translateY(-90px);opacity:0}1.7%{transform:translateY(0);opacity:1}2.2%{transform:translateY(-3px)}2.8%,100%{transform:translateY(0);opacity:1}}
+@keyframes calai-suffix-drop{0%,1.6%{transform:translateY(-90px);opacity:0}3.3%{transform:translateY(0);opacity:1}3.8%{transform:translateY(-3px)}4.4%,100%{transform:translateY(0);opacity:1}}
+@keyframes customer-live-radiation{0%{transform:scale(.45);opacity:0}20%{opacity:.6}100%{transform:scale(1.8);opacity:0}}
+@keyframes customer-live-sweep{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.is-background .brand-layer,.is-background .order-status-hero::before,.is-background .order-status-hero::after{animation-play-state:paused}
+@media(max-width:760px){
+  .topbar,body:has(.discovery-header) .topbar{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:10px 12px;gap:8px;min-height:70px}
+  .topbar .brand,body:has(.discovery-header) .topbar .brand{min-height:42px;padding:0}
+  .brand-motion{width:148px;height:41px}
+  .topbar #account,body:has(.discovery-header) .topbar #account{gap:6px;margin:0}
+  .topbar .account-button[data-action=logout]{display:none}
+  .basket-access{font-size:12px;min-height:42px;padding:7px;gap:5px}.basket-access .customer-nav-icon{width:20px;height:20px}
+  .basket-access b{min-width:18px;height:18px;font-size:10px}
+  ol.order-progress{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-flow:row;grid-auto-columns:auto;padding:18px 18px 8px;gap:10px}
+  .order-progress-step{font-size:12px;min-height:86px;padding:12px 6px}
+  .order-progress-step.current{padding:11px 5px}
+  .location-picker-panel .address-search>div{grid-template-columns:minmax(0,1fr)}
+  .location-picker-panel .address-search button{width:100%;min-height:46px}
+  .discovery-address .location-picker-panel{top:82px;padding:18px}
+}
+@media(prefers-reduced-motion:reduce){.brand-layer,.order-card.is-active .order-status-hero::before,.order-card.is-active .order-status-hero::after{animation:none!important}.brand-layer{opacity:1;transform:none}.order-card.is-active .order-status-hero::before,.order-card.is-active .order-status-hero::after{display:none}}
 @media(max-width:760px){ol.order-progress{padding-inline:18px}}

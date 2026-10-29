@@ -1,42 +1,56 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { api, json } from "./api";
-import { money, readable, type PageInfo } from "./model";
+import { api, dashboardCsv, json } from "./api";
+import { shareDashboardCsvFile } from "./share-dashboard-csv";
+import { readable, type PageInfo } from "./model";
 import { Button, Card, Chip, Chips, colour, ErrorText, Page, Pagination, styles, Title, useForegroundRefresh, useRemote } from "./ui";
 import { LiveOrders } from "./LiveOrders";
 
 type Period = "today" | "yesterday" | "this_week" | "last_week";
 type Destination = "orders" | "menu" | "messages" | "customers" | "offers" | "cases";
-type OrderEarning = { id: string; createdAt: string; status: string; fulfillment: string; totalMinor?: number; refundsMinor?: number; commissionMinor?: number; netEarningsMinor?: number; paymentMethod?: string; payoutLabel?: string };
+type OperationalOrder = { id: string; createdAt: string; status: string; fulfillment: string };
 type Dashboard = {
- generatedAt?: string; comparison?: {fromDate:string;toDate:string;salesChangePercent:number|null;ordersChangePercent:number|null}; marketing?: {offerOrders:number;offerSalesMinor:number;discountMinor:number;activeOffers:number};
+ generatedAt?: string;
   range: { period: Period; label: string; fromDate: string; toDate: string };
   summary: { ordersPlaced: number; confirmedOrders: number; completedOrders: number; cancelledOrders: number };
   operations: { liveOrders: number; confirmedInKitchen: number; readyForHandover: number; pendingConfirmation: number; overdueConfirmation: number; activeOrders: number; unreadMessages: number; openRefundCases: number };
-  finance: null | { period: { grossSalesMinor: number; refundsMinor: number; commissionMinor: number; netEarningsMinor: number; cashSalesMinor: number; cashCollectedMinor: number; cardSalesMinor: number; averageOrderMinor: number }; balance: { availableMinor: number; pendingMinor: number; heldMinor: number; bankPaidMinor: number; bankPendingMinor: number; cashCommissionOutstandingMinor: number; providerMode?: string } };
   topItems: Array<{ name: string; quantity: number }>;
-  orders: { items: OrderEarning[]; pagination: PageInfo };
+  orders: { items: OperationalOrder[]; pagination: PageInfo };
 };
 const periods: Array<[Period, string]> = [["yesterday", "Yesterday"], ["today", "Today"], ["this_week", "This week"], ["last_week", "Last week"]];
 
 export function DashboardScreen({ token, restaurantId, canManage, onNavigate, onOrder, onFinance }: { token: string; restaurantId: string; canManage: boolean; onNavigate: (screen: Destination) => void; onOrder: (id: string) => void; onFinance: () => void }) {
   const [period, setPeriod] = useState<Period>("today"), [page, setPage] = useState(1);
-  const result = useRemote<Dashboard>(`/api/restaurant/restaurants/${restaurantId}/dashboard?period=${period}&page=${page}&pageSize=20`, token);
+  const result = useRemote<Dashboard>(`/api/restaurant/restaurants/${restaurantId}/dashboard?period=${period}&view=operations&page=${page}&pageSize=20`, token);
   useForegroundRefresh(result.reload, 5000);
   const current = result.value?.range.period === period && result.value?.orders.pagination.page === page && !result.error ? result.value : null;
-  const finance = canManage ? current?.finance : null;
+
+  const [sharing, setSharing] = useState<"metrics" | "orders" | null>(null), [shareError, setShareError] = useState("");
+  const exportRequest = useRef<AbortController | null>(null), context = useRef({ restaurantId, period, token, canManage });
+  context.current = { restaurantId, period, token, canManage };
+  useEffect(() => { setShareError(""); setSharing(null); return () => { exportRequest.current?.abort(); exportRequest.current = null; }; }, [restaurantId, period, token, canManage]);
+  async function shareCsv(kind: "metrics" | "orders") {
+    if (!canManage || exportRequest.current) return;
+    const requested = { restaurantId, period, token }, controller = new AbortController();
+    exportRequest.current = controller; setSharing(kind); setShareError("");
+    try {
+      const result = await dashboardCsv({ ...requested, kind, signal: controller.signal });
+      const isCurrent = () => !controller.signal.aborted && exportRequest.current === controller && context.current.canManage && context.current.restaurantId === requested.restaurantId && context.current.period === requested.period && context.current.token === requested.token;
+      await shareDashboardCsvFile(result.csv, result.filename, isCurrent);
+    } catch (error) { if (exportRequest.current === controller && !controller.signal.aborted) setShareError((error as Error).message); }
+    finally { if (exportRequest.current === controller) { exportRequest.current = null; setSharing(null); } }
+  }
   function choose(value: Period) { setPeriod(value); setPage(1); }
   return <Page loading={result.loading} onRefresh={() => void result.reload()}>
     <Title title="Dashboard">Your restaurant at a glance</Title>
     {canManage&&current&&<View style={[styles.card,{borderColor:current.operations.unreadMessages?colour.blue:colour.border}]}><Text style={styles.heading}>Customer messages</Text><Text style={styles.muted}>{current.operations.unreadMessages} unread message{current.operations.unreadMessages===1?"":"s"}</Text><Button onPress={()=>onNavigate("messages")}>Open customer inbox</Button></View>}
     {current && <LiveOrders operations={current.operations} onOpen={() => onNavigate("orders")}/>}
     <Chips>{periods.map(([value, label]) => <Chip key={value} selected={value === period} onPress={() => choose(value)}>{label}</Chip>)}</Chips>
+    {canManage && <Card><Text style={styles.heading}>Export {periods.find(([value]) => value === period)?.[1].toLowerCase()}</Text><Text style={styles.hint}>Save a CSV file or share it with another app. Exports use the selected period.</Text><ErrorText message={shareError}/><Button quiet disabled={Boolean(sharing)} busy={sharing === "metrics"} onPress={() => void shareCsv("metrics")}>Save or share statistics CSV</Button><Button quiet disabled={Boolean(sharing)} busy={sharing === "orders"} onPress={() => void shareCsv("orders")}>Save or share orders CSV</Button></Card>}
     <ErrorText message={result.error}/>
     {!current && result.loading && <ActivityIndicator color={colour.cyan}/>}
     {current && <>
-      <View style={{flexDirection:"row",gap:12,alignItems:"stretch"}}>{finance&&<Hero title="Total sales" value={money(finance.period.grossSalesMinor)} change={current.comparison?.salesChangePercent} hint="Net earnings" detail={money(finance.period.netEarningsMinor)}/>}<Hero title="Orders placed" value={String(current.summary.ordersPlaced)} change={current.comparison?.ordersChangePercent} hint={finance?"Average order":"Confirmed orders"} detail={finance?money(finance.period.averageOrderMinor):String(current.summary.confirmedOrders)}/></View>
-{current.comparison&&<Text style={styles.hint}>Compared with {current.comparison.fromDate} – {current.comparison.toDate} · same period last week</Text>}
-{current.marketing&&canManage&&<Card><Text style={styles.heading}>Marketing overview</Text><Metric label="Sales from offer orders" value={money(current.marketing.offerSalesMinor)}/><Metric label="Orders using offers" value={String(current.marketing.offerOrders)}/><Metric label="Active customer offers" value={String(current.marketing.activeOffers)}/><Metric label="Food discounts" value={money(current.marketing.discountMinor)}/><Text style={styles.hint}>Confirmed order sales before refunds. Ingredient costs are not estimated.</Text><Button quiet onPress={()=>onNavigate("offers")}>Manage offers</Button></Card>}
+      <View style={{flexDirection:"row",gap:12,alignItems:"stretch"}}><Hero title="Orders placed" value={String(current.summary.ordersPlaced)} hint="Confirmed orders" detail={String(current.summary.confirmedOrders)}/><Hero title="Completed orders" value={String(current.summary.completedOrders)} hint="Preparing now" detail={String(current.operations.confirmedInKitchen)}/></View>
 <Text style={styles.hint}>{current.range.fromDate} – {current.range.toDate} · UK time · weeks start Monday</Text>
       <Card><Text style={styles.heading}>Needs attention now</Text>
         <Button quiet onPress={() => onNavigate("orders")}>{current.operations.pendingConfirmation} orders to confirm{current.operations.overdueConfirmation ? ` · ${current.operations.overdueConfirmation} overdue` : ""}</Button>
@@ -48,21 +62,14 @@ export function DashboardScreen({ token, restaurantId, canManage, onNavigate, on
         <Metric label="Confirmed orders" value={String(current.summary.confirmedOrders)}/>
         <Metric label="Completed orders" value={String(current.summary.completedOrders)}/>
         <Metric label="Cancelled orders" value={String(current.summary.cancelledOrders)}/>
-        {finance && <><Metric label="Sales" value={money(finance.period.grossSalesMinor)}/><Metric label="Refunds" value={money(finance.period.refundsMinor)}/><Metric label="Commission" value={money(finance.period.commissionMinor)}/><Metric label="Net earnings" value={money(finance.period.netEarningsMinor)}/><Metric label="Average confirmed order" value={money(finance.period.averageOrderMinor)}/><Metric label="Cash orders" value={money(finance.period.cashSalesMinor)}/><Metric label="Cash recorded collected" value={money(finance.period.cashCollectedMinor)}/><Metric label="Card orders" value={money(finance.period.cardSalesMinor)}/></>}
-        <Text style={styles.hint}>Orders placed in this period. Sales include confirmed orders and their current refunds. Cash is collected directly by your restaurant.</Text>
+        <Text style={styles.hint}>Orders placed in this period. Live order counts show the current state across all dates.</Text>
       </Card>
-      {finance && <Card><Text style={styles.heading}>Current balance · all dates</Text>
-        <Metric label="Available" value={money(finance.balance.availableMinor)}/><Metric label="Pending" value={money(finance.balance.pendingMinor)}/><Metric label="Held" value={money(finance.balance.heldMinor)}/><Metric label="Bank payouts recorded" value={money(finance.balance.bankPaidMinor)}/><Metric label="Bank payouts pending" value={money(finance.balance.bankPendingMinor)}/>
-        <Text style={styles.hint}>A transfer to your connected balance is separate from a payout to your bank. {finance.balance.providerMode !== "stripe_live" ? "This preview uses test or simulated payment records." : ""}</Text>
-        <Button onPress={onFinance}>Bank details and payout history</Button>
-      </Card>}
       {canManage && <WeeklyStatement token={token} restaurantId={restaurantId}/>}
       {current.topItems.length > 0 && <Card><Text style={styles.heading}>Popular items</Text>{current.topItems.slice(0, 5).map(item => <Metric key={item.name} label={item.name} value={`${item.quantity} sold`}/>)}</Card>}
-      <Text style={styles.heading}>{canManage ? "Earnings by order" : "Orders in this period"}</Text>
+      <Text style={styles.heading}>Orders in this period</Text>
       {!current.orders.items.length && <Text style={styles.muted}>No orders in this period.</Text>}
       {current.orders.items.map(order => <Card key={order.id}>
         <Text style={styles.heading}>#{order.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.muted}>{new Date(order.createdAt).toLocaleString("en-GB", { timeZone: "Europe/London" })} · {readable(order.status)} · {readable(order.fulfillment)}</Text>
-        {canManage && <><Metric label="Order total" value={money(order.totalMinor)}/><Metric label="Refunds" value={money(order.refundsMinor)}/><Metric label="Commission" value={money(order.commissionMinor)}/><Metric label="Net earnings" value={money(order.netEarningsMinor)}/><Text style={styles.text}>{order.payoutLabel || "No payout recorded"}</Text></>}
         <Button quiet onPress={() => onOrder(order.id)}>View order</Button>
       </Card>)}
       <Pagination value={current.orders.pagination} page={page} onPage={setPage} busy={result.loading}/>

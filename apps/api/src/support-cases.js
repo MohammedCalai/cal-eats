@@ -4,16 +4,17 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { encryptMessage, decryptMessage, messageFingerprint, messageEncryptionReadiness } from "./message-encryption.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
+import { assertCustomerOrderVisible } from "./customer-order-history.js";
 
 const text = (value, min, max, label) => {
   const result = typeof value === "string" ? value.trim() : "";
   if (result.length < min || result.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
   return result;
 };
-const query = `SELECT s.*,u.name AS customer_name,u.role AS requester_role,r.name AS restaurant_name,origin.name AS requester_restaurant_name FROM support_cases s JOIN users u ON u.id=s.user_id LEFT JOIN restaurants r ON r.id=s.restaurant_id LEFT JOIN restaurants origin ON origin.id=s.requester_restaurant_id`;
+const query = `SELECT s.*,u.name AS customer_name,u.role AS requester_role,r.name AS restaurant_name,origin.name AS requester_restaurant_name,(SELECT f.id FROM refund_cases f WHERE f.id=s.id AND f.order_id=s.order_id AND f.customer_id=s.user_id) AS refund_case_id FROM support_cases s JOIN users u ON u.id=s.user_id LEFT JOIN restaurants r ON r.id=s.restaurant_id LEFT JOIN restaurants origin ON origin.id=s.requester_restaurant_id`;
 export const supportSummary = row => ({
   id: row.id, reference: row.id.slice(0, 8).toUpperCase(), userId: row.user_id,
-  customerName: row.customer_name, orderId: row.order_id, restaurantId: row.restaurant_id ?? null,
+  customerName: row.customer_name, orderId: row.order_id, refundCaseId:row.refund_case_id??null, restaurantId: row.restaurant_id ?? null,
   requesterRole: row.requester_role, requesterName: row.customer_name, requesterRestaurantId: row.requester_restaurant_id ?? null, requesterRestaurantName: row.requester_restaurant_name ?? null,
   assignedTo: row.requester_role === "customer" && row.restaurant_id ? "restaurant" : "platform",
   recipient: row.requester_role === "customer" && row.restaurant_id ? row.restaurant_name || "Restaurant team" : "Cal-Eats support", subject: row.subject, message: row.message,
@@ -31,6 +32,21 @@ function notify(db, row, recipients, kind, title, message, event, stamp) {
     const inserted=db.prepare(`INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,restaurant_id,event_key,created_at,support_case_id) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(),recipient.id,kind,title,message,row.order_id,row.restaurant_id,event,stamp,row.id);
     if(inserted.changes)queueCustomerEmailForNotification(db,recipient.id,event);
   }
+}
+// An order-help request remains a restaurant-first remedy case and also creates
+// one platform support conversation. Reusing its UUID binds both records without
+// changing historic disputes or duplicating requests on retries.
+export function linkOrderHelpToPlatform(db, refundCase, order, stamp) {
+  const requestKey=`order-help:${refundCase.id}`,hash=createHash("sha256").update(requestKey).digest("hex");
+  const inserted=db.prepare(`INSERT OR IGNORE INTO support_cases(id,user_id,order_id,subject,message,status,created_at,updated_at,restaurant_id,waiting_for,idempotency_key,request_hash,requester_restaurant_id) VALUES(?,?,?,?,?,'open',?,?,NULL,'team',?,?,NULL)`).run(refundCase.id,refundCase.customer_id,order.id,`Order help · ${refundCase.reference}`,refundCase.description,stamp,stamp,requestKey,hash);
+  const row=db.prepare(`${query} WHERE s.id=?`).get(refundCase.id);
+  if(!row||row.user_id!==refundCase.customer_id||row.order_id!==order.id||row.idempotency_key!==requestKey||row.restaurant_id!==null)throw new HttpError(409,"SUPPORT_LINK_CONFLICT","Order help could not be linked safely");
+  if(inserted.changes){
+    const admins=db.prepare("SELECT id FROM users WHERE role='admin' AND account_enabled=1 ORDER BY created_at,id").all();
+    notify(db,row,admins,"support_request","Customer order help needs a reply",`Order ${order.id.slice(0,8).toUpperCase()} · ${refundCase.reference}. Open the support conversation to reply.`,`support:${row.id}:created`,stamp);
+    db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),refundCase.customer_id,"support",row.id,"order_help_linked",JSON.stringify({refundCaseId:refundCase.id,orderId:order.id}),stamp);
+  }
+  return row.id;
 }
 function access(db, session, caseId) {
   const user = requireUser(session), row = db.prepare(`${query} WHERE s.id=?`).get(caseId);
@@ -101,6 +117,7 @@ export async function routeSupportCases({ req, res, url, db, config, session }) 
       orderId = text(body.orderId, 1, 100, "Order"); const order = db.prepare("SELECT * FROM orders WHERE id=?").get(orderId);
       const member = order && user.role === "restaurant" && db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(order.restaurant_id, user.id);
       if (!order || (user.role !== "admin" && order.customer_id !== user.id && !member)) throw new HttpError(404, "NOT_FOUND", "Order not found");
+      assertCustomerOrderVisible(order,user,config.now());
       if (user.role === "customer") restaurantId = order.restaurant_id;
       if (user.role === "restaurant") requesterRestaurantId = order.restaurant_id;
     }

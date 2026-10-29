@@ -1,5 +1,6 @@
 import { menuDetails } from "./menu-details.js";
 import { assertRestaurantServiceArea } from "./service-areas.js";
+import { customerOrderHistoryCutoff, customerOrderHistorySql } from "./customer-order-history.js";
 import { createHash, randomUUID } from "node:crypto";
 import { calculateCommissionAtRate, VALIDATION } from "../../../packages/contracts/src/index.js";
 import { requireRole, requireRestaurantMembership, requireRestaurantOwner, requireUser } from "./auth/authorization.js";
@@ -122,14 +123,15 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     let outcode = null;
     if (postcode) { const compact = postcode.trim().toUpperCase().replace(/\s+/g, ""); const matchPostcode = compact.match(/^([A-Z]{1,2}\d[A-Z\d]?)(?:\d[A-Z]{2})?$/); if (!matchPostcode) throw new HttpError(400, "VALIDATION_ERROR", "Postcode is invalid"); outcode = matchPostcode[1]; }
     if ((q?.length || 0) > 100 || (cuisine?.length || 0) > 80) throw new HttpError(400, "VALIDATION_ERROR", "Search is too long");
-    const rows = db.prepare("SELECT r.*,COALESCE((SELECT group_concat(m.name||' '||m.category,' ') FROM menu_items m WHERE m.restaurant_id=r.id AND m.available=1),'') AS search_terms FROM restaurants r WHERE r.status='approved' AND r.suspended=0 ORDER BY r.name").all().filter((row) => {
+    const popularityNow = config.now(), popularSince = new Date(popularityNow.getTime() - 30 * 86400000).toISOString();
+    const rows = db.prepare("SELECT r.*,COALESCE((SELECT COUNT(*) FROM orders o WHERE o.restaurant_id=r.id AND o.status='completed' AND o.created_at>=? AND o.created_at<=?),0) AS completed_order_count_30d,COALESCE((SELECT group_concat(m.name||' '||m.category,' ') FROM menu_items m WHERE m.restaurant_id=r.id AND m.available=1),'') AS search_terms FROM restaurants r WHERE r.status='approved' AND r.suspended=0 ORDER BY r.name").all(popularSince,popularityNow.toISOString()).filter((row) => {
       if (fulfillment === "delivery" && (!row.delivery_enabled || (outcode && !JSON.parse(row.delivery_outcodes).includes(outcode)))) return false;
       if (fulfillment === "collection" && !row.collection_enabled) return false;
       if (q && !`${row.name} ${row.description} ${row.cuisine} ${row.search_terms}`.toLowerCase().includes(q)) return false;
       if (cuisine && row.cuisine.toLowerCase() !== cuisine) return false;
       return true;
     });
-    return sendJson(res, 200, { data: rows.map((row) => restaurantDto(row, { now: config.now() })) });
+    return sendJson(res, 200, { data: rows.map((row) => ({ ...restaurantDto(row, { now: config.now() }), completedOrderCountLast30Days: row.completed_order_count_30d })) });
   }
   let match = url.pathname.match(/^\/api\/restaurants\/([^/]+)\/menu$/);
   if (req.method === "GET" && match) {
@@ -232,7 +234,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (req.method === "POST" && url.pathname === "/api/orders") return createOrder({ req, res, db, config, session });
   if (req.method === "GET" && url.pathname === "/api/orders") {
     const user = requireRole(session, "customer");
-    return sendJson(res, 200, { data: db.prepare("SELECT * FROM orders WHERE customer_id=? ORDER BY created_at DESC").all(user.id).map((row) => orderDto(db, row, false, true, config)) });
+    return sendJson(res, 200, { data: db.prepare(`SELECT o.* FROM orders o WHERE o.customer_id=? AND ${customerOrderHistorySql("o")} ORDER BY o.created_at DESC`).all(user.id,customerOrderHistoryCutoff(config.now())).map((row) => orderDto(db, row, false, true, config)) });
   }
   if (req.method === "GET" && url.pathname === "/api/restaurant/orders/pending-confirmation") {
     const user=requireRole(session,"restaurant"),restaurantId=url.searchParams.get("restaurantId");

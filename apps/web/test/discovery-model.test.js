@@ -1,5 +1,9 @@
 import test from "node:test";import assert from "node:assert/strict";
 import {availableDiscoveryOffer,discoveryCollections,cuisineIcon} from "../discovery-model.js";
+test("popular shelves use completed orders and free delivery requires an enabled zero-fee service",()=>{
+ const rows=[{id:"popular",completedOrderCountLast30Days:12,delivery:{enabled:true,deliveryFeeMinor:199}},{id:"free",completedOrderCountLast30Days:3,delivery:{enabled:true,deliveryFeeMinor:0}},{id:"collection",completedOrderCountLast30Days:0,delivery:{enabled:false,deliveryFeeMinor:0}},{id:"unknown",delivery:{enabled:true}}];
+ const groups=discoveryCollections(rows,[],"delivery");assert.deepEqual(groups.popular.map(r=>r.id),["popular","free"]);assert.deepEqual(groups.freeDelivery.map(r=>r.id),["free"]);assert.deepEqual(discoveryCollections(rows,[],"collection").freeDelivery,[]);
+});
 test("discovery keeps every unique restaurant and ranks genuine time and fee data",()=>{
  const restaurants=Array.from({length:21},(_,index)=>({id:String(index),acceptingOrders:index!==0,profile:{estimatedDeliveryMinutes:30-index,estimatedCollectionMinutes:index},delivery:{deliveryFeeMinor:index*10}}));
  const groups=discoveryCollections([...restaurants,restaurants[0]],[],"delivery");assert.equal(groups.all.length,21);assert.equal(new Set(groups.all.map(r=>r.id)).size,21);assert.equal(groups.quick[0].id,"20");assert.equal(groups.lowFee[0].id,"0");assert.equal(discoveryCollections(restaurants,[],"collection").quick[0].id,"1");assert.equal(restaurants[0].id,"0");

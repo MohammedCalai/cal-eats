@@ -1,6 +1,7 @@
 import { RestaurantMenu } from "./RestaurantMenu";
 import { DiscoveryBrowse, type BrowsingFilters } from "./DiscoveryBrowse";
 import { useEffect, useRef, useState } from "react";
+import { Alert } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import type {ServiceArea} from "../LocationPicker";
 
@@ -17,6 +18,7 @@ interface Props {
   onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
 export function DiscoverScreen(props: Props) {
+  const [browsing,setBrowsing]=useState(!props.restaurant);
   const [offers,setOffers]=useState<Offer[]>([]); const [browsingFilters,setBrowsingFilters]=useState<BrowsingFilters>({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});
   const [postcode, setPostcode] = useState(props.address?.postcode||""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);const [serviceArea,setServiceArea]=useState<ServiceArea|null>(null);
   const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
@@ -41,16 +43,18 @@ export function DiscoverScreen(props: Props) {
 
   useEffect(() => { const focused = props.focusRestaurantId; if (focused) void chooseRestaurant({ id: focused }, props.restaurant?.id === focused).then(() => { if (mounted.current && latest.current.focusRestaurantId === focused) latest.current.onRestaurantFocused?.(); }); }, [props.focusRestaurantId]);
 
-  useEffect(() => { if (!props.focusRestaurantId && props.restaurant && !menu.length) void chooseRestaurant(props.restaurant, true); }, [props.restaurant?.id, props.focusRestaurantId]);
+  useEffect(() => { if (!browsing && !props.focusRestaurantId && props.restaurant && !menu.length) void chooseRestaurant(props.restaurant, true); }, [props.restaurant?.id, props.focusRestaurantId]);
 
-  async function chooseRestaurant(restaurant: Pick<Restaurant, "id">, refresh = false) {
+  async function chooseRestaurant(restaurant: Pick<Restaurant, "id">, refresh = false, replacementConfirmed = false) {
+    if(!refresh && !replacementConfirmed && latestCart.current.length && latest.current.restaurant?.id !== restaurant.id){Alert.alert("Start a new basket?","Your basket is from another restaurant. Keep it or replace it with this restaurant.",[{text:"Keep basket",style:"cancel"},{text:"Replace basket",onPress:()=>void chooseRestaurant(restaurant,false,true)}]);return;}
+    if(latest.current.restaurant?.id===restaurant.id && latestCart.current.length)refresh=true;
     const request = ++menuRequest.current, token = props.token;
     const current = () => mounted.current && menuRequest.current === request && latest.current.token === token && (!latest.current.focusRestaurantId || latest.current.focusRestaurantId === restaurant.id);
     setMenuLoading(true); setError("");
     try {
       const result = await api<{ restaurant: Restaurant; items: MenuItem[] }>(`/api/restaurants/${encodeURIComponent(restaurant.id)}/menu`, { token });
       if (!current()) return;
-      latest.current.onRestaurant(result.restaurant); if (latest.current.fulfillment === "delivery" && !result.restaurant.delivery.enabled && result.restaurant.profile.collectionEnabled) latest.current.onFulfillment("collection"); else if (latest.current.fulfillment === "collection" && !result.restaurant.profile.collectionEnabled && result.restaurant.delivery.enabled) latest.current.onFulfillment("delivery"); updateCart(refresh ? refreshCart(latestCart.current, result.items) : []); setMenu(result.items); setNotice(refresh ? "Menu refreshed. Your basket is kept using current prices and available choices." : "");
+      setBrowsing(false); latest.current.onRestaurant(result.restaurant); if (latest.current.fulfillment === "delivery" && !result.restaurant.delivery.enabled && result.restaurant.profile.collectionEnabled) latest.current.onFulfillment("collection"); else if (latest.current.fulfillment === "collection" && !result.restaurant.profile.collectionEnabled && result.restaurant.delivery.enabled) latest.current.onFulfillment("delivery"); updateCart(refresh ? refreshCart(latestCart.current, result.items) : []); setMenu(result.items); setNotice(refresh ? "Menu refreshed. Your basket is kept using current prices and available choices." : "");
     }
     catch (caught) { if (current()) setError((caught as Error).message); } finally { if (current()) setMenuLoading(false); }
   }
@@ -61,7 +65,7 @@ export function DiscoverScreen(props: Props) {
     const selections = current?.selections ?? {};
     updateCart(next ? [...cart.filter((entry) => entry.item.id !== item.id), { item, quantity: next, selections }] : cart.filter((entry) => entry.item.id !== item.id));
   }
-  if (props.restaurant) return <RestaurantMenu key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false); props.onRestaurant(null); updateCart([]); setMenu([]); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
+  if (props.restaurant && !browsing) return <RestaurantMenu key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false); setBrowsing(true); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
 
   return <DiscoveryBrowse token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
 }

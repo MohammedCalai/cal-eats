@@ -22,5 +22,8 @@ export function supportEmailSource(db, notification) {
     :notification.type==="support_request"?"A support request needs your reply. Open the secure conversation to read and respond."
     :notification.type==="support_status"?"The status of your support request has changed. Open the conversation for the current status."
     :"Your support conversation has a new reply. Open Cal-Eats to read it and respond securely.";
-  return {user,support:ticket,sourceMessageId,payload:{title,summary,recipientRole:user.role,supportReference:ticket.id.slice(0,8).toUpperCase(),restaurantName:platform?ticket.requester_restaurant_name||"Cal-Eats support":ticket.restaurant_name||"Restaurant team"}};
+  const linkedOrderHelp=platform&&ticket.requester_role==="customer"&&db.prepare("SELECT 1 FROM refund_cases WHERE id=? AND order_id=? AND customer_id=?").get(ticket.id,ticket.order_id,ticket.user_id);
+  const primaryAdmin=linkedOrderHelp&&user.role==="admin"&&db.prepare("SELECT id FROM users WHERE role='admin' AND account_enabled=1 ORDER BY created_at,id LIMIT 1").get();
+  const recipient=primaryAdmin?.id===user.id?"support@calai.info":user.email;
+  return {user,recipient,support:ticket,sourceMessageId,payload:{title,summary,recipientRole:user.role,supportReference:ticket.id.slice(0,8).toUpperCase(),...(linkedOrderHelp?{caseReference:db.prepare("SELECT reference FROM refund_cases WHERE id=?").get(ticket.id).reference}:{}),restaurantName:platform?ticket.requester_restaurant_name||"Cal-Eats support":ticket.restaurant_name||"Restaurant team"}};
 }

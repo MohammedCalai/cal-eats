@@ -19,6 +19,7 @@ export interface Address {
 }
 
 export interface Restaurant {
+  completedOrderCountLast30Days?: number;
   id: string;
   name: string;
   coverImageUrl?: string | null;

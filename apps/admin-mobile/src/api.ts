@@ -27,6 +27,34 @@ export async function request<T>(path: string, options: Options = {}): Promise<E
   } finally { clearTimeout(timer); }
 }
 export async function api<T>(path: string, options: Options = {}): Promise<T> { return (await request<T>(path, options)).data; }
+export async function dashboardCsv({ restaurantId, period, kind, token, signal }: { restaurantId: string; period: "today" | "yesterday" | "this_week" | "last_week"; kind: "metrics" | "orders"; token: string; signal?: AbortSignal }) {
+  if (!API_BASE) throw new ApiError("The Cal-Eats service address is unavailable.", 0, "API_NOT_CONFIGURED");
+  if (!/^[A-Za-z0-9-]{1,100}$/.test(restaurantId) || !["today", "yesterday", "this_week", "last_week"].includes(period) || !["metrics", "orders"].includes(kind) || !token) throw new ApiError("This dashboard export is unavailable.", 0, "INVALID_EXPORT");
+  const maxBytes = 256 * 1024;
+  const controller = new AbortController(), abort = () => controller.abort();
+  signal?.addEventListener("abort", abort);
+  if (signal?.aborted) controller.abort();
+  const timer = setTimeout(abort, 20000);
+  const url = `${API_BASE}/api/restaurant/restaurants/${restaurantId}/dashboard/${kind}.csv?period=${period}`;
+  const tooLarge = () => new ApiError("This export is too large to share on your phone. Download it from the tablet or browser dashboard.", 413, "EXPORT_TOO_LARGE");
+  try {
+    const response = await fetch(url, { method: "GET", headers: { Accept: "text/csv", Authorization: `Bearer ${token}` }, credentials: "omit", redirect: "error", signal: controller.signal });
+    if (response.redirected || (response.url && response.url !== url)) throw new ApiError("Cal-Eats returned an unexpected export address. Please refresh.", 0, "INVALID_RESPONSE");
+    if (!response.ok) { const payload = await response.json().catch(() => null); throw new ApiError(payload?.error?.message || "The CSV could not be prepared. Please try again.", response.status, payload?.error?.code || "EXPORT_ERROR"); }
+    if (!response.headers.get("content-type")?.toLowerCase().includes("text/csv")) throw new ApiError("The CSV is unavailable. Please refresh and try again.", response.status, "INVALID_RESPONSE");
+    const declaredBytes = Number(response.headers.get("content-length"));
+    if (!Number.isSafeInteger(declaredBytes) || declaredBytes <= 0) throw new ApiError("The CSV download could not be checked. Please use the tablet or browser dashboard.", 0, "INVALID_RESPONSE");
+    if (declaredBytes > maxBytes) throw tooLarge();
+    const csv = await response.text();
+    if (csv.length > maxBytes || new Blob([csv]).size > maxBytes) throw tooLarge();
+    if (controller.signal.aborted) throw new ApiError("The export was cancelled. Please try again.", 0, "EXPORT_CANCELLED");
+    const filename = response.headers.get("content-disposition")?.match(/filename="([A-Za-z0-9._-]+\.csv)"/)?.[1] || `Cal-Eats-${kind}-${period}.csv`;
+    return { csv, filename };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError((error as Error).name === "AbortError" ? "The export took too long or was cancelled. Please try again." : "Could not download the CSV. Check your connection and try again.", 0, "EXPORT_ERROR");
+  } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
+}
 export const json = (token: string, method: string, body: unknown, key?: string): Options => ({ token, method, body: JSON.stringify(body), idempotencyKey: key });
 export function mediaUrl(path?: string | null) {
   if (!path || !API_BASE) return undefined;

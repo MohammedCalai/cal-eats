@@ -7,7 +7,9 @@ export function discoveryCollections(restaurants,offers=[],fulfillment="delivery
   const quick=[...all].sort((a,b)=>Number(b.acceptingOrders===true)-Number(a.acceptingOrders===true)||minutes(a,fulfillment)-minutes(b,fulfillment));
   const deals=all.filter(restaurant=>availableDiscoveryOffer(restaurant.id,offers,now));
   const lowFee=[...all].sort((a,b)=>(a.delivery?.deliveryFeeMinor??Infinity)-(b.delivery?.deliveryFeeMinor??Infinity));
-  return {all,quick,deals,lowFee};
+  const popular=all.filter(restaurant=>Number.isSafeInteger(restaurant.completedOrderCountLast30Days)&&restaurant.completedOrderCountLast30Days>0).sort((a,b)=>b.completedOrderCountLast30Days-a.completedOrderCountLast30Days||String(a.name||a.id).localeCompare(String(b.name||b.id)));
+  const freeDelivery=fulfillment==="delivery"?all.filter(restaurant=>restaurant.delivery?.enabled===true&&restaurant.delivery.deliveryFeeMinor===0):[];
+  return {all,quick,deals,lowFee,popular,freeDelivery};
 }
 export function cuisineIcon(cuisine="") {
   const name=cuisine.toLowerCase();
