@@ -25,6 +25,7 @@ import { initializeCustomerEmailDelivery } from "./customer-emails.js";
 import { routeBusinessDashboard } from "./business-dashboard.js";
 import { handleBusinessStatementRoutes } from "./business-weekly-statements.js";
 import { routeFinanceDetails } from "./finance-details.js";
+import { routeServiceAreas } from "./service-areas.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -166,6 +167,7 @@ export function createApp({ db, config }) {
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
+      if (await routeServiceAreas({ req, res, url, db, config, session, checkRate })) return;
       if (await routeBusinessDashboard({ req, res, url, db, config, session })) return;
       if (await handleBusinessStatementRoutes({ req, res, url, db, config, session })) return;
       if (await routeOrderMessaging({ req, res, url, db, config, session })) return;

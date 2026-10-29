@@ -73,6 +73,7 @@ export function loadConfig(overrides = {}) {
     paymentProviderConnectWebhookSecret,
     providerWebhookBodyLimit: overrides.providerWebhookBodyLimit ?? 256 * 1024,
     now: overrides.now ?? (() => new Date()),
+    locationProvider: overrides.locationProvider,
     rateLimit: overrides.rateLimit ?? { attempts: 8, windowMs: 60_000 }
   };
 }

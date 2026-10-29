@@ -46,6 +46,17 @@
             "targetSdkVersion": 36
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "locationWhenInUsePermission": "Allow Cal-Eats to find a nearby postcode when you choose Use my location.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
       ]
     ],
     "scheme": "caleats",

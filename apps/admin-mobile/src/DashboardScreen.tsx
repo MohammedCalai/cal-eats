@@ -28,6 +28,7 @@ export function DashboardScreen({ token, restaurantId, canManage, onNavigate, on
   function choose(value: Period) { setPeriod(value); setPage(1); }
   return <Page loading={result.loading} onRefresh={() => void result.reload()}>
     <Title title="Dashboard">Your restaurant at a glance</Title>
+    {canManage&&current&&<View style={[styles.card,{borderColor:current.operations.unreadMessages?colour.blue:colour.border}]}><Text style={styles.heading}>Customer messages</Text><Text style={styles.muted}>{current.operations.unreadMessages} unread message{current.operations.unreadMessages===1?"":"s"}</Text><Button onPress={()=>onNavigate("messages")}>Open customer inbox</Button></View>}
     {current && <LiveOrders operations={current.operations} onOpen={() => onNavigate("orders")}/>}
     <Chips>{periods.map(([value, label]) => <Chip key={value} selected={value === period} onPress={() => choose(value)}>{label}</Chip>)}</Chips>
     <ErrorText message={result.error}/>

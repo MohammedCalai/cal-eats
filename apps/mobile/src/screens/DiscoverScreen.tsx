@@ -1,21 +1,24 @@
 import { RestaurantMenu } from "./RestaurantMenu";
 import { DiscoveryBrowse, type BrowsingFilters } from "./DiscoveryBrowse";
 import { useEffect, useRef, useState } from "react";
+import * as SecureStore from "expo-secure-store";
+import type {ServiceArea} from "../LocationPicker";
 
 import { api } from "../api";
 
 import { refreshCart } from "../model";
 
-import type { CartEntry, Fulfillment, MenuItem, Restaurant, Offer } from "../types";
+import type { Address, CartEntry, Fulfillment, MenuItem, Restaurant, Offer } from "../types";
 
 interface Props {
+  userId:string;address:Address|null;onAddress:(address:Address)=>void;
   token: string; onUseOffer?: (restaurantId:string,offerId:string)=>void; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
   restaurant: Restaurant | null; cart: CartEntry[]; onRestaurant: (restaurant: Restaurant | null) => void;
   onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
 export function DiscoverScreen(props: Props) {
   const [offers,setOffers]=useState<Offer[]>([]); const [browsingFilters,setBrowsingFilters]=useState<BrowsingFilters>({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});
-  const [postcode, setPostcode] = useState(""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [postcode, setPostcode] = useState(props.address?.postcode||""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);const [serviceArea,setServiceArea]=useState<ServiceArea|null>(null);
   const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const mounted = useRef(false), discoveryRequest = useRef(0), menuRequest = useRef(0), latest = useRef(props), latestCart = useRef(props.cart);
   latest.current = props; latestCart.current = props.cart;
@@ -23,16 +26,18 @@ export function DiscoverScreen(props: Props) {
 
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; discoveryRequest.current++; menuRequest.current++; }; }, []);
+  useEffect(()=>{let active=true;if(!props.address)void SecureStore.getItemAsync(`cal-eats-postcode-${props.userId}`).then(value=>{if(active&&value)setPostcode(value);}).catch(()=>{});return()=>{active=false;};},[props.userId]);
+  function selectLocation(address:Address){setPostcode(address.postcode);props.onAddress(address);void SecureStore.setItemAsync(`cal-eats-postcode-${props.userId}`,address.postcode).catch(()=>{});}
   function updateCart(entries: CartEntry[]) { latestCart.current = entries; latest.current.onCart(entries); }
 
   async function loadRestaurants() {
     const request = ++discoveryRequest.current, fulfillment = props.fulfillment, token = props.token;
     const current = () => mounted.current && discoveryRequest.current === request && latest.current.fulfillment === fulfillment && latest.current.token === token;
     setDiscoveryLoading(true); setError("");
-    try { const params = new URLSearchParams({ fulfillment }); if (postcode.trim()) params.set("postcode", postcode.trim()); if (query.trim()) params.set("q", query.trim()); const [result,availableOffers] = await Promise.all([api<Restaurant[]>(`/api/restaurants?${params}`, { token }),api<Offer[]>("/api/offers",{token}).catch(()=>[])]); if (current()) {setRestaurants(result);setOffers(availableOffers);} }
+    try { const area=await api<ServiceArea>(`/api/service-availability?postcode=${encodeURIComponent(postcode)}&fulfillment=${fulfillment}`,{token});if(!current())return;setServiceArea(area);const params = new URLSearchParams({ fulfillment }); if (postcode.trim()&&area.available!==false) params.set("postcode", postcode.trim()); if (query.trim()) params.set("q", query.trim()); const [result,availableOffers] = await Promise.all([api<Restaurant[]>(`/api/restaurants?${params}`, { token }),api<Offer[]>("/api/offers",{token}).catch(()=>[])]); if (current()) {setRestaurants(result);setOffers(availableOffers);} }
     catch (caught) { if (current() && !latest.current.restaurant) setError((caught as Error).message); } finally { if (current()) setDiscoveryLoading(false); }
   }
-  useEffect(() => { const timer=setTimeout(()=>void loadRestaurants(),query.trim()?350:0); return()=>clearTimeout(timer); }, [props.fulfillment,query]);
+  useEffect(() => { const timer=setTimeout(()=>void loadRestaurants(),query.trim()?350:0); return()=>clearTimeout(timer); }, [props.fulfillment,query,postcode]);
 
   useEffect(() => { const focused = props.focusRestaurantId; if (focused) void chooseRestaurant({ id: focused }, props.restaurant?.id === focused).then(() => { if (mounted.current && latest.current.focusRestaurantId === focused) latest.current.onRestaurantFocused?.(); }); }, [props.focusRestaurantId]);
 
@@ -58,5 +63,5 @@ export function DiscoverScreen(props: Props) {
   }
   if (props.restaurant) return <RestaurantMenu key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false); props.onRestaurant(null); updateCart([]); setMenu([]); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
 
-  return <DiscoveryBrowse restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
+  return <DiscoveryBrowse token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
 }

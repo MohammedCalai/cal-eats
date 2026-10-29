@@ -1,4 +1,5 @@
 import { useSidebarLayout } from "./sidebar-layout.js";
+import ServiceAreas from "./ServiceAreas.jsx";
 import MenuItemEditor from "./BusinessMenuEditor.jsx";
 import Loyalty, { AdminPromotionActivity } from "./Loyalty.jsx";
 import { CustomerDirectory, CustomerInbox, WorkspaceDialog } from "./CustomerWorkspace.jsx";
@@ -90,6 +91,7 @@ function App() {
           <Route path="governance" element={<Page title="Access & deadlines" intro="Audited account access, restaurant permissions and refund response policy."><AdminGovernance /></Page>} />
           <Route path="support" element={<SupportWorkspace kind="admin" />} />
           <Route path="operations" element={<AdminOperations />} />
+          <Route path="service-areas" element={<ServiceAreas />} />
         </Route>
       </Route>
     </Route>
@@ -152,13 +154,13 @@ function OwnerRestaurantWorkspace({ user }) {
 
 function NavIcon({label}) {
   const paths={Menu:"M4 5h16M4 12h16M4 19h16",Inbox:"M3 5h18v14H3zM3 12h5l2 3h4l2-3h5",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",Offers:"M3 3h8l10 10-8 8L3 11zM7 7h.01",Cases:"M8 3h8v4H8zM8 5H5v16h14V5h-3M9 12h6M9 16h6",Home:"M3 11 12 3l9 8M5 10v11h14V10M9 21v-7h6v7",Orders:"M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"};
-  const tools={Printers:"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6zM18 12h.01",Support:"M3 14v-3a9 9 0 0 1 18 0v3M3 12h4v8H3zM17 12h4v8h-4zM17 20c0 2-3 2-5 2",Settings:"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z",bank:"M3 8l9-5 9 5H3zM5 11v7M10 11v7M15 11v7M20 11v7M3 21h18",card:"M2 8h20M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M6 16h4",Restaurants:"M3 10h18L19 3H5zM4 10v11h16V10M8 21v-7h8v7",Operations:"M3 12h4l3-8 4 16 3-8h4",clock:"M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"};
-  const key=({Marketing:"Offers",Dashboard:"Home","Refund cases":"Cases","Earnings & payouts":"bank",Finance:"bank","Stripe setup":"card","Stripe readiness":"card","Access & deadlines":"clock"})[label]||label;
+  const tools={location:"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0M15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0",Printers:"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6zM18 12h.01",Support:"M3 14v-3a9 9 0 0 1 18 0v3M3 12h4v8H3zM17 12h4v8h-4zM17 20c0 2-3 2-5 2",Settings:"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z",bank:"M3 8l9-5 9 5H3zM5 11v7M10 11v7M15 11v7M20 11v7M3 21h18",card:"M2 8h20M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M6 16h4",Restaurants:"M3 10h18L19 3H5zM4 10v11h16V10M8 21v-7h8v7",Operations:"M3 12h4l3-8 4 16 3-8h4",clock:"M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"};
+  const key=({"Service areas":"location",Marketing:"Offers",Dashboard:"Home","Refund cases":"Cases","Earnings & payouts":"bank",Finance:"bank","Stripe setup":"card","Stripe readiness":"card","Access & deadlines":"clock"})[label]||label;
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d={paths[key]||tools[key]||paths.Home}/></svg>;
 }
 function Shell({ kind }) {
   const { user, refresh } = React.useContext(SessionContext); const restaurantContext = React.useContext(RestaurantContext); const owner = kind === "owner" ? restaurantContext : null;
-  const { desktop, collapsed, toggleDesktop } = useSidebarLayout(); const [open, setOpen] = useState(false),[messageCount,setMessageCount]=useState(0); const location = useLocation(); useEffect(() => setOpen(false), [location.pathname]);
+  const { desktop, collapsed, toggleDesktop } = useSidebarLayout(); const [open, setOpen] = useState(false),[messageCount,setMessageCount]=useState(0); const location = useLocation(); useEffect(() => {setOpen(false);window.scrollTo({top:0,left:0,behavior:"instant"});}, [location.pathname]);
   useEffect(()=>{const close=e=>{if(e.key==="Escape")setOpen(false);},counts=e=>setMessageCount(e.detail?.messages||0);addEventListener("keydown",close);addEventListener("cal-eats-notification-counts",counts);return()=>{removeEventListener("keydown",close);removeEventListener("cal-eats-notification-counts",counts);};},[]);
   const nav = kind === "admin" ? adminNavigation : ownerNavigation(owner.permission);
   const mobileNav=kind==="owner"?ownerMobileNavigation(owner.permission):[["Home","/admin/dashboard"],["Orders","/admin/orders"],["Cases","/admin/refunds"]];

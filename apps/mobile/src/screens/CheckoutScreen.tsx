@@ -12,10 +12,10 @@ type Quote = { grossFoodMinor:number; restaurantDiscountMinor:number; subtotalMi
 type PaymentConfig = { providerMode:string; cardAvailable:boolean; stripeMode:"test"|"live"|null };
 function stripeCheckoutUrl(value:string){const url=new URL(value);if(url.protocol!=="https:"||url.hostname!=="checkout.stripe.com"||url.username||url.password)throw Error("Stripe returned an unexpected checkout destination.");return url.toString();}
 
-export function CheckoutScreen({ token, restaurant, cart, fulfillment, onBack, onCheckOrders, onOrdered, initialOfferId }: { initialOfferId?: string; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onCheckOrders: () => void; onOrdered: (order: Order) => void }) {
+export function CheckoutScreen({ token, restaurant, cart, fulfillment, onBack, onCheckOrders, onOrdered, initialOfferId, initialAddress }: { initialAddress?:Address|null; initialOfferId?: string; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onCheckOrders: () => void; onOrdered: (order: Order) => void }) {
   const [firstOffers,setFirstOffers]=useState<Offer[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]); const [offers, setOffers] = useState<Offer[]>([]); const [selectedOffer, setSelectedOffer] = useState<string | undefined>(initialOfferId);
-  const [address, setAddress] = useState<Address>({ label: "Home", line1: "", line2: "", city: "", postcode: "" }); const [saveAddress, setSaveAddress] = useState(false);
+  const [address, setAddress] = useState<Address>(initialAddress?{...initialAddress}:{ label: "Home", line1: "", line2: "", city: "", postcode: "" }); const [saveAddress, setSaveAddress] = useState(false);
   const [phone, setPhone] = useState(""); const [instructions, setInstructions] = useState(""); const [allergyNotes, setAllergyNotes] = useState(""); const [payment, setPayment] = useState<PaymentMethod>("mock_card");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [attempt] = useState(() => createCheckoutAttempt(() => requestKey("mobile-order"))); const submitting = useRef(false);
   const recovering = Boolean(attempt.pending), locked = busy || recovering;

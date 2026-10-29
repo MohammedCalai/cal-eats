@@ -1,3 +1,4 @@
+import type {Address} from "./src/types";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
@@ -23,6 +24,7 @@ const tabs: Array<{ id: Tab; label: string; icon: string }> = [
 export default function App() {
   const [unread, setUnread] = useState(0); const [focusRestaurantId, setFocusRestaurantId] = useState<string | null>(null); const [preferredOffer, setPreferredOffer] = useState<{ restaurantId: string; offerId: string } | null>(null);
   const [token, setToken] = useState<string | null>(null); const [user, setUser] = useState<User | null>(null); const [booting, setBooting] = useState(true); const [bootError, setBootError] = useState("");
+  const [deliveryAddress,setDeliveryAddress]=useState<Address|null>(null);
   const [basketOpen,setBasketOpen]=useState(false);
   const [tab, setTab] = useState<Tab>("discover"); const [checkout, setCheckout] = useState(false); const [restaurant, setRestaurant] = useState<Restaurant | null>(null); const [cart, setCart] = useState<CartEntry[]>([]); const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery"); const [focusOrder, setFocusOrder] = useState<string | null>(null);
 
@@ -38,18 +40,18 @@ export default function App() {
     finally { setBooting(false); }
   }
   useEffect(() => { void restore(); }, []);
-  async function authenticated(nextToken: string, nextUser: User) { await sessionStore.set(nextToken); setToken(nextToken); setUser(nextUser); }
-  async function logout() { if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); setToken(null); setUser(null); setUnread(0); setFocusRestaurantId(null); setPreferredOffer(null); setCart([]); setRestaurant(null); setCheckout(false); setBasketOpen(false); setTab("discover"); }
+  async function authenticated(nextToken: string, nextUser: User) { await sessionStore.set(nextToken); setDeliveryAddress(null);setToken(nextToken); setUser(nextUser); }
+  async function logout() { if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); setDeliveryAddress(null);setToken(null); setUser(null); setUnread(0); setFocusRestaurantId(null); setPreferredOffer(null); setCart([]); setRestaurant(null); setCheckout(false); setBasketOpen(false); setTab("discover"); }
   function openOrder(id: string) { setFocusOrder(id); setCheckout(false); setTab("orders"); }
 
   if (booting) return <SafeAreaView style={styles.center}><StatusBar style="light"/><Brand/><ActivityIndicator size="large" color={colours.blue}/><Text style={styles.muted}>Opening Cal-Eats…</Text></SafeAreaView>;
   if (bootError && !user) return <SafeAreaView style={styles.center}><Brand/><ErrorBanner message={bootError}/><Button onPress={() => void restore()}>Try again</Button><Button tone="quiet" onPress={() => { void sessionStore.clear(); setBootError(""); }}>Use another account</Button></SafeAreaView>;
   if (!token || !user) return <><StatusBar style="light"/><AuthScreen onAuthenticated={authenticated}/></>;
   if (basketOpen && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><BasketScreen token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} offerId={preferredOffer?.restaurantId===restaurant.id?preferredOffer.offerId:undefined} onOffer={offerId=>setPreferredOffer(offerId?{restaurantId:restaurant.id,offerId}:null)} onCart={setCart} onBack={()=>setBasketOpen(false)} onCheckout={()=>{setBasketOpen(false);setCheckout(true);}}/></SafeAreaView>;
-  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}><CheckoutScreen initialOfferId={preferredOffer?.restaurantId === restaurant.id ? preferredOffer.offerId : undefined} token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => {setCheckout(false);setBasketOpen(true);}} onCheckOrders={() => { setCart([]); setPreferredOffer(null); setCheckout(false); setTab("orders"); }} onOrdered={(order) => { setCart([]); setPreferredOffer(null); setCheckout(false); openOrder(order.id); }}/></KeyboardAvoidingView></SafeAreaView>;
+  if (checkout && restaurant) return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}><CheckoutScreen initialAddress={deliveryAddress} initialOfferId={preferredOffer?.restaurantId === restaurant.id ? preferredOffer.offerId : undefined} token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => {setCheckout(false);setBasketOpen(true);}} onCheckOrders={() => { setCart([]); setPreferredOffer(null); setCheckout(false); setTab("orders"); }} onOrdered={(order) => { setCart([]); setPreferredOffer(null); setCheckout(false); openOrder(order.id); }}/></KeyboardAvoidingView></SafeAreaView>;
 
   return <SafeAreaView style={styles.shell}><StatusBar style="light"/><KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-    {tab === "discover" ? <DiscoverScreen onUseOffer={useOffer} focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setBasketOpen(true)}/> : null}
+    {tab === "discover" ? <DiscoverScreen userId={user.id} address={deliveryAddress} onAddress={setDeliveryAddress} onUseOffer={useOffer} focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setBasketOpen(true)}/> : null}
     {tab === "orders" ? <OrdersScreen token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
     {tab === "inbox" ? <InboxScreen token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onUnreadChange={setUnread}/> : null}
     {tab === "account" ? <AccountScreen token={token} user={user} onUser={setUser} onLogout={logout}/> : null}

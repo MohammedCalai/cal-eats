@@ -21,7 +21,7 @@ test("hosted preview requires HTTPS, exact write origins and secure cookies", as
   assert.throws(() => loadConfig({ runMode: "local", nodeEnv: "production" }), /hosted-preview/);
   const f = await journeyFixture({ runMode: "hosted-preview", hostname: "0.0.0.0", origin: "https://preview.example", expectedHost: "preview.example", secureCookies: true, demoShortcuts: false, healthcheckHost: "healthcheck.railway.app", rateLimit: { attempts: 20, windowMs: 60_000 } });
   try {
-    assert.deepEqual((await f.json("/api/runtime")).body.data, { mode: "hosted-preview", demoShortcuts: false, simulatedPayments: true });
+    assert.deepEqual((await f.json("/api/runtime")).body.data, { mode: "hosted-preview", demoShortcuts: false, simulatedPayments: true, paymentProviderMode: "local_simulator" });
     assert.equal((await f.json("/health/ready", { headers: { host: "healthcheck.railway.app" } })).status, 200); assert.equal((await f.json("/api/runtime", { headers: { host: "healthcheck.railway.app" } })).status, 403);
     assert.equal((await f.json("/api/auth/login", { method: "POST", body: { email: "customer@calai.local", password: "LocalCustomer!4310" } })).body.error.code, "INVALID_ORIGIN");
     const login = await f.json("/api/auth/login", { method: "POST", headers: { origin: "https://preview.example" }, body: { email: "customer@calai.local", password: "LocalCustomer!4310" } }); assert.equal(login.status, 200); assert.match(login.headers.get("set-cookie"), /; Secure;/);

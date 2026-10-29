@@ -1,4 +1,5 @@
 import { menuDetailsMigration30 } from "../menu-details.js";
+import { serviceAreaMigration31 } from "../service-areas.js";
 import { PROVIDER_EVENTS_MIGRATION } from "../payments/provider-events-migration.js";
 import { GOVERNANCE_EPISODE_MIGRATION } from "../governance-migration.js";
 import { orderMessagingMigration19 } from "../order-messaging-migration.js";
@@ -263,5 +264,6 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
   customerEmailMigration27,
   businessWeeklyStatementsMigration28,
   supportRoutingMigration29,
-  menuDetailsMigration30
+  menuDetailsMigration30,
+  serviceAreaMigration31
 ];
