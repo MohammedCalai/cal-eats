@@ -62,7 +62,7 @@ export function createStripeAdapter(config = {}) {
     async createAccountLoginLink(input){const accountId=ref(input.accountId,"acct"),result=await request("POST",`/v1/accounts/${accountId}/login_links`,{},{idempotencyKey:input.idempotencyKey});return result.ok?normalized(result.body,{status:"confirmed",providerReference:accountId,actionUrl:httpsUrl(result.body.url)}):result;},
     async configureWeeklyPayouts(input) {
       const accountId=ref(input.accountId,"acct");
-      const result = await request("POST", "/v1/balance_settings", { "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_payout_days][]": weekday(input.weeklyAnchor || "monday") }, { idempotencyKey: input.idempotencyKey, stripeAccount: accountId });
+      const result = await request("POST", "/v1/balance_settings", { "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_anchor]": weekday(input.weeklyAnchor || "monday") }, { idempotencyKey: input.idempotencyKey, stripeAccount: accountId });
       return result.ok ? normalized(result.body, { status: "confirmed", providerReference: accountId }) : result;
     },
     async authorizePayment(input) {

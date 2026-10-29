@@ -158,7 +158,20 @@ test("connected account result exposes capability and requirement state", async 
   assert.deepEqual(result.requirements, ["company.tax_id"]);
 });
 
-test("weekly payout schedule uses pinned balance-settings fields",async()=>{let body;const adapter=createStripeTestAdapter({secretKey:KEY,allowTestTransport:true,baseUrl:"https://stripe.invalid",fetchImpl:async(_url,init)=>{body=String(init.body);return jsonResponse({object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:["monday"]}}});}});await adapter.configureWeeklyPayouts({accountId:"acct_test123",weeklyAnchor:"monday",idempotencyKey:"weekly-payouts-1"});assert.match(body,/payouts%5Bschedule%5D%5Binterval%5D=weekly/);assert.match(body,/payouts%5Bschedule%5D%5Bweekly_payout_days%5D%5B%5D=monday/);assert.doesNotMatch(body,/payments%5B/);});
+test("weekly payout schedule uses the anchor supported by the pinned Basil API", async () => {
+  let call;
+  const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async (url, init) => {
+    call = { url: String(url), init };
+    return jsonResponse({ object: "balance_settings", payouts: { schedule: { interval: "weekly", weekly_anchor: "monday" } } });
+  } });
+  await adapter.configureWeeklyPayouts({ accountId: "acct_test123", weeklyAnchor: "monday", idempotencyKey: "weekly-payouts-1" });
+  assert.equal(call.url, "https://api.stripe.com/v1/balance_settings");
+  assert.equal(call.init.headers["Stripe-Version"], "2025-06-30.basil");
+  assert.equal(call.init.headers["Stripe-Account"], "acct_test123");
+  assert.deepEqual(Object.fromEntries(new URLSearchParams(call.init.body)), {
+    "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_anchor]": "monday",
+  });
+});
 
 test("webhook verification uses raw bytes, timestamp tolerance and rejects live events", () => {
   const secret = "whsec_test_only_secret";
