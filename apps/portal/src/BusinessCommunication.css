@@ -1,0 +1,71 @@
+/* Shared business inbox treatment; message direction and routing stay unchanged. */
+.portal .business-communication .page-heading{margin-bottom:24px}
+.portal .business-communication .page-heading>p:last-child{max-width:68ch;line-height:1.7;color:#a6b2c4}
+.portal .business-communication .workspace-tabs{gap:8px;flex-wrap:wrap;margin-bottom:22px}
+.portal .business-communication .workspace-tabs>a,.portal .business-communication .workspace-tabs>button{min-height:44px;border-radius:11px;padding:11px 17px;font-size:13px}
+.portal .business-communication .workspace-toolbar{gap:14px;flex-wrap:wrap;margin-bottom:18px;color:#a4b7d0;font-size:13px}
+.portal .business-communication .directory-filters{gap:15px;margin-bottom:21px;padding-bottom:22px;border-bottom:1px solid #293343}
+.portal .business-communication .directory-filters label{font-size:12px;line-height:1.5;color:#aebed1}
+.portal .business-communication :is(input:not([type=checkbox]),select){min-height:46px;font-size:14px;background:#11161e;border-color:#35445a}
+.portal .business-communication .check-field{min-height:46px;gap:10px}
+.portal .business-communication .check-field input{width:19px;height:19px;flex:none;accent-color:#397ff1}
+.portal .business-communication .customer-list{border:1px solid #2a3545;border-radius:15px;overflow:hidden}
+.portal .business-communication .customer-row{min-height:98px;padding:18px 20px;gap:16px;background:#171c25;border-bottom:1px solid #293344;border-radius:0;text-align:left}
+.portal .business-communication .customer-row:last-child{border-bottom:0}
+.portal .business-communication .customer-row:hover{background:#1c283b}
+.portal .business-communication .customer-row.unread{background:#17273f;box-shadow:inset 3px 0 #4b94ff}
+.portal .business-communication .customer-row-main{gap:7px;min-width:0}
+.portal .business-communication .customer-row-main>strong{font-size:15px;line-height:1.4;color:#e2edff}
+.portal .business-communication .customer-row-main>small{font-size:12px;line-height:1.55;color:#9fb0c7}
+.portal .business-communication .customer-row-end{gap:6px;color:#a7bad3;font-size:12px}
+.portal .business-communication .customer-row-end small{font-size:11px;color:#899db8}
+.portal .business-communication .customer-avatar{width:45px;height:45px;border-radius:14px;background:#1d3555;border:1px solid #35557d;color:#a5cdff;font-size:16px}
+.portal .business-communication .customer-badges{gap:6px;flex-wrap:wrap}
+.portal .business-communication .pill{font-size:11px;line-height:1.4;padding:5px 9px}
+.portal .business-communication .pagination{gap:14px;flex-wrap:wrap;padding-top:22px;font-size:12px;color:#9daec5}
+.portal .business-communication .pagination button{min-height:44px;min-width:86px}
+.portal .business-communication .empty{padding:32px 24px;background:#151c28;border:1px dashed #33435b;border-radius:14px;color:#a0b2cb;line-height:1.7;font-size:14px}
+.portal .business-communication .case-list{gap:16px}
+.portal .business-communication .support-card{padding:22px;border-radius:16px;border:1px solid #2f3d52;background:#171c25;text-align:left}
+.portal .business-communication .support-card.needs-reply{border-color:#3e6daa;box-shadow:inset 3px 0 #4c95ff}
+.portal .business-communication .support-card h3{font-size:17px;line-height:1.45;margin:6px 0 0;color:#e3edff}
+.portal .business-communication .support-card>p{line-height:1.65;font-size:13px;color:#a8b8d0;overflow-wrap:anywhere}
+.portal .business-communication .support-card footer{gap:12px;border-top:1px solid #2b374a;padding-top:15px;margin-top:17px;font-size:12px}
+.portal :is(.customer-conversation,.support-thread,.order-conversation){color:#dce8fa}
+.portal :is(.customer-conversation,.order-conversation)>header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}
+.portal :is(.customer-conversation,.order-conversation)>header :is(h2,h3){font-size:18px;margin:0;line-height:1.5}
+.portal :is(.customer-conversation,.order-conversation)>header button{min-width:44px;min-height:44px}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message-list,.message-list){display:flex;flex-direction:column;gap:13px;padding:20px;background:#101620;border:1px solid #29374a;border-radius:15px;min-height:165px;scrollbar-width:thin;overscroll-behavior:contain}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message,.message){align-self:flex-start;max-width:87%;margin:0;padding:14px 17px;border:1px solid #36465d;border-radius:15px 15px 15px 4px;background:#202b3b;color:#e1ebf9;overflow-wrap:anywhere}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message,.message).restaurant,.portal :is(.customer-conversation,.support-thread,.order-conversation) .message.owner,.portal :is(.customer-conversation,.support-thread,.order-conversation) .message.staff{align-self:flex-end;border-color:#315c9b;background:#19365e;border-radius:15px 15px 4px 15px}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message,.message)>strong{font-size:11px;color:#a7c6ec;font-weight:650}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message,.message)>p{font-size:14px;line-height:1.65;margin:7px 0 10px;white-space:pre-wrap}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message,.message)>small{font-size:11px;color:#9cadc5;display:block;text-align:right;font-variant-numeric:tabular-nums}
+.portal :is(.customer-conversation,.support-thread,.order-conversation)>form{border-top:1px solid #2e3b50;margin-top:20px;padding-top:20px;display:grid;gap:14px}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) form>p{font-size:12px;line-height:1.6;color:#9aacc5;margin:0}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) label{font-size:13px;color:#b2c4dd;line-height:1.5}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) textarea{min-height:100px;resize:vertical;font-size:15px;line-height:1.6;background:#111925;border:1px solid #3b4f6d;border-radius:12px;padding:14px}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) .composer-footer{gap:16px;align-items:center;flex-wrap:wrap}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) .composer-footer>small{font-size:11px;color:#91a8c5;line-height:1.6;max-width:57ch}
+.portal :is(.customer-conversation,.support-thread,.order-conversation) button{min-height:44px;font-size:13px;border-radius:10px}
+.portal .order-conversation>form>div{display:flex;gap:8px;flex-wrap:wrap}
+.portal .order-conversation>form>div>button{font-size:12px;padding:9px 13px;background:#1d2c42;border:1px solid #3a5377;color:#b9d4fa}
+.portal .order-conversation>form>button{justify-self:end;min-width:135px;background:#2563eb;color:white;border:1px solid #4387f4}
+.portal .order-conversation>details{margin-top:20px;border-top:1px solid #2b3749;padding-top:10px}
+.portal .order-conversation>details>summary{min-height:44px;display:flex;align-items:center;font-size:12px;color:#9aafca;cursor:pointer}
+.portal .customer-profile .profile-history>summary{min-height:44px;line-height:1.5;display:flex;align-items:center;gap:12px}
+.portal :is(.business-communication,.customer-profile,.support-thread,.order-conversation) :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid #6aa9ff;outline-offset:3px}
+@media(max-width:850px){.portal .business-communication .customer-row{padding:16px;gap:12px}.portal .business-communication .directory-filters{align-items:stretch}.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message-list,.message-list){padding:14px}.portal .business-communication .customer-row-end{min-width:0}.portal .business-communication .support-card{padding:18px}.portal .customer-conversation>header{align-items:start;flex-wrap:wrap}}
+@media(max-width:600px){.portal .business-communication .customer-row{flex-wrap:wrap}.portal .business-communication .customer-row-main{flex:1;min-width:150px}.portal .business-communication .customer-row-end{padding-left:57px;flex-basis:100%;align-items:flex-start}.portal :is(.customer-conversation,.support-thread,.order-conversation) :is(.crm-message,.message){max-width:95%}.portal :is(.customer-conversation,.support-thread,.order-conversation) .composer-footer>button{width:100%}.portal .business-communication .pagination>div{display:flex;flex-wrap:wrap;gap:8px}}
+
+/* Keep the conversation composer visible while the history scrolls. */
+@media(min-height:600px){
+ .portal .workspace-dialog:has(>.customer-conversation){display:flex;flex-direction:column;height:min(760px,calc(100dvh - 32px));overflow:hidden}
+ .portal .workspace-dialog:has(>.customer-conversation)>.dialog-heading{position:relative;top:auto;flex:none;margin-bottom:12px;padding-block:8px 14px}
+ .portal .workspace-dialog>.customer-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
+ .portal .workspace-dialog>.customer-conversation>header{flex:none;margin-bottom:12px}
+ .portal .workspace-dialog>.customer-conversation>.crm-message-list{flex:1;min-height:100px;max-height:none;overflow:auto;padding:16px}
+ .portal .workspace-dialog>.customer-conversation>form{flex:none;margin-top:12px;padding-top:12px;gap:10px}
+ .portal .workspace-dialog>.customer-conversation textarea{min-height:68px;height:72px;max-height:18vh}
+ .portal .workspace-dialog:has(>.customer-conversation)>.button-link{flex:none;margin-top:12px;align-self:flex-start}
+}

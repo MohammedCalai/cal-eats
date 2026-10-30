@@ -6,3 +6,38 @@
 .dashboard-active-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.85rem}.dashboard-active-card{min-width:0;padding:1rem;border:1px solid var(--line);border-radius:.8rem;background:#17171c;display:grid;align-content:start;gap:.45rem}.dashboard-active-card.needs-confirmation{border-color:#3977ee;background:#17223c}.dashboard-active-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:.65rem;flex-wrap:wrap}.dashboard-active-heading>a{font-weight:750;color:#91b8ff;text-decoration:none}.dashboard-active-heading>strong{font-size:.8rem;color:#dbe7ff}.dashboard-active-card>p{margin:0;font-weight:650;overflow-wrap:anywhere}.dashboard-active-card>small{color:var(--muted);font-size:.76rem;line-height:1.45}.dashboard-active-actions{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin-top:.5rem}.dashboard-active-actions>.primary,.dashboard-active-actions>.button-link{min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:.7rem .9rem;font-size:.82rem}.dashboard-active-actions>.primary{flex:1}.dashboard-active-actions>.button-link{white-space:normal;text-align:center}@media(max-width:600px){.dashboard-active-grid{grid-template-columns:minmax(0,1fr)}.dashboard-active-card{padding:.85rem}.dashboard-active-actions{display:grid;grid-template-columns:minmax(0,1fr)}.dashboard-active-actions>.primary,.dashboard-active-actions>.button-link{width:100%}}
 
 .dashboard-csv-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;margin:1rem 0}.dashboard-csv-toolbar>p{flex-basis:100%;margin:0}.dashboard-csv-toolbar p{margin:.3rem 0 0}.dashboard-csv-control{display:grid;gap:.45rem;max-width:100%}.dashboard-csv-control>button{min-height:44px}.dashboard-csv-error{max-width:28rem;color:var(--danger,#c34949);font-size:.85rem;line-height:1.4}.dashboard-export-dates{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.75rem}.dashboard-export-dates label{display:grid;gap:.4rem}.dashboard-export-dates input{min-height:44px;max-width:100%}.dashboard-export-dates>button{min-height:44px}@media(max-width:600px){.dashboard-csv-toolbar{align-items:stretch}.dashboard-csv-toolbar>.button-row,.dashboard-export-dates{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.dashboard-csv-control{min-width:0}.dashboard-csv-control>button{white-space:normal}.dashboard-export-dates label{min-width:0}}
+
+/* Clear tablet operations with the same Calai surfaces and electric-blue accent. */
+.business-dashboard .dashboard-action-icon{display:block;width:21px;height:21px;flex:none}
+.business-dashboard .dashboard-heading-actions>button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:10px 15px}
+.business-dashboard .dashboard-message-shortcut{gap:16px;padding:19px 22px;transition:border-color .15s ease,background .15s ease}
+.business-dashboard .dashboard-message-shortcut .message-shortcut-icon{width:48px;height:48px;border:1px solid #3871c238;background:linear-gradient(140deg,#223653,#17253e)}
+.business-dashboard .message-shortcut-icon .dashboard-action-icon{width:25px;height:25px}
+.business-dashboard .dashboard-message-shortcut>span:last-child{color:#7195bd}
+.business-dashboard .dashboard-active-orders>.fine{margin:0 0 20px;max-width:70ch;line-height:1.6;color:#a5b3c5;font-size:13px}
+.business-dashboard .dashboard-active-grid{grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px}
+.business-dashboard .dashboard-active-card{border-color:#293343;background:linear-gradient(145deg,#1b1d22,#18181c);border-radius:16px;padding:19px;gap:9px;box-shadow:0 4px 18px #00000014}
+.business-dashboard .dashboard-active-card.needs-confirmation{border-color:#3d73d0;background:linear-gradient(145deg,#172a4b,#182132);box-shadow:inset 3px 0 #4389ff,0 5px 22px #0d2c6524}
+.business-dashboard .dashboard-active-heading{gap:10px;align-items:center;margin-bottom:3px}
+.business-dashboard .dashboard-active-heading>a{font-size:15px;letter-spacing:.025em;color:#adcaff;font-variant-numeric:tabular-nums;min-height:28px;display:inline-flex;align-items:center}
+.business-dashboard .dashboard-order-state{font-size:11px!important;line-height:1.4;padding:6px 9px;border:1px solid #3a4558;background:#262c37;border-radius:8px;color:#d0def0}
+.business-dashboard .needs-confirmation .dashboard-order-state{background:#204679;border-color:#3764a3;color:#dcecff}
+.business-dashboard .dashboard-active-card[data-status=ready] .dashboard-order-state{background:#18372e;border-color:#31594b;color:#b8e1ce}
+.business-dashboard .dashboard-active-card>p{font-size:16px;line-height:1.45;color:#f1f4fa}
+.business-dashboard .dashboard-active-card>small{font-size:12px;line-height:1.5;color:#a7b3c5}
+.business-dashboard .dashboard-active-card>.dashboard-active-eta{padding:9px 11px;border:1px solid #344155;background:#212a38;border-radius:9px;color:#d0dff3;margin-top:1px;font-variant-numeric:tabular-nums}
+.business-dashboard .dashboard-active-actions{align-self:end;gap:9px;padding-top:12px;margin-top:3px;border-top:1px solid #303a4b}
+.business-dashboard .dashboard-active-actions>.primary{min-height:48px;font-size:13px;font-weight:700;border-radius:10px;box-shadow:0 3px 10px #16387e40}
+.business-dashboard .dashboard-active-actions>.button-link{min-height:48px;font-size:12px;border-radius:10px;color:#b9cdea}
+.business-dashboard .dashboard-active-actions>button:disabled{box-shadow:none;opacity:.55}
+.business-dashboard .dashboard-task{gap:8px;min-height:145px;padding:18px;border-radius:14px}
+.business-dashboard .dashboard-task>small{line-height:1.6;color:#a8b5c7;font-size:12px}
+.business-dashboard .dashboard-period-toolbar{gap:18px;padding:4px 0}
+.business-dashboard .dashboard-period{padding-inline:17px}
+.business-dashboard .dashboard-csv-toolbar{padding:17px 20px;margin:0;border:1px solid #293344;border-radius:14px;background:#171a20}
+.business-dashboard .dashboard-csv-toolbar strong{font-size:14px}.business-dashboard .dashboard-csv-toolbar p{font-size:12px;line-height:1.6;color:#9daec4}
+.business-dashboard .dashboard-tool-links>a{min-height:50px;padding:13px 4px;line-height:1.5}
+.business-dashboard :is(button,a):focus-visible{outline:3px solid #67a6ff;outline-offset:3px}
+@media(max-width:1100px){.business-dashboard .dashboard-active-actions{display:grid;grid-template-columns:1fr}.business-dashboard .dashboard-active-actions>.primary,.business-dashboard .dashboard-active-actions>.button-link{width:100%}}
+@media(max-width:600px){.business-dashboard .dashboard-active-card{padding:16px}.business-dashboard .dashboard-message-shortcut{padding:16px;gap:12px}.business-dashboard .dashboard-csv-toolbar{padding:16px}.business-dashboard .dashboard-message-shortcut strong{font-size:15px}.business-dashboard .dashboard-message-shortcut small{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.business-dashboard .dashboard-message-shortcut{transition:none}}

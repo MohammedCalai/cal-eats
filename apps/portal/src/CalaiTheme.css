@@ -10,3 +10,57 @@
 @media(min-width:1536px){.sidebar-collapsed .brand-logo{display:none}.sidebar-collapsed .brand-mark{display:block;width:44px;height:52px;mix-blend-mode:lighten}.sidebar-collapsed .brand{width:44px;height:52px}}
 @media(max-width:1535px){.portal .sidebar-top{position:relative;padding-top:32px;margin-top:-8px}.portal .sidebar-top>.mobile-only{position:absolute;top:0;right:0;background:#2563eb;border-color:#2563eb;color:#fff;min-width:36px;min-height:36px}.portal .sidebar-top .brand{width:100%}}
 @media(prefers-reduced-motion:reduce){.portal .sidebar{transition:none}}
+
+/* Familiar Calai workspace, with clearer wayfinding and tablet controls. */
+.calai-theme{--line:#30323a;--muted:#a9afbc;line-height:1.5;color-scheme:dark}
+.calai-theme .portal-body,.calai-theme .content,.calai-theme .panel{min-width:0}
+.calai-theme .topbar{box-shadow:0 1px 0 #ffffff05;min-height:76px;height:auto;align-items:center}
+.calai-theme .topbar-title{min-width:0;display:grid;gap:2px}
+.calai-theme .topbar-title .eyebrow{font-size:24px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calai-theme .topbar-title strong{display:block;font-size:12px;font-weight:500;color:#aeb6c5;line-height:1.5}
+.calai-theme .menu-button,.calai-theme .sidebar-top>.mobile-only{display:grid;place-items:center;min-width:44px;min-height:44px;border-radius:11px}
+.calai-theme .menu-button svg,.calai-theme .sidebar-top>.mobile-only svg,.calai-theme .more-icon svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.calai-theme .sidebar{padding-inline:16px}
+.calai-theme .sidebar nav a{min-height:48px;line-height:1.4;padding:12px 12px;gap:12px;transition:background .15s ease,border-color .15s ease}
+.calai-theme .sidebar nav a.active{background:linear-gradient(95deg,#2563eb20,#19191e);border-color:#2c4b88;border-left-color:#4588ff;box-shadow:0 3px 14px #0002}
+.calai-theme .sidebar nav a.active .sidebar-nav-icon{color:#8bbaff}
+.calai-theme .sidebar nav a:hover{border-color:#383a45}
+.calai-theme .sidebar-note{line-height:1.6;border-top:1px solid #2a2c33;padding-top:18px}
+.calai-theme .restaurant-switch{font-size:12px;line-height:1.6;color:#aeb6c5;gap:7px}
+.calai-theme .restaurant-switch select{background:#18181d;border-color:#353843;font-size:14px}
+.calai-theme .page-heading{margin-bottom:24px}
+.calai-theme .page-heading h1{font-size:29px;letter-spacing:-.025em;line-height:1.25;font-weight:650;margin:0 0 9px}
+.calai-theme .page-heading p:last-child{font-size:14px;line-height:1.65;color:#a9afbc;max-width:72ch}
+.calai-theme :is(button,.primary,.quiet,.button-link){min-height:44px;font-size:14px;line-height:1.4;border-radius:11px}
+.calai-theme .primary{box-shadow:inset 0 1px 0 #ffffff16,0 3px 10px #0c2c771f}
+.calai-theme .primary:hover:not(:disabled){background:#3475f0}
+.calai-theme .quiet:hover:not(:disabled),.calai-theme .button-link:hover{background:#242731;border-color:#526179}
+.calai-theme :is(button,a,input,select,textarea,summary):focus-visible{outline:3px solid #639dff;outline-offset:3px}
+.calai-theme :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea){min-height:46px;border-radius:10px;background:#121216;border-color:#3c404b;font-size:15px;line-height:1.5;color:#edf1f9;padding:11px 13px}
+.calai-theme :is(input,textarea)::placeholder{color:#929bad;font-weight:400}
+.calai-theme input:is([type=checkbox],[type=radio]){accent-color:#4384f4}
+.calai-theme label{font-size:13px;line-height:1.5;gap:7px;color:#d0d5df}
+.calai-theme .form-grid{gap:18px}
+.calai-theme .workspace-toolbar{gap:16px;align-items:end;margin-bottom:20px}
+.calai-theme .table-wrap{border-color:#30343e;border-radius:14px;background:#18181a;scrollbar-width:thin;scrollbar-color:#4c5361 transparent}
+.calai-theme table{font-variant-numeric:tabular-nums}
+.calai-theme th{background:#1e1f25;color:#b8c1d1;font-size:12px;font-weight:600;white-space:nowrap;padding:14px 16px}
+.calai-theme td{padding:16px;vertical-align:middle;border-color:#2c3039;line-height:1.55}
+.calai-theme tbody tr:hover{background:#2e69c608}
+.calai-theme .pill,.calai-theme .status-dot{font-size:12px;line-height:1.4;padding:5px 9px;white-space:normal}
+.calai-theme .empty{padding:32px 24px;line-height:1.7;color:#aeb7c7;background:#ffffff02;border-radius:12px}
+.calai-theme .dialog{background:#18181c;border-color:#3a4250;border-radius:20px;box-shadow:0 24px 90px #0009;padding:24px;scrollbar-width:thin;scrollbar-color:#4c5361 transparent}
+.calai-theme .dialog-close{display:grid;place-items:center;min-width:44px;min-height:44px;width:44px;height:44px;border:1px solid #3a4250;border-radius:50%;background:#242731;color:#d8e7ff;z-index:2}
+.calai-theme .alert{line-height:1.6;border-radius:12px;font-size:14px}
+.calai-theme .notification-panel{background:#18181d;border-color:#3a4250;border-radius:16px;box-shadow:0 20px 60px #0008;padding:10px}
+.calai-theme .notification{border-color:#30343e;padding:16px 12px;gap:6px;line-height:1.5;border-radius:10px}
+.calai-theme .notification.unread{background:#2563eb1c;box-shadow:inset 3px 0 #4d91fc}
+.calai-theme .notification :is(span,small){color:#aeb8ca}
+.calai-theme .mobile-bottom-nav{background:#15161c;border-color:#343844;box-shadow:0 -6px 24px #0004}
+.calai-theme .mobile-bottom-nav a.active{background:#2563eb24;color:#9ac2ff;border-radius:13px}
+@media(max-width:1100px){.calai-theme .content{padding:22px}.calai-theme .topbar{padding:12px 18px;gap:12px}.calai-theme .topbar-title .eyebrow{font-size:22px}.calai-theme .panel{padding:20px}.calai-theme .topbar-signout{padding-inline:12px}}
+@media(max-width:639px){.calai-theme .topbar-title .eyebrow{font-size:18px;max-width:46vw}.calai-theme .content{padding:20px 16px calc(90px + env(safe-area-inset-bottom))}.calai-theme .page-heading h1{font-size:26px}.calai-theme .panel{padding:18px}.calai-theme .form-grid{grid-template-columns:minmax(0,1fr)}.calai-theme .dialog{padding:20px}.calai-theme .topbar{padding-inline:12px}}
+@media(prefers-reduced-motion:reduce){.calai-theme .sidebar nav a{transition:none}}
+
+.calai-theme .dialog-heading>button[aria-label="Close"]{font-size:24px;line-height:1;min-width:44px}
+.calai-theme :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea){font-weight:500}
