@@ -2,6 +2,7 @@ import { createLocationClient } from "./location-client.js";
 import { basketReviewHtml } from "./basket-ui.js";
 import { customerIcon, customerReceiptHtml } from "./customer-ui.js";
 import { customerOrdersListHtml } from "./customer-order-list.js";
+import { customerOffersHtml } from "./customer-offers.js";
 import { customerAccountHtml, addressEditorHtml } from "./customer-account.js";
 import { createCustomerNotificationAlert } from "./customer-notification-alert.js";
 import { menuSections } from "./menu-sections.js";
@@ -57,7 +58,7 @@ function setAccount() {
   updateBasketAccess();
   renderCustomerNotificationPrompt();
 }
-function stopPolling() { state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.notificationStop?.(); state.notificationStop=null; state.quoteController?.close();state.quoteController=null; if (state.poll) clearInterval(state.poll); if (state.notificationPoll) clearInterval(state.notificationPoll); state.poll = null; state.notificationPoll = null; }
+function stopPolling() { clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null; state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.notificationStop?.(); state.notificationStop=null; state.quoteController?.close();state.quoteController=null; if (state.poll) clearInterval(state.poll); if (state.notificationPoll) clearInterval(state.notificationPoll); state.poll = null; state.notificationPoll = null; }
 function stopOrderPolling() { if (state.poll) clearInterval(state.poll); state.poll = null; }
 function draftKey(){return `calai-cart:${state.user?.id||"guest"}`;}
 function storedBasket(){try{return sanitizeCartDraft(JSON.parse(localStorage.getItem(draftKey())));}catch{return null;}}
@@ -166,6 +167,7 @@ async function navigate(view) {
   if (state.user && state.user.role !== "customer") return renderCustomerAccountRequired();
   restaurantMenuController?.close();restaurantMenuController=null;state.navigationVersion++;state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.quoteController?.close();state.quoteController=null;if (view !== "orders") stopOrderPolling();
   state.view = view;
+  if(view!=="offers"){clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null;}
   state.customerOrderId=view==="orders"?(state.focusOrderId||null):null;
   updateBasketAccess();
   window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -363,14 +365,13 @@ function showNotifications(){
 
 async function loadOffers() {
   loading("Loading offers"); const generation = state.generation;
-  try { const offers=await api("/api/offers"); if (generation !== state.generation||state.view!=="offers") return;state.offers=offers; renderOffers(); } catch (error) { if(generation===state.generation&&state.view==="offers")showError(error); }
+  try { const offers=await api("/api/offers"); if (generation !== state.generation||state.view!=="offers") return;state.offers=offers; renderOffers(); if(!state.offerExpiryTimer)state.offerExpiryTimer=setInterval(()=>{if(generation===state.generation&&state.view==="offers"&&!document.hidden)renderOffers();},15000); } catch (error) { if(generation===state.generation&&state.view==="offers")showError(error); }
 }
-function renderOffers() {
-  main.innerHTML = `<section class="section"><div class="section-head"><div><div class="eyebrow">Funded by restaurants</div><h1>Your offers</h1><p class="meta">One offer can be used per qualifying order.</p></div></div><div class="grid">${state.offers.length ? state.offers.map((offer) => `<article class="card offer-card"><span class="badge">${e(statusLabel(offer.status))}</span><h2>${e(offer.title)}</h2><p>${e(offer.message)}</p><p><strong>${e(promotionBadge(offer))}</strong> with ${money(offer.minSubtotalMinor)} paid food minimum.</p><p class="meta">${e(offer.restaurantName)} · expires ${date(offer.expiresAt)}</p><button class="primary" data-action="choose-offer" data-id="${e(offer.id)}" ${offer.status === "available" ? "" : "disabled"}>Choose this offer</button></article>`).join("") : `<div class="empty">No offers are available right now.</div>`}</div></section>`;
-}
+function renderOffers() { const html='<section class="section customer-offers-page"><header class="customer-offers-heading"><span class="eyebrow">Your next great meal</span><h1>Offers</h1><p>Personal offers from your restaurants, with clear savings and end dates.</p></header>'+customerOffersHtml(state.offers)+'</section>';if(main.querySelector(".customer-offers-page")&&state.offersRenderedHtml===html)return;state.offersRenderedHtml=html;main.innerHTML=html; }
+
 async function chooseOffer(id) {
   const offer = state.offers.find((entry) => entry.id === id); if (!offer) return;
-  try { await api(`/api/offers/${encodeURIComponent(id)}`, { method:"PATCH", body:JSON.stringify({ viewed:true }) }); state.selectedOffer = offer; await openMenu(offer.restaurantId); message(`Offer selected: ${promotionBadge(offer)}. Minimum food basket ${money(offer.minSubtotalMinor)}.`); } catch(error) { message(error.message); }
+  try { await api(`/api/offers/${encodeURIComponent(id)}`, { method:"PATCH", body:JSON.stringify({ viewed:true }) }); state.selectedOffer = offer;if(offer.campaignType==="free_delivery"){state.fulfillment="delivery";state.fulfillmentExplicit=true;} await openMenu(offer.restaurantId); message(`Offer selected: ${promotionBadge(offer)}. Minimum food basket ${money(offer.minSubtotalMinor)}.`); } catch(error) { message(error.message); }
 }
 
 async function loadCustomerMessages(){
@@ -439,13 +440,13 @@ function renderOrders() {
   const selected=state.orders.find(order=>order.id===state.customerOrderId);
   if(!selected)state.customerOrderId=null;
   const html=ordersListHtml();state.ordersRenderedHtml=html;
-  main.innerHTML='<section class="section orders-screen orders-page '+(selected?'customer-order-detail':'customer-orders-overview')+'">'+(selected?'<button class="quiet customer-orders-back" data-action="back-customer-orders">← Orders</button>':'<header class="customer-inbox-heading"><span class="eyebrow">Your orders</span><h1>Orders</h1><p>Follow your meal, message your restaurant and view your receipts. Past orders are available for 90 days.</p></header><label class="customer-inbox-search customer-order-search"><input id="customer-order-search" type="search" aria-label="Search orders" placeholder="Search your orders" value="'+e(state.customerOrderSearch||'')+'"></label>')+'<div id="orders-list" class="orders-list">'+html+'</div></section>';
+  main.innerHTML='<section class="section orders-screen orders-page '+(selected?'customer-order-detail':'customer-orders-overview')+'">'+(selected?'<header class="customer-order-detail-header"><button class="customer-orders-back" data-action="back-customer-orders" aria-label="Back to orders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg><span>Orders</span></button><h1>Order details</h1></header>':'<header class="customer-inbox-heading"><span class="eyebrow">Your orders</span><h1>Orders</h1><p>Follow your meal, message your restaurant and view your receipts. Past orders are available for 90 days.</p></header><label class="customer-inbox-search customer-order-search"><input id="customer-order-search" type="search" aria-label="Search orders" placeholder="Search your orders" value="'+e(state.customerOrderSearch||'')+'"></label>')+'<div id="orders-list" class="orders-list">'+html+'</div></section>';
   enhancePaymentRecovery();focusRequestedOrder();
 }
 
 function focusRequestedOrder() {
   if (!state.focusOrderId) return; const card = document.querySelector(`[data-order-id="${CSS.escape(state.focusOrderId)}"]`); state.focusOrderId = null;
-  if (card) { const history = card.querySelector(".order-history"); if (history) history.open = true; card.classList.add("order-highlight"); card.setAttribute("tabindex", "-1"); card.scrollIntoView({behavior:"smooth",block:"start"}); card.focus({preventScroll:true}); }
+  if(card)document.querySelector(".customer-order-detail .customer-orders-back")?.focus({preventScroll:true});
 }
 function updateOrderCards() {
   const list = document.querySelector("#orders-list"); if (!list) return;

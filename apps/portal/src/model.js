@@ -20,7 +20,7 @@ export function ownerNavigation(permission = "owner") {
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
     ["Printers", "/owner/printers"],
   ];
-  if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Offers", "/owner/offers"], ["Refund cases", "/owner/refunds"], ["Support", "/owner/support"]);
+  if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Marketing", "/owner/offers"], ["Refund cases", "/owner/refunds"], ["Support", "/owner/support"]);
   if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Stripe setup", "/owner/stripe"], ["Settings", "/owner/settings"]);
   return core;
 }

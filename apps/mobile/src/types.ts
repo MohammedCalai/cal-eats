@@ -118,6 +118,11 @@ export interface NotificationRecord {
   createdAt: string;
 }
 export interface Offer {
+  campaignType?: string | null;
+  campaignRules?: {audienceSegment?: string;buyItemId?: string;buyItemName?: string};
+  weeklyBudgetMinor?: number | null;
+  recipientSegment?: string;
+  startsAt?: string;
   offerType?: "free_item" | "percent_off" | "fixed_off";
   value?: number;
   id: string;
