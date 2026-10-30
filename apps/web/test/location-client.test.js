@@ -1,6 +1,13 @@
 import test from "node:test";import assert from "node:assert/strict";
 import {createLocationClient} from "../location-client.js";
 import {mergeLocationChoices,unavailableLocationHtml} from "../location-ui.js";
+test("invalid postcode keeps the current address and picker open without reloading",async()=>{
+ const address={line1:"1 Demo Road",postcode:"LU1 2AB"},state={postcode:"LU1 2AB",locationAddress:address,locationSelectorOpen:true};let reloads=0;const messages=[];
+ const client=createLocationClient({state,api:async()=>{},reload:async()=>{reloads++;},render:()=>{},message:text=>messages.push(text)});
+ for(const value of ["","1234","not a postcode"]){assert.equal(await client.manual(value),false);assert.equal(state.postcode,"LU1 2AB");assert.equal(state.locationAddress,address);assert.equal(state.locationSelectorOpen,true);}
+ assert.equal(reloads,0);assert.equal(messages.length,3);
+ assert.equal(await client.manual("lu1"),true);assert.equal(state.postcode,"LU1");assert.equal(state.locationSelectorOpen,false);assert.equal(reloads,1);
+});
 test("saved and recent addresses merge without duplicates and outside-area copy stays escaped",()=>{
  const address={label:"Home",line1:"1 Demo Road",city:"Luton",postcode:"LU1 2AB"};
  assert.equal(mergeLocationChoices([address],[{...address,label:"Recent address"}]).length,1);

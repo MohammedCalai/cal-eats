@@ -306,6 +306,31 @@ body.customer-app>.topbar{position:sticky;top:0;z-index:40;display:flex}
 .customer-app .bottom-nav button[aria-current=page] .customer-nav-icon{color:#155fbf;filter:drop-shadow(0 0 5px #2f7de870)}
 @media(prefers-reduced-motion:reduce){.customer-app .bottom-nav button{transition:none}}
 
+/* Consistent action icons, comfortable controls and visible keyboard focus. */
+.customer-app .icon-action,.customer-app .discovery-see-all,.customer-app .account-help-compose>summary{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.customer-app .icon-action>.customer-nav-icon,.customer-app .discovery-see-all>.customer-nav-icon,.customer-app .account-help-compose>summary>.customer-nav-icon{width:19px;height:19px;flex:none}
+.customer-app .basket-close>.customer-nav-icon,.customer-app .location-picker-heading button>.customer-nav-icon{width:21px;height:21px;margin:auto}
+.customer-app .basket-quantity button{display:grid;place-items:center;min-width:44px;min-height:44px}
+.customer-app .basket-quantity button>.customer-nav-icon{width:18px;height:18px}
+.customer-app .account-setting summary>b>.customer-nav-icon{width:18px;height:18px}
+.customer-app .account-help-compose>summary{justify-content:flex-start;width:100%}
+.customer-app .address-card-actions button{min-height:44px}
+.customer-app .location-picker-heading button{display:grid;place-items:center;min-width:44px;min-height:44px;padding:8px}
+.customer-app .location-options .icon-action{justify-content:flex-start;min-height:48px}
+.customer-app #postcode{font-size:18px;letter-spacing:.035em;min-height:50px;min-width:0;width:100%;text-transform:uppercase}
+.customer-app #postcode-hint{display:block;font-size:12px;line-height:1.5;color:#5b7790;margin-top:9px;font-weight:400}
+.customer-app .location-entry-error{color:#a52a36;font-size:13px;line-height:1.5;font-weight:500;margin:8px 0 0}
+.customer-app .location-entry-error:empty{display:none}
+.customer-app input[aria-invalid=true]{border-color:#b52f42;box-shadow:0 0 0 2px #b52f4217}
+.customer-app #discover-results,.customer-app #saved-addresses,.customer-app #account-help{scroll-margin-top:calc(var(--customer-header-height,70px) + 20px)}
+.customer-app :is(button,a,summary,input,textarea,select):focus-visible{outline:3px solid #3a8ce2;outline-offset:3px}
+.customer-app .bottom-nav .customer-icon-accent{opacity:.16}
+.customer-app .bottom-nav button[aria-current=page] .customer-icon-accent{opacity:.27}
+.customer-app .bottom-nav button .customer-nav-icon{width:27px;height:27px;transition:transform .15s ease}
+.customer-app .customer-notification-prompt button[hidden]{display:none}
+.customer-app .bottom-nav button:active .customer-nav-icon{transform:scale(.94)}
+@media(prefers-reduced-motion:reduce){.customer-app .bottom-nav button .customer-nav-icon{transition:none;transform:none}}
+
 /* Keep live-order contact and formal support distinct and easy to scan. */
 .customer-app .order-contact-options{display:grid;gap:12px;padding:18px;align-items:stretch}
 .customer-app .order-contact-option{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px;border:1px solid #bfd9f0;border-radius:15px;background:#fff;min-width:0}

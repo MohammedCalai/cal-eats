@@ -1,6 +1,16 @@
 import { money, statusLabel } from "./model.js";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
 const paths = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  chevron: '<path d="m8 4 8 8-8 8"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  back: '<path d="m10 5-7 7 7 7M3 12h18"/>',
+  forward: '<path d="m14 5 7 7-7 7M3 12h18"/>',
+  gps: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  edit: '<path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-5-3L3 16z"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 8a2.5 2.5 0 1 1 4 2c-1 .6-1.5 1-1.5 3M12 17h.01"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   delivery: '<path d="M3 5h11v12H3zM14 10h4l3 4v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
@@ -15,7 +25,14 @@ const paths = {
   account: '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
   basket: '<path d="M4 8h16l-1 13H5zM8 8V6a4 4 0 0 1 8 0v2"/>'
 };
-export function customerIcon(name) { return `<svg class="customer-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${Object.hasOwn(paths,name) ? paths[name] : paths.discover}</svg>`; }
+const iconAccents = {
+  discover: '<circle cx="12" cy="12" r="8"/>',
+  orders: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/>',
+  offers: '<rect x="4" y="5" width="16" height="14" rx="3"/>',
+  messages: '<rect x="3" y="4" width="18" height="14" rx="3"/>',
+  account: '<circle cx="12" cy="7" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2z"/>'
+};
+export function customerIcon(name) { const key=Object.hasOwn(paths,name)?name:"discover"; return `<svg class="customer-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${Object.hasOwn(iconAccents,key)?`<g class="customer-icon-accent" fill="currentColor" stroke="none" opacity=".13">${iconAccents[key]}</g>`:""}${paths[key]}</svg>`; }
 export function customerRestaurantVisual(restaurant = {}) {
   const candidate = restaurant.restaurantImageUrl || restaurant.imageUrl || restaurant.logoUrl;
   let image = "";
