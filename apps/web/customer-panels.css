@@ -7,10 +7,8 @@
 .dialog-bottom-close{margin-top:16px;min-height:44px}
 .dialog .dialog-scroll>.menu-section-sheet+button{width:100%}
 .dialog .menu-item-sheet>.primary{bottom:0}
-body:has(.basket-review-page) .bottom-nav{display:none}
-body:has(.basket-review-page){padding-bottom:0}
 .basket-review-page{max-width:760px;min-height:85dvh;margin:0 auto;background:#121212;padding-bottom:110px}
-.basket-review-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#121212f5;backdrop-filter:blur(12px);min-height:62px;padding:8px 16px;border-bottom:1px solid #25262b;color:var(--ink);font-size:14px;font-weight:650}
+.basket-review-header{position:sticky;top:var(--customer-header-height,72px);z-index:30;display:flex;align-items:center;gap:14px;background:#121212f5;backdrop-filter:blur(12px);min-height:62px;padding:8px 16px;border-bottom:1px solid #25262b;color:var(--ink);font-size:14px;font-weight:650}
 .basket-close{width:44px;height:44px;background:transparent;border:0;color:var(--ink);font-size:30px;line-height:1;cursor:pointer}
 .basket-review-content{padding:16px 18px}
 .basket-review-content h1{font-size:28px;line-height:1.2;margin:4px 0 10px}
@@ -25,3 +23,98 @@ body:has(.basket-review-page){padding-bottom:0}
 .basket-prices{padding:18px 0;border-top:1px solid var(--line)}.basket-prices p{display:flex;justify-content:space-between;gap:14px;margin:12px 0;color:var(--muted);font-size:14px}.basket-prices strong{color:var(--ink);font-weight:600}.basket-prices .basket-estimate{font-size:19px;color:var(--ink);padding-top:8px}.basket-prices small{color:var(--muted);font-size:11px;line-height:1.5}
 .basket-review-footer{position:fixed;bottom:0;left:0;right:0;z-index:40;max-width:760px;margin:auto;padding:14px 18px calc(14px + env(safe-area-inset-bottom));background:#18191df7;border-top:1px solid var(--line)}.basket-review-footer button{display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;min-height:54px;font-size:16px;border-radius:13px}
 @media(max-width:760px){.dialog[data-dialog]{max-height:calc(100dvh - 24px)}.dialog[data-dialog]:has(.menu-section-sheet),.dialog[data-dialog]:has(.menu-item-sheet){max-height:90dvh;padding:0}.dialog-scroll{padding:16px}.dialog-toolbar{padding-top:8px}.basket-dish{gap:10px}.basket-review-page .error{margin-top:12px}}
+
+/* Account, basket and checkout refinements stay within the customer app. */
+.customer-app .customer-account-page .account-hero h1,
+.customer-app .customer-account-page .saved-address-card h3,
+.customer-app .customer-account-page .account-email{overflow-wrap:anywhere}
+.customer-app .customer-account-page .account-panel{scroll-margin-top:calc(var(--customer-header-height,72px) + 18px)}
+.customer-app .customer-account-page .account-panel .section-head{flex-wrap:wrap}
+.customer-app .customer-account-page .account-panel .section-head>div{min-width:0;flex:1 1 180px}
+.customer-app .customer-account-page .account-panel .section-head h2{line-height:1.25}
+.customer-app .customer-account-page .account-panel .section-head p{line-height:1.5}
+.customer-app .customer-account-page .address-card-actions{flex-wrap:wrap;gap:10px}
+.customer-app .customer-account-page .address-card-actions button{min-height:44px;font-size:13px}
+.customer-app .customer-account-page .account-setting>summary,
+.customer-app .customer-account-page .account-help-compose>summary,
+.customer-app .customer-account-page .account-deletion>summary{min-height:48px}
+.customer-app .customer-account-page .account-setting summary span{min-width:0;line-height:1.4}
+.customer-app .customer-account-page .account-setting summary small{line-height:1.5}
+.customer-app .customer-account-page .account-setting[open]>summary{padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.customer-app .customer-account-page .account-empty{grid-column:1/-1;max-width:480px;margin:auto;padding:24px 12px;line-height:1.5}
+.customer-app .customer-account-page .account-empty strong{color:var(--navy)}
+.customer-app .customer-account-page .stack label,
+.customer-app .address-editor label{gap:7px;line-height:1.4}
+.customer-app .customer-account-page .field-note,
+.customer-app .address-editor .field-note{font-size:12px;font-weight:400;color:var(--muted)}
+.customer-app .customer-account-page :is(input,select,textarea),
+.customer-app .address-editor :is(input,select,textarea){min-height:48px;font-size:16px;min-width:0}
+.customer-app .address-editor-hint{font-size:14px;line-height:1.55;margin:0 0 18px}
+.customer-app .customer-account-page .stack>.primary{min-height:48px}
+.customer-app .customer-account-page .account-preference>div{min-width:0}
+.customer-app .customer-account-page .account-preference>button{flex-shrink:0;min-height:44px}
+.customer-app .basket-review-content h1{overflow-wrap:anywhere}
+.customer-app .basket-dish:not(:has(>img)){grid-template-columns:minmax(0,1fr) auto}
+.customer-app .basket-dish .dish-title{text-align:left;min-height:44px;max-width:100%;padding:0}
+.customer-app .basket-dish-copy h2{overflow-wrap:anywhere}
+.customer-app .basket-dish-copy p{font-size:13px;overflow-wrap:anywhere}
+.customer-app .basket-dish-copy small{display:block;font-size:12px;line-height:1.5;margin-top:7px}
+.customer-app .basket-line-price{font-variant-numeric:tabular-nums}
+.customer-app .basket-line-price>span{font-size:12px;font-weight:400;color:var(--muted);margin-right:5px}
+.customer-app .basket-quantity button{width:44px;min-height:44px}
+.customer-app .basket-quantity span{min-width:18px;font-variant-numeric:tabular-nums}
+.customer-app .basket-empty strong{display:block;color:var(--navy);font-size:18px}
+.customer-app .basket-empty p{margin:8px 0 0;line-height:1.5}
+.customer-app .basket-prices h2{font-size:18px;line-height:1.3;margin:0 0 18px}
+.customer-app .basket-prices p{align-items:baseline;line-height:1.5}
+.customer-app .basket-prices strong{white-space:nowrap;font-variant-numeric:tabular-nums}
+.customer-app .basket-prices small{display:block;font-size:12px;max-width:48ch}
+.customer-app .basket-offer span{line-height:1.4;overflow-wrap:anywhere}
+.customer-app .basket-selected-offer>div{min-width:0;overflow-wrap:anywhere}
+.customer-app #checkout-form{max-width:760px;margin-inline:auto;gap:22px;padding:24px}
+.customer-app #checkout-form fieldset{min-width:0;margin:0;padding:20px;border:1px solid var(--line);border-radius:12px}
+.customer-app #checkout-form legend{padding:0 7px;font-size:16px;font-weight:750;color:var(--navy)}
+.customer-app #checkout-form label{line-height:1.45;gap:8px;min-width:0}
+.customer-app #checkout-form :is(input:not([type=radio]):not([type=checkbox]),select,textarea){font-size:16px;min-height:48px;min-width:0}
+.customer-app #checkout-form .checkout-items{gap:12px;padding-bottom:20px}
+.customer-app #checkout-form .checkout-items>strong{font-size:17px;color:var(--navy)}
+.customer-app #checkout-form .checkout-items p{align-items:baseline;line-height:1.5}
+.customer-app #checkout-form .checkout-items p>span{min-width:0;overflow-wrap:anywhere}
+.customer-app #checkout-form .checkout-items b,
+.customer-app #checkout-form .totals div>span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.customer-app #checkout-form .notice{margin:0;font-size:14px;line-height:1.55}
+.customer-app #checkout-form .radio-row{gap:10px}
+.customer-app #checkout-form .radio-card{min-height:52px;flex:1 1 220px;align-items:center;line-height:1.5}
+.customer-app #checkout-form .radio-card:has(input:checked){background:var(--sky);border-color:var(--blue)}
+.customer-app #checkout-form .radio-card:has(input:disabled){opacity:.65}
+.customer-app #checkout-form .radio-card input{flex:none;min-width:18px;min-height:18px;margin:0}
+.customer-app #checkout-form .allergy-note{padding-top:4px}
+.customer-app #checkout-form .totals{margin:0;padding-top:16px}
+.customer-app #checkout-form .totals div{gap:16px;line-height:1.5;padding:6px 0}
+.customer-app #checkout-form .totals .grand{border-top:1px solid var(--line);margin-top:8px;padding-top:14px}
+.customer-app #checkout-form #place-order{min-height:52px}
+@media(max-width:600px){
+.customer-app .basket-dish{grid-template-columns:60px minmax(0,1fr);gap:12px}
+.customer-app .basket-dish>img{width:60px;height:60px}
+.customer-app .basket-dish .basket-quantity{grid-column:2;justify-self:start;margin-top:0}
+.customer-app .basket-dish:not(:has(>img)){grid-template-columns:minmax(0,1fr)}
+.customer-app .basket-dish:not(:has(>img)) .basket-quantity{grid-column:1}
+.customer-app .basket-review-footer button{gap:12px;font-size:15px}
+.customer-app .basket-review-footer button strong{white-space:nowrap}
+.customer-app #checkout-form{padding:18px;gap:20px}
+.customer-app #checkout-form fieldset{padding:16px 12px}
+.customer-app .customer-account-page .saved-address-card{padding:16px;gap:12px}
+}
+
+.customer-app .field-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;line-height:1.45}
+.customer-app .field-heading .field-note{font-size:12px;font-weight:400;color:var(--muted);white-space:nowrap}
+
+.customer-app .server-quote{font-size:14px;line-height:1.55;margin:0;border:1px solid var(--line)}
+.customer-app .server-quote p{margin:6px 0 0}
+.customer-app .basket-review-content>.server-quote{margin:0 0 18px}
+.customer-app .quote-applied-offer{padding:14px 16px;border:1px solid #b8d9c9;border-radius:12px;background:#eef8f2;color:#205b40;margin-top:12px;font-size:14px;line-height:1.5}
+.customer-app .quote-applied-offer>p{margin:6px 0 0;overflow-wrap:anywhere}
+.customer-app .quote-applied-offer small{font-size:12px;line-height:1.5}
+.customer-app .quote-applied-offer .quote-free-item{display:flex;align-items:baseline;justify-content:space-between;gap:14px;border-top:1px solid #c7e3d3;padding-top:10px;margin-top:10px}
+.customer-app .quote-free-item small{display:block}
+.customer-app .basket-offers>.meta{font-size:13px;line-height:1.5;margin-top:-6px}

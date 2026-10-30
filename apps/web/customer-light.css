@@ -256,3 +256,83 @@ html:has(body.customer-app){scroll-padding-top:calc(var(--customer-header-height
 body.customer-app>.topbar{position:sticky;top:0;z-index:40;display:flex}
 .customer-app .customer-hero.discovery-header,.customer-app .restaurant-menu-nav,.customer-app .basket-review-header,.customer-app .network{top:var(--customer-header-height)}
 .customer-app .discovery-address .location-picker-panel{top:calc(var(--customer-header-height) + 12px);max-height:calc(100dvh - var(--customer-header-height) - var(--customer-nav-height,78px) - 32px)}
+
+/* Small refinements to the existing customer experience. */
+.customer-app :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid #1767d2;outline-offset:3px}
+.customer-app .topbar :is(button,a):focus-visible{outline-color:#d9efff;outline-offset:-3px}
+.customer-app .discovery-address>summary{display:flex;align-items:center;gap:6px;min-height:44px;line-height:1.4}
+.customer-app .discovery-address>summary>.customer-nav-icon{width:18px;height:18px;flex:none}
+.customer-app .customer-search>.customer-nav-icon{width:21px;height:21px;flex:none;color:#5d819f}
+.customer-app .discovery-controls .chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;line-height:1.3}
+.customer-app .discovery-controls .customer-nav-icon{width:17px;height:17px;flex:none}
+.customer-app .discovery-cuisines .chip{font-size:12px;line-height:1.4;min-height:62px}
+.customer-app .discovery-heading h2{line-height:1.3;letter-spacing:-.025em}
+.customer-app .discovery-heading .meta,.customer-app .discovery-result-count{font-size:12px;line-height:1.5}
+.customer-app .discovery-heading button{min-height:44px;font-size:13px;padding-inline:12px}
+.customer-app .discovery-shelf{scrollbar-width:none;padding-bottom:4px}
+.customer-app .discovery-shelf::-webkit-scrollbar{display:none}
+.customer-app .discovery-shelf:focus-visible{outline:2px solid #1767d2;outline-offset:4px;border-radius:14px}
+.customer-app .discovery-feed .restaurant-tile{border-color:#cadfec;box-shadow:0 3px 12px #315c7e0a}
+.customer-app .restaurant-open:focus-visible{outline-offset:-3px}
+.customer-app .discovery-feed .restaurant-copy{padding:12px}
+.customer-app .discovery-feed .restaurant-copy h3{font-size:15px;line-height:1.35;min-height:2.7em;margin-bottom:6px;letter-spacing:-.015em}
+.customer-app .discovery-feed .restaurant-cuisine{font-size:12px;line-height:1.5;color:#5b7890}
+.customer-app .discovery-feed .restaurant-facts{font-size:12px;line-height:1.5;gap:4px 9px;margin-top:6px}
+.customer-app .discovery-feed .restaurant-photo figcaption{font-size:9px;padding:3px 5px;border-radius:5px}
+.customer-app .restaurant-intro h1{line-height:1.2;letter-spacing:-.025em}
+.customer-app .restaurant-intro .meta{line-height:1.65}
+.customer-app .menu-mini-heading button{min-width:44px;min-height:44px}
+.customer-app .restaurant-menu-section{border-bottom-width:1px;padding-block:24px}
+.customer-app .dish-title h3{line-height:1.4;font-weight:750}
+.customer-app .dish-description{line-height:1.6;font-size:14px}
+.customer-app .dish-options{font-size:12px;line-height:1.5}
+.customer-app .dish-tags{font-size:12px;line-height:1.5;padding:4px 7px;border-radius:6px}
+.customer-app .dish-quantity button{width:44px;height:44px}
+.customer-app .notification-list{display:grid;gap:12px}
+.customer-app .notification-list .notification{margin:0;padding:17px;border-radius:15px;border:1px solid #c8ddeb;background:#fff}
+.customer-app .notification-list .notification.unread{background:#edf6ff;border-left:4px solid #2870d3}
+.customer-app .notification h3{font-size:17px;line-height:1.4;margin:0 0 7px;overflow-wrap:anywhere}
+.customer-app .notification p{font-size:14px;line-height:1.6;margin:0 0 10px}
+.customer-app .notification small{display:block;font-size:12px;line-height:1.5;color:#57728a}
+.customer-app .notification .card-actions{gap:8px;margin-top:13px;flex-wrap:wrap}
+.customer-app .notification .card-actions button{min-height:44px;font-size:13px;white-space:normal}
+.customer-app .dialog-toolbar h2{line-height:1.3}
+@media(max-width:400px){.customer-app .discovery-feed .restaurant-copy{padding:10px}.customer-app .discovery-feed .restaurant-copy h3{font-size:14px}.customer-app .discovery-controls .chip{padding-inline:10px}.customer-app .notification .card-actions button{flex:1 1 110px}}
+
+/* A quiet blue halo keeps every customer navigation icon clear and familiar. */
+.customer-app .bottom-nav button{border:1px solid transparent;background:linear-gradient(180deg,#f8fcff,#fff);transition:background .18s ease,box-shadow .18s ease,border-color .18s ease}
+.customer-app .bottom-nav button .customer-nav-icon{color:#276bc4;filter:drop-shadow(0 0 4px #3885e64d)}
+.customer-app .bottom-nav button[aria-current=page]{border-color:#bad8fa;background:linear-gradient(145deg,#edf7ff,#deedff);box-shadow:0 0 13px #3e8de32b,inset 0 1px 0 #fff}
+.customer-app .bottom-nav button[aria-current=page] .customer-nav-icon{color:#155fbf;filter:drop-shadow(0 0 5px #2f7de870)}
+@media(prefers-reduced-motion:reduce){.customer-app .bottom-nav button{transition:none}}
+
+/* Keep live-order contact and formal support distinct and easy to scan. */
+.customer-app .order-contact-options{display:grid;gap:12px;padding:18px;align-items:stretch}
+.customer-app .order-contact-option{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px;border:1px solid #bfd9f0;border-radius:15px;background:#fff;min-width:0}
+.customer-app .order-contact-option>div{min-width:0}
+.customer-app .order-contact-option strong{display:block;color:#1c486c;font-size:16px;line-height:1.4}
+.customer-app .order-contact-option p{margin:6px 0 0;font-size:13px;line-height:1.6;color:#55738b}
+.customer-app .order-contact-option button{min-height:46px;font-size:14px;white-space:normal}
+.customer-app .order-contact-option .card-actions{margin:0;gap:8px;flex-wrap:wrap}
+.customer-app .order-help-option{background:#f6faff;border-color:#d1e1ef}
+.customer-app .order-help-intro{padding:16px;background:#edf6ff;border:1px solid #c7ddf0;border-radius:13px;display:grid;gap:5px}
+.customer-app .order-help-intro strong{font-size:16px;line-height:1.4;color:#204c70}
+.customer-app .order-help-intro .meta{margin:0}
+.customer-app .order-help-explainer{font-size:14px;line-height:1.65;color:#58738a;margin:18px 0}
+.customer-app .order-help-form{gap:20px}
+.customer-app .order-help-form>label{line-height:1.5;gap:8px;font-size:14px}
+.customer-app .order-help-form select,.customer-app .order-help-form textarea{font-size:16px;min-height:48px}
+.customer-app .order-help-form small{font-size:12px;line-height:1.6;color:#607b90;font-weight:400}
+.customer-app .order-help-items{border:1px solid #cee0ed;border-radius:13px;padding:14px;min-width:0}
+.customer-app .order-help-items legend{font-size:14px;font-weight:700;padding:0 6px;color:#29506f}
+.customer-app .order-help-items .radio-card{min-height:48px;padding:12px;margin-bottom:8px;border-radius:10px;font-size:14px;line-height:1.5;background:#f8fbff;align-items:center;gap:12px}
+.customer-app .order-help-items input{width:18px;height:18px;min-height:18px;flex:none;margin:0;accent-color:#2865e9}
+.customer-app .order-help-form input[type=file]{font-size:13px;padding:12px;max-width:100%;background:#f4f9ff;border:1px dashed #adcce5;border-radius:10px}
+.customer-app .order-help-form>button{min-height:48px}
+@media(max-width:600px){.customer-app .order-contact-option{flex-direction:column;align-items:stretch;gap:12px}.customer-app .order-contact-option>button,.customer-app .order-contact-option .card-actions button{width:100%}.customer-app .order-contact-options{padding:16px}.customer-app .order-contact-option .card-actions{display:grid}}
+
+.customer-app :is(input:not([type=checkbox]):not([type=radio]),select,textarea){font-weight:500}
+.customer-app :is(input,textarea)::placeholder{font-weight:400;color:#6e879c}
+.customer-app .order-help-form>.order-help-field-hint{margin-top:-12px}
+.customer-app #checkout-form>.checkout-intro{margin:0;font-size:14px;line-height:1.6;color:#55728b}
+.customer-app #checkout-form .checkout-items p{margin:9px 0}

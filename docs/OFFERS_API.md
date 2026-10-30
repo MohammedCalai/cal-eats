@@ -21,3 +21,12 @@ Commission is 7% of paid food subtotal only; delivery fee and free item excluded
 
 ## UI
 Inbox bell/count for all roles; readable notification list with mark-read and open-order/open-offer actions. Poll while signed in, stop/reset on logout, preserve typed forms. Customer Offers screen shows terms and available offers, marks viewed on deliberate open, selects an offer for checkout. Restaurant owner gets Customers & offers tab: customer history summaries, choose recipient(s), free menu item, minimum, expiry and message; send in-app and show campaign analytics. Keep labels explicit about local in-app delivery and merchant funding. Show saved, failed, empty and unavailable states. No actual external customer communication.
+
+
+## Automatic basket and checkout offers — 30 October 2026
+
+Customer `POST /api/orders/quote` accepts optional `autoApplyOffers: true`. It evaluates the signed-in customer's available, non-dismissed, active grants for the same restaurant and minimum spend, then applies one eligible exclusive promotion using server-owned prices and the existing consent, item, fulfilment and budget checks. The lowest actual payable total wins; a greater free-gift retail value breaks equal-total ties. Existing explicit `offerId` quoting remains compatible when automatic selection is not requested.
+
+Evaluation is bounded to 100 newest active/minimum-eligible grants per restaurant/customer. The response includes `offerId` (or null), promotion/gift details and `autoOfferSelection` with `candidateLimit`, `candidatesChecked` and `truncated`. A truncated result is not an exhaustive best-offer guarantee. Quotes never reserve or redeem a grant.
+
+Browser/native checkout wait for a complete delivery address (collection needs no address), refresh automatically on relevant edits and use bounded transient retries/foreground refresh. The final confirmation compares price and promotion/gift identity, including equal-price changes. Order creation sends the confirmed `offerId` and `expectedTotalMinor` through the existing idempotent flow; `autoApplyOffers` is not an order-creation parameter. The server rechecks eligibility at creation. Existing commission remains 7% of discounted food plus actual charged delivery under the current default; historical snapshots are preserved.
