@@ -151,13 +151,21 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const createdAt = nowIso(config); const expiresAt = new Date(Date.parse(createdAt) + RETENTION_MS).toISOString(); const id = randomUUID(); const encrypted = await encryptMessage(config, message, { id, orderId: granted.order.id, senderUserId: granted.user.id, createdAt, expiresAt });
     const created = withTransaction(db, () => {
       const order = db.prepare("SELECT * FROM orders WHERE id=?").get(granted.order.id); if (!availability(db, order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
+      // Encryption yields to other requests. Recheck the key while holding the
+      // write transaction, before charging the rate limit or notifying anyone.
+      const replay = db.prepare("SELECT * FROM order_messages WHERE sender_user_id=? AND order_id=? AND idempotency_key=?").get(granted.user.id, order.id, key);
+      if (replay) {
+        if (replay.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used");
+        if (replay.expires_at <= nowIso(config)) throw new HttpError(410, "MESSAGE_EXPIRED", "This message has expired");
+        return replay;
+      }
       const bucket = db.prepare("SELECT * FROM order_message_rate_limits WHERE user_id=? AND order_id=?").get(granted.user.id, order.id); const stamp = config.now().getTime();
       if (!bucket || stamp - bucket.window_start_ms >= 60_000) db.prepare("INSERT INTO order_message_rate_limits VALUES(?,?,?,1) ON CONFLICT(user_id,order_id) DO UPDATE SET window_start_ms=excluded.window_start_ms,message_count=1").run(granted.user.id, order.id, stamp);
       else { if (bucket.message_count >= 8) throw new HttpError(429, "MESSAGE_RATE_LIMITED", "Please wait before sending more messages"); db.prepare("UPDATE order_message_rate_limits SET message_count=message_count+1 WHERE user_id=? AND order_id=?").run(granted.user.id, order.id); }
       db.prepare("INSERT INTO order_messages VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(id, order.id, granted.user.id, granted.role, key, hash, encrypted.ciphertext, encrypted.nonce, encrypted.authTag, encrypted.keyVersion, createdAt, expiresAt);
       notifyRecipients(db, order, granted.user.id, id, createdAt); return db.prepare("SELECT * FROM order_messages WHERE id=?").get(id);
     });
-    return sendJson(res, 201, { data: await dto(config, created) });
+    return sendJson(res, created.id === id ? 201 : 200, { data: await dto(config, created) });
   }
   return false;
 }

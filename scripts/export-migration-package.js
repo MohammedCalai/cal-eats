@@ -60,10 +60,12 @@ const SPECS = [
 export function resolveMigrationSource(source = path.join(MIGRATION_ROOT, "data", "calai-eats.sqlite")) {
   const candidate = path.resolve(source), root = fs.realpathSync(MIGRATION_ROOT);
   const allowed = ["data", "artifacts", "backups"].map(name => path.join(MIGRATION_ROOT, name));
-  if (protectedPath(candidate) || !allowed.some(folder => inside(folder, candidate)) || path.extname(candidate).toLowerCase() !== ".sqlite") throw new Error("Source must be a Cal-Eats .sqlite database under data, artifacts or backups; original/reference paths are forbidden.");
+  // A managed worktree may itself live below .codex. Protect paths inside
+  // this repository, while the containment checks still reject outside files.
+  if (protectedPath(path.relative(MIGRATION_ROOT, candidate)) || !allowed.some(folder => inside(folder, candidate)) || path.extname(candidate).toLowerCase() !== ".sqlite") throw new Error("Source must be a Cal-Eats .sqlite database under data, artifacts or backups; original/reference paths are forbidden.");
   const real = fs.realpathSync(candidate);
   const realAllowed = allowed.filter(folder => fs.existsSync(folder)).map(folder => fs.realpathSync(folder));
-  if (!inside(root, real) || protectedPath(real) || !realAllowed.some(folder => inside(root, folder) && !protectedPath(folder) && inside(folder, real)) || !fs.statSync(real).isFile()) throw new Error("The database source resolves outside the managed Cal-Eats directories.");
+  if (!inside(root, real) || protectedPath(path.relative(root, real)) || !realAllowed.some(folder => inside(root, folder) && !protectedPath(path.relative(root, folder)) && inside(folder, real)) || !fs.statSync(real).isFile()) throw new Error("The database source resolves outside the managed Cal-Eats directories.");
   return real;
 }
 
@@ -131,10 +133,10 @@ function record(descriptor, row) {
 }
 function prepareDestination(now) {
   const root = fs.realpathSync(MIGRATION_ROOT), artifacts = fs.realpathSync(path.join(MIGRATION_ROOT, "artifacts"));
-  if (path.relative(path.join(root, "artifacts"), artifacts) !== "" || protectedPath(artifacts)) throw new Error("Migration output must remain within Cal-Eats artifacts.");
+  if (path.relative(path.join(root, "artifacts"), artifacts) !== "" || protectedPath(path.relative(root, artifacts))) throw new Error("Migration output must remain within Cal-Eats artifacts.");
   const migrations = path.join(artifacts, "migrations");
   if (!fs.existsSync(migrations)) fs.mkdirSync(migrations, { mode: 0o700 });
-  const real = fs.realpathSync(migrations); if (path.relative(path.join(artifacts, "migrations"), real) !== "" || protectedPath(real)) throw new Error("Migration output directory resolves outside Cal-Eats artifacts.");
+  const real = fs.realpathSync(migrations); if (path.relative(path.join(artifacts, "migrations"), real) !== "" || protectedPath(path.relative(root, real))) throw new Error("Migration output directory resolves outside Cal-Eats artifacts.");
   const destination = path.join(real, now.toISOString().replace(/[:.]/g, "-"));
   try { fs.mkdirSync(destination, { mode: 0o700 }); } catch (e) { if (e.code === "EEXIST") throw new Error("Refusing to overwrite an existing migration package."); throw e; }
   fs.writeFileSync(path.join(destination, "INCOMPLETE.txt"), "Incomplete package. Import is forbidden unless manifest.json and manifest.sha256 exist and this marker is absent.\n", { flag: "wx", mode: 0o600 });

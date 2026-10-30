@@ -11,6 +11,7 @@ export function openDatabase(filename) {
 }
 
 export function migrateDatabase(db) {
+  assertDatabaseCompatible(db);
   db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
   for (const migration of migrations) {
     if (migration.foreignKeysOff) db.exec("PRAGMA foreign_keys = OFF");
@@ -33,11 +34,34 @@ export function migrateDatabase(db) {
   return migrations.length;
 }
 
+export function assertDatabaseCompatible(db, { requireCurrent = false } = {}) {
+  const exists = db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_migrations'").get();
+  const rows = exists ? db.prepare("SELECT version,name FROM schema_migrations ORDER BY version").all() : [];
+  for (let index = 0; index < rows.length; index++) {
+    const expected = migrations[index], applied = rows[index];
+    if (!expected || applied.version !== expected.version || applied.name !== expected.name) {
+      const error = new Error("Database migration history is not compatible with this release. Use a compatible release; no migration was attempted.");
+      error.code = "DATABASE_SCHEMA_INCOMPATIBLE";
+      throw error;
+    }
+  }
+  const state = { appliedVersion: rows.at(-1)?.version ?? 0, supportedVersion: migrations.at(-1)?.version ?? 0, pendingMigrations: migrations.length - rows.length };
+  if (requireCurrent && state.pendingMigrations) {
+    const error = new Error("Database migrations are pending. Apply the approved migration step before starting this release.");
+    error.code = "DATABASE_MIGRATION_REQUIRED";
+    throw error;
+  }
+  return state;
+}
+
+export function prepareDatabase(db, { migrateOnStart = true } = {}) {
+  if (migrateOnStart) migrateDatabase(db);
+  return assertDatabaseCompatible(db, { requireCurrent: true });
+}
+
 export function isDatabaseReady(db) {
-  try {
-    const rows = db.prepare("SELECT version FROM schema_migrations ORDER BY version").all();
-    return migrations.every((migration) => rows.some((row) => row.version === migration.version));
-  } catch { return false; }
+  try { assertDatabaseCompatible(db, { requireCurrent: true }); return true; }
+  catch { return false; }
 }
 
 export function closeDatabase(db) { db.close(); }

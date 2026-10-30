@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { migrateDatabase } from "../apps/api/src/db/index.js";
 import { exportMigrationPackage, MIGRATION_ROOT, resolveMigrationSource } from "./export-migration-package.js";
 
@@ -12,16 +12,15 @@ const artifacts = path.join(MIGRATION_ROOT, "artifacts");
 const inside = (root, value) => { const relative = path.relative(root, value); return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative); };
 
 test("migration sources cannot include original Calai, Git or outside-workspace files", () => {
-  for (const file of [path.join(MIGRATION_ROOT, "reference", "original.sqlite"), path.join(MIGRATION_ROOT, ".git", "config"), path.resolve(MIGRATION_ROOT, "..", "other.sqlite")]) assert.throws(() => resolveMigrationSource(file), /Cal-Eats|forbidden/);
+  for (const file of [path.join(MIGRATION_ROOT, "reference", "original.sqlite"), path.join(MIGRATION_ROOT, ".git", "config"), path.resolve(MIGRATION_ROOT, "..", "other.sqlite"), ...["reference", ".git", ".codex", ".agents", ".aws"].map(folder => path.join(artifacts, folder, "private.sqlite"))]) assert.throws(() => resolveMigrationSource(file), /Cal-Eats|forbidden/);
 });
 
 test("snapshot export preserves its source, excludes credentials and validates package links/checksums", async t => {
   fs.mkdirSync(artifacts, { recursive: true });
   const temporary = fs.mkdtempSync(path.join(artifacts, "migration-export-test-")), source = path.join(temporary, "fixture.sqlite"), outputs = [];
   t.after(() => { for (const target of [...outputs, temporary]) { const absolute = path.resolve(target); assert.ok(inside(artifacts, absolute), "Cleanup must remain within Cal-Eats artifacts"); if (fs.existsSync(absolute)) { assert.ok(inside(fs.realpathSync(artifacts), fs.realpathSync(absolute)), "Cleanup must not follow an outside directory"); fs.rmSync(absolute, { recursive: true, force: true }); } } });
-  const rich = path.join(artifacts, "business-phone-demo.sqlite");
-  if (fs.existsSync(rich)) { const db = new DatabaseSync(rich, { readOnly: true }); try { await sqliteBackup(db, source); } finally { db.close(); } }
-  else createSyntheticFixture(source);
+  // Always synthetic: developer checks must not read a local operator database.
+  createSyntheticFixture(source);
   const db = new DatabaseSync(source);
   let selectedEmail, firstRestaurant, secondRestaurant, sourceMenuCount;
   const secrets = ["FIXTURE_PASSWORD_NEVER_EXPORT", "sk_test_FIXTURE_API_SECRET_NEVER_EXPORT", "FIXTURE_SESSION_TOKEN_NEVER_EXPORT"];

@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const BACKUP_ROOT = path.join(PROJECT_ROOT, "backups");
-export const DEFAULT_SOURCE = path.join(PROJECT_ROOT, "data", "calai-eats.sqlite");
+export const BACKUP_ROOT = path.resolve(process.env.CALAI_BACKUP_DIR || path.join(PROJECT_ROOT, "backups"));
+export const DEFAULT_SOURCE = path.resolve(process.env.CALAI_DB_PATH || path.join(PROJECT_ROOT, "data", "calai-eats.sqlite"));
 
 function inside(root, target) {
   const relative = path.relative(root, target);
@@ -51,8 +51,15 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
     // order/dispute records remain intact and keep their separate policies.
     const copy = new DatabaseSync(destinationPath);
     try {
-      if (copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='order_messages'").get()) {
-        copy.exec("PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; DELETE FROM order_messages; DELETE FROM order_message_reads; DELETE FROM order_message_rate_limits; VACUUM;");
+      const temporaryTables = ["order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
+      const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
+      if (present.length) {
+        copy.exec("PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");
+        try { for (const table of present) copy.exec(`DELETE FROM ${table}`); copy.exec("COMMIT"); }
+        catch (error) { copy.exec("ROLLBACK"); throw error; }
+        // Keep thread metadata and sequence high-watermarks; removing bodies
+        // must not make later messages reuse an earlier ingestion sequence.
+        copy.exec("VACUUM;");
       }
     } finally { copy.close(); }
   } catch (error) {

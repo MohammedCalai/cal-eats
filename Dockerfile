@@ -21,7 +21,8 @@ ENV NODE_ENV=production \
     CALAI_HOST=0.0.0.0 \
     CALAI_PORT=4310 \
     PORT=4310 \
-    CALAI_DB_PATH=/data/calai-eats.sqlite
+    CALAI_DB_PATH=/data/calai-eats.sqlite \
+    CALAI_BACKUP_DIR=/data/backups
 WORKDIR /app
 
 COPY --chown=node:node package.json ./
@@ -31,6 +32,7 @@ COPY --chown=node:node packages/contracts ./packages/contracts
 COPY --from=api-dependencies --chown=node:node /build/node_modules ./node_modules
 COPY --from=portal-build --chown=node:node /build/apps/portal/dist ./apps/portal/dist
 COPY --chown=node:node infra ./infra
+COPY --chown=node:node scripts/backup.js scripts/restore-check.js scripts/database-check.js ./scripts/
 RUN mkdir -p /data && chown node:node /data
 RUN chmod 755 /app/infra/entrypoint.sh
 

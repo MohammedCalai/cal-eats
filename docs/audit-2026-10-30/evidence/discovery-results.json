@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-30",
+  "commit": "b94092ee4657b01d93466a4ddf282155f76a0fa2",
+  "node": "v24.19.0",
+  "sqlite": "3.53.3",
+  "platform": "win32",
+  "cpu": "13th Gen Intel(R) Core(TM) i5-1335U",
+  "memoryGiB": 16,
+  "method": "Actual routeJourney GET /api/restaurants on freshly migrated in-memory database, 20 menu items per restaurant, zero orders, one request at a time; no HTTP transport, auth, remote provider or production data; 30s per child route budget.",
+  "results": [
+    {
+      "type": "result",
+      "restaurants": 100,
+      "menuItems": 2000,
+      "samples": [
+        {
+          "ms": 18.01,
+          "bytes": 95190,
+          "count": 100
+        },
+        {
+          "ms": 13.6,
+          "bytes": 95190,
+          "count": 100
+        },
+        {
+          "ms": 14.84,
+          "bytes": 95190,
+          "count": 100
+        }
+      ],
+      "status": "completed"
+    },
+    {
+      "type": "result",
+      "restaurants": 1000,
+      "menuItems": 20000,
+      "samples": [
+        {
+          "ms": 1191.83,
+          "bytes": 953790,
+          "count": 1000
+        },
+        {
+          "ms": 1168.76,
+          "bytes": 953790,
+          "count": 1000
+        },
+        {
+          "ms": 1163.22,
+          "bytes": 953790,
+          "count": 1000
+        }
+      ],
+      "status": "completed"
+    },
+    {
+      "restaurants": 10000,
+      "menuItems": 200000,
+      "status": "route_timeout",
+      "timeoutMs": 30000
+    }
+  ],
+  "limitations": [
+    "Single synthetic host and tiny menus; these are route samples, not a capacity/SLO benchmark.",
+    "In-memory SQLite excludes disk contention and order history.",
+    "No claimed p95/p99 from this small sample.",
+    "Independent agents and audit checks may consume host resources; rerun on controlled staging hardware for sizing."
+  ]
+}

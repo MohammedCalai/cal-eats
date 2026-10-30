@@ -49,7 +49,7 @@ function validateIdentity(body) {
 
 function clientKey(req, email = "") { return `${req.socket.remoteAddress ?? "unknown"}|${email}`; }
 
-export function createApp({ db, config }) {
+export function createApp({ db, config, logger = console }) {
   if(isDatabaseReady(db))initializeCustomerEmailDelivery(db,config);
   function incrementRateBucket(key, now) {
     const entry = db.prepare("SELECT * FROM auth_rate_limits WHERE bucket_key=?").get(key);
@@ -72,7 +72,10 @@ export function createApp({ db, config }) {
   }
 
   return async function app(req, res) {
+    const requestId = randomUUID(), startedAt = performance.now();
     try {
+      // Generate locally: incoming request IDs, URLs and payloads are untrusted.
+      res.setHeader("X-Request-Id", requestId);
       for (const [key, value] of Object.entries(securityHeaders)) res.setHeader(key, value);
       const url = new URL(req.url, config.origin);
       const healthcheckHostAllowed = req.method === "GET" && ["/health/live", "/health/ready"].includes(url.pathname) && config.runMode === "hosted-preview" && config.healthcheckHost && req.headers.host === config.healthcheckHost;
@@ -207,6 +210,13 @@ export function createApp({ db, config }) {
       const status = Number.isInteger(error.status) ? error.status : 500;
       const code = error.code ?? "INTERNAL_ERROR";
       const message = status === 500 ? "Internal server error" : error.message;
+      if (status >= 500) {
+        const method = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(req.method) ? req.method : "OTHER";
+        // Never log raw errors/stacks, URL/query, headers, identities or bodies:
+        // provider errors can contain tokens and customer/payment information.
+        try { logger.error(JSON.stringify({ event: "request_failed", requestId, method, status, durationMs: Math.round((performance.now() - startedAt) * 100) / 100, code: error instanceof HttpError ? error.code : "INTERNAL_ERROR" })); }
+        catch { /* A logging failure must not replace the original response. */ }
+      }
       if (!res.headersSent) sendJson(res, status, { error: { code, message } }); else res.destroy();
     }
   };
