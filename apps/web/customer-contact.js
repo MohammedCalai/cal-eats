@@ -1,11 +1,11 @@
+import { customerRestaurantVisual } from "./customer-ui.js";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const validDate = value => { const date = new Date(value); return value && Number.isFinite(date.getTime()) ? date : null; };
 const when = value => { const date = validDate(value); return date ? date.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "Date unavailable"; };
 const label = value => ({ open: "Open", resolved: "Resolved", awaiting_restaurant: "Waiting for restaurant", awaiting_customer: "Waiting for you", team: "Waiting for a reply", customer: "Waiting for you", none: "Resolved" })[value] || value;
 const conversationLabel = value => ({ open: "Restaurant conversation", resolved: "Conversation resolved", awaiting_restaurant: "Waiting for restaurant reply", awaiting_customer: "Waiting for your reply" })[value] || "Restaurant conversation";
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${({ back: '<path d="m15 5-7 7 7 7"/>', search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>', send: '<path d="m4 12 16-8-5 16-3-6-8-2zM12 14l8-10"/>', chat: '<path d="M21 11a8 8 0 0 1-8 8H8l-5 3V9a7 7 0 0 1 7-7h3a8 8 0 0 1 8 9zM7 8h10M7 12h7"/>' })[name] || ""}</svg>`;
-const initials = name => String(name || "Restaurant").trim().split(/[\s-]+/).filter(Boolean).slice(0, 2).map(word => [...word][0]).join("").toUpperCase();
-const avatar = name => `<span class="customer-chat-avatar" aria-hidden="true">${escape(initials(name))}</span>`;
+const avatar = restaurant => `<span class="customer-chat-avatar" aria-hidden="true">${customerRestaurantVisual(typeof restaurant === "object" ? restaurant : {})}</span>`;
 const dateKey = value => validDate(value)?.toLocaleDateString("en-CA", { timeZone: "Europe/London" }) ?? "";
 function dayLabel(value, now = Date.now()) { const date = validDate(value); if (!date) return ""; const key = dateKey(value); return key === dateKey(now) ? "Today" : key === dateKey(now - 86400000) ? "Yesterday" : date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }); }
 function inboxTime(value, now = Date.now()) { const date = validDate(value); if (!date) return ""; return dateKey(value) === dateKey(now) ? date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/London" }); }
@@ -15,7 +15,7 @@ export function supportCardsHtml(cases = []) {
 }
 export function customerInboxRowsHtml(items = [], now = Date.now()) {
   return items.map(item => { const name = item.restaurantName || "Restaurant", unread = Number.isSafeInteger(item.unreadMessageCount) && item.unreadMessageCount > 0 ? item.unreadMessageCount : 0;
-    return `<article class="customer-inbox-item${unread ? " has-unread" : ""}"><button type="button" class="customer-conversation-row" data-thread="${escape(item.id)}" data-title="${escape(name)}" aria-label="Open conversation with ${escape(name)}${unread ? `, ${unread} unread message${unread === 1 ? "" : "s"}` : ""}">${avatar(name)}<span class="customer-conversation-copy"><span class="customer-conversation-title"><strong>${escape(name)}</strong>${validDate(item.lastMessageAt) ? `<time datetime="${escape(item.lastMessageAt)}" title="${escape(when(item.lastMessageAt))}">${escape(inboxTime(item.lastMessageAt, now))}</time>` : ""}</span><span class="customer-conversation-preview"><span>${escape(conversationLabel(item.status))}</span>${unread ? `<b class="customer-message-count" aria-hidden="true">${unread > 99 ? "99+" : unread}</b>` : '<span class="customer-conversation-chevron" aria-hidden="true">›</span>'}</span></span></button></article>`;
+    return `<article class="customer-inbox-item${unread ? " has-unread" : ""}"><button type="button" class="customer-conversation-row" data-thread="${escape(item.id)}" data-title="${escape(name)}" aria-label="Open conversation with ${escape(name)}${unread ? `, ${unread} unread message${unread === 1 ? "" : "s"}` : ""}">${avatar(item)}<span class="customer-conversation-copy"><span class="customer-conversation-title"><strong>${escape(name)}</strong>${validDate(item.lastMessageAt) ? `<time datetime="${escape(item.lastMessageAt)}" title="${escape(when(item.lastMessageAt))}">${escape(inboxTime(item.lastMessageAt, now))}</time>` : ""}</span><span class="customer-conversation-preview"><span>${escape(conversationLabel(item.status))}</span>${unread ? `<b class="customer-message-count" aria-hidden="true">${unread > 99 ? "99+" : unread}</b>` : '<span class="customer-conversation-chevron" aria-hidden="true">›</span>'}</span></span></button></article>`;
   }).join("");
 }
 export function customerMessagesHtml(messages = [], { title = "Restaurant", initialRequest = null, now = Date.now() } = {}) {
@@ -42,7 +42,7 @@ export async function mountCustomerThread({ api, container, id, support = false,
     const messageHtml = customerMessagesHtml(messages, { title: name, initialRequest }) || `<div class="customer-chat-empty">${icon("chat")}<strong>No messages yet</strong><p>Send your first message to start the conversation.</p></div>`;
     if (messageHtml !== renderedMessagesHtml) { list.innerHTML = messageHtml; renderedMessagesHtml = messageHtml; }
     const heading = container.querySelector(".customer-chat-heading h2"); if (heading.textContent !== name) heading.textContent = name;
-    container.querySelector(".customer-chat-header .customer-chat-avatar").textContent = initials(name);
+    container.querySelector(".customer-chat-header .customer-chat-avatar").innerHTML = customerRestaurantVisual(data.thread || {});
     subtitle.textContent = support ? `#${data.reference} · ${label(data.status === "resolved" ? "resolved" : data.waitingFor)}` : conversationLabel(data.thread?.status);
     older.hidden = !olderCursor; resolveButton.textContent = data.status === "resolved" ? "Reopen request" : "Mark request resolved";
     if (previous) list.scrollTop = scrollTop + list.scrollHeight - scrollHeight;
