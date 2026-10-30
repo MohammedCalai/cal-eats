@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as SecureStore from "expo-secure-store";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { ConfirmOrder, OrderInformation } from "./OrdersScreen";
 import { pendingOrderQueue, type BusinessOrder, type PendingOrders } from "./orders-model";
 import { Button, Chip, Chips, colour, ErrorText, styles } from "./ui";
 import { useLiveOrders } from "./useLiveOrders";
-import { canMuteOrderSound, pendingOrderSoundRequired } from "../../../packages/contracts/src/order-alert-policy.js";
+import { pendingOrderSoundRequired } from "../../../packages/contracts/src/order-alert-policy.js";
 
-const SOUND_KEY = "cal_eats_admin_order_sound_v1";
 export function useOrderSoundPreference() {
-  const [enabled, setEnabled] = useState(true), [ready, setReady] = useState(false), [error, setError] = useState("");
-  const changed = useRef(false), pendingCount = useRef(0);
-  useEffect(() => { let live = true; void SecureStore.getItemAsync(SOUND_KEY).then(value => { if (live && !changed.current) setEnabled(value !== "off"); }).catch(() => { if (live && !changed.current) { setEnabled(false); setError("The saved sound preference could not be read. Enable sound here if you want order alerts."); } }).finally(() => { if (live) setReady(true); }); return () => { live = false; }; }, []);
-  const change = useCallback((value: boolean) => { if(!value&&!canMuteOrderSound(pendingCount.current)){setError("Confirm the waiting orders before stopping the sound.");return;} changed.current = true; setEnabled(value); setError(""); void SecureStore.setItemAsync(SOUND_KEY, value ? "on" : "off").catch(() => setError("The sound preference applies now but could not be saved on this device.")); }, []);
-  const setPending = useCallback((count:number)=>{pendingCount.current=count;if(count>0){changed.current=true;setEnabled(true);}},[]);
-  return { enabled, ready, error, change, setPending };
+  const setPending=useCallback((_count:number)=>{},[]);
+  return {enabled:true,ready:true,error:"",setPending};
 }
 
 function ForegroundOrderSound({ ring, urgent, onError }: { ring: boolean; urgent: boolean; onError: (message: string) => void }) {

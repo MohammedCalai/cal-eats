@@ -64,8 +64,8 @@ export default function App() {
     <ErrorBanner message={customerAlerts.error}/>
     {tab === "discover" ? <DiscoverScreen userId={user.id} address={deliveryAddress} onAddress={setDeliveryAddress} onUseOffer={useOffer} focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setBasketOpen(true)}/> : null}
     {tab === "orders" ? <OrdersScreen token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
-    {tab === "offers" ? <InboxScreen key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onUnreadChange={setUnread}/> : null}
-    {tab === "inbox" ? <InboxScreen key={`messages:${inboxRoute}`} initialTab={inboxRoute} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onUnreadChange={setUnread}/> : null}
+    {tab === "offers" ? <InboxScreen key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
+    {tab === "inbox" ? <InboxScreen key={`messages:${inboxRoute}`} initialTab={inboxRoute} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
     {tab === "account" ? <AccountScreen token={token} user={user} onUser={setUser} onLogout={logout}/> : null}
   </KeyboardAvoidingView>{navigation}</SafeAreaView>;
 }

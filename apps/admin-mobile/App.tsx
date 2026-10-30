@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { API_BASE, ApiError, api, json } from "./src/api";
@@ -7,6 +7,7 @@ import { CasesScreen } from "./src/CasesScreen";
 import { CustomersScreen } from "./src/CustomersScreen";
 import { clearMessageDrafts, MessagesScreen, OrderConversation } from "./src/MessagesScreen";
 import { IncomingOrderAlerts, useOrderSoundPreference } from "./src/IncomingOrderAlerts";
+import { BusinessAccountSettings } from "./src/BusinessAccountSettings";
 import { OrdersScreen } from "./src/OrdersScreen";
 import { DashboardScreen } from "./src/DashboardScreen";
 import { FinanceScreen } from "./src/FinanceScreen";
@@ -61,7 +62,7 @@ function BusinessApp() {
     {tab === "cases" && <CasesScreen token={token} restaurantId={restaurant.id} canManage={canManage}/>}
   </>}</View><View style={shell.nav}>{(canManage ? tabs : tabs.filter(item => item.id === "dashboard" || item.id === "menu" || item.id === "orders" || item.id === "more")).map(item => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === item.id }} key={item.id} style={shell.navItem} onPress={() => setTab(item.id)}><Text style={[shell.navSymbol, tab === item.id && shell.active]}>{item.symbol}</Text><Text style={[shell.navLabel, tab === item.id && shell.active]}>{item.label}</Text></Pressable>)}</View>
     {chooser && <Sheet title="Your restaurants" onClose={() => setChooser(false)}><Page>{restaurants.map(item => <Button quiet key={item.id} onPress={() => switchRestaurant(item.id)}>{item.name}{item.id === restaurantId ? " ✓" : ""}</Button>)}</Page></Sheet>}
-    {settings && <Sheet title="Account and help" onClose={() => setSettings(false)}><Page><Brand/><Card><Text style={styles.heading}>{user.name}</Text><Text style={styles.text}>{user.email}</Text><Text style={styles.muted}>{canManage ? "Restaurant owner" : "Restaurant staff"}</Text></Card>{canManage && <Button onPress={() => { setSettings(false); setHelp({}); }}>Customer help requests</Button>}<Button quiet onPress={() => void Linking.openURL(`${API_BASE}/business/`)}>Open full business platform</Button><Card><View style={styles.row}><Text style={[styles.text, { flex: 1 }]}>Order sound on this device</Text><Switch accessibilityLabel="Order sound on this device" value={orderSound.enabled} disabled={!orderSound.ready} onValueChange={orderSound.change} trackColor={{ true: colour.blue }}/></View><Text style={styles.hint}>Play order alerts while the app is open, including when the phone is in silent mode. Device volume applies.</Text><ErrorText message={orderSound.error}/></Card><Text style={styles.hint}>In-app notifications refresh while the app is open. Background push notifications are not enabled in this development version.</Text><Button quiet onPress={() => void logout()}>Sign out</Button></Page></Sheet>}
+    {settings && <Sheet title="Settings" onClose={() => setSettings(false)}><BusinessAccountSettings user={user} restaurant={restaurant} canManage={canManage} onHelp={() => {setSettings(false);setHelp({});}} onOpenPlatform={() => void Linking.openURL(`${API_BASE}/business/owner/settings`)} onLogout={() => void logout()} soundError={orderSound.error}/></Sheet>}
     {notices && <Sheet title="Notifications" onClose={() => setNotices(false)}><Page onRefresh={() => void refreshNotifications()}><ErrorText message={notificationError}/><Text style={styles.hint}>Newest updates first. Pull to refresh.</Text>{!notifications.length && <Text style={styles.muted}>You're up to date.</Text>}{notifications.map(item => <Card key={item.id}><Text style={styles.heading}>{!item.readAt ? "● " : ""}{item.title}</Text><Text style={styles.text}>{item.message}</Text><Button quiet onPress={() => void openNotification(item)}>Open update</Button></Card>)}{notificationCursor && <Button quiet busy={loadingOlderNotifications} onPress={() => void loadOlderNotifications()}>Load earlier updates</Button>}</Page></Sheet>}
     {financeOpen && canManage && restaurant && <FinanceScreen key={restaurant.id} token={token} restaurantId={restaurant.id} onClose={() => setFinanceOpen(false)}/>}
     {help && restaurant && <SupportScreen token={token} restaurantId={restaurant.id} focusCase={help.caseId} onClose={() => setHelp(null)}/>}

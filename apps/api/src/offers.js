@@ -59,6 +59,24 @@ function grantDto(row, now) {
   return { id: row.id, campaignId: row.campaign_id, recipientSegment: campaignRules.audienceSegment ?? row.recipient_segment ?? null, campaignType: row.campaign_type ?? null, campaignRules, restaurantId: row.restaurant_id, restaurantName: row.restaurant_name, title: row.title, message: row.message, offerType: row.offer_type ?? "free_item", value: row.offer_value ?? 0, menuItemId: row.menu_item_id, itemName: row.item_name, itemValueMinor: row.item_value_minor, minSubtotalMinor: row.min_subtotal_minor, startsAt: row.starts_at ?? row.created_at, expiresAt: row.expires_at, eligibleItemIds: JSON.parse(row.eligible_item_ids ?? "[]"), eligibleCategories: JSON.parse(row.eligible_categories ?? "[]"), stackingPolicy: row.stacking_policy ?? "exclusive", fundingParty: row.funding_party ?? "restaurant", status: effectiveStatus, viewedAt: row.viewed_at };
 }
 
+const grantSelect=`SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.offer_type,c.offer_value,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party,c.recipient_segment,c.campaign_type,c.campaign_rules,c.weekly_budget_minor,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id`;
+const personalPriority=`CASE WHEN COALESCE(json_extract(c.campaign_rules,'$.audienceSegment'),c.recipient_segment)='selected' THEN 1 ELSE 0 END`;
+function customerOffers({res,url,db,config,user}){
+  const paged=url.searchParams.has("limit"),limit=paged?Number(url.searchParams.get("limit")):100,scope=url.searchParams.get("scope")||(paged?"active":"all"),after=url.searchParams.get("after"),restaurantId=url.searchParams.get("restaurantId");
+  if(!Number.isInteger(limit)||limit<1||limit>100||!["active","all"].includes(scope)||(after&&(!paged||after.length>100)))throw new HttpError(400,"VALIDATION_ERROR","Offer pagination is invalid");
+  const empty=paged?{items:[],hasMore:false,nextCursor:null}:[];
+  const permitted=Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed);
+  if(!permitted)return sendJson(res,200,{data:empty});
+  const params={user:user.id,now:config.now().toISOString(),limit:limit+1},filters=["g.customer_id=$user","g.dismissed_at IS NULL"];
+  if(restaurantId){filters.push("g.restaurant_id=$restaurant");params.restaurant=restaurantId;}
+  if(scope==="active")filters.push("(g.status='reserved' OR (g.status='available' AND c.expires_at>$now))");
+  if(after){const prior=db.prepare(`SELECT g.*,${personalPriority} personal_priority FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=? AND g.customer_id=?`).get(after,user.id);if(!prior||(restaurantId&&prior.restaurant_id!==restaurantId))throw new HttpError(404,"NOT_FOUND","Offer cursor is unavailable");filters.push(`(${personalPriority}<$priority OR (${personalPriority}=$priority AND (g.created_at<$created OR (g.created_at=$created AND g.id<$id))))`);Object.assign(params,{priority:prior.personal_priority,created:prior.created_at,id:prior.id});}
+  const order=paged?`${personalPriority} DESC,g.created_at DESC,g.id DESC`:"g.created_at DESC,g.id DESC";
+  const queryParams={...params};if(scope!=="active")delete queryParams.now;
+  const found=db.prepare(`${grantSelect} WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT $limit`).all(queryParams),items=found.slice(0,limit).map(row=>grantDto(row,params.now));
+  return sendJson(res,200,{data:paged?{items,hasMore:found.length>limit,nextCursor:found.length>limit?items.at(-1).id:null}:items});
+}
+
 export async function routeOffers({ req, res, url, db, config, session }) {
   if (await routeCustomerTransactionalEmails({req,res,url,db,config,session})) return true;
   if (await routeOrderConfirmationAlerts({req,res,url,db,config,session})) return true;
@@ -94,16 +112,24 @@ export async function routeOffers({ req, res, url, db, config, session }) {
   if (match && req.method === "GET") { requireRestaurantOwner(db, session, match[1]); return sendJson(res, 200, { data: db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(match[1]).map((row) => campaignDto(db, row)) }); }
   if (match && req.method === "POST") return createCampaign({ req, res, db, config, session, restaurantId: match[1] });
   if (req.method === "GET" && url.pathname === "/api/offers") {
-    const user = requireRole(session, "customer"); const restaurantId = url.searchParams.get("restaurantId");
-    const permitted = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); if (!permitted) return sendJson(res, 200, { data: [] });
-    const rows = db.prepare(`SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.offer_type,c.offer_value,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party,c.recipient_segment,c.campaign_type,c.campaign_rules,c.weekly_budget_minor,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.customer_id=? ${restaurantId ? "AND g.restaurant_id=?" : ""} ORDER BY g.created_at DESC`).all(...(restaurantId ? [user.id, restaurantId] : [user.id]));
-    return sendJson(res, 200, { data: rows.map((row) => grantDto(row, config.now().toISOString())) });
+    return customerOffers({res,url,db,config,user:requireRole(session,"customer")});
   }
   match = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
+  if(match&&req.method==="GET"){
+    const user=requireRole(session,"customer"),row=db.prepare(`${grantSelect} WHERE g.id=? AND g.customer_id=? AND g.dismissed_at IS NULL`).get(match[1],user.id);
+    if(!row)throw new HttpError(404,"NOT_FOUND","Offer is unavailable");
+    const allowed=db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed;if(!allowed)throw new HttpError(409,"MARKETING_CONSENT_WITHDRAWN","Promotion is unavailable because marketing consent is off");
+    return sendJson(res,200,{data:grantDto(row,config.now().toISOString())});
+  }
   if (match && req.method === "PATCH") {
-    const user = requireRole(session, "customer"); const body = await readJson(req, config.bodyLimit); exactObject(body, ["viewed"]); if (body.viewed !== true) throw new HttpError(400, "VALIDATION_ERROR", "viewed must be true");
+    const user = requireRole(session, "customer"); const body = await readJson(req, config.bodyLimit); exactObject(body, ["viewed","dismissed"]);
+    if((body.viewed===true?1:0)+(body.dismissed===true?1:0)!==1||Object.keys(body).length!==1)throw new HttpError(400,"VALIDATION_ERROR","Set either viewed or dismissed to true");
+    if(body.dismissed===true){
+      const result=withTransaction(db,()=>{const row=db.prepare("SELECT * FROM offer_grants WHERE id=? AND customer_id=?").get(match[1],user.id);if(!row)throw new HttpError(404,"NOT_FOUND","Resource not found");if(row.status==="reserved")throw new HttpError(409,"OFFER_IN_ORDER","This offer is attached to an order. It can be removed after that order is resolved.");const now=config.now().toISOString();db.prepare("UPDATE offer_grants SET dismissed_at=COALESCE(dismissed_at,?),updated_at=? WHERE id=? AND customer_id=?").run(now,now,row.id,user.id);db.prepare("UPDATE user_notifications SET read_at=COALESCE(read_at,?) WHERE user_id=? AND offer_id=?").run(now,user.id,row.id);return{id:row.id,dismissed:true};});
+      return sendJson(res,200,{data:result});
+    }
     const permitted = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); if (!permitted) throw new HttpError(409, "MARKETING_CONSENT_WITHDRAWN", "Promotion is unavailable because marketing consent is off");
-    const row = db.prepare("SELECT * FROM offer_grants WHERE id=? AND customer_id=?").get(match[1], user.id); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    const row = db.prepare("SELECT * FROM offer_grants WHERE id=? AND customer_id=? AND dismissed_at IS NULL").get(match[1], user.id); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     db.prepare("UPDATE offer_grants SET viewed_at=COALESCE(viewed_at,?),updated_at=? WHERE id=?").run(config.now().toISOString(), config.now().toISOString(), row.id);
     const joined = db.prepare("SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.offer_type,c.offer_value,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party,c.recipient_segment,c.campaign_type,c.campaign_rules,c.weekly_budget_minor,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.id=?").get(row.id);
     return sendJson(res, 200, { data: grantDto(joined, config.now().toISOString()) });

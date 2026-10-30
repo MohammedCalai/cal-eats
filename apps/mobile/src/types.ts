@@ -122,6 +122,7 @@ export interface Offer {
   campaignRules?: {audienceSegment?: string;buyItemId?: string;buyItemName?: string};
   weeklyBudgetMinor?: number | null;
   recipientSegment?: string;
+  dismissedAt?: string | null;
   startsAt?: string;
   offerType?: "free_item" | "percent_off" | "fixed_off";
   value?: number;

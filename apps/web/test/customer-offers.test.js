@@ -20,9 +20,15 @@ test("exact end/start times use London and only current available grants are act
   assert.equal((html.match(/data-action="choose-offer"/g) || []).length, 1);
   assert.ok(html.includes('data-id="current"')); assert.ok(html.includes("1 Nov 2026, 17:30 GMT"));
   assert.ok(html.includes("Starts <time datetime=\"2026-10-31T09:00:00.000Z\">31 Oct 2026, 09:00 GMT"));
-  assert.ok(html.includes("Ended <time")); assert.ok(html.includes("Expired")); assert.ok(html.includes("Coming soon")); assert.ok(html.includes("Used")); assert.ok(html.includes("In an order")); assert.ok(html.includes("End date unavailable"));
+  assert.equal(html.includes('data-offer-id="elapsed"'),false);assert.equal(html.includes('data-offer-id="used"'),false);assert.equal(html.includes('data-offer-id="missing-date"'),false);
+  assert.ok(html.includes("Coming soon")); assert.ok(html.includes("In an order"));assert.ok(html.includes('data-action="dismiss-offer"'));assert.ok(html.includes('title="This offer is attached to an order and cannot be removed yet." disabled'));
   const summer = customerOffersHtml([offer("summer", { startsAt: "2026-06-01T00:00:00Z", expiresAt: "2026-06-02T17:30:00Z" })], { now: "2026-06-01T12:00:00Z" });
   assert.ok(summer.includes("2 Jun 2026, 18:30 BST"));
+});
+
+test("dismissed and expired offers do not clutter the default list",()=>{
+  const html=customerOffersHtml([offer("dismissed",{dismissedAt:"2026-10-30T11:00:00Z"}),offer("expired",{status:"expired"}),offer("available")],{now});
+  assert.equal(html.includes('data-offer-id="dismissed"'),false);assert.equal(html.includes('data-offer-id="expired"'),false);assert.ok(html.includes('data-offer-id="available"'));assert.ok(html.includes('aria-label="Remove A thank you for you from your offers"'));
 });
 
 test("restaurant copy and identifiers are escaped and missing values never invent a benefit", () => {

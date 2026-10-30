@@ -17,7 +17,7 @@ export function useLiveOrders<T>(path: string, token: string, interval = 10_000)
     const work = (async () => {
       setLoading(true);
       try { const result = await api<T>(path, { token }); if (current === generation.current && target === currentTarget.current && active.current) { setValue(result); setError(""); setVerified(true); setUnauthorised(false); } }
-      catch (e) { if (current === generation.current && target === currentTarget.current && active.current) { setError((e as Error).message); if (e instanceof ApiError && e.status === 401) { setValue(null); setVerified(false); setUnauthorised(true); } } }
+      catch (e) { if (current === generation.current && target === currentTarget.current && active.current) { setError((e as Error).message); if (e instanceof ApiError && [401,403].includes(e.status)) { setValue(null); setVerified(false); setUnauthorised(true); } } }
       finally { if (current === generation.current) setLoading(false); }
     })();
     running.current = work;

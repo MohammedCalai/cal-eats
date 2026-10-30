@@ -38,7 +38,7 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
           <Amount label="Original restaurant earnings" value={value.earnings.originalMinor}/>
           <Amount label="Refund impact on your earnings" value={value.earnings.refundImpactMinor} negative/>
           <Amount label="Current restaurant earnings" value={value.earnings.currentMinor} strong/>
-          <p className="fine">Payment processing fees are borne by Cal-Eats under this order’s model. {value.commission.developmentAssumption ? "This order uses the displayed development commission agreement." : ""}</p>
+          <p className="fine">Payment processing fees are borne by Cal-Eats under this order’s model.</p>
         </section>
       </div>
       <section className="finance-breakdown-card"><h4>Items on this order</h4><div className="finance-item-list">{value.items.map((item, index) => <article key={item.id || index}><div><strong>{item.quantity} × {item.name}</strong><span>{item.isOfferItem ? "Free offer item" : pounds(item.lineTotalMinor)}</span></div>{item.modifiers?.length > 0 && <small>{item.modifiers.map(modifier => `${modifier.name}${modifier.priceMinor ? ` (${pounds(modifier.priceMinor)})` : ""}`).join(" · ")}</small>}</article>)}</div></section>
