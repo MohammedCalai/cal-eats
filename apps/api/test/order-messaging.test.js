@@ -10,6 +10,30 @@ import { notificationStreamHub } from "../src/notification-stream.js";
 
 const ensureMessagingSchema = (db) => { if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='order_messages'").get()) db.exec(orderMessagingMigration19.sql); };
 
+test("concurrent message retries return one message and charge one rate-limit slot", async () => {
+  const f = await journeyFixture();
+  try {
+    const cookie = await f.login("customer@calai.local", "LocalCustomer!4310");
+    const customer = f.db.prepare("SELECT id FROM users WHERE email='customer@calai.local'").get();
+    const restaurant = f.db.prepare("SELECT id,name FROM restaurants WHERE status='approved'").get();
+    const id = randomUUID(), stamp = f.config.now().toISOString();
+    f.db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at) VALUES(?,?,?,?,'placed',1000,1000,70,'cash','cash_due','collection',?,?,?,?)").run(id,restaurant.id,restaurant.name,customer.id,id,"hash",stamp,stamp);
+    const send = (message, key) => f.json(`/api/orders/${id}/messages`, { method: "POST", cookie, headers: { "Idempotency-Key": key }, body: { message } });
+    const replies = await Promise.all([send("Please ring the bell.", "same"), send("Please ring the bell.", "same")]);
+    assert.deepEqual(replies.map(reply => reply.status).sort(), [200, 201]);
+    assert.equal(replies[0].body.data.id, replies[1].body.data.id);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM order_messages WHERE order_id=?").get(id).n, 1);
+    assert.equal(f.db.prepare("SELECT message_count n FROM order_message_rate_limits WHERE order_id=? AND user_id=?").get(id,customer.id).n, 1);
+    const notifications = f.db.prepare("SELECT user_id,COUNT(*) n FROM user_notifications WHERE event_key=? GROUP BY user_id").all(`order-message:${replies[0].body.data.id}`);
+    assert.ok(notifications.length > 0);
+    assert.ok(notifications.every(row => row.n === 1));
+    const conflicts = await Promise.all([send("First content", "conflict"), send("Different content", "conflict")]);
+    assert.deepEqual(conflicts.map(reply => reply.status).sort(), [201, 409]);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM order_messages WHERE order_id=?").get(id).n, 2);
+    assert.equal(f.db.prepare("SELECT message_count n FROM order_message_rate_limits WHERE order_id=? AND user_id=?").get(id,customer.id).n, 2);
+  } finally { await f.close(); }
+});
+
 function direct(fixture, session, route, { method = "GET", body, headers = {} } = {}) {
   const req = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]); Object.assign(req, { method, url: route, headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers } });
   return new Promise((resolve, reject) => {

@@ -64,7 +64,8 @@ test("expiry, outbox, print jobs, contracts and admin operations are persisted a
   const f = await journeyFixture();
   try {
     const auth = await setup(f); const created = await order(f, auth, "expiry-order");
-    f.db.prepare("UPDATE orders SET created_at='2020-01-01T00:00:00.000Z' WHERE id=?").run(created.id);
+    const expiredAt = new Date(f.config.now().getTime() - (f.config.orderExpiryMinutes + 1) * 60_000).toISOString();
+    f.db.prepare("UPDATE orders SET created_at=? WHERE id=?").run(expiredAt, created.id);
     assert.equal(runExpiryWorker(f.db, f.config), 1); assert.equal(runExpiryWorker(f.db, f.config), 0);
     const expired = (await f.json(`/api/orders/${created.id}`, { cookie: auth.customer })).body.data;
     assert.equal(expired.status, "rejected"); assert.equal(expired.paymentStatus, "mock_cancelled"); assert.equal(expired.ledger, undefined);

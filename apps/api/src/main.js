@@ -1,6 +1,6 @@
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
-import { closeDatabase, migrateDatabase, openDatabase } from "./db/index.js";
+import { closeDatabase, prepareDatabase, openDatabase } from "./db/index.js";
 import { closeServer, createServer, listen } from "./server.js";
 import { runOperationsCycle } from "./operations.js";
 import { runMarketplaceWorker } from "./marketplace.js";
@@ -18,7 +18,8 @@ import { initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from 
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
-migrateDatabase(db);
+try { prepareDatabase(db, config); }
+catch (error) { closeDatabase(db); throw error; }
 assertHostedPreviewSafe(db, config);
 initializeCustomerEmailDelivery(db,config);
 initializeBusinessWeeklyStatements(db,config);

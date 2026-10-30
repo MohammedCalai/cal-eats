@@ -51,10 +51,26 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
       if(!client.drain){client.drain=()=>{client.buffered=0;client.drain=null;};client.res.once?.("drain",client.drain);}
     }
   };
+  // Replay one bounded page per client. Live fan-out must not advance a client
+  // past its backlog; the next page follows the hub watermark as it advances.
+  const catchUp = (client, through) => {
+    if (!validClient(db, client, now().toISOString())) return close(client);
+    const rows = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE user_id=? AND rowid>? AND rowid<=? ORDER BY rowid LIMIT 100").all(client.userId, client.deliveredThrough, through);
+    for (const row of rows) {
+      if (client.closed) break;
+      if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row));
+      client.deliveredThrough = row.stream_rowid;
+    }
+    if (rows.length < 100 || client.deliveredThrough >= through) {
+      client.deliveredThrough = Math.max(client.deliveredThrough, through);
+      client.catchingUp = false;
+    }
+  };
   const poll = () => {
     try {
+      for (const client of clients) if (client.catchingUp) catchUp(client, globalRowId);
       const rows = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE rowid>? ORDER BY rowid LIMIT 500").all(globalRowId);
-      for (const row of rows) { globalRowId = row.stream_rowid; for (const client of clients) if (client.userId === row.user_id && row.stream_rowid > client.deliveredThrough) { if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; } }
+      for (const row of rows) { globalRowId = row.stream_rowid; for (const client of clients) if (!client.catchingUp && client.userId === row.user_id && row.stream_rowid > client.deliveredThrough) { if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; } }
     } catch { for (const client of [...clients]) close(client); stop(); }
   };
   const start = () => {
@@ -69,9 +85,14 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
       res.flushHeaders?.(); res.write("retry: 3000\n\n");
       let cursor = null;
       if (lastEventId) cursor = db.prepare("SELECT rowid AS stream_rowid FROM user_notifications WHERE id=? AND user_id=?").get(lastEventId, userId);
-      const client = { req, res, userId, sessionId, native, nativeAudience, buffered: 0, closed: false, deliveredThrough: cursor?.stream_rowid ?? 0 };
-      const catchup = cursor ? db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE user_id=? AND rowid>? ORDER BY rowid LIMIT 100").all(userId, cursor.stream_rowid) : db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE user_id=? ORDER BY rowid DESC LIMIT 100").all(userId).reverse();
-      for (const row of catchup) { if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; }
+      const client = { req, res, userId, sessionId, native, nativeAudience, buffered: 0, closed: false, deliveredThrough: cursor?.stream_rowid ?? 0, catchingUp: Boolean(lastEventId) };
+      // If a supplied cursor was deleted or belongs to someone else, replay only
+      // this recipient's retained events. Event IDs let clients deduplicate.
+      if (client.catchingUp) catchUp(client, globalRowId);
+      else {
+        const recent = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE user_id=? ORDER BY rowid DESC LIMIT 100").all(userId).reverse();
+        for (const row of recent) { if (client.closed) break; if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; }
+      }
       if (client.closed) return true;
       clients.add(client); client.done = () => close(client); req.once?.("close", client.done); res.once?.("close", client.done); start();
       return true;

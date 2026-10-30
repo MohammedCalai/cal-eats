@@ -41,6 +41,9 @@ export function loadConfig(overrides = {}) {
   const messagingSupportHours = overrides.messagingSupportHours ?? Number(process.env.CALAI_MESSAGE_SUPPORT_HOURS ?? 2);
   if (!Number.isFinite(messagingSupportHours) || messagingSupportHours < 0 || messagingSupportHours > 24) throw new Error("CALAI_MESSAGE_SUPPORT_HOURS must be from 0 to 24");
   const dbPath = overrides.dbPath ?? process.env.CALAI_DB_PATH ?? path.resolve("data/calai-eats.sqlite");
+  const migrateSetting = overrides.migrateOnStart ?? process.env.CALAI_MIGRATE_ON_START ?? "true";
+  if (![true, false, "true", "false"].includes(migrateSetting)) throw new Error("CALAI_MIGRATE_ON_START must be true or false");
+  const migrateOnStart = migrateSetting === true || migrateSetting === "true";
   const orderAlertEmail = loadOrderAlertEmailConfig(overrides.orderAlertEmail, dbPath);
   const statementSendEnabled = overrides.businessStatements?.sendEnabled ?? process.env.CALAI_BUSINESS_STATEMENTS_SEND_ENABLED === "true";
   if (typeof statementSendEnabled !== "boolean") throw new Error("Business statement send enablement must be a boolean");
@@ -54,6 +57,7 @@ export function loadConfig(overrides = {}) {
     demoShortcuts: runMode === "local",
     healthcheckHost,
     dbPath,
+    migrateOnStart,
     orderAlertEmail,
     businessStatements: { sendEnabled: statementSendEnabled },
     sessionHours: overrides.sessionHours ?? 24,

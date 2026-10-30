@@ -1,0 +1,130 @@
+{
+  "auditDate": "2026-10-30",
+  "commit": "b94092ee4657b01d93466a4ddf282155f76a0fa2",
+  "runtime": "v24.19.0",
+  "scope": "Fresh in-memory database; no existing or production data accessed",
+  "migrationCount": 31,
+  "tables": 85,
+  "explicitIndexes": 57,
+  "foreignKeyEdges": 149,
+  "integrityCheck": {
+    "integrity_check": "ok"
+  },
+  "foreignKeyCheck": [],
+  "queryPlans": [
+    {
+      "sql": "SELECT * FROM order_items WHERE order_id='audit' ORDER BY rowid",
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 216,
+          "detail": "SCAN order_items"
+        }
+      ]
+    },
+    {
+      "sql": "SELECT id,kind,from_status,to_status,created_at FROM order_events WHERE order_id='audit' ORDER BY created_at,rowid",
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 216,
+          "detail": "SCAN order_events"
+        },
+        {
+          "id": 16,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR ORDER BY"
+        }
+      ]
+    },
+    {
+      "sql": "SELECT * FROM ledger_entries WHERE order_id='audit' ORDER BY created_at,rowid",
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 216,
+          "detail": "SCAN ledger_entries"
+        },
+        {
+          "id": 20,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR ORDER BY"
+        }
+      ]
+    },
+    {
+      "sql": "SELECT * FROM menu_items WHERE restaurant_id='audit' AND available=1 ORDER BY sort_order,created_at,rowid",
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 216,
+          "detail": "SCAN menu_items"
+        },
+        {
+          "id": 30,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR ORDER BY"
+        }
+      ]
+    },
+    {
+      "sql": "SELECT r.*,COALESCE((SELECT group_concat(m.name||' '||m.category,' ') FROM menu_items m WHERE m.restaurant_id=r.id AND m.available=1),'') AS search_terms FROM restaurants r WHERE r.status='approved' AND r.suspended=0 ORDER BY r.name",
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 216,
+          "detail": "SCAN r"
+        },
+        {
+          "id": 36,
+          "parent": 0,
+          "notused": 0,
+          "detail": "CORRELATED SCALAR SUBQUERY 1"
+        },
+        {
+          "id": 41,
+          "parent": 36,
+          "notused": 216,
+          "detail": "SCAN m"
+        },
+        {
+          "id": 66,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR ORDER BY"
+        }
+      ]
+    }
+  ],
+  "isolatedReproductions": [
+    {
+      "name": "SSE backlog replay after hub start",
+      "fixture": "151 notifications before hub start; reconnect lastEventId=n0; subscribe then poll",
+      "expected": 150,
+      "received": 100,
+      "lastEvent150Present": false,
+      "pendingStillInDatabase": 50
+    },
+    {
+      "name": "Concurrent identical order message idempotency",
+      "fixture": "Existing journeyFixture; one synthetic active cash order; two simultaneous identical message POSTs and idempotency key",
+      "statuses": [
+        201,
+        500
+      ],
+      "errorCodes": [
+        null,
+        "ERR_SQLITE_ERROR"
+      ],
+      "storedRows": 1
+    }
+  ]
+}
