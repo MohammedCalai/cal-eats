@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { calculateCommissionAtRate, VALIDATION } from "../../../packages/contracts/src/index.js";
+import { calculateCommissionAtRate, DEFAULT_COMMISSION_BASE, VALIDATION } from "../../../packages/contracts/src/index.js";
 import { requireRestaurantMembership, requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
@@ -65,7 +65,7 @@ function dateRange(url) {
 function inRange(row,range){return inDateRange(row,range);}
 function summary(db,id,url=null){return buildFinanceSummary(db,id,url);}
 function policyDto(r){return{id:r.id,rateBasisPoints:r.rate_bps,base:r.commission_base,startsAt:r.starts_at,endsAt:r.ends_at,durationMonths:r.duration_months,version:r.version,developmentAssumption:Boolean(r.development_assumption),acceptedAt:r.accepted_at};}
-function proposedPolicy(id,config){const start=config.now(),end=new Date(start),hex=digest(`commission-policy:${id}:development-v1`).slice(0,32);end.setUTCMonth(end.getUTCMonth()+24);return{id:`${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20)}`,restaurant_id:id,rate_bps:700,commission_base:"food_plus_delivery",starts_at:start.toISOString(),ends_at:end.toISOString(),duration_months:24,version:"development-v1",development_assumption:1,accepted_at:null,accepted_by_user_id:null,created_at:start.toISOString()};}
+function proposedPolicy(id,config){const start=config.now(),end=new Date(start),hex=digest(`commission-policy:${id}:development-v1`).slice(0,32);end.setUTCMonth(end.getUTCMonth()+24);return{id:`${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20)}`,restaurant_id:id,rate_bps:700,commission_base:DEFAULT_COMMISSION_BASE,starts_at:start.toISOString(),ends_at:end.toISOString(),duration_months:24,version:"development-v1",development_assumption:1,accepted_at:null,accepted_by_user_id:null,created_at:start.toISOString()};}
 function currentPolicy(db,id,config){return db.prepare("SELECT * FROM commission_policies WHERE restaurant_id=? ORDER BY created_at DESC LIMIT 1").get(id)??proposedPolicy(id,config);}
 function printerDto(r){return{id:r.id,restaurantId:r.restaurant_id,name:r.name,enabled:Boolean(r.enabled),revoked:Boolean(r.revoked_at),createdAt:r.created_at,updatedAt:r.updated_at};}
 function restaurantPrinterState(db, restaurantId, config) {

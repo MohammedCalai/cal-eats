@@ -29,7 +29,7 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
           <p className="fine">Payment status: {readable(value.paymentStatus)}. {value.paymentMethod === "cash" ? "Cash is received directly by your restaurant." : ""}</p>
         </section>
         <section className="finance-breakdown-card"><h4>Commission and your earnings</h4>
-          <Amount label={`Commission basis · ${value.commission.base === "food_plus_delivery" ? "food and delivery" : "food only"}`} value={value.commission.commissionableMinor}/>
+          <Amount label={`Commission basis · ${value.commission.base === "food_plus_delivery" ? "discounted food and delivery" : "discounted food"}`} value={value.commission.commissionableMinor}/>
           <div className="finance-amount"><span>Saved commission rate</span><strong>{(value.commission.rateBasisPoints / 100).toLocaleString("en-GB", { maximumFractionDigits: 2 })}%</strong></div>
           <Amount label="Original commission" value={value.commission.originalMinor}/>
           <Amount label="Commission reversed after refunds" value={value.commission.reversedMinor} negative/>

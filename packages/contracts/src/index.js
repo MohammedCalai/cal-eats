@@ -3,6 +3,9 @@ export const RESTAURANT_STATUSES = Object.freeze(["pending", "approved", "reject
 export const ORDER_STATUSES = Object.freeze(["placed", "accepted", "preparing", "ready", "out_for_delivery", "completed", "rejected"]);
 export const CURRENCY = "GBP";
 export const COMMISSION_BASIS_POINTS = 700;
+// New quotes/orders include the delivery charge actually paid, after promotions.
+// Historical orders keep their own snapshotted commission basis.
+export const DEFAULT_COMMISSION_BASE = "food_plus_delivery";
 export const VALIDATION = Object.freeze({
   nameMin: 1,
   nameMax: 100,

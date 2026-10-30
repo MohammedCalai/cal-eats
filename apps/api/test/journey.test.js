@@ -35,7 +35,7 @@ test("pending restaurant approval through delivery lifecycle preserves snapshots
     assert.equal(created.body.data.subtotalMinor, 2400);
     assert.equal(created.body.data.deliveryFeeMinor, 250);
     assert.equal(created.body.data.totalMinor, 2650);
-    assert.equal(created.body.data.commissionMinor, 168);
+    assert.equal(created.body.data.commissionMinor, 186); // 7% of £24 food + £2.50 charged delivery.
     assert.equal(created.body.data.paymentStatus, "mock_authorized");
     const id = created.body.data.id;
     assert.equal((await f.json("/api/orders", { method: "POST", cookie: c.customer, headers, body: orderBody })).status, 200);
