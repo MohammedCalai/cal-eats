@@ -13,18 +13,12 @@
   <link rel="stylesheet" href="/customer-panels.css">
   <link rel="stylesheet" href="/location-ui.css">
   <link rel="stylesheet" href="/customer-light.css">
+  <link rel="stylesheet" href="/customer-messages.css">
 </head>
-<body>
+<body class="customer-app">
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
     <button class="brand" type="button" data-action="home" aria-label="Cal-Eats home"><span class="brand-motion" aria-hidden="true"><span class="brand-layer brand-prefix"><img class="brand-mark-image" src="/assets/cal-eats-logo.png" alt=""></span><span class="brand-layer brand-suffix"><img class="brand-mark-image" src="/assets/cal-eats-logo.png" alt=""></span></span></button>
-    <nav aria-label="Main navigation">
-      <button type="button" data-view="discover">Find food</button>
-      <button type="button" data-view="orders">My orders</button>
-      <button type="button" data-view="offers">Offers</button>
-      <button type="button" data-view="messages">Messages</button>
-      <button type="button" data-view="account">Account</button>
-    </nav>
     <div id="account"></div>
   </header>
   <div id="runtime-banner" class="runtime-banner" role="status" hidden></div>
@@ -37,6 +31,7 @@
     <button data-view="messages"><span aria-hidden="true">▱</span>Messages</button>
     <button data-view="account"><span aria-hidden="true">◯</span>Account</button>
   </nav>
+  <aside id="notification-prompt" class="customer-notification-prompt" aria-label="Notification reminder" hidden></aside>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <footer><span>Cal-Eats local browser preview · Luton launch workspace</span> · <a href="/">About Cal-Eats</a></footer>
   <script type="module" src="/app.js"></script>

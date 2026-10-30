@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "expo": "57.0.31",
+    "expo-audio": "~57.0.5",
     "expo-build-properties": "57.0.22",
     "expo-image-picker": "57.0.20",
     "expo-location": "~57.0.22",
