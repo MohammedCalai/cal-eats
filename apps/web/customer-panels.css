@@ -7,7 +7,7 @@
 .dialog-bottom-close{margin-top:16px;min-height:44px}
 .dialog .dialog-scroll>.menu-section-sheet+button{width:100%}
 .dialog .menu-item-sheet>.primary{bottom:0}
-body:has(.basket-review-page) .topbar,body:has(.basket-review-page) .bottom-nav{display:none}
+body:has(.basket-review-page) .bottom-nav{display:none}
 body:has(.basket-review-page){padding-bottom:0}
 .basket-review-page{max-width:760px;min-height:85dvh;margin:0 auto;background:#121212;padding-bottom:110px}
 .basket-review-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#121212f5;backdrop-filter:blur(12px);min-height:62px;padding:8px 16px;border-bottom:1px solid #25262b;color:var(--ink);font-size:14px;font-weight:650}

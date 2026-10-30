@@ -249,3 +249,10 @@ body.customer-app:has(.bottom-nav:not([hidden])){padding-bottom:calc(var(--custo
 @media(max-width:760px){.customer-app .topbar{padding:10px 12px;gap:8px}.customer-app .bottom-nav:not([hidden]){padding-inline:8px}.customer-app .bottom-nav button .nav-label{font-size:11px}.customer-notification-prompt{flex-wrap:wrap;padding:12px}.customer-notification-prompt>div{flex-basis:100%}.customer-notification-prompt button{flex:1}.customer-account-page{padding:18px 14px;gap:16px}.account-hero{padding:20px 16px;gap:12px;flex-wrap:wrap}.account-avatar{width:54px;height:54px;font-size:20px}.account-hero h1{font-size:25px}.account-verification{margin-left:66px;padding:5px 10px;font-size:11px}.account-panel{padding:18px}.account-panel .section-head{flex-direction:row;align-items:center;gap:10px}.account-panel .section-head .secondary{font-size:12px;white-space:nowrap;padding:10px}.account-overview>a{padding:14px;gap:4px 8px}.account-preference{align-items:start;flex-wrap:wrap}.account-settings-grid .stack{gap:14px}}
 @media(prefers-reduced-motion:reduce){.notification-bell.needs-attention{animation:none}}
 @media(max-width:760px){.account-hero>div{flex:1 0 calc(100% - 72px)}.account-hero .eyebrow{letter-spacing:.12em;font-size:11px}}
+
+/* The customer banner stays in view; sticky page tools sit beneath its measured height. */
+:root{--customer-header-height:76px}
+html:has(body.customer-app){scroll-padding-top:calc(var(--customer-header-height) + 12px)}
+body.customer-app>.topbar{position:sticky;top:0;z-index:40;display:flex}
+.customer-app .customer-hero.discovery-header,.customer-app .restaurant-menu-nav,.customer-app .basket-review-header,.customer-app .network{top:var(--customer-header-height)}
+.customer-app .discovery-address .location-picker-panel{top:calc(var(--customer-header-height) + 12px);max-height:calc(100dvh - var(--customer-header-height) - var(--customer-nav-height,78px) - 32px)}

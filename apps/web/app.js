@@ -22,6 +22,14 @@ import { AUTH_SUBMIT_SELECTOR, ORDER_FLOW, availabilityMessage, canDeliver, cart
 const main = document.querySelector("#main");
 const account = document.querySelector("#account");
 const toast = document.querySelector("#toast");
+// Keep secondary sticky controls below the banner, including when text wraps.
+const customerHeader = document.querySelector("body.customer-app > .topbar");
+if (customerHeader) {
+  const measureHeader = () => document.documentElement.style.setProperty("--customer-header-height", `${Math.ceil(customerHeader.getBoundingClientRect().height)}px`);
+  measureHeader();
+  if (typeof ResizeObserver === "function") new ResizeObserver(measureHeader).observe(customerHeader);
+  else window.addEventListener("resize", measureHeader);
+}
 const completedPaymentRefreshes = new Set();
 const customerAudioNodes = new Set();
 const notificationAlert = createCustomerNotificationAlert({onChange:renderCustomerNotificationPrompt,play:playCustomerNotificationSound,visible:()=>!document.hidden&&state.user?.role==="customer"});
