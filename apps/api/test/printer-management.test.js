@@ -31,7 +31,7 @@ test("printer management preserves old fields, normalises metadata and isolates 
     const printer=response.body.data;assert.equal(printer.macAddress,null);assert.equal(printer.ipAddress,null);
     response=await f.json(`${root}/${printer.id}`,{method:"PATCH",cookie:owner,body:{macAddress:"aa-bb-cc-dd-ee-ff",ipAddress:"192.0.2.12"}});assert.equal(response.status,200,response.text);assert.equal(response.body.data.macAddress,"AA:BB:CC:DD:EE:FF");
     assert.equal((await f.json(root,{method:"POST",cookie:owner,body:{name:"Duplicate",enabled:true,macAddress:"AABBCCDDEEFF"}})).status,409);
-    assert.equal((await f.json(root,{method:"POST",cookie:owner,body:{name:"Bad MAC",enabled:true,macAddress:"not-a-mac"}})).status,400);
+    assert.equal((await f.json(root,{method:"POST",cookie:owner,body:{name:"Bad MAC",enabled:true,macAddress:"bad\u0000identifier"}})).status,400);
     assert.equal((await f.json(`${root}/${printer.id}`,{method:"PATCH",cookie:owner,body:{ipAddress:"https://localhost/private"}})).status,400);
     assert.equal((await f.json(`${root}/${printer.id}`,{method:"PATCH",cookie:other,body:{name:"Wrong restaurant"}})).status,404);
     assert.equal((await f.json(root,{method:"POST",cookie:customer,body:{name:"Forbidden",enabled:true}})).status,403);
@@ -59,4 +59,24 @@ test("downloaded ZIP contains only Cal-Eats bridge files, validated per-printer 
     const installer=files.get("windows/install.ps1").toString("utf8");assert.match(installer,/EnablePhysicalPrinting/);assert.match(installer,/CalEatsPrintBridge/);assert.match(installer,/installed but not started/);
     assert.equal(files.get("src/index.js").toString("utf8"),await readFile(new URL("../../print-bridge/src/index.js",import.meta.url),"utf8"));
   }finally{await f.close();}
+});
+
+
+test("Calai printer identifiers accept common MAC styles and original serial numbers",async()=>{
+ const f=await journeyFixture();
+ try{
+  const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310");
+  const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0];
+  const root=`/api/restaurant/restaurants/${restaurant.id}/printers`;
+  const variants=[" \nAA:BB:CC:DD:EE:FF\r\n","AA\tBB CC DD EE FF","aa:bb:cc:dd:ee:ff","AA-BB-CC-DD-EE-FF","aabb.ccdd.eeff","aa bb cc dd ee ff","ＡＡ：ＢＢ：ＣＣ：ＤＤ：ＥＥ：ＦＦ","AA–BB–CC–DD–EE–FF","AA:\u200bBB:CC:DD:EE:FF"];
+  for(const macAddress of variants){
+   const response=await f.json(root,{method:"POST",cookie:owner,body:{name:"Format check",enabled:true,macAddress}});
+   assert.equal(response.status,201,response.text);assert.equal(response.body.data.macAddress,"AA:BB:CC:DD:EE:FF");
+   assert.equal((await f.json(`${root}/${response.body.data.id}`,{method:"PATCH",cookie:owner,body:{revoked:true}})).status,200);
+  }
+  const serial=await f.json(root,{method:"POST",cookie:owner,body:{name:"Serial printer",enabled:true,macAddress:"  EPSON-TM-T20III-SN001  "}});
+  assert.equal(serial.status,201,serial.text);assert.equal(serial.body.data.macAddress,"EPSON-TM-T20III-SN001");
+  assert.equal((await f.json(root,{method:"POST",cookie:owner,body:{name:"Duplicate serial",enabled:true,macAddress:"EPSON-TM-T20III-SN001"}})).status,409);
+  for(const macAddress of ["bad\nserial","bad\u0000serial","bad\u202eserial","x".repeat(101)])assert.equal((await f.json(root,{method:"POST",cookie:owner,body:{name:"Invalid identifier",enabled:true,macAddress}})).status,400);
+ }finally{await f.close();}
 });

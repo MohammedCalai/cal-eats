@@ -69,6 +69,14 @@ export async function routeLoyalty({ req, res, url, db, config, session }) {
   m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty\/promotions$/);
   if (m && req.method === "GET") { requireRestaurantOwner(db,session,m[1]); return sendJson(res,200,{data:db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(m[1]).map(r=>campaignDto(db,r,config.now()))}); }
   if (m && req.method === "POST") return createPromotion({req,res,db,config,session,restaurantId:m[1]});
+  m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty\/promotions\/([^/]+)(?:\/(end))?$/);
+  if (m && ["GET","PATCH","POST"].includes(req.method)) {
+    const owner=requireRestaurantOwner(db,session,m[1]);
+    const row=db.prepare("SELECT * FROM offer_campaigns WHERE id=? AND restaurant_id=?").get(m[2],m[1]);
+    if(!row)throw new HttpError(404,"NOT_FOUND","Campaign not found");
+    if(req.method==="GET"&&!m[3])return sendJson(res,200,{data:campaignDto(db,row,config.now())});
+    if((req.method==="PATCH"&&!m[3])||(req.method==="POST"&&m[3]==="end"))return updatePromotion({req,res,db,config,owner,restaurantId:m[1],id:m[2],end:Boolean(m[3])});
+  }
   if (url.pathname === "/api/promotions" && req.method === "GET") {
     const user=requireRole(session,"customer"),restaurantId=clean(url.searchParams.get("restaurantId"),1,100,"Restaurant");
     if(!db.prepare("SELECT 1 FROM marketing_preferences WHERE user_id=? AND in_app_promotions=1").get(user.id))return sendJson(res,200,{data:[]});
@@ -85,6 +93,38 @@ export async function routeLoyalty({ req, res, url, db, config, session }) {
     if (req.method === "PATCH") { const b=await readJson(req,config.bodyLimit); exactObject(b,["inAppPromotions","pushPromotions","source"]); return sendJson(res,200,{data:updateMarketingPreferences(db,user,{...b,source:b.source??"account-settings"},config)}); }
   }
   return false;
+}
+
+async function updatePromotion({req,res,db,config,owner,restaurantId,id,end}) {
+  const body=await readJson(req,config.bodyLimit),allowed=["title","message","startsAt","expiresAt","redemptionLimit","budgetMinor","weeklyBudgetMinor"];
+  exactObject(body,end?[]:allowed);
+  const now=config.now(),timestamp=now.toISOString();
+  const updated=withTransaction(db,()=>{
+    const row=db.prepare("SELECT * FROM offer_campaigns WHERE id=? AND restaurant_id=?").get(id,restaurantId);
+    if(!row)throw new HttpError(404,"NOT_FOUND","Campaign not found");
+    if(end){
+      if(row.expires_at>timestamp){
+        db.prepare("UPDATE offer_campaigns SET expires_at=? WHERE id=?").run(timestamp,id);
+        // Reservations belong to already-created orders and retain their financial snapshot.
+        db.prepare("UPDATE offer_grants SET status='expired',reserved_discount_minor=0,updated_at=? WHERE campaign_id=? AND status='available'").run(timestamp,id);
+        db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),owner.id,"offer_campaign",id,"campaign_ended",JSON.stringify({restaurantId}),timestamp);
+      }
+    }else{
+      if(row.expires_at<=timestamp)throw new HttpError(409,"CAMPAIGN_ENDED","Ended campaigns are available to view only. Create a new campaign to run another offer.");
+      const title=body.title===undefined?row.title:clean(body.title,1,80,"Title"),message=body.message===undefined?row.message:clean(body.message,1,500,"Message");
+      if(body.startsAt!==undefined&&row.starts_at<=timestamp)throw new HttpError(409,"CAMPAIGN_STARTED","The start time of an active campaign cannot be changed.");
+      const start=new Date(body.startsAt??row.starts_at??row.created_at),expiry=new Date(body.expiresAt??row.expires_at);
+      if(!Number.isFinite(+start)||!Number.isFinite(+expiry)||expiry<=start||expiry<=now||expiry-start>366*DAY)throw new HttpError(400,"VALIDATION_ERROR","Choose a valid end date after the start and current time, within one year of the start.");
+      const limit=body.redemptionLimit===undefined?row.redemption_limit:int(body.redemptionLimit,1,100000,"Redemption limit");
+      const budget=body.budgetMinor===undefined?row.budget_minor:body.budgetMinor===null?null:int(body.budgetMinor,1,100000000,"Budget"),weekly=body.weeklyBudgetMinor===undefined?row.weekly_budget_minor:body.weeklyBudgetMinor===null?null:int(body.weeklyBudgetMinor,1,100000000,"Weekly budget");
+      const committed=db.prepare("SELECT COUNT(*) n,COALESCE(SUM(reserved_discount_minor),0) amount FROM offer_grants WHERE campaign_id=? AND status IN ('reserved','redeemed')").get(id);
+      if(limit<committed.n||(budget!==null&&budget<committed.amount)||(weekly!==null&&weekly<campaignBudgetUsage(db,id,campaignWeekStart(now)).weeklyAmount))throw new HttpError(409,"CAMPAIGN_COMMITTED","Limits cannot be lower than savings or redemptions already committed to orders.");
+      db.prepare("UPDATE offer_campaigns SET title=?,message=?,starts_at=?,expires_at=?,redemption_limit=?,budget_minor=?,weekly_budget_minor=? WHERE id=?").run(title,message,start.toISOString(),expiry.toISOString(),limit,budget,weekly,id);
+      db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),owner.id,"offer_campaign",id,"campaign_updated",JSON.stringify({restaurantId,changedFields:Object.keys(body)}),timestamp);
+    }
+    return db.prepare("SELECT * FROM offer_campaigns WHERE id=?").get(id);
+  });
+  return sendJson(res,200,{data:campaignDto(db,updated,now)});
 }
 
 async function createPromotion({req,res,db,config,session,restaurantId}) {

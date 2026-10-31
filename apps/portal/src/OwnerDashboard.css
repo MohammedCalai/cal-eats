@@ -41,3 +41,14 @@
 @media(max-width:1100px){.business-dashboard .dashboard-active-actions{display:grid;grid-template-columns:1fr}.business-dashboard .dashboard-active-actions>.primary,.business-dashboard .dashboard-active-actions>.button-link{width:100%}}
 @media(max-width:600px){.business-dashboard .dashboard-active-card{padding:16px}.business-dashboard .dashboard-message-shortcut{padding:16px;gap:12px}.business-dashboard .dashboard-csv-toolbar{padding:16px}.business-dashboard .dashboard-message-shortcut strong{font-size:15px}.business-dashboard .dashboard-message-shortcut small{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.business-dashboard .dashboard-message-shortcut{transition:none}}
+.business-dashboard .dashboard-order-destination{display:grid;gap:6px;margin:3px 0 0;min-height:0}
+.business-dashboard .dashboard-order-destination>strong{font-size:21px;line-height:1.4;letter-spacing:-.02em;color:#f3f7ff;overflow-wrap:anywhere}
+.business-dashboard .dashboard-order-destination>span{font-size:14px;line-height:1.5;color:#afc5e2}
+.business-dashboard .dashboard-active-heading>small{font-size:12px;font-weight:600;color:#89b7f4}
+.business-dashboard .dashboard-active-card>.dashboard-order-reference{font-size:11px;line-height:1.5;letter-spacing:.035em;color:#7f91ac;text-decoration:none;min-height:22px}
+.business-dashboard .dashboard-order-note,.business-dashboard .dashboard-order-allergy{font-size:13px!important;line-height:1.6!important;padding:10px 12px;margin:2px 0;border-radius:10px;background:#202b3d;color:#bfd3ed!important;overflow-wrap:anywhere}
+.business-dashboard .dashboard-order-allergy{background:#3b242b;color:#ffd0d7!important;border:1px solid #794351}
+.business-dashboard .dashboard-order-items{padding:10px 0;border-top:1px solid #2e394a;border-bottom:1px solid #2e394a;font-size:13px;line-height:1.6;color:#c1d0e5}
+.business-dashboard .dashboard-order-items p{margin:3px 0}.business-dashboard .dashboard-order-items small{color:#8fa6c3}
+.business-dashboard .dashboard-active-actions>.primary{font-size:15px;min-height:50px}
+.business-dashboard .dashboard-order-phone{min-height:44px;display:inline-flex;align-items:center;justify-self:start;gap:8px;padding:8px 11px;border:1px solid #3d5476;border-radius:9px;color:#a9d0ff;text-decoration:none;font-size:13px;line-height:1.5}

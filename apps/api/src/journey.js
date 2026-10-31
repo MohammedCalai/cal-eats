@@ -1,3 +1,4 @@
+import { parseLondonDateRange } from "./marketplace-reporting.js";
 import { menuDetails } from "./menu-details.js";
 import { assertRestaurantServiceArea } from "./service-areas.js";
 import { customerOrderHistoryCutoff, customerOrderHistorySql } from "./customer-order-history.js";
@@ -253,7 +254,8 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(match[1], member.id).permission;
     const status=url.searchParams.get("status")??"all",paged=url.searchParams.has("page")||url.searchParams.has("pageSize"),rawPage=url.searchParams.get("page")??"1",rawSize=url.searchParams.get("pageSize")??"25",page=Number(rawPage),pageSize=Number(rawSize);
     if(!["all","placed","accepted","preparing","ready","out_for_delivery","completed","rejected"].includes(status)||!/^\d+$/.test(rawPage)||!/^\d+$/.test(rawSize)||!Number.isSafeInteger(page)||page<1||page>100000||pageSize<1||pageSize>100)throw new HttpError(400,"VALIDATION_ERROR","Order filters are invalid");
-    const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}`,parameters=status==="all"?[match[1]]:[match[1],status];
+    const range=parseLondonDateRange(url);
+    const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}${range.from?" AND created_at>=?":""}${range.toExclusive?" AND created_at<?":""}`,parameters=[match[1],...(status==="all"?[]:[status]),...(range.from?[range.from]:[]),...(range.toExclusive?[range.toExclusive]:[])];
     const rows=db.prepare(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC,id DESC${paged?" LIMIT ? OFFSET ?":""}`).all(...parameters,...(paged?[pageSize,(page-1)*pageSize]:[])).map(row=>orderDto(db,row,permission==="owner",permission==="owner",config));
     if(!paged)return sendJson(res,200,{data:rows});
     const total=db.prepare(`SELECT COUNT(*) n FROM orders WHERE ${where}`).get(...parameters).n;
