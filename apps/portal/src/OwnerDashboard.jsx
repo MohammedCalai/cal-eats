@@ -9,6 +9,7 @@ import "./OwnerDashboard.css";
 import LiveOrders from "./LiveOrders.jsx";
 import { useOrderAlerts } from "./NewOrderAlerts.jsx";
 import { businessOrderTransitions } from "./order-alert-model.js";
+import { beginDashboardRefresh, beginActiveOrderRefresh } from "./dashboard-refresh-state.js";
 
 const periods = [["yesterday", "Yesterday"], ["today", "Today"], ["this_week", "This week"], ["last_week", "Last week"]];
 const readable = value => ({ placed: "Awaiting confirmation", accepted: "Confirmed", preparing: "Preparing", ready: "Ready", out_for_delivery: "Out for delivery", completed: "Completed", rejected: "Rejected", cancelled: "Cancelled", mock_card: "Test card", card: "Card", cash: "Cash" })[value] || String(value || "—").replaceAll("_", " ");
@@ -60,7 +61,7 @@ function useDashboard(restaurantId, period, page) {
     const request = ++sequence.current, controller = new AbortController();
     let timedOut = false;
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
-    setState(previous => ({ key, data: previous.key === key ? previous.data : null, error: "", loading: true }));
+    setState(previous => beginDashboardRefresh(previous, key));
     const promise = (async () => {
       try {
         const query = new URLSearchParams({ period, view: "operations", page: String(page), pageSize: "20" });
@@ -88,7 +89,7 @@ function useActiveOrders(restaurantId) {
     const request = ++sequence.current, controller = new AbortController();
     let timedOut = false;
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
-    setState(previous => ({ ...(previous.restaurantId === restaurantId ? previous : { items: [], total: 0 }), restaurantId, loading: true, error: "" }));
+    setState(previous => beginActiveOrderRefresh(previous, restaurantId));
     const promise = (async () => {
       try {
         const pages = await Promise.all(activeStages.map(status => api(`/api/restaurant/restaurants/${restaurantId}/orders?${new URLSearchParams({status,page:"1",pageSize:"25"})}`, {signal:controller.signal})));
@@ -110,10 +111,16 @@ export default function OwnerDashboard({ restaurant, permission }) {
   const alerts = useOrderAlerts();
   const [period, setPeriod] = useState("today"), [page, setPage] = useState(1);
   const result = useDashboard(restaurant.id, period, page), active = useActiveOrders(restaurant.id), refresh = useRef(result.reload);
-  const [updating, setUpdating] = useState(""), [actionError, setActionError] = useState("");
+  const [updating, setUpdating] = useState(""), [actionError, setActionError] = useState(""), [manualRefreshing, setManualRefreshing] = useState(false);
   const restaurantRef = useRef(restaurant.id), mounted = useRef(true), actionInFlight = useRef(false);
   restaurantRef.current = restaurant.id;
   refresh.current = () => Promise.all([result.reload(), active.reload()]);
+  async function refreshManually() {
+    if (manualRefreshing) return;
+    setManualRefreshing(true);
+    try { await refresh.current(); }
+    finally { if (mounted.current) setManualRefreshing(false); }
+  }
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function updateOrder(order, next) {
     if (actionInFlight.current || order.restaurantId !== restaurantRef.current || !businessOrderTransitions(order.status, order.fulfillment).includes(next)) return;
@@ -140,7 +147,7 @@ export default function OwnerDashboard({ restaurant, permission }) {
   const selectedLabel = periods.find(([value]) => value === period)?.[1];
   function selectPeriod(next) { if (next !== period) { setPeriod(next); setPage(1); } }
   return <div className="business-dashboard">
-    <header className="page-heading dashboard-heading"><div><h1>Dashboard</h1><p>Your orders, conversations and live activity in one place.</p></div><div className="dashboard-heading-actions"><button className="quiet" disabled={result.loading || active.loading} onClick={() => void refresh.current()}><DashboardIcon kind="refresh"/>{result.loading && data ? "Refreshing…" : "Refresh"}</button></div></header>
+    <header className="page-heading dashboard-heading"><div><h1>Dashboard</h1><p>Your orders, conversations and live activity in one place.</p></div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
     <LiveOrders operations={data?.operations} unavailable={Boolean(result.error)} generatedAt={data?.generatedAt}/>
     {isOwner && <NavLink className={`dashboard-message-shortcut${operations.unreadMessages ? " has-unread" : ""}`} to="/owner/inbox"><span className="message-shortcut-icon" aria-hidden="true"><DashboardIcon/></span><span><strong>Customer messages</strong><small>{operations.unreadMessages ? `${operations.unreadMessages} unread message${operations.unreadMessages === 1 ? "" : "s"} · needs your reply` : "Read and reply to your customers"}</small></span><b aria-label={`${operations.unreadMessages || 0} unread messages`}>{operations.unreadMessages || 0}</b><span aria-hidden="true"><DashboardIcon kind="arrow"/></span></NavLink>}
     <section className="panel dashboard-active-orders" aria-labelledby="dashboard-active-title"><div className="dashboard-section-heading"><div><p className="eyebrow">Right now · all dates</p><h2 id="dashboard-active-title">Manage active orders</h2></div><NavLink className="button-link" to="/owner/orders">View all orders</NavLink></div><p className="fine">Confirm each new order and keep its delivery or collection status up to date here.</p>{actionError && <p className="alert" role="alert">{actionError}</p>}{active.error && <p className="alert" role="alert">Active orders could not be refreshed: {active.error} <button className="quiet" type="button" onClick={() => void active.reload()}>Try again</button></p>}{active.loading && !active.items.length ? <p role="status">Loading active orders…</p> : !active.items.length && !active.error ? <p className="empty">No active orders right now. New orders will appear here automatically.</p> : <div className="dashboard-active-grid">{active.items.slice(0,12).map(order => <article className={`dashboard-active-card${order.status === "placed" ? " needs-confirmation" : ""}`} data-status={order.status} key={order.id}><div className="dashboard-active-heading"><NavLink to={`/owner/orders?order=${encodeURIComponent(order.id)}`}>#{order.id.slice(0,8).toUpperCase()}</NavLink><strong className="dashboard-order-state">{readable(order.status)}</strong></div><p>{order.customerName || order.contactName || "Customer"}</p><small>{readable(order.fulfillment)} · {shortDate(order.createdAt)}</small>{(order.customerEtaAt || order.estimatedReadyAt) && <small className="dashboard-active-eta">{order.fulfillment === "delivery" ? "Delivery ETA" : "Ready for collection"}: {shortDate(order.customerEtaAt || order.estimatedReadyAt)}</small>}<div className="dashboard-active-actions">{businessOrderTransitions(order.status,order.fulfillment).map(next => <button className="primary" type="button" key={next} disabled={Boolean(updating) || Boolean(active.error) || (next === "accepted" && !alerts?.available)} onClick={() => void updateOrder(order,next)} aria-label={`${actionLabel(next,order)} for order ${order.id.slice(0,8).toUpperCase()}`}>{updating === order.id ? "Updating…" : actionLabel(next,order)}</button>)}<NavLink className="button-link" to={`/owner/orders?order=${encodeURIComponent(order.id)}`}>Messages & details</NavLink></div></article>)}</div>}{active.total > Math.min(active.items.length,12) && <p className="dashboard-caption">Showing {Math.min(active.items.length,12)} of {active.total} active orders. <NavLink to="/owner/orders">Open orders to see the full list</NavLink>.</p>}</section>

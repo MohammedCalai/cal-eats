@@ -16,7 +16,7 @@ export default function LiveOrders({ operations, unavailable, generatedAt }) {
       <div className="live-order-content"><p className="live-order-label"><span/> LIVE ACTIVITY</p><h2>{!known ? unavailable ? "Live status unavailable" : "Checking live orders…" : live ? count === 1 ? "Live order" : `${count} live orders` : "No live orders"}</h2><p>{known ? live ? "Follow confirmation, preparation and handover in one place." : "Keep this page open. New orders appear automatically." : "The count will return when the dashboard reconnects."}</p>
         {known && <div className="live-order-stages"><span><ActivityIcon kind="clock"/>{operations.pendingConfirmation} to confirm</span><span><ActivityIcon kind="kitchen"/>{operations.confirmedInKitchen} preparing</span><span><ActivityIcon kind="ready"/>{operations.readyForHandover} ready</span></div>}
       </div>
-      <NavLink to="/owner/orders" className="button-link">View orders <span aria-hidden="true">↗</span></NavLink>
+      <NavLink to="/owner/orders" className="button-link">Order summary <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></NavLink>
     </div>
     <footer className="live-order-footnote"><span>Updates every 5 seconds · your restaurant only</span><span>{known && generatedAt ? `Last update ${new Date(generatedAt).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Reconnecting…"}</span></footer>
   </section>;

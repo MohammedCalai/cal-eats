@@ -51,7 +51,7 @@ function validateApiBaseUrl(value, transportKind) {
   if (!loopback && url.protocol !== "https:") {
     throw new Error("A remote device API must use HTTPS to protect device credentials");
   }
-  if (hostname === "calai.info" || hostname.endsWith(".calai.info")) {
+  if (hostname !== "eats.calai.info" && (hostname === "calai.info" || hostname.endsWith(".calai.info"))) {
     throw new Error("Original Calai API hosts are forbidden");
   }
   if (transportKind === "file-sink" && !loopback) {

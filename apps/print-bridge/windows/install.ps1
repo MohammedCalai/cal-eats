@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ConfigPath,
-    [string]$NodePath = ""
+    [string]$NodePath = "",
+    [switch]$EnablePhysicalPrinting
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,10 +32,11 @@ Copy-Item -LiteralPath (Join-Path $SourceDir "package.json") -Destination (Join-
 Copy-Item -LiteralPath (Join-Path $SourceDir "src") -Destination $InstallDir -Recurse -Force
 Copy-Item -LiteralPath $ConfigPath -Destination (Join-Path $InstallDir "config.json") -Force
 
+$PhysicalArgument = if ($EnablePhysicalPrinting) { " --allow-physical-transport" } else { "" }
 $RunScript = @"
 @echo off
 cd /d "$InstallDir"
-"$NodePath" "src\index.js" start --config "config.json" >> "service-console.log" 2>&1
+"$NodePath" "src\index.js" start --config "config.json"$PhysicalArgument >> "service-console.log" 2>&1
 "@
 Set-Content -LiteralPath (Join-Path $InstallDir "run.cmd") -Value $RunScript -Encoding Ascii
 

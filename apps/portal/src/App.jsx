@@ -1,3 +1,4 @@
+import CalaiPrinters from "./CalaiPrinters.jsx";
 import "./Settings.css";
 import { useSidebarLayout } from "./sidebar-layout.js";
 import ServiceAreas from "./ServiceAreas.jsx";
@@ -262,7 +263,7 @@ function OwnerSupport(){const{restaurant}=React.useContext(RestaurantContext);re
 
 function Printers() {
   const { restaurant, permission } = React.useContext(RestaurantContext);
-  return <PrinterWorkspace key={restaurant.id} restaurant={restaurant} permission={permission}/>;
+  return <CalaiPrinters key={restaurant.id} restaurant={restaurant} permission={permission}/>;
 }
 
 function PrinterWorkspace({ restaurant, permission }) {
