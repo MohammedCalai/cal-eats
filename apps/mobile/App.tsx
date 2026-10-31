@@ -66,7 +66,7 @@ export default function App() {
     {tab === "orders" ? <OrdersScreen token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
     {tab === "offers" ? <InboxScreen key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
     {tab === "inbox" ? <InboxScreen key={`messages:${inboxRoute}`} initialTab={inboxRoute} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
-    {tab === "account" ? <AccountScreen token={token} user={user} onUser={setUser} onLogout={logout}/> : null}
+    {tab === "account" ? <AccountScreen token={token} user={user} onUser={setUser} onLogout={logout} soundEnabled={customerAlerts.enabled} onSoundChange={customerAlerts.toggleSound}/> : null}
   </KeyboardAvoidingView>{navigation}</SafeAreaView>;
 }
 

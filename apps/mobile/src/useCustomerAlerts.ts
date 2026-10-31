@@ -6,11 +6,11 @@ import * as SecureStore from "expo-secure-store";
 /** Foreground reminders only. The bell acknowledges attention, not message reads. */
 export function useCustomerAlerts(userId: string | null, unreadIds: string[]) {
   const player=useAudioPlayer(require("../assets/sounds/notification.wav"));
-  const enabled=true;
+  const [enabled,setEnabled]=useState(true);
   const [ready,setReady]=useState(false),[acknowledged,setAcknowledged]=useState<Set<string>>(new Set()),[foreground,setForeground]=useState(AppState.currentState==="active"),[error,setError]=useState("");
   const scope=useRef(userId),currentIds=useRef(unreadIds);scope.current=userId;currentIds.current=unreadIds;
   const signature=unreadIds.slice().sort().join("|"),pending=Boolean(userId&&ready&&unreadIds.some(id=>!acknowledged.has(id)));
-  useEffect(()=>{let active=true;setReady(false);setAcknowledged(new Set());setError("");if(!userId){player.pause();return;}void SecureStore.getItemAsync(`cal-eats-customer-alert-ack-${userId}`).then(saved=>{if(!active)return;try{const ids=JSON.parse(saved||"[]");setAcknowledged(new Set(Array.isArray(ids)?ids.filter((id):id is string=>typeof id==="string").slice(-400):[]));}catch{setAcknowledged(new Set());}setReady(true);}).catch(()=>{if(active){setReady(true);}});return()=>{active=false;player.pause();};},[userId,player]);
+  useEffect(()=>{let active=true;setReady(false);setEnabled(true);setAcknowledged(new Set());setError("");if(!userId){player.pause();return;}void Promise.all([SecureStore.getItemAsync(`cal-eats-customer-alert-ack-${userId}`),SecureStore.getItemAsync(`cal-eats-customer-sound-${userId}`)]).then(([saved,sound])=>{if(!active)return;setEnabled(sound!=="off");try{const ids=JSON.parse(saved||"[]");setAcknowledged(new Set(Array.isArray(ids)?ids.filter((id):id is string=>typeof id==="string").slice(-400):[]));}catch{setAcknowledged(new Set());}setReady(true);}).catch(()=>{if(active){setReady(true);}});return()=>{active=false;player.pause();};},[userId,player]);
   useEffect(()=>{const subscription=AppState.addEventListener("change",state=>{setForeground(state==="active");if(state!=="active")player.pause();});return()=>subscription.remove();},[player]);
   useEffect(()=>{
     player.loop=false;
@@ -21,5 +21,6 @@ export function useCustomerAlerts(userId: string | null, unreadIds: string[]) {
     return()=>{stopped=true;clearInterval(timer);player.pause();};
   },[pending,enabled,foreground,userId,signature,player]);
   function acknowledge(){player.pause();const ids=[...new Set([...acknowledged,...currentIds.current])].slice(-400);setAcknowledged(new Set(ids));if(userId)void SecureStore.setItemAsync(`cal-eats-customer-alert-ack-${userId}`,JSON.stringify(ids)).catch(()=>undefined);}
-  return {enabled,pending,ready,error,acknowledge};
+  function toggleSound(value:boolean){setEnabled(value);if(!value)player.pause();if(userId)void SecureStore.setItemAsync(`cal-eats-customer-sound-${userId}`,value?"on":"off").catch(()=>undefined);}
+  return {enabled,pending,ready,error,acknowledge,toggleSound};
 }

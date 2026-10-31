@@ -9,6 +9,7 @@ import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { withTransaction } from "./db/index.js";
 import { authorizeMockPayment, captureMockPayment } from "./payments/mock.js";
 import { restaurantAvailability } from "./availability.js";
+import { discoverRestaurants } from "./restaurant-discovery.js";
 import { notifyNewOrder, notifyOrderStatus, redeemOfferForOrder, releaseOfferForOrder } from "./offers.js";
 import { normalizeAddress } from "./address-validation.js";
 import { restaurantReadiness } from "./readiness.js";
@@ -115,27 +116,15 @@ function receiptHtml(order, printJobId = null) {
   const money = (minor) => `£${(minor / 100).toFixed(2)}`;
   const rows = order.items.map((item) => `<tr><td>${escapeHtml(item.name)}${item.isOfferItem ? "<br><strong>FREE OFFER ITEM</strong>" : ""}${item.selectedModifiers.length ? `<br><small>${item.selectedModifiers.map((modifier) => escapeHtml(modifier.name)).join(", ")}</small>` : ""}${item.allergens.length ? `<br><small>Allergens: ${item.allergens.map(escapeHtml).join(", ")} (restaurant supplied)</small>` : ""}</td><td>${item.quantity}</td><td>${item.isOfferItem ? `Free (value ${money(item.basePriceMinor)})` : money(item.lineTotalMinor)}</td></tr>`).join("");
   const address = order.deliveryAddress ? `<p><strong>Deliver to:</strong> ${[order.deliveryAddress.line1, order.deliveryAddress.line2, order.deliveryAddress.city, order.deliveryAddress.postcode].filter(Boolean).map(escapeHtml).join(", ")}</p>` : "";
-  const payment = order.paymentMethod === "mock_card" ? "Mock card — no real payment processed" : "Cash — paid directly to restaurant; collection is confirmed only when completed";
+  const payment = order.paymentMethod === "mock_card" ? "Mock card — no real payment processed" : order.paymentMethod === "card" ? order.payment?.providerMode === "stripe_test" ? "Card payment — test mode; no real money moves" : "Card payment" : "Cash — paid directly to restaurant; collection is confirmed only when completed";
   const discount = order.restaurantDiscountMinor ? `<p>Food before promotion: ${money(order.grossFoodMinor)}</p><p>Restaurant promotion: −${money(order.restaurantDiscountMinor)}</p>` : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Order receipt</title><style>@page{size:80mm auto;margin:4mm}body{font:12px system-ui;width:72mm;margin:0 auto}table{width:100%;border-collapse:collapse}td,th{padding:2mm 0;border-bottom:1px solid #ccc;text-align:left}.allergy{border:2px solid #000;padding:2mm}@media screen{body{padding:1rem}}</style></head><body><h1>${escapeHtml(order.restaurantName)}</h1><p>Order ${escapeHtml(order.id)}</p><p>Created: ${escapeHtml(order.createdAt)}</p>${printJobId ? `<p><strong>Reprint reference:</strong> ${escapeHtml(printJobId)}</p>` : ""}<p>Customer: ${escapeHtml(order.customerName)} · ${escapeHtml(order.customerPhone || "No phone supplied")}</p><p>Fulfillment: ${escapeHtml(order.fulfillment)}</p>${address}${order.deliveryInstructions ? `<p>Instructions: ${escapeHtml(order.deliveryInstructions)}</p>` : ""}${order.allergyNotes ? `<p class="allergy"><strong>ALLERGY NOTE:</strong> ${escapeHtml(order.allergyNotes)}</p>` : ""}<table><thead><tr><th>Item</th><th>Qty</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>${discount}<p>Food paid: ${money(order.subtotalMinor)}</p><p>Delivery fee: ${money(order.deliveryFeeMinor)}</p><p>Refunded: ${money(order.refundedTotalMinor)}</p><p><strong>Total: ${money(order.totalMinor - order.refundedTotalMinor)}</strong></p><p>${escapeHtml(payment)}</p><p>Payment status: ${escapeHtml(order.paymentStatus)}</p><p>Order status: ${escapeHtml(order.status)}</p></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Order receipt</title><style>@page{size:80mm auto;margin:4mm}body{font:12px system-ui;width:72mm;margin:0 auto}table{width:100%;border-collapse:collapse}td,th{padding:2mm 0;border-bottom:1px solid #ccc;text-align:left}.allergy{border:2px solid #000;padding:2mm}@media screen{body{padding:1rem}}</style></head><body><h1>${escapeHtml(order.restaurantName)}</h1><p>Order ${escapeHtml(order.id)}</p><p>Created: ${escapeHtml(order.createdAt)}</p>${printJobId ? `<p><strong>Reprint reference:</strong> ${escapeHtml(printJobId)}</p>` : ""}<p>Customer: ${escapeHtml(order.customerName)} · ${escapeHtml(order.customerPhone || "No phone supplied")}</p><p>Fulfillment: ${escapeHtml(order.fulfillment)}</p>${address}${order.deliveryInstructions ? `<p>Instructions: ${escapeHtml(order.deliveryInstructions)}</p>` : ""}${order.allergyNotes ? `<p class="allergy"><strong>ALLERGY NOTE:</strong> ${escapeHtml(order.allergyNotes)}</p>` : ""}<table><thead><tr><th>Item</th><th>Qty</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>${discount}<p>Food paid: ${money(order.subtotalMinor)}</p><p>Delivery fee: ${money(order.deliveryFeeMinor)}</p><p>Refunded: ${money(order.refundedTotalMinor)}</p><p><strong>Total: ${money(order.totalMinor - order.refundedTotalMinor)}</strong></p><p>${escapeHtml(payment)}</p><p>Payment status: ${escapeHtml(String(order.payment?.status || order.paymentStatus || "").replace(/^stripe_/, "").replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase()))}</p><p>Order status: ${escapeHtml(order.status)}</p></body></html>`;
 }
 
 export async function routeJourney({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/restaurants") {
-    const postcode = url.searchParams.get("postcode"); const fulfillment = url.searchParams.get("fulfillment"); const q = url.searchParams.get("q")?.trim().toLowerCase(); const cuisine = url.searchParams.get("cuisine")?.trim().toLowerCase();
-    if (fulfillment && !["delivery", "collection"].includes(fulfillment)) throw new HttpError(400, "VALIDATION_ERROR", "Fulfillment filter is invalid");
-    let outcode = null;
-    if (postcode) { const compact = postcode.trim().toUpperCase().replace(/\s+/g, ""); const matchPostcode = compact.match(/^([A-Z]{1,2}\d[A-Z\d]?)(?:\d[A-Z]{2})?$/); if (!matchPostcode) throw new HttpError(400, "VALIDATION_ERROR", "Postcode is invalid"); outcode = matchPostcode[1]; }
-    if ((q?.length || 0) > 100 || (cuisine?.length || 0) > 80) throw new HttpError(400, "VALIDATION_ERROR", "Search is too long");
-    const popularityNow = config.now(), popularSince = new Date(popularityNow.getTime() - 30 * 86400000).toISOString();
-    const rows = db.prepare("SELECT r.*,COALESCE((SELECT COUNT(*) FROM orders o WHERE o.restaurant_id=r.id AND o.status='completed' AND o.created_at>=? AND o.created_at<=?),0) AS completed_order_count_30d,COALESCE((SELECT group_concat(m.name||' '||m.category,' ') FROM menu_items m WHERE m.restaurant_id=r.id AND m.available=1),'') AS search_terms FROM restaurants r WHERE r.status='approved' AND r.suspended=0 ORDER BY r.name").all(popularSince,popularityNow.toISOString()).filter((row) => {
-      if (fulfillment === "delivery" && (!row.delivery_enabled || (outcode && !JSON.parse(row.delivery_outcodes).includes(outcode)))) return false;
-      if (fulfillment === "collection" && !row.collection_enabled) return false;
-      if (q && !`${row.name} ${row.description} ${row.cuisine} ${row.search_terms}`.toLowerCase().includes(q)) return false;
-      if (cuisine && row.cuisine.toLowerCase() !== cuisine) return false;
-      return true;
-    });
-    return sendJson(res, 200, { data: rows.map((row) => ({ ...restaurantDto(row, { now: config.now() }), completedOrderCountLast30Days: row.completed_order_count_30d })) });
+    const now = config.now(), { rows, pagination } = discoverRestaurants(db, url, now);
+    return sendJson(res, 200, { data: rows.map((row) => ({ ...restaurantDto(row, { now }), completedOrderCountLast30Days: row.completed_order_count_30d })), pagination });
   }
   let match = url.pathname.match(/^\/api\/restaurants\/([^/]+)\/menu$/);
   if (req.method === "GET" && match) {

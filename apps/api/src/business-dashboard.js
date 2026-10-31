@@ -49,7 +49,10 @@ function operationalCounts(db, restaurantId, userId, owner, now) {
   return {
     pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active, ...kitchen,
     unreadMessages: orderMessages + customerMessages,
-    openRefundCases: owner ? db.prepare("SELECT COUNT(*) AS count FROM refund_cases WHERE restaurant_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(restaurantId).count : null
+    openRefundCases: owner ? db.prepare("SELECT COUNT(*) AS count FROM refund_cases WHERE restaurant_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(restaurantId).count : null,
+    // A reply is an action even when the case remains open. Insertion order breaks
+    // ties when a reply and a later request share the same server timestamp.
+    actionRequiredRefundCases: owner ? db.prepare(`SELECT COUNT(*) AS count FROM refund_cases c WHERE c.restaurant_id=? AND c.resolved_at IS NULL AND c.status='awaiting_restaurant' AND COALESCE((SELECT e.kind FROM refund_case_events e WHERE e.case_id=c.id AND e.kind IN ('ask_restaurant','restaurant_replied','restaurant_remedy_proposed','remedy_fulfilment_claimed','dispute_escalated') ORDER BY e.created_at DESC,e.rowid DESC LIMIT 1),'ask_restaurant')='ask_restaurant'`).get(restaurantId).count : null
   };
 }
 

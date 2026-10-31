@@ -34,7 +34,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, signal: controller.signal, credentials: "omit", redirect: "error" });
     const payload = await response.json().catch(() => null) as { data?: T; error?: { code?: string; message?: string } } | null;
-    if (!response.ok) throw new ApiError(payload?.error?.message ?? `Request failed (${response.status}).`, response.status, payload?.error?.code);
+    if (!response.ok) throw new ApiError(String(payload?.error?.message ?? `Request failed (${response.status}).`).replace(/\bStripe\b/gi,"card payment service"), response.status, payload?.error?.code);
     if (!payload || !Object.prototype.hasOwnProperty.call(payload, "data")) throw new ApiError("The API returned a malformed response.", response.status, "MALFORMED_RESPONSE");
     return payload.data as T;
   } catch (error) {

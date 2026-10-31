@@ -1,4 +1,4 @@
-// Order sound has no user opt-out. Browsers still control audio permission.
+// Order sound defaults on; the account preference controls playback.
 // Reuse one player so the sign-in gesture can prepare it before the portal mounts.
 export function createOrderAudio(player) {
   let enabled=false,pending=false,path="/business/notification.wav",revision=0;

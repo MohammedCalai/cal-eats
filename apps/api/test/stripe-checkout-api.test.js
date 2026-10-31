@@ -74,6 +74,12 @@ test("Stripe checkout, refresh, capture and owner onboarding remain authoritativ
     const accepted = await f.json(`/api/restaurant/orders/${currentOrder.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted" } });
     assert.equal(accepted.status, 200, accepted.text);
     assert.equal(captureCalls, 1);
+    const receipt = await f.request(`/api/orders/${currentOrder.id}/receipt`, { cookie: customer });
+    assert.equal(receipt.status, 200);
+    assert.match(receipt.text, /Card payment — test mode; no real money moves/);
+    assert.match(receipt.text, /Payment status: Captured/);
+    assert.doesNotMatch(receipt.text, /stripe|Cash —/i);
+
     const duplicate = await f.json(`/api/restaurant/orders/${currentOrder.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted" } });
     assert.equal(duplicate.status, 200, duplicate.text);
     assert.equal(captureCalls, 1);

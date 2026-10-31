@@ -9,6 +9,7 @@ import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { updateMarketingPreferences } from "./loyalty.js";
 import { integer, itemDto, stringList, text, validateModifierGroups } from "./journey.js";
 import { restaurantReadiness } from "./readiness.js";
+import { assertMediaCapacity, mediaIsReferenced, mediaStorage } from "./media-policy.js";
 
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}` : JSON.stringify(value);
 const hash = (value) => createHash("sha256").update(canonical(value)).digest("hex");
@@ -54,6 +55,46 @@ export async function routePolish({ req, res, url, db, config, session }) {
 
 async function importMenu({req,res,db,config,session,restaurantId}){const user=requireRestaurantOwner(db,session,restaurantId);const key=text(req.headers["idempotency-key"],1,100,"Idempotency-Key");const body=await readJson(req,256*1024);exactObject(body,["items"]);if(!Array.isArray(body.items)||body.items.length<1||body.items.length>100)throw new HttpError(400,"VALIDATION_ERROR","Import must contain 1 to 100 items");const items=body.items.map(normalizedMenuItem);const requestHash=hash({restaurantId,items});const prior=db.prepare("SELECT * FROM menu_imports WHERE actor_user_id=? AND idempotency_key=?").get(user.id,key);if(prior){if(prior.request_hash!==requestHash||prior.restaurant_id!==restaurantId)throw new HttpError(409,"IDEMPOTENCY_CONFLICT","Idempotency key was already used");const ids=JSON.parse(prior.item_ids);return sendJson(res,200,{data:ids.map(id=>itemDto(db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=?").get(id,restaurantId)))});}const created=withTransaction(db,()=>{const again=db.prepare("SELECT * FROM menu_imports WHERE actor_user_id=? AND idempotency_key=?").get(user.id,key);if(again){if(again.request_hash!==requestHash||again.restaurant_id!==restaurantId)throw new HttpError(409,"IDEMPOTENCY_CONFLICT","Idempotency key was already used");return {ids:JSON.parse(again.item_ids),replay:true};}const now=config.now().toISOString();let order=db.prepare("SELECT COALESCE(MAX(sort_order),-1)+1 next FROM menu_items WHERE restaurant_id=?").get(restaurantId).next;const ids=[];for(const item of items){const id=randomUUID();ids.push(id);db.prepare("INSERT INTO menu_items(id,restaurant_id,name,description,price_minor,available,created_at,updated_at,category,allergens,dietary_tags,modifier_groups,sort_order) VALUES(?,?,?,?,?,1,?,?,?,?,?,?,?)").run(id,restaurantId,item.name,item.description,item.priceMinor,now,now,item.category,JSON.stringify(item.allergens),JSON.stringify(item.dietaryTags),JSON.stringify(item.modifierGroups),order++);}db.prepare("INSERT INTO menu_imports VALUES(?,?,?,?,?,?,?)").run(randomUUID(),restaurantId,user.id,key,requestHash,JSON.stringify(ids),now);return {ids,replay:false};});return sendJson(res,created.replay?200:201,{data:created.ids.map(id=>itemDto(db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=?").get(id,restaurantId)))});}
 
-async function uploadMedia({req,res,db,config,session,restaurantId,itemId}){requireRestaurantOwner(db,session,restaurantId);if(itemId&&!db.prepare("SELECT 1 FROM menu_items WHERE id=? AND restaurant_id=?").get(itemId,restaurantId))throw new HttpError(404,"NOT_FOUND","Resource not found");const image=decodeImage(await readJson(req,1_450_000));const created=withTransaction(db,()=>{const target=itemId?db.prepare("SELECT photo_media_id current FROM menu_items WHERE id=?").get(itemId):db.prepare("SELECT cover_media_id current FROM restaurants WHERE id=?").get(restaurantId);const old=target.current?db.prepare("SELECT byte_length FROM media_assets WHERE id=?").get(target.current):null;const total=db.prepare("SELECT COALESCE(SUM(byte_length),0) total FROM media_assets WHERE restaurant_id=?").get(restaurantId).total;if(total-(old?.byte_length??0)+image.data.length>20*1024*1024)throw new HttpError(409,"MEDIA_LIMIT","Restaurant media storage limit reached");const id=randomUUID();const now=config.now().toISOString();db.prepare("INSERT INTO media_assets VALUES(?,?,?,?,?,?,?,?)").run(id,restaurantId,image.mimeType,image.data,image.width,image.height,image.data.length,now);if(itemId)db.prepare("UPDATE menu_items SET photo_media_id=? WHERE id=?").run(id,itemId);else db.prepare("UPDATE restaurants SET cover_media_id=? WHERE id=?").run(id,restaurantId);if(target.current)db.prepare("DELETE FROM media_assets WHERE id=?").run(target.current);return db.prepare("SELECT * FROM media_assets WHERE id=?").get(id);});return sendJson(res,201,{data:mediaDto(created)});}
-function removeMedia({res,db,session,restaurantId,itemId}){requireRestaurantOwner(db,session,restaurantId);withTransaction(db,()=>{const row=itemId?db.prepare("SELECT photo_media_id current FROM menu_items WHERE id=? AND restaurant_id=?").get(itemId,restaurantId):db.prepare("SELECT cover_media_id current FROM restaurants WHERE id=?").get(restaurantId);if(!row)throw new HttpError(404,"NOT_FOUND","Resource not found");if(itemId)db.prepare("UPDATE menu_items SET photo_media_id=NULL WHERE id=?").run(itemId);else db.prepare("UPDATE restaurants SET cover_media_id=NULL WHERE id=?").run(restaurantId);if(row.current)db.prepare("DELETE FROM media_assets WHERE id=?").run(row.current);});return sendJson(res,200,{data:{removed:true}});}
+function mediaTarget(db, restaurantId, itemId) {
+  const target = itemId
+    ? db.prepare("SELECT photo_media_id current FROM menu_items WHERE id=? AND restaurant_id=?").get(itemId, restaurantId)
+    : db.prepare("SELECT cover_media_id current FROM restaurants WHERE id=?").get(restaurantId);
+  if (!target) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+  const old = target.current ? db.prepare("SELECT id,byte_length FROM media_assets WHERE id=? AND restaurant_id=?").get(target.current, restaurantId) : null;
+  if (target.current && !old) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+  return { target, old };
+}
+
+async function uploadMedia({ req, res, db, config, session, restaurantId, itemId }) {
+  requireRestaurantOwner(db, session, restaurantId);
+  mediaTarget(db, restaurantId, itemId);
+  const image = decodeImage(await readJson(req, 1_450_000));
+  const created = withTransaction(db, () => {
+    // Recheck ownership and target after reading the asynchronous request body.
+    requireRestaurantOwner(db, session, restaurantId);
+    const { target, old } = mediaTarget(db, restaurantId, itemId);
+    if (itemId) db.prepare("UPDATE menu_items SET photo_media_id=NULL WHERE id=? AND restaurant_id=?").run(itemId, restaurantId);
+    else db.prepare("UPDATE restaurants SET cover_media_id=NULL WHERE id=?").run(restaurantId);
+    const reclaim = old && !mediaIsReferenced(db, old.id) ? old.byte_length : 0;
+    assertMediaCapacity(mediaStorage(db, restaurantId).usedBytes, image.data.length, reclaim);
+    const id = randomUUID(), now = config.now().toISOString();
+    db.prepare("INSERT INTO media_assets VALUES(?,?,?,?,?,?,?,?)").run(id, restaurantId, image.mimeType, image.data, image.width, image.height, image.data.length, now);
+    if (itemId) db.prepare("UPDATE menu_items SET photo_media_id=? WHERE id=? AND restaurant_id=?").run(id, itemId, restaurantId);
+    else db.prepare("UPDATE restaurants SET cover_media_id=? WHERE id=?").run(id, restaurantId);
+    if (target.current && reclaim) db.prepare("DELETE FROM media_assets WHERE id=? AND restaurant_id=?").run(target.current, restaurantId);
+    return { id, mime_type: image.mimeType, width: image.width, height: image.height };
+  });
+  return sendJson(res, 201, { data: { ...mediaDto(created), storage: mediaStorage(db, restaurantId) } });
+}
+
+function removeMedia({ res, db, session, restaurantId, itemId }) {
+  requireRestaurantOwner(db, session, restaurantId);
+  withTransaction(db, () => {
+    const { target } = mediaTarget(db, restaurantId, itemId);
+    if (itemId) db.prepare("UPDATE menu_items SET photo_media_id=NULL WHERE id=? AND restaurant_id=?").run(itemId, restaurantId);
+    else db.prepare("UPDATE restaurants SET cover_media_id=NULL WHERE id=?").run(restaurantId);
+    if (target.current && !mediaIsReferenced(db, target.current)) db.prepare("DELETE FROM media_assets WHERE id=? AND restaurant_id=?").run(target.current, restaurantId);
+  });
+  return sendJson(res, 200, { data: { removed: true, storage: mediaStorage(db, restaurantId) } });
+}
 function serveMedia({res,db,session,id}){const row=db.prepare("SELECT m.*,r.status,r.suspended FROM media_assets m JOIN restaurants r ON r.id=m.restaurant_id WHERE m.id=?").get(id);if(!row)throw new HttpError(404,"NOT_FOUND","Resource not found");const user=session?.user;const owner=user?.role==="restaurant"&&db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(row.restaurant_id,user.id);if(!(row.status==="approved"&&!row.suspended)&&user?.role!=="admin"&&!owner)throw new HttpError(404,"NOT_FOUND","Resource not found");res.setHeader("Content-Security-Policy","sandbox; default-src 'none'");res.writeHead(200,{"Content-Type":row.mime_type,"Content-Length":row.data.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(row.data);return true;}

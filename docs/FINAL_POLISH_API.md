@@ -27,7 +27,7 @@ New approvals require all checks. Existing approved demo fixtures remain approve
 
 - Owner-only `POST /api/restaurant/restaurants/:id/cover` and `POST /api/restaurant/restaurants/:id/menu/:itemId/photo` body `{mimeType,dataBase64}`.
 - Matching `DELETE` routes remove the current image and return `{removed:true}`.
-- Upload returns `{id,url,mimeType,width,height}`. Only signature-valid JPEG/PNG images up to 1 MiB decoded and bounded dimensions are accepted. Data is canonicalized and stored in SQLite; SVG, URLs and filesystem paths are rejected. Restaurant storage is capped.
+- Upload returns `{id,url,mimeType,width,height,storage:{usedBytes,limitBytes,remainingBytes}}`. Only signature-valid JPEG/PNG images up to 1 MiB decoded and bounded dimensions are accepted. Data is canonicalized and stored in SQLite; SVG, URLs and filesystem paths are rejected. Each restaurant has a separate **100 MB (100,000,000 bytes)** allowance across its cover and menu photos. Replacement reclaims the old image's bytes only when no other image field references it; quota checks, replacement and cleanup share one write transaction. Matching DELETE responses also include `storage`.
 - `GET /api/media/:id` serves bytes only when the restaurant is approved and not suspended, or the requester is its owner/admin. Media responses use `nosniff`, sandbox CSP and `no-store`.
 - Restaurant DTOs add `coverImageUrl`; menu items add `photoUrl`, each nullable.
 
