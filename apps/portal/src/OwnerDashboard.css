@@ -55,6 +55,8 @@
 
 /* Each active order occupies a complete row so a busy service stays scannable. */
 .business-dashboard .dashboard-active-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+.business-dashboard .dashboard-active-card:nth-child(odd){border-left-color:#58a6ff;box-shadow:inset 5px 0 #58a6ff,0 4px 18px #00000014}
+.business-dashboard .dashboard-active-card:nth-child(even){border-left-color:#b18aff;box-shadow:inset 5px 0 #b18aff,0 4px 18px #00000014}
 .business-dashboard .dashboard-active-card{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(180px,.7fr);gap:18px;padding:16px 18px;align-items:start;border-radius:13px}
 .dashboard-active-identity,.dashboard-active-detail{display:grid;gap:7px;min-width:0}
 .business-dashboard .dashboard-active-heading{margin:0}
