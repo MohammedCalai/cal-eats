@@ -21,6 +21,25 @@ function unzipStored(bytes){
   return entries;
 }
 
+test("staff can see safe printer connection status without accessing printer management",async()=>{
+  const f=await journeyFixture();
+  try{
+    const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
+    const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],root=`/api/restaurant/restaurants/${restaurant.id}`;
+    const added=await f.json(`${root}/printers`,{method:"POST",cookie:owner,body:{name:"Kitchen",enabled:true,macAddress:"AA:BB:CC:DD:EE:FF",ipAddress:"192.0.2.12"}});
+    assert.equal(added.status,201,added.text);
+    const created=await f.json(`${root}/staff`,{method:"POST",cookie:owner,body:{name:"Printer staff",email:"printer-staff@example.invalid",password:"PrinterStaff!4310"}});
+    assert.equal(created.status,201,created.text);
+    const staff=await f.login("printer-staff@example.invalid","PrinterStaff!4310"),statusPath=`${root}/printer-status`;
+    const status=await f.json(statusPath,{cookie:staff});assert.equal(status.status,200,status.text);
+    const kitchen=status.body.data.items.find(printer=>printer.name==="Kitchen");
+    assert.deepEqual(Object.keys(kitchen).sort(),["enabled","lastSeenAt","name","revoked","status"]);
+    assert.equal(kitchen.enabled,true);assert.equal(kitchen.status,"awaiting_device");assert.equal(kitchen.lastSeenAt,null);assert.equal(kitchen.revoked,false);
+    assert.equal((await f.json(statusPath)).status,401);assert.equal((await f.json(statusPath,{cookie:other})).status,404);assert.equal((await f.json(statusPath,{cookie:customer})).status,403);
+    assert.equal((await f.json(`${root}/printers`,{cookie:staff})).status,403);
+  }finally{await f.close();}
+});
+
 test("printer management preserves old fields, normalises metadata and isolates owners and soft deletion",async()=>{
   const f=await journeyFixture();
   try{

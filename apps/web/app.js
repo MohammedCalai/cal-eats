@@ -205,7 +205,7 @@ async function loadDiscover({append=false,quiet=false}={}) {
     const[restaurants,offers]=await Promise.all([api(`/api/restaurants?${params}`),!append&&state.user?.role==="customer"?api("/api/offers").catch(()=>null):Promise.resolve(null)]);
     if(!current())return;const rows=Array.isArray(restaurants)?restaurants:restaurants.items||[];state.restaurants=append?[...new Map([...state.restaurants,...rows].map(item=>[item.id,item])).values()]:rows;state.discoverPage=page;state.discoverHasMore=rows.length===50;state.discoverLoading=false;state.discoverLoadError="";if(offers!==null){state.offers=Array.isArray(offers)?offers:offers.items||[];state.offerLoadError=false;}
     if(append||quiet)updateDiscoverResults();else renderDiscover();
-  }catch(error){if(current()){state.discoverLoading=false;if(append||quiet){state.discoverLoadError="Restaurants could not be loaded. Please try again.";updateDiscoverResults();}else showError(error,"reload-discover");}}
+  }catch(error){if(current()){state.discoverLoading=false;if(append||quiet){state.discoverLoadError="Restaurants could not be loaded. Please try again.";state.discoverRetryAppend=append;updateDiscoverResults();}else showError(error,"reload-discover");}}
 }
 function discoverResultsHtml(){return discoveryFeedHtml(state)+`<div class="discovery-pages" aria-live="polite">${state.discoverLoadError?`<p class="error">${e(state.discoverLoadError)}</p>`:""}${state.discoverHasMore||state.discoverLoadError?`<button class="secondary" data-action="discovery-more" ${state.discoverLoading?"disabled":""}>${state.discoverLoading?"Finding more restaurants…":"Explore more restaurants"}</button>`:""}</div>`;}
 function updateDiscoverResults(){if(state.view!=="discover")return;const results=document.querySelector("#discover-results");if(!results)return;results.innerHTML=discoverResultsHtml();document.querySelectorAll(".cuisine-chips [data-action=cuisine-chip]").forEach(button=>{const active=button.dataset.value===state.cuisine;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.querySelectorAll("[data-action=discovery-offers]").forEach(button=>{button.classList.toggle("active",Boolean(state.discoverOffersOnly));button.setAttribute("aria-pressed",String(Boolean(state.discoverOffersOnly)));});document.querySelectorAll("[data-action=discovery-sort]").forEach(button=>{const active=button.dataset.value===state.discoverSort;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});}
@@ -598,7 +598,7 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest("button,[data-view]"); if (!button) return;
   if (button.dataset.view) { state.accessFlow=null; return navigate(button.dataset.view); }
   const action = button.dataset.action;
-  if(action==="discovery-more")return loadDiscover({append:!state.discoverLoadError,quiet:true});
+  if(action==="discovery-more")return loadDiscover({append:state.discoverLoadError?Boolean(state.discoverRetryAppend):true,quiet:true});
   if(action==="use-gps")return customerLocation.gps();
   if(action==="choose-location"){const chosen=state.locationChoices[Number(button.dataset.index)];if(chosen)return customerLocation.choose(chosen);return;}
   if (action === "check-order-attempt") { if (state.submitting) return; checkoutAttempt.clear(); state.orderKey=null; state.cart={}; state.selectedOffer=null; clearDraft(); return navigate("orders"); }
