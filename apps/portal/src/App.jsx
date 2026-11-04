@@ -100,7 +100,7 @@ function App() {
           <Route path="finance" element={<AdminFinanceWorkspace />} />
           <Route path="stripe" element={<Page title="Payment readiness" intro="Payment setup, restaurant verification and bank payout status."><StripeAdminReadiness /></Page>} />
           <Route path="refunds" element={<AdminRefunds />} />
-          <Route path="governance" element={<Page title="Access & deadlines" intro="Manage account access with an audit trail of each change."><AdminGovernance /></Page>} />
+          <Route path="governance" element={<AdminGovernance />} />
           <Route path="support" element={<SupportWorkspace kind="admin" />} />
           <Route path="operations" element={<AdminOperations />} />
           <Route path="service-areas" element={<ServiceAreas />} />
