@@ -42,6 +42,10 @@ test('admin support queues separate platform and restaurant requests, filter by 
   let page=await list('assignedTo=platform&status=open&waitingFor=team');assert.equal(page.status,200,page.text);assert.equal(page.body.data.total,3);assert.deepEqual(new Set(page.body.data.items.map(item=>item.id)),new Set([businessA.id,businessB.id,general.id]));
   page=await list('assignedTo=restaurant&status=open&waitingFor=team');assert.equal(page.body.data.total,1);assert.equal(page.body.data.items[0].id,orderHelp.id);
   page=await list(`restaurant=${restaurant.id}`);assert.equal(page.body.data.total,2);assert.deepEqual(new Set(page.body.data.items.map(item=>item.id)),new Set([businessA.id,orderHelp.id]));
+  page=await list(`order=${created.body.data.id}`);assert.equal(page.body.data.total,1);assert.equal(page.body.data.items[0].id,orderHelp.id);
+  const restaurantCounts=(await f.json(`/api/admin/support/overview?restaurant=${restaurant.id}`,{cookie:admin})).body.data;assert.equal(restaurantCounts.total,2);assert.equal(restaurantCounts.needsPlatformReply,1);assert.equal(restaurantCounts.needsRestaurantReply,1);
+  const orderCounts=(await f.json(`/api/admin/support/overview?order=${created.body.data.id}`,{cookie:admin})).body.data;assert.equal(orderCounts.total,1);assert.equal(orderCounts.needsRestaurantReply,1);
+  assert.equal((await list('order='+'x'.repeat(101))).status,400);
   for(const query of ['assignedTo=other','waitingFor=nobody','pageSize=101','restaurant='+'x'.repeat(101)])assert.equal((await list(query)).status,400);
   for(const cookie of [owner,other,customer]){assert.equal((await list('',cookie)).status,403);assert.equal((await f.json('/api/admin/support/overview',{cookie})).status,403);}
   const foreignList=await f.json(`/api/restaurant/restaurants/${foreign.id}/support?page=1&restaurant=${restaurant.id}&assignedTo=restaurant`,{cookie:other});assert.equal(foreignList.status,200);assert.equal(foreignList.body.data.total,0);
