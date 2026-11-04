@@ -6,3 +6,8 @@ test("customer receipt keeps saved prices, discount and refund and escapes suppl
  assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<img'));assert.ok(html.includes('&lt;Bowl&gt;'));for(const value of ['£12.50','−£2.50','£10.00','£1.50','£11.50','£3.00','Free offer'])assert.ok(html.includes(value));assert.ok(!html.includes('VAT'));assert.ok(html.includes('/api/orders/order-123/receipt'));assert.ok(!html.includes('print-jobs'));
 });
 test("navigation icons are fixed accessible SVGs rather than arbitrary markup",()=>{for(const name of ['discover','orders','offers','messages','account','basket']){assert.match(customerIcon(name),/aria-hidden="true"/);assert.match(customerIcon(name),/viewBox="0 0 24 24"/);}assert.equal(customerIcon('<script>'),customerIcon('discover'));});
+
+test("a fully voucher-funded scheduled receipt separates restaurant value from customer payment",()=>{
+ const html=customerReceiptHtml({id:"voucher-order",restaurantName:"Kitchen",createdAt:"2026-11-04T12:00:00Z",scheduledFor:"2026-11-05T18:00:00Z",status:"placed",fulfillment:"delivery",paymentStatus:"voucher_reserved",subtotalMinor:1350,deliveryFeeMinor:275,totalMinor:1625,customerPayableMinor:0,platformVoucherMinor:1625,items:[]});
+ assert.match(html,/<dt>Order value<\/dt><dd>£16.25/);assert.match(html,/<dt>Cal-Eats voucher<\/dt><dd>−£16.25/);assert.match(html,/<dt>Your total<\/dt><dd>£0.00/);assert.match(html,/Scheduled delivery/);assert.match(html,/5 Nov 2026/);
+});
