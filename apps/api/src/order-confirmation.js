@@ -5,12 +5,12 @@ import { HttpError, sendJson } from "./http.js";
 import { createOrderAlertEmailAdapter, orderAlertEmailReadiness } from "./order-alert-email.js";
 
 export const ORDER_CONFIRMATION_MS = 180000;
-export const PAYABLE_ORDER_SQL = `(o.payment_method='cash' AND o.payment_status='cash_due' OR o.payment_method='mock_card' AND o.payment_status IN ('mock_authorized','mock_captured') OR o.payment_method='card' AND o.payment_status IN ('stripe_authorized','stripe_captured'))`;
+export const PAYABLE_ORDER_SQL = `(o.payment_method='cash' AND o.payment_status='cash_due' OR o.payment_method='mock_card' AND o.payment_status IN ('mock_authorized','mock_captured') OR o.payment_method='card' AND o.payment_status IN ('stripe_authorized','stripe_captured') OR o.payment_method='voucher' AND o.payment_status IN ('voucher_reserved','voucher_redeemed'))`;
 const dueSql = `o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND o.confirmation_due_at<=$now AND ${PAYABLE_ORDER_SQL}`;
 const safe = (value, max = 180) => String(value ?? "").replace(/[\r\n\0]+/g," ").trim().slice(0,max);
 const workers = new WeakMap();
 const iso = config => config.now().toISOString();
-const payable = order => order.payment_method === "cash" ? order.payment_status === "cash_due" : order.payment_method === "mock_card" ? ["mock_authorized","mock_captured"].includes(order.payment_status) : ["stripe_authorized","stripe_captured"].includes(order.payment_status);
+const payable = order => order.payment_method === "voucher" ? ["voucher_reserved","voucher_redeemed"].includes(order.payment_status) : order.payment_method === "cash" ? order.payment_status === "cash_due" : order.payment_method === "mock_card" ? ["mock_authorized","mock_captured"].includes(order.payment_status) : ["stripe_authorized","stripe_captured"].includes(order.payment_status);
 
 export function markMerchantOrderVisible(db, orderId, stamp) {
   const due = new Date(Date.parse(stamp) + ORDER_CONFIRMATION_MS).toISOString();
@@ -25,9 +25,10 @@ export function defaultCustomerEtaMinutes(order, restaurant) {
 
 export function resolveConfirmationEta(db, order, provided, config) {
   const now = config.now(), restaurant = db.prepare("SELECT estimated_delivery_minutes,estimated_collection_minutes,busy_minutes FROM restaurants WHERE id=?").get(order.restaurant_id);
-  if (provided === undefined) return new Date(+now + defaultCustomerEtaMinutes(order, restaurant) * 60000).toISOString();
+  if (provided === undefined) return order.scheduled_for && Date.parse(order.scheduled_for) > +now ? order.scheduled_for : new Date(+now + defaultCustomerEtaMinutes(order, restaurant) * 60000).toISOString();
   const date = new Date(provided);
-  if (typeof provided !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(provided) || !Number.isFinite(+date) || date <= now || +date > +now + 24 * 3600000) throw new HttpError(400,"VALIDATION_ERROR","Customer ETA must be in the future and within 24 hours");
+  const maximumHours = order.scheduled_for ? 7 * 24 : 24;
+  if (typeof provided !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(provided) || !Number.isFinite(+date) || date <= now || +date > +now + maximumHours * 3600000) throw new HttpError(400,"VALIDATION_ERROR",`Customer ETA must be in the future and within ${maximumHours === 24 ? "24 hours" : "7 days"}`);
   return date.toISOString();
 }
 

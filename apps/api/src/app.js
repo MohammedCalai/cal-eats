@@ -1,3 +1,10 @@
+import {routeAdminRestaurantWorkspace} from "./admin-restaurant-workspace.js";
+import {routeAdminWorkspace} from "./admin-workspace.js";
+import {routePlatformVouchers} from "./platform-vouchers.js";
+import {routeBusinessDirectResolution} from "./business-direct-resolution.js";
+import {routeBusinessApplications} from "./business-applications.js";
+import {routeShopRatings} from "./shop-ratings.js";
+import {routeScheduledOrders} from "./scheduled-orders.js";
 import { randomUUID } from "node:crypto";
 import { publicUser, VALIDATION } from "../../../packages/contracts/src/index.js";
 import { hashPassword, passwordNeedsRehash, verifyPassword } from "./auth/passwords.js";
@@ -92,7 +99,7 @@ export function createApp({ db, config, logger = console }) {
       const nativeSession = bearerProvided ? readNativeSession(db, req, config) : null;
       const session = bearerProvided ? nativeSession : readSession(db, token, config);
       enforceCustomerOrderHistory({ url, db, config, session });
-      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/auth/forgot-password","/api/native/auth/reset-password"].includes(url.pathname);
+      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
       const pairingRoute = url.pathname === "/api/devices/pair";
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute;
@@ -122,25 +129,8 @@ export function createApp({ db, config, logger = console }) {
         }
         return sendJson(res, 201, { data: { user } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
       }
-      if (req.method === "POST" && url.pathname === "/api/auth/restaurant-register") {
-        const body = await readJson(req, config.bodyLimit);
-        exactObject(body, ["name", "email", "password", "restaurantName"]);
-        const identity = validateIdentity(body); const restaurantName = typeof body.restaurantName === "string" ? body.restaurantName.trim() : "";
-        if (config.runMode === "hosted-preview" && isDemoEmail(identity.email)) throw new HttpError(400, "RESERVED_EMAIL", "Email is reserved");
-        if (!restaurantName || restaurantName.length > VALIDATION.restaurantNameMax) throw new HttpError(400, "VALIDATION_ERROR", "Restaurant name is invalid");
-        checkRate(req, identity.email);
-        const passwordHash = await hashPassword(identity.password); const now = config.now().toISOString();
-        const user = { id: randomUUID(), name: identity.name, email: identity.email, role: "restaurant" }; const restaurantId = randomUUID();
-        let created;
-        try { created = withTransaction(db, () => {
-          db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(user.id, user.name, user.email, passwordHash, user.role, now);
-          db.prepare("INSERT INTO restaurants(id,name,status,created_at) VALUES(?,?,?,?)").run(restaurantId, restaurantName, "pending", now);
-          db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at,permission) VALUES(?,?,?,'owner')").run(restaurantId, user.id, now);
-          db.prepare("INSERT INTO contracts VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(), restaurantId, 700, 24, "demo-v1", 1, null, null, now);
-          return createSession(db, user.id, config);
-        }); } catch (error) { if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists"); throw error; }
-        return sendJson(res, 201, { data: { user, restaurantId } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
-      }
+      const applicationHandled=await routeBusinessApplications({req,res,url,db,config,session,checkRate});
+      if(applicationHandled||res.writableEnded||res.headersSent)return;
       if (req.method === "POST" && url.pathname === "/api/auth/login") {
         const body = await readJson(req, config.bodyLimit);
         exactObject(body, ["email", "password"]);
@@ -173,15 +163,17 @@ export function createApp({ db, config, logger = console }) {
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
-      if (await routeServiceAreas({ req, res, url, db, config, session, checkRate })) return;
-      if (await routeDashboardExports({ req, res, url, db, config, session })) return;
-      if (await routeBusinessDashboard({ req, res, url, db, config, session })) return;
-      if (await handleBusinessStatementRoutes({ req, res, url, db, config, session })) return;
-      if (await routeOrderMessaging({ req, res, url, db, config, session })) return;
-      if (await routeLoyalty({ req, res, url, db, config, session })) return;
-      if (await routeDisputeResolution({ req, res, url, db, config, session })) return;
-      if (await routeStripeConnect({ req, res, url, db, config, session })) return;
-      if (await routeFinanceDetails({ req, res, url, db, config, session })) return;
+      for(const route of [routeAdminRestaurantWorkspace,routeAdminWorkspace,routePlatformVouchers]){const result=await route({req,res,url,db,config,session,checkRate});if(result||res.writableEnded||res.headersSent)return;}
+      const resolutionHandled=routeBusinessDirectResolution({req,res,url,db,config,session});
+      if(resolutionHandled||res.writableEnded||res.headersSent)return;
+      const scheduledHandled=await routeScheduledOrders({req,res,url,db,config,session});
+      if(scheduledHandled||res.writableEnded||res.headersSent)return;
+      const ratingHandled=await routeShopRatings({req,res,url,db,config,session});
+      if(ratingHandled||res.writableEnded||res.headersSent)return;
+      for(const route of [routeServiceAreas,routeDashboardExports,routeBusinessDashboard,handleBusinessStatementRoutes,routeOrderMessaging,routeLoyalty,routeDisputeResolution,routeStripeConnect,routeFinanceDetails]){
+        const routed=await route({req,res,url,db,config,session,checkRate});
+        if(routed||res.writableEnded||res.headersSent)return;
+      }
       const polishHandled = await routePolish({ req, res, url, db, config, session });
       if (polishHandled || res.writableEnded || res.headersSent) return;
       const marketplaceHandled = await routeMarketplace({ req, res, url, db, config, session });
@@ -190,7 +182,8 @@ export function createApp({ db, config, logger = console }) {
       if (governanceHandled || res.writableEnded || res.headersSent) return;
       const offersHandled = await routeOffers({ req, res, url, db, config, session });
       if (offersHandled || res.writableEnded || res.headersSent) return;
-      if (await routeSupportCases({ req, res, url, db, config, session })) return;
+      const supportHandled=await routeSupportCases({req,res,url,db,config,session});
+      if(supportHandled||res.writableEnded||res.headersSent)return;
       const productHandled = await routeProduct({ req, res, url, db, config, session });
       if (productHandled || res.writableEnded || res.headersSent) return;
       if (url.pathname === "/api/native/account/export" && req.method === "GET") {

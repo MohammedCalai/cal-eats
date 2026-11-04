@@ -4,7 +4,8 @@ import { BankPayoutPanel } from "./EarningsPage.jsx";
 import { useFinanceResource } from "./finance-resource.js";
 
 const money = (minor) => new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format((minor || 0) / 100);
-function hosted(url, hosts) { const parsed = new URL(url); if (parsed.protocol !== "https:" || !hosts.includes(parsed.hostname) || parsed.username || parsed.password) throw new Error("Stripe returned an unexpected destination."); return parsed.toString(); }
+const merchantCopy=value=>String(value||"").replace(/\bStripe(?:’s|'s)?\b/gi,"the payment provider");
+function hosted(url, hosts) { const parsed = new URL(url); if (parsed.protocol !== "https:" || !hosts.includes(parsed.hostname) || parsed.username || parsed.password) throw new Error("The payment service returned an unexpected destination."); return parsed.toString(); }
 
 export function StripeRestaurantFinance({ restaurantId }) {
   return <StripeRestaurantWorkspace key={restaurantId} restaurantId={restaurantId}/>;
@@ -26,16 +27,16 @@ function StripeRestaurantWorkspace({ restaurantId }) {
     finally { pending.current = false; if (active.current) setBusy(""); }
   }
   const stripe = result.value, account = stripe?.account || {};
-  return <section>
-    <h2>Your payment connection</h2>
-    {(result.error || error) && <p className="alert" role="alert">{result.error || error}</p>}
-    {!stripe ? <p role="status">{result.loading ? "Loading Stripe status…" : "Stripe status is unavailable. Refresh to try again."}</p> : !stripe.configured ? <div className="finance-empty"><h3>Card payments awaiting connection</h3><p>Cal-Eats is preparing its Stripe account. No real card charge or bank payout occurs in this preview.</p><ol><li>Cal-Eats connects the payment account.</li><li>You enter your business and bank details securely with Stripe.</li><li>Once verified, completed orders become eligible for restaurant transfers.</li><li>Stripe pays available funds to your connected bank account.</li></ol><p>Your order statements show the saved commission and confirmed refunds. Cash stays a separate payment to your restaurant.</p></div> : <>
-      <p><strong>{stripe.providerMode === "stripe_live" ? "Stripe live mode" : "Stripe test mode"}</strong>. Bank details and identity verification are entered on Stripe.</p>
+  return <section className="finance-payment-setup">
+    <div className="panel"><h2>Payment setup &amp; verification</h2>
+    {(result.error || error) && <p className="alert" role="alert">{merchantCopy(result.error || error)}</p>}
+    {!stripe ? <p role="status">{result.loading ? "Loading payment setup…" : "Payment setup status is unavailable. Refresh to try again."}</p> : !stripe.configured ? <div className="finance-empty"><h3>Card payments awaiting connection</h3><p>Cal-Eats is preparing its payment connection. No real card charge or bank payout occurs in this preview.</p><ol><li>Cal-Eats connects the payment account.</li><li>You enter your business and bank details securely with the payment provider.</li><li>Once verified, completed orders become eligible for restaurant transfers.</li><li>The payment provider pays available funds to your connected bank account.</li></ol><p>Your order statements show the saved commission and confirmed refunds. Cash stays a separate payment to your restaurant.</p></div> : <>
+      <p><strong>{stripe.providerMode === "stripe_live" ? "Live card payments" : "Card payment test mode"}</strong>. Bank details and identity verification are entered on the payment provider’s secure pages.</p>
       <div className="finance-account-state"><span>Account: <strong>{String(account.status || "Not started").replaceAll("_", " ")}</strong></span><span>Card payments: <strong>{account.chargesEnabled ? "Enabled" : "Not enabled"}</strong></span><span>Bank payouts: <strong>{account.payoutsEnabled ? "Enabled" : "Not enabled"}</strong></span></div>
-      {account.requirements?.length > 0 && <p className="finance-preview-note">Stripe needs more information to complete your verification. Open Stripe to review its remaining tasks.</p>}
-      <div className="button-row"><button className="primary" disabled={Boolean(busy)} onClick={() => void action("onboarding", ["connect.stripe.com"])}>{busy === "onboarding" ? "Opening Stripe…" : "Continue Stripe verification"}</button><button className="quiet" disabled={Boolean(busy)} onClick={() => void action("refresh", [])}>{busy === "refresh" ? "Refreshing…" : "Refresh status"}</button><button className="quiet" disabled={Boolean(busy)} onClick={() => void action("dashboard", ["dashboard.stripe.com", "connect.stripe.com"])}>{busy === "dashboard" ? "Opening Stripe…" : "Open Stripe dashboard"}</button></div>
+      {account.requirements?.length > 0 && <p className="finance-preview-note">Your payment account needs more information to complete verification. Continue setup to review the remaining tasks.</p>}
+      <div className="button-row"><button className="primary" disabled={Boolean(busy)} onClick={() => void action("onboarding", ["connect.stripe.com"])}>{busy === "onboarding" ? "Opening secure account…" : "Complete payment setup"}</button><button className="quiet" disabled={Boolean(busy)} onClick={() => void action("refresh", [])}>{busy === "refresh" ? "Refreshing…" : "Refresh status"}</button><button className="quiet" disabled={Boolean(busy)} onClick={() => void action("dashboard", ["dashboard.stripe.com", "connect.stripe.com"])}>{busy === "dashboard" ? "Opening secure account…" : "Open payment account"}</button></div>
     </>}
-    <BankPayoutPanel key={bankVersion} restaurantId={restaurantId} showSetupLink={false}/>
+    </div><BankPayoutPanel key={bankVersion} restaurantId={restaurantId} showSetupLink={false}/>
   </section>;
 }
 

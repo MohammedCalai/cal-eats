@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { customerOrdersListHtml } from "../customer-order-list.js";
+import { orderHistoryGroups } from "../order-history-groups.js";
 
 const now = Date.parse("2026-10-30T12:00:00.000Z");
 const order = (id, status, extra = {}) => ({ id, status, restaurantName: "Blue Kitchen", fulfillment: "delivery", paymentMethod: "card", paymentStatus: "stripe_captured", totalMinor: 1050, createdAt: "2026-10-30T10:00:00.000Z", updatedAt: "2026-10-30T11:00:00.000Z", ...extra });
@@ -25,4 +26,15 @@ test("hostile restaurant names and identifiers are escaped and activity dates ar
   assert.equal(html.includes("<img src=x"), false); assert.ok(html.includes("&lt;img src=x onerror=bad&gt;"));
   assert.ok(html.includes('data-id="id&quot; onclick=&quot;unsafe"')); assert.equal(html.includes("<time"), false); assert.ok(html.includes("Total unavailable"));
   assert.ok(customerOrdersListHtml([], { now }).includes("Browse restaurants"));
+});
+
+test("past orders group by the placed month and London year boundary, regardless of later updates", () => {
+  const rows = [order("october", "completed", { createdAt: "2026-10-02T11:00:00Z", updatedAt: "2026-11-03T12:00:00Z" }), order("november", "cancelled", { createdAt: "2026-11-01T00:00:00Z" }), order("september", "completed", { createdAt: "2026-09-30T23:30:00Z" })];
+  const groups = orderHistoryGroups(rows);
+  assert.deepEqual(groups.map(group => group.label), ["November 2026", "October 2026"]);
+  assert.deepEqual(groups[1].orders.map(row => row.id), ["october", "september"]);
+  const html = customerOrdersListHtml(rows, { now });
+  assert.ok(html.includes('aria-label="November 2026"')); assert.ok(html.includes('aria-label="October 2026"'));
+  assert.ok(html.indexOf('data-order-id="november"') < html.indexOf('data-order-id="october"'));
+  assert.equal(orderHistoryGroups([order("unknown", "completed", { createdAt: "invalid" })])[0].label, "Date unavailable");
 });

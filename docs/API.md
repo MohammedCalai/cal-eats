@@ -42,3 +42,15 @@ All list routes return `data: [...]`. Menu GET routes return `data: {restaurant,
 
 
 Checkout price review (28 October 2026): new browser and native clients include optional `expectedTotalMinor` when posting an order. The value is part of the idempotency fingerprint. The server compares it with its authoritative food-after-promotion plus owner-set delivery fee inside the order transaction, before payment authorisation or order/grant reservation. A mismatch returns HTTP 409 `PRICE_CHANGED`, leaving no new order; clients refresh the price and require another explicit place-order action. Exact retries of a successfully created request return its original snapshot even after menu/fee changes. The field remains optional for existing test clients. It never overrides server prices.
+
+
+### Current customer/admin additions (4 November 2026)
+
+- `GET /api/restaurants/:id/schedule-slots?fulfillment=delivery|collection`; quote/create optional `scheduledFor` ISO UTC. Dates are validated on the server against London opening hours, lead time, seven-day horizon, restaurant state and fulfilment settings. Idempotent replay retains the original schedule.
+- `POST /api/orders/:id/shop-rating` with `{stars:1..5}` only. Customer ownership, completion, 90-day visibility and one-rating-per-order are enforced. Completion queues a rating notification; successful rating clears that prompt.
+- `POST /api/native/business/auth/apply` and existing web restaurant registration require business name, address, mobile and the new account password. One durable 72-hour acknowledgement is queued per application.
+- `/api/admin/workspace/` provides bounded dashboard/unconfirmed-order/order/finance/operations directories; every route requires admin. `/api/admin/restaurant-directory`, `/api/admin/restaurants/:id/workspace` and scoped `/manage/` routes provide contact, orders, menu, marketing and access tools. Mutations retain administrator audit identity.
+- Admin support lists accept `assignedTo`, `waitingFor`, `restaurant`, `status`, `q`, `page` and `pageSize`; `/api/admin/support/overview` accepts the same restaurant context for queue counts. Personal and restaurant inboxes retain their authorization boundaries.
+- `GET /api/admin/service-areas/map?outcodes=LU1,LU2` returns only configured postcode centres (at most 20/request). The outside-area customer copy is fixed; only mode and postcode rules are editable.
+- Platform voucher issuance, wallet, automatic checkout contribution and restaurant settlement are documented in [platform-vouchers.md](platform-vouchers.md). Order `totalMinor` remains restaurant order value; `customerPayableMinor` is the customer contribution. Platform vouchers do not reduce the saved commission base or restaurant earnings.
+- New refund mutations return `BUSINESS_DIRECT_RESOLUTION`; historical reads and required cancellation/authorization release remain. No queued financial history is deleted.

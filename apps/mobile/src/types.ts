@@ -1,5 +1,5 @@
 export type Fulfillment = "delivery" | "collection";
-export type PaymentMethod = "mock_card" | "card" | "cash";
+export type PaymentMethod = "mock_card" | "card" | "cash" | "voucher";
 
 export interface User {
   id: string;
@@ -19,6 +19,7 @@ export interface Address {
 }
 
 export interface Restaurant {
+  ratingAverage?:number|null;ratingCount?:number;availableOfferId?:string|null;schedulingAvailable?:boolean;
   completedOrderCountLast30Days?: number;
   id: string;
   name: string;
@@ -75,6 +76,8 @@ export interface OrderItem {
   isOfferItem?: boolean;
 }
 export interface Order {
+    customerPayableMinor?:number;platformVoucherMinor?:number;orderValueMinor?:number;voucher?:{id:string;title:string;amountMinor:number;fundingParty:"platform"}|null;
+  scheduledFor?:string|null;scheduleMinimumLeadMinutes?:number|null;shopRating?:{stars:number;createdAt:string}|null;canRateShop?:boolean;
   id: string;
   restaurantId: string;
   restaurantName: string;

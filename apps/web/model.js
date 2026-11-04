@@ -87,7 +87,7 @@ export function canDeliver(delivery, postcode, subtotalMinor) {
 export function availabilityMessage(restaurant, fulfillment = "collection") {
   if (restaurant.suspended) return "This restaurant is suspended and cannot take new orders.";
   if (restaurant.profile?.paused) return "Ordering is paused by the restaurant.";
-  if (restaurant.acceptingOrders === false) return restaurant.closedReason || "This restaurant is currently closed.";
+  if (restaurant.acceptingOrders === false&&!restaurant.schedulingAvailable) return restaurant.closedReason || "This restaurant is currently closed.";
   if (fulfillment === "collection" && restaurant.profile?.collectionEnabled === false) return "Collection is currently unavailable.";
   if (fulfillment === "delivery" && !restaurant.delivery?.enabled) return "Delivery is currently unavailable.";
   return "";

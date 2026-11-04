@@ -14,15 +14,16 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
     {result.error && <p className="alert" role="alert">The breakdown could not be loaded: {result.error}</p>}
     {!value ? <p role="status">{result.loading ? "Loading the order statement…" : "The financial statement is unavailable. Use Refresh to try again."}</p> : <>
       <p className="fine">Order #{value.orderId.slice(0, 8).toUpperCase()} · {shortDate(value.createdAt)}. Prices, commission and offers follow the order’s saved details.</p>
-      {value.providerMode !== "stripe_live" && <p className="finance-preview-note">{value.providerMode === "stripe_test" ? "Stripe test payment" : "Preview payment"} · These figures do not establish a real charge or bank payout.</p>}
+      {value.providerMode !== "stripe_live" && <p className="finance-preview-note">{value.providerMode === "stripe_test" ? "Test payment" : "Preview payment"} · These figures do not establish a real charge or bank payout.</p>}
       {!value.earnings.confirmed && <p className="finance-preview-note">Earnings are not confirmed for this order. Quoted order prices are shown below; no commission or restaurant earnings are recognised yet.</p>}
       <div className="finance-breakdown-grid">
-        <section className="finance-breakdown-card"><h4>Order pricing and refunds</h4>
+        <section className="finance-breakdown-card"><h4>Order pricing</h4>
           <Amount label="Food before money-off offers" value={value.totals.grossFoodMinor}/>
           <Amount label="Restaurant-funded money-off" value={value.totals.restaurantDiscountMinor} negative/>
           <Amount label="Food after money-off" value={value.totals.foodChargedMinor}/>
           <Amount label="Delivery fee" value={value.totals.deliveryFeeMinor}/>
-          <Amount label="Order total" value={value.totals.customerChargedMinor} strong/>
+          <Amount label="Order value" value={value.totals.orderValueMinor??value.totals.customerChargedMinor} strong/>
+          {value.totals.platformVoucherMinor>0&&<><Amount label="Cal-Eats funded voucher" value={value.totals.platformVoucherMinor} negative/><Amount label="Customer payment" value={value.totals.customerPayableMinor??value.totals.customerChargedMinor}/><p className="fine">Cal-Eats funds this voucher. Your commission base and restaurant earnings follow the saved order value.</p></>}
           <Amount label="Food refunded" value={value.totals.refundedFoodMinor} negative/>
           <Amount label="Delivery refunded" value={value.totals.refundedDeliveryMinor} negative/>
           <Amount label="Order value after refunds" value={value.totals.retainedCustomerPaymentMinor} strong/>

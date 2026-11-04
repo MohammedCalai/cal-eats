@@ -11,6 +11,8 @@ test("discovery keeps every unique restaurant and ranks genuine time and fee dat
 test("offer shelves exclude expired, future and redeemed personalised offers",()=>{
  const now=Date.parse("2026-10-28T12:00Z"),offer={id:"available",restaurantId:"one",status:"available",startsAt:"2026-10-28T11:00Z",expiresAt:"2026-10-29T12:00Z"};
  assert.equal(availableDiscoveryOffer("one",[offer],now).id,"available");
+ assert.equal(availableDiscoveryOffer("one",[{...offer,campaignType:"free_delivery"}],now,"collection"),null);
+ assert.equal(availableDiscoveryOffer("one",[{...offer,dismissedAt:"2026-10-28T11:30Z"}],now),null);
  for(const change of [{status:"redeemed"},{startsAt:"2026-10-30T12:00Z"},{expiresAt:"2026-10-28T12:00Z"},{expiresAt:"invalid"}])assert.equal(availableDiscoveryOffer("one",[{...offer,...change}],now),null);
  assert.deepEqual(discoveryCollections([{id:"one"},{id:"two"}],[offer],"delivery",now).deals.map(r=>r.id),["one"]);assert.equal(cuisineIcon("Japanese"),"🍣");
   for(const cuisine of ["constructor","__proto__","New cuisine"])assert.equal(cuisineIcon(cuisine),"🍽️");

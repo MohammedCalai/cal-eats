@@ -20,9 +20,10 @@ function statement(db, restaurantId) {
   const sum = (...kinds) => entries.filter((entry) => kinds.includes(entry.kind)).reduce((total, entry) => total + entry.amountMinor, 0);
   const commissionMockMinor = sum("commission_mock", "commission_mock_refund");
   const commissionStripeMinor = sum("commission_stripe", "commission_stripe_refund");
+  const commissionVoucherMinor=sum("commission_voucher");
   const cashReceivableMinor = sum("commission_cash_receivable", "commission_cash_refund");
   const cashSettledMinor = sum("cash_settlement");
-  return { restaurantId, commissionMockMinor, commissionStripeMinor, commissionCardMinor: commissionMockMinor + commissionStripeMinor, cashReceivableMinor, cashSettledMinor, cashOutstandingMinor: cashReceivableMinor - cashSettledMinor, entries };
+  return { restaurantId, commissionMockMinor, commissionStripeMinor,commissionVoucherMinor, commissionCardMinor: commissionMockMinor + commissionStripeMinor+commissionVoucherMinor, cashReceivableMinor, cashSettledMinor, cashOutstandingMinor: cashReceivableMinor - cashSettledMinor, entries };
 }
 
 function audit(db, actorId, entityType, entityId, action, details, now) {

@@ -116,3 +116,20 @@ The final checkout review now sends the customer-reviewed total to the API. The 
 Deployment update: commit 2e360c7 reached the independent Railway preview successfully (deployment 88d62165-67e5-46fc-b519-444b1106291e), including the final checkout guard, current migrations and healthy persistence. Hosted native customer authentication, discovery, offers, messages and changed-total rejection were verified without creating another hosted order. Payments remain local_simulator. Android store-test build ff6b3db4-9cb1-4cfd-ac17-93b1d3b35f8f uses this source; the earlier queued job was canceled.
 
 The owner requested both Cal-Eats and Cal-Eats Admin in TestFlight and signed in to App Store Connect. Apple Developer reports that membership benefits are temporarily disabled during the individual-to-organization migration, and signing resources reject the team as lacking an active membership. App Store Connect also flags an updated developer agreement. No iOS signing credentials, Cal-Eats App Store records or TestFlight uploads have been created. Resume Apple signing and separate app-record setup after membership access is restored and the account holder reviews the required agreement. Google Play account verification was explicitly deferred by the owner. No public store release has occurred.
+
+
+## Android customer build preflight — 4 November 2026
+
+Read-only EAS checks confirmed the CLI identity `yankee1707`, project `@yankee1707/cal-eats` (`5bf59184-c670-44f4-be78-5229cbd02300`) and Android application identifier `uk.co.calai.caleats`. The last finished Android store-test build is `1e12b650-7d3c-4a24-ae82-1d479b00f7b2`, created 29 October, version 1.0.0 / code 8 from source `b33c1d4`. Remote version numbering currently reports 8; `autoIncrement` selects the next number when a new build starts. No build was started during preflight.
+
+The existing default remote JKS signing configuration is present. Only non-secret signing metadata was queried; the keystore, passwords and private keys were not downloaded. No Google Play submission service account is attached in EAS. This does not block an Android build; uploading the resulting AAB through Play Console is a separate step.
+
+After customer source and the matching backend are final, run from `apps/mobile`:
+
+```powershell
+npx eas-cli@26.0.0 build --platform android --profile store-test --non-interactive --no-wait --json
+```
+
+`store-test` produces a signed Android App Bundle for store testing using `https://eats.calai.info`, not an installable preview APK. Do not substitute `production`: public-release evidence remains pending. The internal `preview` profile can produce an APK if direct installation is explicitly needed; avoid starting both profiles automatically. Build submission does not imply Play approval or device validation.
+
+Removed the unused customer image-picker module and its obsolete refund-evidence permission copy. The owner/Admin phone app retains its own dependency and remains on hold. Customer project/owner guards now also run for test-build configuration. Apple signing, Apple organization enrollment and the Admin phone app are untouched and on hold.

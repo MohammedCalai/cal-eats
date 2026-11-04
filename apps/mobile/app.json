@@ -31,14 +31,6 @@
         }
       ],
       [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow Cal-Eats to select a refund evidence photo.",
-          "cameraPermission": "Allow Cal-Eats to take a refund evidence photo.",
-          "microphonePermission": false
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {

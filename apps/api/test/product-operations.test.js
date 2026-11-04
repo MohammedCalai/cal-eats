@@ -11,7 +11,7 @@ test("restaurant onboarding stays pending and owner/staff permissions are isolat
   const f = await journeyFixture();
   try {
     const a = await auth(f);
-    const onboarded = await f.json("/api/auth/restaurant-register", { method: "POST", body: { name: "New Owner", email: "new-owner@example.test", password: "long local password", restaurantName: "Pending Place" } });
+    const onboarded = await f.json("/api/auth/restaurant-register", { method: "POST", body: { name: "New Owner", email: "new-owner@example.test", password: "long local password", restaurantName: "Pending Place", address: "12 Market Street, London E1 1AA", mobile: "07700 900123" } });
     assert.equal(onboarded.status, 201); const newCookie = onboarded.headers.get("set-cookie").split(";", 1)[0];
     const pending = (await f.json("/api/restaurant/restaurants", { cookie: newCookie })).body.data[0];
     assert.equal(pending.status, "pending"); assert.equal(pending.acceptingOrders, false);

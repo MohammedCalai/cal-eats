@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from "react";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
-import {api,json} from "./api.js";
+import {api as defaultApi,json} from "./api.js";
 import {pounds} from "./model.js";
 
 const time=value=>value?new Date(value).toLocaleString("en-GB",{timeZone:"Europe/London",dateStyle:"medium",timeStyle:"short"}):"Not recorded";
@@ -8,7 +8,8 @@ const inputTime=value=>{const date=new Date(value);return new Date(+date-date.ge
 const audience={all:"All existing customers",selected:"Specific customers",first_order:"New customers",new:"First-time existing customers",returning:"Returning customers",regular:"Regular customers",lapsed:"Customers to welcome back"};
 const offerBenefit=campaign=>campaign.campaignType==="buy_one_get_one"?"Buy one, get one free":campaign.campaignType==="free_delivery"?"Free delivery":campaign.offerType==="percent_off"?`${campaign.value/100}% off`:campaign.offerType==="fixed_off"?`${pounds(campaign.value)} off`:campaign.itemName?`Free ${campaign.itemName}`:"Free item with qualifying purchase";
 const budget=value=>value==null?"No cap":pounds(value);
-export default function CampaignActions({restaurantId,campaign,canManage,onSaved}){
+export default function CampaignActions({restaurantId,campaign,canManage,onSaved,request=defaultApi}){
+ const api=request;
  const [mode,setMode]=useState(null),[draft,setDraft]=useState(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  const alive=useRef(true),pending=useRef(false);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const ended=new Date(campaign.expiresAt)<=new Date(),scheduled=new Date(campaign.startsAt)>new Date();

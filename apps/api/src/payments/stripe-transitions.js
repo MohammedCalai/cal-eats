@@ -1,3 +1,4 @@
+import {customerPayableMinor} from "../platform-vouchers.js";
 import { randomUUID } from "node:crypto";
 import { withTransaction } from "../db/index.js";
 import { HttpError } from "../http.js";
@@ -43,7 +44,7 @@ export async function prepareStripeOrderTransition(db, config, { orderId, userId
     if (targetStatus === "accepted") {
       if (authoritative.paymentState !== "captured") {
         if (authoritative.paymentState !== "authorized") throw new HttpError(409, "PAYMENT_NOT_AUTHORIZED", "Card payment authorization is required");
-        await adapter.capturePayment({ paymentIntentId: payment.payment_intent_id, amountMinor: claimed.order.total_minor, idempotencyKey: `capture:${orderId}` });
+        await adapter.capturePayment({ paymentIntentId: payment.payment_intent_id, amountMinor: customerPayableMinor(claimed.order), idempotencyKey: `capture:${orderId}` });
         authoritative = bind(await adapter.retrievePayment({ paymentIntentId: payment.payment_intent_id }));
       }
       if (authoritative.paymentState !== "captured") throw new HttpError(409, "PAYMENT_CAPTURE_UNKNOWN", "Card capture needs authoritative reconciliation");

@@ -80,3 +80,19 @@
 @media(max-width:1000px){.business-dashboard .dashboard-active-card{grid-template-columns:minmax(0,1fr) minmax(180px,.65fr)}.dashboard-active-identity{grid-column:1;grid-row:1}.dashboard-active-detail{grid-column:1;grid-row:2}.business-dashboard .dashboard-active-actions{grid-column:2;grid-row:1/span 2}.business-dashboard .dashboard-order-items{display:flex;flex-wrap:wrap;gap:3px 12px}}
 @media(max-width:600px){.business-dashboard .dashboard-active-card{grid-template-columns:minmax(0,1fr);gap:12px;padding:14px}.dashboard-active-identity,.dashboard-active-detail,.business-dashboard .dashboard-active-actions{grid-column:1;grid-row:auto}.business-dashboard .dashboard-active-actions{grid-template-columns:1fr 1fr}.business-dashboard .dashboard-active-actions>.primary{font-size:13px}.business-dashboard .dashboard-order-destination>strong{font-size:20px}.dashboard-printer-warning{align-items:flex-start;padding:14px;gap:11px;flex-wrap:wrap}.dashboard-printer-warning>div{flex-basis:calc(100% - 60px)}.dashboard-printer-warning>a{margin-left:54px}.dashboard-printer-badge{margin-left:6px}.dashboard-action-prompts{align-items:stretch;padding:14px}.dashboard-action-prompt{width:100%}}
 @media(prefers-reduced-motion:reduce){.dashboard-action-prompt{animation:none}}
+
+/* Lighter blue and violet rows separate every order from the dark workspace. */
+.business-dashboard .dashboard-active-grid{gap:14px}
+.business-dashboard .dashboard-active-card{background:#e9f1fc;border:1px solid #9dbce8;color:#183454;box-shadow:inset 5px 0 #4c95f2,0 5px 15px #0002}
+.business-dashboard .dashboard-active-card:nth-child(even){background:#eeeafa;border-color:#b7a8df;box-shadow:inset 5px 0 #9a78df,0 5px 15px #0002}
+.business-dashboard .dashboard-active-card.needs-confirmation{background:#dceaff;border-color:#669eea}
+.business-dashboard .dashboard-active-card .dashboard-order-destination>strong{color:#183454;font-weight:800}.business-dashboard .dashboard-active-card .dashboard-order-destination>span{color:#385374}
+.business-dashboard .dashboard-active-card .dashboard-active-heading>small{color:#365a8c}.business-dashboard .dashboard-active-card .dashboard-order-state{color:#244b7e;background:#d4e3fa;border:1px solid #a4bee6}
+.business-dashboard .dashboard-active-card .dashboard-order-reference,.business-dashboard .dashboard-active-card .dashboard-order-items small{color:#526985}
+.business-dashboard .dashboard-active-card .dashboard-order-items{color:#274466}.business-dashboard .dashboard-active-card .dashboard-active-eta{color:#285682;font-weight:650}
+.business-dashboard .dashboard-active-card .dashboard-order-phone{color:#255a9a;border-color:#9bb9df;background:#ffffff8c;min-height:44px}
+.business-dashboard .dashboard-active-card .dashboard-order-note{color:#354f70!important;background:#ffffff95;border:1px solid #c4d3e6}
+.business-dashboard .dashboard-active-card .dashboard-order-allergy{color:#8a2636!important;background:#fff1f3;border-color:#dba2ad}
+.business-dashboard .dashboard-active-card .dashboard-active-actions>.button-link{background:#fff;color:#2a538a;border-color:#9cb7db}
+.business-dashboard .dashboard-order-scheduled{display:block;padding:8px 10px;border:1px solid #a293d0;border-radius:8px;background:#e4dcfa;color:#573b91;font-size:12px;line-height:1.5;font-weight:750}
+.dashboard-action-prompt.order-help{background:#403566;border-color:#9781d0;color:#eee7ff}

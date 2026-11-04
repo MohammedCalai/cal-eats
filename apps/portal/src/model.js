@@ -20,14 +20,14 @@ export function ownerNavigation(permission = "owner") {
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
     ["Printers", "/owner/printers"],
   ];
-  if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Marketing", "/owner/offers"], ["Refund cases", "/owner/refunds"], ["Support", "/owner/support"]);
-  if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Stripe setup", "/owner/stripe"], ["Settings", "/owner/settings"]);
+  if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Marketing", "/owner/offers"], ["Support", "/owner/support"]);
+  if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Settings", "/owner/settings"]);
   return core;
 }
 export const ownerMobileNavigation = permission => permission === "owner" ? [["Home","/owner/dashboard"],["Marketing","/owner/offers"],["Orders","/owner/orders"],["Menu","/owner/menu"]] : [["Home","/owner/dashboard"],["Orders","/owner/orders"],["Menu","/owner/menu"]];
 export const adminNavigation = [
-  ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Orders", "/admin/orders"],
-  ["Finance", "/admin/finance"], ["Stripe readiness", "/admin/stripe"], ["Refund cases", "/admin/refunds"], ["Support", "/admin/support"], ["Service areas", "/admin/service-areas"], ["Access & deadlines", "/admin/governance"], ["Operations", "/admin/operations"],
+  ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Customers", "/admin/customers"], ["Orders", "/admin/orders"],
+  ["Finance", "/admin/finance"], ["Payment readiness", "/admin/stripe"], ["Resolution history", "/admin/refunds"], ["Support", "/admin/support"], ["Service areas", "/admin/service-areas"], ["Account access", "/admin/governance"], ["Operations", "/admin/operations"],
 ];
 
 export function customerQuery({ q = "", segment, status = "all", page = 1, unread = false } = {}) {

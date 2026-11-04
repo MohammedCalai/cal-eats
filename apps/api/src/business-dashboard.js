@@ -49,6 +49,8 @@ function operationalCounts(db, restaurantId, userId, owner, now) {
   return {
     pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active, ...kitchen,
     unreadMessages: orderMessages + customerMessages,
+    openOrderHelp: owner ? db.prepare("SELECT COUNT(*) count FROM support_cases s JOIN users u ON u.id=s.user_id WHERE s.restaurant_id=? AND s.order_id IS NOT NULL AND u.role='customer' AND s.status<>'resolved' AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.id=s.id)").get(restaurantId).count : null,
+    actionRequiredOrderHelp: owner ? db.prepare("SELECT COUNT(*) count FROM support_cases s JOIN users u ON u.id=s.user_id WHERE s.restaurant_id=? AND s.order_id IS NOT NULL AND u.role='customer' AND s.status<>'resolved' AND s.waiting_for='team' AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.id=s.id)").get(restaurantId).count : null,
     openRefundCases: owner ? db.prepare("SELECT COUNT(*) AS count FROM refund_cases WHERE restaurant_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(restaurantId).count : null,
     // A reply is an action even when the case remains open. Insertion order breaks
     // ties when a reply and a later request share the same server timestamp.
@@ -79,7 +81,7 @@ function payoutState(db, order, net, providerMode) {
   const prefix = providerMode === "stripe_live" ? "" : "Test · ";
   const transfers = db.prepare("SELECT kind,status,amount_minor FROM marketplace_operations WHERE restaurant_id=? AND order_id=? AND kind IN ('merchant_transfer','transfer_reversal')").all(order.restaurant_id, order.id);
   const transferred = transfers.filter(row => row.kind === "merchant_transfer" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0) - transfers.filter(row => row.kind === "transfer_reversal" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
-  if (transfers.some(row => row.status === "unknown")) return { payoutState: "needs_review", payoutLabel: `${prefix}transfer needs review` };
+  if (transfers.some(row => ["unknown","failed"].includes(row.status))) return { payoutState: "needs_review", payoutLabel: `${prefix}transfer needs review` };
   if (transferred > 0) return { payoutState: "transferred_to_balance", payoutLabel: `${prefix}transferred to Stripe balance` };
   if (transfers.some(row => row.status === "held") || db.prepare("SELECT 1 FROM refund_cases WHERE order_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected') LIMIT 1").get(order.id)) return { payoutState: "held", payoutLabel: `${prefix}transfer on hold` };
   if (transfers.some(row => ["pending", "delayed"].includes(row.status))) return { payoutState: "processing", payoutLabel: `${prefix}transfer processing` };
@@ -91,15 +93,15 @@ function orderRows(db, restaurantId, range, owner, page, pageSize) {
   const rows = db.prepare(`SELECT o.*,
     COALESCE((SELECT SUM(food_amount_minor+delivery_amount_minor) FROM refunds WHERE order_id=o.id),0) AS refund_minor,
     COALESCE((SELECT SUM(commission_reversal_minor) FROM refunds WHERE order_id=o.id),0) AS reversal_minor,
-    (SELECT provider_mode FROM stripe_order_payments WHERE order_id=o.id) AS provider_mode
+    COALESCE((SELECT provider_mode FROM stripe_order_payments WHERE order_id=o.id),json_extract(o.platform_voucher_snapshot,'$.providerMode')) AS provider_mode
     FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`).all(restaurantId, range.from, range.toExclusive, pageSize, (page - 1) * pageSize);
   const items = rows.map(order => {
-    const base = { id: order.id, createdAt: order.created_at, customerName: order.customer_name, status: order.status, fulfillment: order.fulfillment };
+    const base = { id: order.id, createdAt: order.created_at, customerName: order.customer_name, status: order.status, fulfillment: order.fulfillment, scheduledFor: order.scheduled_for ?? null };
     if (!owner) return base;
     const confirmed = ["accepted", "preparing", "ready", "out_for_delivery", "completed"].includes(order.status) && (order.payment_method !== "card" || ["stripe_captured", "stripe_partially_refunded", "stripe_refunded"].includes(order.payment_status));
     const commission = confirmed ? Math.max(0, order.commission_minor - order.reversal_minor) : 0, net = confirmed ? Math.max(0, order.total_minor - order.refund_minor - commission) : 0;
     const providerMode = order.provider_mode ?? "local_simulator";
-    return { ...base, totalMinor: order.total_minor, refundsMinor: order.refund_minor, commissionMinor: commission, netEarningsMinor: net, paymentMethod: order.payment_method, paymentState: order.payment_status, providerMode, ...payoutState(db, order, net, providerMode) };
+    return { ...base, totalMinor: order.total_minor,customerPayableMinor:order.customer_payable_minor??order.total_minor,platformVoucherMinor:order.platform_voucher_minor??0, refundsMinor: order.refund_minor, commissionMinor: commission, netEarningsMinor: net, paymentMethod: order.payment_method, paymentState: order.payment_status, providerMode, ...payoutState(db, order, net, providerMode) };
   });
   return { items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
 }

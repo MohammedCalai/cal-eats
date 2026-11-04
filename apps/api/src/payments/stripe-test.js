@@ -99,8 +99,8 @@ export function createStripeAdapter(config = {}) {
     },
     async retrieveRefund(input){const result=await request("GET",`/v1/refunds/${ref(input.refundId,"re")}`,null,{requireTestObject:true,allowModeOmissionForObject:"refund"});return refundResult(result,input.paymentIntentId);},
     async createTransfer(input) {
-      const sourceTransactionId=ref(input.sourceTransactionId,"ch");
-      const result = await request("POST", "/v1/transfers", { amount: money(input.amountMinor), currency: "gbp", destination: ref(input.destinationAccountId,"acct"), source_transaction:sourceTransactionId, transfer_group: bounded(input.transferGroup,1,100,"transferGroup"), "metadata[operation_key]": bounded(input.operationKey,1,100,"operationKey") }, { idempotencyKey: input.idempotencyKey, requireTestObject:true });
+      const sourceTransactionId=input.platformFunded===true&&input.sourceTransactionId==null?null:ref(input.sourceTransactionId,"ch");
+      const result = await request("POST", "/v1/transfers", { amount: money(input.amountMinor), currency: "gbp", destination: ref(input.destinationAccountId,"acct"), ...(sourceTransactionId?{source_transaction:sourceTransactionId}:{}), transfer_group: bounded(input.transferGroup,1,100,"transferGroup"), "metadata[operation_key]": bounded(input.operationKey,1,100,"operationKey") }, { idempotencyKey: input.idempotencyKey, requireTestObject:true });
       return result.ok ? transferResult(result,sourceTransactionId) : result;
     },
     async retrieveTransfer(input) { const result = await request("GET", `/v1/transfers/${ref(input.transferId,"tr")}`, null, {requireTestObject:true}); return result.ok ? transferResult(result):result; },

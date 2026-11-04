@@ -51,11 +51,11 @@ export function cartTotals(entries: CartEntry[], fulfillment: Fulfillment, resta
   return { subtotalMinor, deliveryFeeMinor, totalMinor: subtotalMinor + deliveryFeeMinor };
 }
 
-export function canCheckout(entries: CartEntry[], fulfillment: Fulfillment, restaurant: Restaurant | null, postcode: string) {
+export function canCheckout(entries: CartEntry[], fulfillment: Fulfillment, restaurant: Restaurant | null, postcode: string, options:{scheduled?:boolean}={}) {
   if (!restaurant) return { ok: false, reason: "Choose a restaurant first." };
   if (!entries.length) return { ok: false, reason: "Your basket is empty." };
   if (entries.some((entry) => !Number.isSafeInteger(entry.quantity) || entry.quantity < 1 || entry.quantity > 20)) return { ok: false, reason: "Basket quantities must be between 1 and 20." };
-  if (restaurant.suspended || restaurant.profile.paused || !restaurant.acceptingOrders) return { ok: false, reason: restaurant.closedReason || "This restaurant cannot accept orders now." };
+  if (restaurant.suspended || restaurant.profile.paused || (!restaurant.acceptingOrders&&!options.scheduled)) return { ok: false, reason: restaurant.closedReason || "This restaurant cannot accept orders now." };
   for (const entry of entries) {
     if (!entry.item.available) return { ok: false, reason: `${entry.item.name} is no longer available. Refresh the menu before ordering.` };
     const validity = validateSelections(entry.item, entry.selections);

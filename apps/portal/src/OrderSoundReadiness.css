@@ -2,3 +2,5 @@
 .order-alert-bar.needs-sound strong,.order-alert-bar .sound-required-note{color:#ffe0a3}
 .order-alert-bar.needs-sound small{display:block!important}
 @media(max-width:700px){.order-alert-bar.needs-sound:not(.has-pending){display:grid;align-items:start;gap:.65rem}.order-alert-bar.needs-sound:not(.has-pending) .order-alert-bar-actions{margin-left:0;justify-content:flex-start;flex-wrap:wrap}}
+
+.new-order-requested-time{padding:16px;border:1px solid #547ba9;background:#1b304b;border-radius:13px;margin-bottom:16px}.new-order-requested-time>strong{color:#cde5ff}.new-order-requested-time>p{font-size:19px;font-weight:750;color:#fff;margin:8px 0 15px}.new-order-requested-time .check{display:flex;align-items:center;gap:9px}.new-order-requested-time input{width:18px;height:18px}

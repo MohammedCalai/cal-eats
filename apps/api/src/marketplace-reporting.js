@@ -75,7 +75,7 @@ export function buildFinanceSummary(db, restaurantId, url = null) {
     - rangedRefunds.filter((row) => historicalOrderIds.has(row.order_id)).reduce((sum, row) => sum + row.commission_reversal_minor, 0);
   const recordedCommissionReversalsMinor = rangedRefunds.filter((row) => !historicalOrderIds.has(row.order_id)).reduce((sum, row) => sum + row.commission_reversal_minor, 0);
 
-  const grossSalesMinor = historicalGrossSalesMinor + rangedOperations.filter((row) => ["payment_capture", "cash_order_accepted"].includes(row.kind) && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
+  const grossSalesMinor = historicalGrossSalesMinor + rangedOperations.filter((row) => ["payment_capture", "cash_order_accepted", "platform_voucher_credit"].includes(row.kind) && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
   const refundsMinor = rangedRefunds.reduce((sum, row) => sum + row.food_amount_minor + row.delivery_amount_minor, 0);
   const commissionMinor = historicalCommissionMinor + rangedOperations.filter((row) => ["commission", "cash_commission_receivable"].includes(row.kind) && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0)
     - recordedCommissionReversalsMinor;
@@ -122,6 +122,7 @@ export function buildFinanceSummary(db, restaurantId, url = null) {
     pendingMinor,
     availableMinor: Math.max(0, completedCardNet - heldCardMinor - paidTransfersMinor - inTransitTransfersMinor - pendingTransfersMinor),
     heldMinor,
+    platformVoucherCreditMinor:rangedOperations.filter(row=>row.kind==="platform_voucher_credit"&&row.status==="confirmed").reduce((sum,row)=>sum+row.amount_minor,0),
     providerCostMinor,
     providerCostsPendingCount,
     paidTransfersMinor,

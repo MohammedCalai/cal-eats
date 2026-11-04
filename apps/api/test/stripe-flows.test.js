@@ -19,6 +19,7 @@ function fixture(adapter) {
   db.prepare("INSERT INTO stripe_account_readiness VALUES('restaurant','stripe_test','acct_restaurant',1,1,?)").run(stamp);
   db.prepare("INSERT INTO marketplace_operations VALUES('eligible','order:order:settlement-eligible','restaurant','order','settlement_eligibility','confirmed',1860,'GBP','stripe_test',NULL,NULL,'{}',?,?)").run(stamp, stamp);
   const config = {
+    financialRemediesEnabled: true,
     paymentProviderMode: "stripe_test",
     stripePlatformAccountId: "acct_platform",
     paymentProviderWebhookSecret: "whsec_platform",

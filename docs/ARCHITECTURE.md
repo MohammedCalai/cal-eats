@@ -52,3 +52,14 @@ Use `npm test` for meaningful unit/API tests. Cover fresh/repeated migrations, p
 
 ## Runtime references
 The installed runtime was tested directly with an in-memory SQLite query. Relevant upstream references: [Node 24 SQLite](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html) and [Node 24 crypto](https://nodejs.org/docs/latest-v24.x/api/crypto.html). The former documents synchronous database calls: keep transaction callbacks synchronous and do no network or password hashing inside them. These references are implementation context, not a promise of production readiness.
+
+
+## Experience and administration update — 4 November 2026
+
+The existing customer web/Android/iOS source and role-based business/tablet portal remain one API deployment. The owner phone app is on hold; Apple builds are paused pending organisation approval. Android store-test builds use the independent `yankee1707/cal-eats` project and the hosted test backend.
+
+Customer checkout schedules delivery/collection up to seven days ahead using server-generated London-time slots. The requested target is immutable and separate from the restaurant’s promised ETA. Shop ratings accept only an integer 1–5 after completion, one per order, without review text. Application acknowledgement is queued once through the existing transactional email outbox and promises contact within 72 hours. New financial refund actions are disabled by default; existing financial and case histories remain available for reconciliation. Restaurant-first help conversations continue with encrypted replies.
+
+Admin workspaces are split into lazy-loaded route modules. Directories, pending-order queues, orders and financial lists filter in SQL before bounded pagination. The restaurant workspace reuses validated menu/marketing components through an explicit admin-scoped server adapter; it does not impersonate owners. Every mutation retains the real administrator identity and existing audit/validation rules. No payment, printer or credential control is exposed by that adapter. Customer accounts and platform-funded vouchers use their own endpoints; see [platform voucher contract](platform-vouchers.md).
+
+Coverage coordinates use configured postcode-area centres only, in batches of at most 20 with four simultaneous geocodes and bounded timeouts/caching. The administrator map is indicative, not a claim of polygon-level delivery boundaries. Actual ordering remains governed by saved postcode rules and owner coverage. Map tiles use normal browser caching and visible OpenStreetMap attribution; postcode centres follow [Postcodes.io](https://postcodes.io/docs/outcode/lookup/), with tile usage following the [OSMF policy](https://operations.osmfoundation.org/policies/tiles/).

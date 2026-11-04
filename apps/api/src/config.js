@@ -47,6 +47,8 @@ export function loadConfig(overrides = {}) {
   const orderAlertEmail = loadOrderAlertEmailConfig(overrides.orderAlertEmail, dbPath);
   const statementSendEnabled = overrides.businessStatements?.sendEnabled ?? process.env.CALAI_BUSINESS_STATEMENTS_SEND_ENABLED === "true";
   if (typeof statementSendEnabled !== "boolean") throw new Error("Business statement send enablement must be a boolean");
+  const financialRemediesEnabled = overrides.financialRemediesEnabled ?? false;
+  if (typeof financialRemediesEnabled !== "boolean" || (financialRemediesEnabled && runMode !== "local")) throw new Error("Financial remedies are disabled for hosted Cal-Eats; legacy simulation requires an explicit local override");
   return {
     hostname,
     runMode,
@@ -60,6 +62,7 @@ export function loadConfig(overrides = {}) {
     migrateOnStart,
     orderAlertEmail,
     businessStatements: { sendEnabled: statementSendEnabled },
+    financialRemediesEnabled,
     sessionHours: overrides.sessionHours ?? 24,
     bodyLimit: overrides.bodyLimit ?? 16 * 1024,
     orderExpiryMinutes,
@@ -78,6 +81,7 @@ export function loadConfig(overrides = {}) {
     providerWebhookBodyLimit: overrides.providerWebhookBodyLimit ?? 256 * 1024,
     now: overrides.now ?? (() => new Date()),
     locationProvider: overrides.locationProvider,
+    serviceAreaMapProvider: overrides.serviceAreaMapProvider,
     rateLimit: overrides.rateLimit ?? { attempts: 8, windowMs: 60_000 }
   };
 }

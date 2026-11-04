@@ -13,7 +13,7 @@ export async function journeyFixture(configOverrides = {}) {
   migrateDatabase(db);
   await seedDemoData(db, new Date("2026-01-01T00:00:00.000Z"));
   let tick = 0;
-  const config = loadConfig({ dbPath: path.join(directory, "test.sqlite"), now: () => new Date(Date.parse("2026-01-01T01:00:00.000Z") + tick++ * 1000), ...configOverrides });
+  const config = loadConfig({ dbPath: path.join(directory, "test.sqlite"), financialRemediesEnabled: configOverrides.runMode !== "hosted-preview", now: () => new Date(Date.parse("2026-01-01T01:00:00.000Z") + tick++ * 1000), ...configOverrides });
   const app = createApp({ db, config });
   async function request(route, { method = "GET", body, cookie, headers = {} } = {}) {
     const allHeaders = Object.fromEntries(Object.entries({ host: config.expectedHost, ...(cookie ? { cookie } : {}), ...headers }).map(([key, value]) => [key.toLowerCase(), value]));

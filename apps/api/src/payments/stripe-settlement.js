@@ -1,3 +1,4 @@
+import {customerPayableMinor,platformVoucherMinor,assertVoucherFunding,voucherProviderBinding} from "../platform-vouchers.js";
 import { randomUUID } from "node:crypto";
 import { withTransaction } from "../db/index.js";
 
@@ -23,8 +24,20 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
         AND NOT EXISTS (SELECT 1 FROM refund_cases c WHERE c.order_id=o.id AND c.resolved_at IS NULL AND c.status NOT IN ('rejected','refunded'))
         AND NOT EXISTS (SELECT 1 FROM marketplace_operations t WHERE t.order_id=o.id AND t.kind='merchant_transfer' AND t.provider_mode=p.provider_mode)
       ORDER BY o.updated_at,o.id LIMIT ?`).all(mode, limit);
+    // Orders entirely funded by Cal-Eats have no card charge or PaymentIntent.
+    // Their verified voucher redemption is the independent entitlement to payout.
+    const funded=db.prepare(`SELECT o.*,NULL payment_intent_id,NULL latest_charge_id,a.provider_reference destination_account_id,a.capabilities FROM orders o
+      JOIN provider_accounts a ON a.restaurant_id=o.restaurant_id AND a.provider_mode=? AND a.status='enabled'
+      JOIN stripe_account_readiness ready ON ready.restaurant_id=a.restaurant_id AND ready.provider_mode=a.provider_mode AND ready.provider_account_id=a.provider_reference AND ready.charges_enabled=1 AND ready.payouts_enabled=1
+      JOIN marketplace_operations eligible ON eligible.order_id=o.id AND eligible.operation_key='order:'||o.id||':settlement-eligible' AND eligible.status='confirmed' AND eligible.provider_mode=a.provider_mode
+      WHERE o.payment_method='voucher' AND o.payment_status='voucher_redeemed' AND o.status='completed'
+        AND NOT EXISTS(SELECT 1 FROM marketplace_operations t WHERE t.order_id=o.id AND t.kind='merchant_transfer' AND t.provider_mode=a.provider_mode)
+        AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.order_id=o.id AND c.resolved_at IS NULL AND c.status NOT IN ('rejected','refunded'))
+      ORDER BY o.updated_at,o.id LIMIT ?`).all(mode,Math.max(0,limit-rows.length));
+    rows.push(...funded);
     let queued = 0;
     for (const order of rows) {
+      if(platformVoucherMinor(order)&&(!assertVoucherFunding(db,order)||!voucherProviderBinding(order,config)))continue;
       let capabilities;
       try { capabilities = JSON.parse(order.capabilities); } catch { continue; }
       if (!Array.isArray(capabilities) || !capabilities.includes("transfers") || !capabilities.includes("card_payments")) continue;
@@ -36,7 +49,8 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
       const operationKey = `stripe-transfer:${mode}:${order.id}`;
       const snapshot = { orderId: order.id, restaurantId: order.restaurant_id, amountMinor,
         totalMinor: order.total_minor, refundsMinor: refunds.total, commissionMinor,
-        sourceCharge: order.latest_charge_id, paymentIntentId: order.payment_intent_id,
+        sourceCharge: platformVoucherMinor(order)?null:order.latest_charge_id, paymentIntentId: order.payment_intent_id,
+        fundingSource:platformVoucherMinor(order)?"platform_balance":"source_charge",platformVoucherMinor:platformVoucherMinor(order),customerPayableMinor:customerPayableMinor(order),
         accountId: order.destination_account_id, platformAccountId: config.stripePlatformAccountId,
         providerMode: mode, policyVersion: order.contract_policy_version, verifiedCompletedAt: stamp,
         refundIds: db.prepare("SELECT id FROM refunds WHERE order_id=? ORDER BY id").all(order.id).map(row=>row.id) };

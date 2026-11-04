@@ -1,9 +1,12 @@
+import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
+import {businessApplicationMigration37} from "../business-application-migration.js";
 import { menuDetailsMigration30 } from "../menu-details.js";
 import { serviceAreaMigration31 } from "../service-areas.js";
 import { marketingCampaignMigration32 } from "../marketing-campaign-migration.js";
 import { offerDismissalMigration33 } from "../offer-dismissal-migration.js";
 import { printerManagementMigration34 } from "../printer-management-migration.js";
 import { mediaDiscoveryMigration35 } from "../media-discovery-migration.js";
+import { scheduledOrdersRatingsMigration36 } from "../scheduled-orders-ratings-migration.js";
 import { PROVIDER_EVENTS_MIGRATION } from "../payments/provider-events-migration.js";
 import { GOVERNANCE_EPISODE_MIGRATION } from "../governance-migration.js";
 import { orderMessagingMigration19 } from "../order-messaging-migration.js";
@@ -273,5 +276,8 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
   marketingCampaignMigration32,
   offerDismissalMigration33,
   printerManagementMigration34,
-  mediaDiscoveryMigration35
+  mediaDiscoveryMigration35,
+  scheduledOrdersRatingsMigration36,
+  businessApplicationMigration37,
+  platformVouchersMigration38
 ];

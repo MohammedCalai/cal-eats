@@ -63,6 +63,7 @@ export async function routeAdminGovernance({req,res,url,db,config,session}) {
 function policyDto(row){return{customerResponseHours:row.customer_response_hours,restaurantResponseHours:row.restaurant_response_hours,reminderLeadHours:row.reminder_lead_hours,updatedAt:row.updated_at};}
 function notify(db,{userId,type,title,message,caseId,restaurantId,eventKey,now}){db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,offer_id,restaurant_id,event_key,created_at,read_at) VALUES(?,?,?,?,?,NULL,NULL,?,?,?,NULL)").run(randomUUID(),userId,type,title,message,restaurantId,eventKey,now);}
 export function runGovernanceReminders(db,config){
+  if(config.financialRemediesEnabled!==true)return{reminders:0,escalations:0};
   const now=nowIso(config),nowMs=config.now().getTime(),policy=db.prepare("SELECT * FROM refund_response_policy WHERE id=1").get();let reminders=0,escalations=0;
   withTransaction(db,()=>{
     const waiting=db.prepare("SELECT * FROM refund_cases WHERE resolved_at IS NULL AND status IN ('awaiting_customer','awaiting_restaurant')").all();

@@ -1,3 +1,4 @@
+import {releasePlatformVoucher} from "./platform-vouchers.js";
 import { createHash, randomUUID } from "node:crypto";
 import { requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
@@ -34,6 +35,7 @@ export function notifyOrderStatus(db, order, status, now, type = "order_status",
 }
 
 export function releaseOfferForOrder(db, order, now) {
+  releasePlatformVoucher(db,order,now);
   if (!order.offer_grant_id) return;
   const grant = db.prepare("SELECT g.*,c.expires_at FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=?").get(order.offer_grant_id);
   if (!grant || grant.status !== "reserved" || grant.reserved_order_id !== order.id) return;

@@ -6,6 +6,11 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../portal/dist");
 const portalTypes = new Map([[".html", "text/html; charset=utf-8"], [".js", "text/javascript; charset=utf-8"], [".css", "text/css; charset=utf-8"], [".webmanifest", "application/manifest+json; charset=utf-8"], [".png", "image/png"], [".svg", "image/svg+xml"], [".wav", "audio/wav"]]);
 const assets = new Map([
+  ["/checkout-ui.js",["checkout-ui.js","text/javascript; charset=utf-8"]],
+  ["/checkout-polish.css",["checkout-polish.css","text/css; charset=utf-8"]],
+  ["/order-experience.js",["order-experience.js","text/javascript; charset=utf-8"]],
+  ["/order-experience.css",["order-experience.css","text/css; charset=utf-8"]],
+  ["/order-history-groups.js",["order-history-groups.js","text/javascript; charset=utf-8"]],
   ["/", ["landing.html", "text/html; charset=utf-8"]],
   ["/order", ["index.html", "text/html; charset=utf-8"]],
   ["/order/", ["index.html", "text/html; charset=utf-8"]],
@@ -86,7 +91,8 @@ async function servePortal(req, res, pathname) {
   try {
     const body = await readFile(absolute);
     const offline = resource === "offline-portal.html";
-    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
     res.writeHead(200, { "Content-Type": portalTypes.get(path.extname(resource)), "Content-Length": body.length, "Cache-Control": "no-store" });
     res.end(req.method === "HEAD" ? undefined : body);
     return true;

@@ -1,5 +1,6 @@
 import { money, statusLabel } from "./model.js";
 import { customerRestaurantVisual } from "./customer-ui.js";
+import { orderHistoryGroups } from "./order-history-groups.js";
 
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const activeStatuses = new Set(["placed", "accepted", "preparing", "ready", "out_for_delivery"]);
@@ -19,7 +20,8 @@ function rowHtml(order, { selectedId, now }) {
   const time = date ? dayKey(date) === dayKey(currentDate) ? date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/London" }) : "";
   const unread = Number.isSafeInteger(order.unreadMessageCount) && order.unreadMessageCount > 0 ? order.unreadMessageCount : 0;
   const eta = live && order.status !== "placed" && order.confirmedAt ? parsedDate(order.customerEtaAt || order.estimatedReadyAt) : null;
-  const price = Number.isSafeInteger(order.totalMinor) && order.totalMinor >= 0 ? money(order.totalMinor) : "Total unavailable";
+  const due=order.customerPayableMinor??order.totalMinor;
+  const price = Number.isSafeInteger(due) && due >= 0 ? money(due) : "Total unavailable";
   return `<article class="customer-order-list-item${live ? " is-live" : ""}${unread ? " has-unread" : ""}" data-order-id="${escape(order.id)}"><button type="button" class="customer-order-list-row" data-action="open-customer-order" data-id="${escape(order.id)}"${selectedId === order.id ? ' aria-current="true"' : ""} aria-label="Open order ${escape(reference)} from ${escape(name)}, ${escape(orderStatus(order))}${unread ? `, ${unread} unread message${unread === 1 ? "" : "s"}` : ""}"><span class="customer-order-list-avatar" aria-hidden="true">${customerRestaurantVisual(order)}${live ? '<span class="customer-order-live-energy"></span>' : ""}</span><span class="customer-order-list-copy"><span class="customer-order-list-heading"><strong>${escape(name)}</strong>${date ? `<time datetime="${date.toISOString()}" title="${escape(readableDate(date))}">${escape(time)}</time>` : ""}</span><span class="customer-order-list-status"><span>${live ? '<i aria-hidden="true"></i>' : ""}${escape(orderStatus(order))}</span><b>${escape(price)}</b></span><span class="customer-order-list-meta"><span>${order.fulfillment === "delivery" ? "Delivery" : "Collection"} · #${escape(reference)}${eta ? ` · ${order.fulfillment === "delivery" ? "ETA" : "Collect"} ${eta.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}` : ""}${Number.isSafeInteger(order.refundedTotalMinor) && order.refundedTotalMinor > 0 ? ` · ${escape(money(order.refundedTotalMinor))} refunded` : ""}</span>${unread ? `<b class="customer-order-unread" aria-hidden="true">${unread > 99 ? "99+" : unread}</b>` : '<span class="customer-order-list-chevron" aria-hidden="true">›</span>'}</span></span></button></article>`;
 }
 
@@ -28,7 +30,8 @@ export function customerOrdersListHtml(orders, { selectedId = null, now = Date.n
   const rows = [...new Map((Array.isArray(orders) ? orders : []).filter(order => order && typeof order.id === "string" && order.id).map(order => [order.id, order])).values()];
   const newest = (a, b) => (activityDate(b)?.getTime() || 0) - (activityDate(a)?.getTime() || 0) || a.id.localeCompare(b.id);
   const live = rows.filter(order => activeStatuses.has(order.status)).sort(newest), past = rows.filter(order => !activeStatuses.has(order.status)).sort(newest);
-  const group = (items, active) => items.length ? `<section class="customer-order-list-group" aria-label="${active ? "Live orders" : "Past orders"}"><header><h2>${active ? "Live orders" : "Past orders"}</h2><span>${items.length} order${items.length === 1 ? "" : "s"}</span></header><div class="customer-order-list-rows">${items.map(order => rowHtml(order, { selectedId, now })).join("")}</div></section>` : "";
+  const orderRows = items => `<div class="customer-order-list-rows">${items.map(order => rowHtml(order, { selectedId, now })).join("")}</div>`;
+  const group = (items, active) => items.length ? `<section class="customer-order-list-group" aria-label="${active ? "Live orders" : "Past orders"}"><header><h2>${active ? "Live orders" : "Past orders"}</h2><span>${items.length} order${items.length === 1 ? "" : "s"}</span></header>${active ? orderRows(items) : orderHistoryGroups(items).map(month => `<section class="customer-order-month" aria-label="${escape(month.label)}"><h3>${escape(month.label)}<span>${month.orders.length}</span></h3>${orderRows(month.orders)}</section>`).join("")}</section>` : "";
   if (!rows.length) return `<div class="customer-orders-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h3"/></svg><strong>No orders to show</strong><p>Try another search, or browse restaurants to start a new order.</p><button type="button" class="secondary" data-view="discover">Browse restaurants</button></div>`;
   return `${group(live, true)}${group(past, false)}`;
 }

@@ -11,7 +11,7 @@ function eventSurface() {
   return target;
 }
 function node() {
-  const value = Object.assign(eventSurface(), { disabled: false, attributes: {}, setAttribute(name, text) { this.attributes[name] = text; }, before() {}, insertAdjacentHTML(_position, html) { this.innerHTML += html; } });
+  const value = Object.assign(eventSurface(), { disabled: false, hidden:false, attributes: {}, setAttribute(name, text) { this.attributes[name] = text; }, before() {}, after(element) {this.afterElement=element;}, insertAdjacentHTML(_position, html) { this.innerHTML += html; } });
   let html = "", text = "";
   Object.defineProperties(value, { innerHTML: { get: () => html, set: value => { html = String(value); text = ""; } }, textContent: { get: () => text, set: value => { text = String(value); html = text; } } });
   return value;
@@ -29,11 +29,12 @@ function harness(t) {
     timers, document, window, flush,
     async runTimer(delay) { const scheduled = [...timers.entries()].find(([, timer]) => timer.delay === delay); assert.ok(scheduled, `Expected an automatic timer after ${delay}ms`); timers.delete(scheduled[0]); await scheduled[1].callback(); await flush(); },
     mount(api, request) {
-      const button = node(), totals = node(), heading = node(), form = node();
+      const button = node(), totals = node(), heading = node(), form = node(),paymentPanel=node(),paymentIntro=node(),paymentNote=node();
       button.textContent = "Place order"; totals.innerHTML = "Estimated total"; heading.textContent = "£10.00";
-      Object.assign(form, { isConnected: true, querySelector(selector) { return { "#place-order": button, ".totals": totals }[selector] ?? null; }, closest() { return { querySelector: () => heading }; } });
+      paymentIntro.textContent="Choose how you’d like to pay.";paymentNote.textContent="Mock card is a test payment. Cash is paid to the restaurant.";
+      Object.assign(form, { isConnected: true, querySelector(selector) { return { "#place-order": button, ".totals": totals,".checkout-payment-methods":paymentPanel,".voucher-funded-note":paymentPanel.afterElement,"[data-checkout-payment-step] .checkout-step-heading p":paymentIntro,".checkout-payment-note":paymentNote }[selector] ?? null; }, closest() { return { querySelector: () => heading }; } });
       const controller = mountCheckoutQuote(form, { api, body: () => request.value }); controllers.push(controller);
-      return { controller, button, totals, form, panel: document.created.at(-1), addressInput() { form.name = "line1"; form.dispatchEvent(new Event("input")); } };
+      return { controller, button, totals, form,paymentPanel,paymentIntro,paymentNote, panel: document.created.at(-1), addressInput() { form.name = "line1"; form.dispatchEvent(new Event("input")); } };
     }
   };
 }
@@ -84,4 +85,13 @@ test("an inconsistent quote never enables ordering or displays unverified saving
   assert.equal(view.controller.totalMinor,null);
   assert.equal(view.button.disabled,true);
   assert.match(view.panel.textContent,/not confirmed/);
+});
+
+test("full and partial vouchers without restaurant promotions show verified credit and restore payment choices when the amount due changes",async t=>{
+  const h=harness(t),base=quote(null),request={value:{fulfillment:"collection",autoApplyVouchers:true,paymentMethod:"card"}};
+  const credited=amount=>({...base,totalMinor:1000-amount,orderValueMinor:1000,customerPayableMinor:1000-amount,platformVoucherMinor:amount,voucherId:amount?"voucher-care":null,voucher:amount?{id:"voucher-care",title:"Care <credit>",amountMinor:amount,fundingParty:"platform"}:null});
+  let current=credited(1000),calls=0;const view=h.mount(async()=>{calls++;return current;},request);await h.flush();
+  assert.equal(view.button.disabled,false);assert.equal(view.controller.totalMinor,0);assert.equal(view.controller.fullyFunded,true);assert.equal(view.controller.voucherId,"voucher-care");assert.equal(view.controller.offerId,null);assert.match(view.panel.innerHTML,/Cal-Eats voucher applied/);assert.match(view.panel.innerHTML,/Care &lt;credit&gt;/);assert.match(view.panel.innerHTML,/No payment needed/);assert.doesNotMatch(view.panel.innerHTML,/Eligible offer applied/);assert.equal(view.paymentPanel.hidden,true);assert.equal(view.paymentNote.hidden,true);assert.match(view.paymentIntro.textContent,/Covered by your Cal-Eats voucher/);assert.equal(view.paymentPanel.afterElement.hidden,false);assert.equal(await view.controller.confirm(),true);assert.equal(h.timers.size,0,"A valid voucher quote must not enter retry backoff");
+  current=credited(300);await view.controller.refresh();assert.equal(view.button.disabled,false);assert.equal(view.controller.totalMinor,700);assert.equal(view.controller.fullyFunded,false);assert.match(view.panel.innerHTML,/remaining balance/);assert.match(view.totals.innerHTML,/Cal-Eats voucher/);assert.match(view.totals.innerHTML,/£7.00/);assert.equal(view.paymentPanel.hidden,false);assert.equal(view.paymentNote.hidden,false);assert.equal(view.paymentPanel.afterElement.hidden,true);assert.equal(view.paymentIntro.textContent,"Choose how you’d like to pay.");assert.equal(await view.controller.confirm(),true);
+  current=credited(0);await view.controller.refresh();assert.equal(view.button.disabled,false);assert.equal(view.controller.totalMinor,1000);assert.equal(view.controller.voucherId,null);assert.doesNotMatch(view.panel.innerHTML,/voucher applied|Eligible offer applied/);assert.equal(view.paymentPanel.hidden,false);assert.equal(h.timers.size,0);assert.equal(calls,5);
 });

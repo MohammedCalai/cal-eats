@@ -1,3 +1,4 @@
+import {customerPayableMinor,platformVoucherMinor} from "./platform-vouchers.js";
 import { requireRestaurantOwner } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 
@@ -31,7 +32,7 @@ export function buildOrderFinancialBreakdown(db, order) {
     if (!currentEarnings) { state = "no_net_earnings"; label = "No net earnings remaining"; }
     else if (order.payment_method === "cash") { state = order.payment_status === "cash_collected" ? "cash_direct" : "cash_due"; label = state === "cash_direct" ? "Cash received by restaurant" : "Cash due to restaurant"; }
     else if (order.payment_method === "mock_card") { state = "simulated"; label = "Test payment · no bank payout"; }
-    else if (transfers.some(row => row.status === "unknown")) { state = "needs_review"; label = "Transfer needs review"; }
+    else if (transfers.some(row => ["unknown","failed"].includes(row.status))) { state = "needs_review"; label = "Transfer needs review"; }
     else if (transferredMinor > reversedTransferMinor) { state = "transferred_to_balance"; label = "Transferred to Stripe balance"; }
     else if (transfers.some(row => row.status === "held")) { state = "held"; label = "Transfer on hold"; }
     else if (transfers.some(row => ["pending", "delayed"].includes(row.status))) { state = "processing"; label = "Transfer processing"; }
@@ -39,8 +40,8 @@ export function buildOrderFinancialBreakdown(db, order) {
   }
   const base = order.commission_base === "food_plus_delivery" ? "food_plus_delivery" : "food";
   return {
-    orderId: order.id, restaurantId: order.restaurant_id, currency: order.currency, status: order.status, createdAt: order.created_at, paymentMethod: order.payment_method, paymentStatus: order.payment_status, providerMode: payment?.provider_mode || "local_simulator", items,
-    totals: { grossFoodMinor: Math.max(amount(order.gross_food_minor), order.subtotal_minor + discount), restaurantDiscountMinor: discount, foodChargedMinor: order.subtotal_minor, deliveryFeeMinor: order.delivery_fee_minor, customerChargedMinor: order.total_minor, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor, retainedCustomerPaymentMinor: Math.max(0, order.total_minor - refundedTotalMinor) },
+    orderId: order.id, restaurantId: order.restaurant_id, currency: order.currency, status: order.status, createdAt: order.created_at, paymentMethod: order.payment_method, paymentStatus: order.payment_status, providerMode: payment?.provider_mode || parse(order.platform_voucher_snapshot)?.providerMode || "local_simulator", items,
+    totals: { grossFoodMinor: Math.max(amount(order.gross_food_minor), order.subtotal_minor + discount), restaurantDiscountMinor: discount, foodChargedMinor: order.subtotal_minor, deliveryFeeMinor: order.delivery_fee_minor, orderValueMinor:order.total_minor,platformVoucherMinor:platformVoucherMinor(order),customerPayableMinor:customerPayableMinor(order),customerChargedMinor: order.total_minor, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor, retainedCustomerPaymentMinor: Math.max(0, order.total_minor - refundedTotalMinor) },
     commission: { rateBasisPoints: order.contract_rate_bps, base, commissionableMinor: order.subtotal_minor + (base === "food_plus_delivery" ? order.delivery_fee_minor : 0), originalMinor: originalCommission, reversedMinor, retainedMinor: retainedCommission, policyVersion: order.contract_policy_version, developmentAssumption: Boolean(order.contract_demo_only), recognised: confirmed }, promotion,
     earnings: { originalMinor: originalEarnings, refundImpactMinor: originalEarnings - currentEarnings, currentMinor: currentEarnings, providerFeeChargedToRestaurantMinor: 0, providerFeeBorneBy: "platform", confirmed },
     refunds: refunds.map(row => ({ id: row.id, foodMinor: row.food_amount_minor, deliveryMinor: row.delivery_amount_minor, commissionReversalMinor: row.commission_reversal_minor, createdAt: row.created_at })),

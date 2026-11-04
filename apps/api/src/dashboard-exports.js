@@ -48,16 +48,16 @@ function liveMetrics(db, restaurantId, stamp) {
 }
 function ordersExport(db, restaurantId, range, admin) {
   const scope = orderScope(restaurantId, range);
-  const orders = db.prepare(`SELECT o.id,o.restaurant_id,o.restaurant_name,o.status,o.fulfillment,o.created_at,o.updated_at,o.confirmed_at,o.estimated_ready_at AS customer_eta_at,o.merchant_visible_at,
-    o.total_minor,o.subtotal_minor,o.delivery_fee_minor,o.currency,o.payment_method,o.payment_status,o.commission_minor,
+  const orders = db.prepare(`SELECT o.id,o.restaurant_id,o.restaurant_name,o.status,o.fulfillment,o.scheduled_for,o.created_at,o.updated_at,o.confirmed_at,o.estimated_ready_at AS customer_eta_at,o.merchant_visible_at,
+    o.total_minor,o.customer_payable_minor,o.platform_voucher_minor,o.subtotal_minor,o.delivery_fee_minor,o.currency,o.payment_method,o.payment_status,o.commission_minor,
     COALESCE((SELECT SUM(food_amount_minor+delivery_amount_minor) FROM refunds WHERE order_id=o.id),0) AS refunded_minor,
-    COALESCE((SELECT provider_mode FROM stripe_order_payments WHERE order_id=o.id),CASE WHEN o.payment_method='card' THEN 'unrecorded_card' ELSE 'local_simulator' END) AS provider_mode
+    COALESCE((SELECT provider_mode FROM stripe_order_payments WHERE order_id=o.id),json_extract(o.platform_voucher_snapshot,'$.providerMode'),CASE WHEN o.payment_method='card' THEN 'unrecorded_card' ELSE 'local_simulator' END) AS provider_mode
     FROM orders o WHERE ${scope.sql} ORDER BY o.created_at,o.id LIMIT ?`).all(...scope.values, MAX_ROWS + 1);
-  const headers = ["orderId", "restaurantId", "restaurantName", "status", "fulfillment", "createdAtUtc", "updatedAtUtc", "confirmedAtUtc", "customerEtaAtUtc", "restaurantReceivedAtUtc"];
-  if (admin) headers.push("foodSubtotalMinor", "deliveryFeeMinor", "totalMinor", "recordedCommissionMinor", "refundsMinor", "currency", "paymentMethod", "paymentStatus", "providerMode");
+  const headers = ["orderId", "restaurantId", "restaurantName", "status", "fulfillment", "scheduledForUtc", "createdAtUtc", "updatedAtUtc", "confirmedAtUtc", "customerEtaAtUtc", "restaurantReceivedAtUtc"];
+  if (admin) headers.push("foodSubtotalMinor", "deliveryFeeMinor", "totalMinor", "recordedCommissionMinor", "refundsMinor", "currency", "paymentMethod", "paymentStatus", "providerMode","customerPayableMinor","platformVoucherMinor");
   const rows = orders.map(order => {
-    const row = [order.id, order.restaurant_id, order.restaurant_name, order.status, order.fulfillment, order.created_at, order.updated_at, order.confirmed_at, order.customer_eta_at, order.merchant_visible_at];
-    if (admin) row.push(order.subtotal_minor, order.delivery_fee_minor, order.total_minor, order.commission_minor, order.refunded_minor, order.currency, order.payment_method, order.payment_status, order.provider_mode);
+    const row = [order.id, order.restaurant_id, order.restaurant_name, order.status, order.fulfillment, order.scheduled_for, order.created_at, order.updated_at, order.confirmed_at, order.customer_eta_at, order.merchant_visible_at];
+    if (admin) row.push(order.subtotal_minor, order.delivery_fee_minor, order.total_minor, order.commission_minor, order.refunded_minor, order.currency, order.payment_method, order.payment_status, order.provider_mode,order.customer_payable_minor??order.total_minor,order.platform_voucher_minor);
     return row;
   });
   return { headers, rows };

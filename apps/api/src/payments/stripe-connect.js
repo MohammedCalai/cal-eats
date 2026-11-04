@@ -1,3 +1,4 @@
+import {customerPayableMinor,platformVoucherMinor,fullyVoucherFunded,assertVoucherFunding,voucherProviderBinding} from "../platform-vouchers.js";
 import { randomUUID } from "node:crypto";
 import { requireRestaurantOwner, requireRole } from "../auth/authorization.js";
 import { withTransaction } from "../db/index.js";
@@ -28,7 +29,7 @@ const ensurePlatform = ensureStripePlatform;
 
 export function assertStripePaymentBinding(result, { order, payment }) {
   const hasIntent = Boolean(result?.paymentIntentId);
-  if (!result || result.ok === false || result.amountMinor !== order.total_minor || String(result.currency || "").toUpperCase() !== order.currency || result.orderId !== order.id || result.restaurantId !== order.restaurant_id || (hasIntent && result.captureMethod !== "manual") || (["authorized", "captured"].includes(result.paymentState) && !hasIntent)) throw new HttpError(409,"STRIPE_PAYMENT_MISMATCH","Stripe payment does not match the order");
+  if (!result || result.ok === false || result.amountMinor !== customerPayableMinor(order) || String(result.currency || "").toUpperCase() !== order.currency || result.orderId !== order.id || result.restaurantId !== order.restaurant_id || (hasIntent && result.captureMethod !== "manual") || (["authorized", "captured"].includes(result.paymentState) && !hasIntent)) throw new HttpError(409,"STRIPE_PAYMENT_MISMATCH","Stripe payment does not match the order");
   if (payment?.payment_intent_id && result.paymentIntentId !== payment.payment_intent_id) throw new HttpError(409,"STRIPE_PAYMENT_MISMATCH","Stripe PaymentIntent does not match the order");
   return result;
 }
@@ -118,14 +119,14 @@ async function checkout({ req, res, db, config, order, payment }) {
   const stamp = now(config), mode = stripeMode(config);
   withTransaction(db,()=>db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,status,created_at,updated_at) VALUES(?,?,'pending',?,?) ON CONFLICT(order_id) DO NOTHING").run(order.id,mode,stamp,stamp));
   // This key is fixed by the server, so changing client retry keys cannot create another session.
-  const result = await provider(config).createCheckoutSession({orderId:order.id,restaurantId:order.restaurant_id,amountMinor:order.total_minor,transferGroup:`order:${order.id}`,successUrl:new URL(`/order/?payment_order=${encodeURIComponent(order.id)}`,config.origin).href,cancelUrl:new URL(`/order/?payment_order=${encodeURIComponent(order.id)}&payment_cancelled=1`,config.origin).href,idempotencyKey:`checkout:${mode}:${order.id}`});
+  const result = await provider(config).createCheckoutSession({orderId:order.id,restaurantId:order.restaurant_id,amountMinor:customerPayableMinor(order),transferGroup:`order:${order.id}`,successUrl:new URL(`/order/?payment_order=${encodeURIComponent(order.id)}`,config.origin).href,cancelUrl:new URL(`/order/?payment_order=${encodeURIComponent(order.id)}&payment_cancelled=1`,config.origin).href,idempotencyKey:`checkout:${mode}:${order.id}`});
   if (result?.ok === false || !result?.checkoutUrl || !/^cs_[A-Za-z0-9_]+$/.test(result.providerReference || "")) {
     db.prepare("UPDATE stripe_order_payments SET status='unknown',error='CHECKOUT_CREATION_UNCONFIRMED',updated_at=? WHERE order_id=? AND status<>'captured'").run(now(config),order.id);
     throw new HttpError(503,"CHECKOUT_CREATION_UNCONFIRMED","Checkout could not be confirmed. Retry this order; another order is not needed");
   }
   const destination = new URL(result.checkoutUrl);
   if (destination.protocol !== "https:" || destination.hostname !== "checkout.stripe.com" || destination.username || destination.password) throw new HttpError(502,"STRIPE_DESTINATION_INVALID","Secure checkout destination could not be verified");
-  if (result.amountMinor !== order.total_minor || result.orderId !== order.id || result.restaurantId !== order.restaurant_id || String(result.currency).toUpperCase() !== order.currency) throw new HttpError(409,"STRIPE_PAYMENT_MISMATCH","Checkout does not match the order");
+  if (result.amountMinor !== customerPayableMinor(order) || result.orderId !== order.id || result.restaurantId !== order.restaurant_id || String(result.currency).toUpperCase() !== order.currency) throw new HttpError(409,"STRIPE_PAYMENT_MISMATCH","Checkout does not match the order");
   withTransaction(db,()=>{
     if (!db.prepare("SELECT 1 FROM orders WHERE id=? AND status='placed'").get(order.id)) throw new HttpError(409,"CHECKOUT_EXPIRED","This order is no longer awaiting payment");
     db.prepare("UPDATE stripe_order_payments SET checkout_session_id=COALESCE(checkout_session_id,?),payment_intent_id=COALESCE(payment_intent_id,?),checkout_url=?,status=CASE WHEN status='captured' THEN status ELSE 'pending' END,error=NULL,updated_at=? WHERE order_id=? AND provider_mode=?").run(result.providerReference,result.paymentIntentId ?? null,destination.href,now(config),order.id,mode);
@@ -209,9 +210,11 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
   for (let index = 0; index < limit; index += 1) {
     const stamp = now(config), lease = new Date(config.now().getTime()+120_000).toISOString();
     const job = withTransaction(db, () => {
-      db.prepare("UPDATE marketplace_operations SET status='failed',error='PROVIDER_RETRY_EXHAUSTED',updated_at=? WHERE status<>'confirmed' AND operation_key IN (SELECT operation_key FROM marketplace_worker_jobs WHERE kind LIKE 'stripe_%' AND status='claimed' AND lease_expires_at<=? AND attempts>=5)").run(stamp,stamp);
-      db.prepare("UPDATE marketplace_worker_jobs SET status='failed',lease_owner=NULL,lease_expires_at=NULL,error='PROVIDER_RETRY_EXHAUSTED',updated_at=? WHERE kind LIKE 'stripe_%' AND status='claimed' AND lease_expires_at<=? AND attempts>=5").run(stamp,stamp);
-      const row = db.prepare("SELECT * FROM marketplace_worker_jobs WHERE kind IN ('stripe_transfer','stripe_refund','stripe_transfer_reversal') AND ((status IN ('queued','delayed') AND available_at<=?) OR (status='claimed' AND lease_expires_at<=?)) AND attempts<5 ORDER BY created_at,id LIMIT 1").get(stamp,stamp);
+      const financialPolicy=config.financialRemediesEnabled===true?1:0;
+      db.prepare("UPDATE marketplace_operations SET status='failed',error='PROVIDER_RETRY_EXHAUSTED',updated_at=? WHERE status<>'confirmed' AND operation_key IN (SELECT operation_key FROM marketplace_worker_jobs WHERE kind LIKE 'stripe_%' AND (?=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND status='claimed' AND lease_expires_at<=? AND attempts>=5)").run(stamp,financialPolicy,stamp);
+      db.prepare("UPDATE marketplace_worker_jobs SET status='failed',lease_owner=NULL,lease_expires_at=NULL,error='PROVIDER_RETRY_EXHAUSTED',updated_at=? WHERE kind LIKE 'stripe_%' AND (?=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND status='claimed' AND lease_expires_at<=? AND attempts>=5").run(stamp,financialPolicy,stamp);
+      // Existing provider references can be reconciled without creating another refund.
+      const row = db.prepare("SELECT * FROM marketplace_worker_jobs WHERE kind IN ('stripe_transfer','stripe_refund','stripe_transfer_reversal') AND (?=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND ((status IN ('queued','delayed') AND available_at<=?) OR (status='claimed' AND lease_expires_at<=?)) AND attempts<5 ORDER BY created_at,id LIMIT 1").get(financialPolicy,stamp,stamp);
       if (!row) return null;
       db.prepare("UPDATE marketplace_worker_jobs SET status='claimed',lease_owner=?,lease_expires_at=?,attempts=attempts+1,updated_at=? WHERE id=?").run(workerId,lease,stamp,row.id);
       return db.prepare("SELECT * FROM marketplace_worker_jobs WHERE id=?").get(row.id);
@@ -233,8 +236,9 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
         if (ready?.providerReference !== binding.account.provider_reference || !ready.chargesEnabled || !ready.payoutsEnabled || ready.ok === false) throw Object.assign(Error("Restaurant account is not ready"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
         saveAccount(db,config,binding.order.restaurant_id,ready);
         assertCurrentTransfer(db,config,payload,binding);
-        result = await adapter.createTransfer({amountMinor:payload.amountMinor,destinationAccountId:payload.accountId,sourceTransactionId:payload.sourceCharge,transferGroup:`order:${payload.orderId}`,operationKey:job.operation_key,idempotencyKey:job.operation_key});
+        result = await adapter.createTransfer({amountMinor:payload.amountMinor,destinationAccountId:payload.accountId,sourceTransactionId:payload.sourceCharge,platformFunded:payload.fundingSource==="platform_balance",transferGroup:`order:${payload.orderId}`,operationKey:job.operation_key,idempotencyKey:job.operation_key});
       } else if (job.kind === "stripe_refund") {
+        if(config.financialRemediesEnabled!==true)throw Object.assign(Error("Business review is required"),{code:"BUSINESS_DIRECT_RESOLUTION"});
         assertCurrentRefund(db,payload,binding);
         result = await adapter.refundPayment({...payload,orderId:binding.order.id,restaurantId:binding.order.restaurant_id,idempotencyKey:job.operation_key,operationKey:job.operation_key});
       } else result = await adapter.reverseTransfer({...payload,idempotencyKey:job.operation_key});
@@ -261,6 +265,10 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
       summary[confirmed?"completed":"retried"] += 1;
     } catch (error) {
       const updated = now(config), code = safeProviderError(error?.code) ?? "PROVIDER_OPERATION_FAILED";
+      if(code==="BUSINESS_DIRECT_RESOLUTION"){
+        db.prepare("UPDATE marketplace_worker_jobs SET status='queued',attempts=MAX(0,attempts-1),lease_owner=NULL,lease_expires_at=NULL,error=?,updated_at=? WHERE id=? AND lease_owner=?").run(code,updated,job.id,workerId);
+        continue;
+      }
       const held = ["STRIPE_TRANSFER_INELIGIBLE","STRIPE_RESULT_MISMATCH","STRIPE_MODE_MISMATCH"].includes(code), permanent = held || job.attempts >= 5;
       const saved = withTransaction(db, () => {
         if (!hasWorkerLease(db,job,workerId,updated)) return false;
@@ -278,12 +286,12 @@ function hasWorkerLease(db,job,workerId,stamp) { return Boolean(db.prepare("SELE
 function requireWorkerLease(db,job,workerId,stamp) { if (!hasWorkerLease(db,job,workerId,stamp)) throw Object.assign(Error("Worker lease lost"),{code:"WORKER_LEASE_LOST"}); }
 function movementBinding(db,config,job,payload) {
   const dispute = payload.caseId ? db.prepare("SELECT * FROM refund_cases WHERE id=?").get(payload.caseId) : null;
-  const order = db.prepare("SELECT * FROM orders WHERE id=? AND payment_method='card'").get(payload.orderId ?? dispute?.order_id ?? "");
-  const payment = order && db.prepare("SELECT * FROM stripe_order_payments WHERE order_id=?").get(order.id);
+  const order = db.prepare("SELECT * FROM orders WHERE id=? AND payment_method IN ('card','voucher')").get(payload.orderId ?? dispute?.order_id ?? "");
+  const payment = order && (fullyVoucherFunded(order)&&assertVoucherFunding(db,order)?{status:"captured",provider_mode:config.paymentProviderMode,payment_intent_id:null,latest_charge_id:null}:db.prepare("SELECT * FROM stripe_order_payments WHERE order_id=?").get(order.id));
   if (!order || !payment || payment.provider_mode !== config.paymentProviderMode || (payload.providerMode && payload.providerMode !== payment.provider_mode)) throw Object.assign(Error("Payment mode binding failed"),{code:"STRIPE_MODE_MISMATCH"});
   if (!Number.isSafeInteger(payload.amountMinor) || payload.amountMinor < 1 || payload.amountMinor > order.total_minor) throw Object.assign(Error("Amount binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
   const account = accountForMode(db,order.restaurant_id,config);
-  if (job.kind === "stripe_transfer" && (!account || payload.accountId !== account.provider_reference || payload.platformAccountId !== config.stripePlatformAccountId || payload.sourceCharge !== payment.latest_charge_id || payload.paymentIntentId !== payment.payment_intent_id)) throw Object.assign(Error("Transfer binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
+  if (job.kind === "stripe_transfer" && (!account || payload.accountId !== account.provider_reference || payload.platformAccountId !== config.stripePlatformAccountId || (payload.sourceCharge??null) !== (platformVoucherMinor(order)?null:payment.latest_charge_id) || (payload.paymentIntentId??null) !== (payment.payment_intent_id??null))) throw Object.assign(Error("Transfer binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
   if (job.kind === "stripe_refund" && (!dispute || dispute.provider_mode !== config.paymentProviderMode || payload.paymentIntentId !== payment.payment_intent_id || payload.amountMinor !== dispute.approved_amount_minor)) throw Object.assign(Error("Refund binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
   if (job.kind === "stripe_transfer_reversal") {
     const transfer = db.prepare("SELECT * FROM marketplace_operations WHERE order_id=? AND kind='merchant_transfer' AND provider_reference=? AND provider_mode=? AND status='confirmed'").get(order.id,payload.transferId,config.paymentProviderMode);
@@ -298,6 +306,8 @@ function assertCurrentTransfer(db,config,payload,binding) {
   const refunds = db.prepare("SELECT COALESCE(SUM(food_amount_minor+delivery_amount_minor),0) total,COALESCE(SUM(commission_reversal_minor),0) reversal FROM refunds WHERE order_id=?").get(order.id);
   const active = db.prepare("SELECT 1 FROM refund_cases WHERE order_id=? AND resolved_at IS NULL AND status NOT IN ('rejected','refunded')").get(order.id);
   const net = order.total_minor - refunds.total - Math.max(0,order.commission_minor-refunds.reversal);
+  if(platformVoucherMinor(order)&&(!assertVoucherFunding(db,order)||!voucherProviderBinding(order,config)||payload.fundingSource!=="platform_balance"||payload.platformVoucherMinor!==platformVoucherMinor(order)||payload.customerPayableMinor!==customerPayableMinor(order)))throw Object.assign(Error("Voucher settlement snapshot is invalid"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
+  if(!platformVoucherMinor(order)&&payload.fundingSource==="platform_balance")throw Object.assign(Error("Platform funding is not authorized"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
   if (order.status !== "completed" || binding.payment.status !== "captured" || !ready?.charges_enabled || !ready?.payouts_enabled || active || payload.amountMinor !== net || payload.totalMinor !== order.total_minor || payload.policyVersion !== order.contract_policy_version) throw Object.assign(Error("Transfer snapshot is no longer eligible"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
 }
 function assertCurrentRefund(db,payload,binding) {
@@ -306,7 +316,7 @@ function assertCurrentRefund(db,payload,binding) {
 }
 function assertMovementResult(result,job,payload,binding) {
   let valid = result.amountMinor === payload.amountMinor && String(result.currency).toUpperCase() === "GBP" && Boolean(result.providerReference);
-  if (job.kind === "stripe_transfer") valid &&= result.destinationAccountId === payload.accountId && result.sourceTransactionId === payload.sourceCharge && result.transferGroup === `order:${binding.order.id}`;
+  if (job.kind === "stripe_transfer") valid &&= result.destinationAccountId === payload.accountId && (result.sourceTransactionId??null) === (payload.sourceCharge??null) && result.transferGroup === `order:${binding.order.id}`;
   else if (job.kind === "stripe_refund") valid &&= result.paymentIntentId === binding.payment.payment_intent_id && (!result.orderId || result.orderId === binding.order.id) && (!result.restaurantId || result.restaurantId === binding.order.restaurant_id);
   else valid &&= result.transferId === payload.transferId;
   if (!valid) throw Object.assign(Error("Provider result does not match operation"),{code:"STRIPE_RESULT_MISMATCH"});

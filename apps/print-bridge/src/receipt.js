@@ -76,6 +76,12 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   const lines = ["", "=".repeat(WIDTH), ...center("CAL-EATS"), ...center(restaurantName), "=".repeat(WIDTH)];
   if (manualReprint) lines.push("", ...center("*** MANUAL REPRINT ***"), "");
   lines.push(...columns(`Order: ${orderNumber}`, stamp.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false })), `Date: ${stamp.toLocaleDateString("en-GB", { timeZone: "Europe/London" })}`, `Fulfilment: ${receipt.fulfillment.toUpperCase()}`);
+  if (receipt.scheduledFor !== undefined && receipt.scheduledFor !== null) {
+    const scheduled = new Date(receipt.scheduledFor);
+    if (typeof receipt.scheduledFor !== "string" || !Number.isFinite(+scheduled)) throw new Error("receipt.scheduledFor is invalid");
+    const display = scheduled.toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+    lines.push("", ...wrap(`SCHEDULED ${receipt.fulfillment.toUpperCase()}: ${display}`), "");
+  }
   const customerName = clean(receipt.customerName, "receipt.customerName", 120);
   const customerPhone = clean(receipt.customerPhone, "receipt.customerPhone", 60);
   const deliveryAddress = clean(receipt.deliveryAddress, "receipt.deliveryAddress", 300);
@@ -89,6 +95,7 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   lines.push("", "-".repeat(WIDTH), "ITEMS", "");
   for (const [index, item] of items.entries()) lines.push(...itemLines(item, index), "");
   lines.push("-".repeat(WIDTH), ...columns("Food subtotal", subtotal), ...columns("Delivery", delivery), ...columns("TOTAL", total));
+  if(receipt.platformVoucherMinor){const credit=money(receipt.platformVoucherMinor,"receipt.platformVoucherMinor"),due=money(receipt.customerPayableMinor,"receipt.customerPayableMinor");lines.push(...columns("Cal-Eats voucher",credit),...columns("Customer pays",due),...wrap("Voucher funded by Cal-Eats"));}
   const paymentStatus = clean(receipt.paymentStatus, "receipt.paymentStatus", 80);
   if (!paymentStatus) throw new Error("receipt.paymentStatus is required");
   lines.push(...wrap(`Payment: ${paymentStatus}`), "", ...center("Thank you for ordering with Cal-Eats"), "", "", "");

@@ -17,3 +17,10 @@ test("rejects non-integer money and non-GBP receipts", () => {
   assert.throws(() => formatReceipt(receipt({ totalMinor: 12.5 })), /integer pence/);
   assert.throws(() => formatReceipt(receipt({ currency: "USD" })), /must be GBP/);
 });
+
+test("prints an optional scheduled customer target using the London date and time", () => {
+  const scheduled = formatReceipt(receipt({ scheduledFor: "2026-07-10T17:30:00.000Z" }));
+  assert.match(scheduled.text, /SCHEDULED DELIVERY: Fri 10 Jul, 18:30/);
+  assert.doesNotMatch(formatReceipt(receipt()).text, /SCHEDULED/);
+  assert.throws(() => formatReceipt(receipt({ scheduledFor: "invalid" })), /scheduledFor is invalid/);
+});

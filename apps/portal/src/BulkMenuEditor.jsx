@@ -1,8 +1,9 @@
 import React,{useRef,useState} from "react";
-import {api,json,newKey} from "./api.js";
+import {api as defaultApi,json,newKey} from "./api.js";
 import {menuBatchItems} from "../../../packages/contracts/src/menu-tools.js";
 const blank=()=>({id:crypto.randomUUID(),name:"",price:"",category:"",description:""});
-export default function BulkMenuEditor({restaurantId,onSaved}) {
+export default function BulkMenuEditor({restaurantId,onSaved,request=defaultApi}) {
+  const api=request;
   const [rows,setRows]=useState(()=>[blank(),blank()]),[busy,setBusy]=useState(false),[error,setError]=useState("");const attempt=useRef(null);
   const update=(id,key,value)=>setRows(old=>old.map(row=>row.id===id?{...row,[key]:value}:row));
   async function submit(event){event.preventDefault();if(busy)return;setError("");try{const items=menuBatchItems(rows);if(!attempt.current)attempt.current={key:newKey("menu-batch"),items};setBusy(true);await api(`/api/restaurant/restaurants/${restaurantId}/menu/import`,json("POST",{items:attempt.current.items},attempt.current.key));onSaved(items.length);}catch(e){setError(e.message);}finally{setBusy(false);}}

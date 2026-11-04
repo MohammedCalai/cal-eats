@@ -78,6 +78,8 @@ function list(db, url, where, args) {
   if(assignedTo)where+=assignedTo==="platform"?" AND (s.restaurant_id IS NULL OR u.role<>'customer')":" AND s.restaurant_id IS NOT NULL AND u.role='customer'";
   if(waitingFor && !["team","customer","none"].includes(waitingFor))throw new HttpError(400,"VALIDATION_ERROR","Support waiting status is invalid");
   if(waitingFor){where+=" AND s.waiting_for=?";args.push(waitingFor);}
+  const restaurantId=url.searchParams.get("restaurant");
+  if(restaurantId){if(restaurantId.length>100)throw new HttpError(400,"VALIDATION_ERROR","Restaurant is invalid");where+=" AND (s.restaurant_id=? OR s.requester_restaurant_id=?)";args.push(restaurantId,restaurantId);}
   if (search) { where += " AND (instr(lower(s.subject),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(s.id),lower(?))>0)"; args.push(search, search, search); }
   const total = db.prepare(`SELECT COUNT(*) AS n FROM support_cases s JOIN users u ON u.id=s.user_id WHERE ${where}`).get(...args).n;
   const items = db.prepare(`${query} WHERE ${where} ORDER BY s.updated_at DESC,s.id DESC LIMIT ? OFFSET ?`).all(...args, pageSize, offset).map(supportSummary);
@@ -99,6 +101,9 @@ async function detail(db, config, session, caseId, url) {
   return { ...supportSummary(row), isTeam, canReply: encryption.configured, replyUnavailableReason:encryption.configured?null:"Replies are temporarily unavailable. Your original request is saved; please try again when messaging is restored.", currentUserId: user.id, messages: encryption.configured?await Promise.all(selected.reverse().map(item => messageDto(config, item))):[], nextCursor: hasMore ? { before: oldest.created_at, beforeId: oldest.id } : null };
 }
 export async function routeSupportCases({ req, res, url, db, config, session }) {
+  if(req.method==="GET"&&url.pathname==="/api/admin/support/overview"){
+    requireRole(session,"admin");const restaurant=url.searchParams.get("restaurant");if(restaurant&&restaurant.length>100)throw new HttpError(400,"VALIDATION_ERROR","Restaurant is invalid");const counts=db.prepare(`SELECT COUNT(*) AS total,SUM(CASE WHEN s.status='open' AND s.waiting_for='team' AND (s.restaurant_id IS NULL OR u.role<>'customer') THEN 1 ELSE 0 END) AS needsPlatformReply,SUM(CASE WHEN s.status='open' AND s.waiting_for='team' AND s.restaurant_id IS NOT NULL AND u.role='customer' THEN 1 ELSE 0 END) AS needsRestaurantReply,SUM(CASE WHEN s.status='open' AND s.waiting_for='customer' THEN 1 ELSE 0 END) AS awaitingRequester,SUM(CASE WHEN s.status='resolved' THEN 1 ELSE 0 END) AS resolved FROM support_cases s JOIN users u ON u.id=s.user_id ${restaurant?"WHERE (s.restaurant_id=? OR s.requester_restaurant_id=?)":""}`).get(...(restaurant?[restaurant,restaurant]:[]));return sendJson(res,200,{data:Object.fromEntries(Object.entries(counts).map(([key,value])=>[key,Number(value||0)]))});
+  }
   const ownList = url.pathname === "/api/support", adminList = url.pathname === "/api/admin/support";
   const restaurantList = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/support$/);
   if ((ownList || adminList || restaurantList) && req.method === "GET") {

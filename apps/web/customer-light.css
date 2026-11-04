@@ -364,6 +364,15 @@ body.customer-app>.topbar{position:sticky;top:0;z-index:40;display:flex}
 
 /* Navy sets the bright cyan brand apart; tabs keep a quiet illuminated finish. */
 .customer-app .topbar{background:#103657;border-bottom:1px solid #2e6089;box-shadow:0 4px 18px #0c2f5524}
+/* The discovery tools move with the page, leaving the compact banner in view. */
+.customer-app .customer-hero.discovery-header{position:relative;top:auto}
+.customer-app .discovery-feed{scroll-margin-top:calc(var(--customer-header-height) + 16px)}
+.customer-app .discovery-category-heading{align-items:flex-start;padding:7px 0 14px;margin-bottom:9px;border-bottom:1px solid #d3e4f1}
+.customer-app .discovery-category-heading h1{font-size:clamp(23px,4vw,30px);line-height:1.25;margin:0;letter-spacing:-.035em}
+.customer-app .discovery-category-heading button{font-size:12px;white-space:nowrap;padding-inline:9px}
+.customer-app .restaurant-rating{display:block;margin-top:4px;font-size:12px;line-height:1.5;font-weight:700;color:#305f87}.customer-app .restaurant-rating>span{font-weight:500;color:#5b7890}
+.customer-app.customer-header-compact>.topbar{padding-block:5px;min-height:54px;gap:8px}.customer-app.customer-header-compact>.topbar .brand{min-height:40px}.customer-header-compact .brand-motion{width:145px;height:40px}.customer-header-compact .basket-access>span{display:none}
+@media(max-width:380px){.customer-app .discovery-category-heading{flex-wrap:wrap;gap:6px}.customer-app .discovery-category-heading button{padding-inline:0}}
 .customer-app .bottom-nav:not([hidden]){background:linear-gradient(180deg,#fbfdff,#f3f9ff);border-top-color:#bbd7ee;box-shadow:0 -5px 22px #316fb018}
 .customer-app .bottom-nav button{position:relative;isolation:isolate;gap:6px!important;border:0!important;background:transparent!important;box-shadow:none!important;color:#547c9f;padding:9px 2px 7px;transition:color .18s ease}
 .customer-app .bottom-nav button::before{content:"";position:absolute;z-index:-1;top:5px;left:50%;transform:translateX(-50%);width:51px;height:37px;border-radius:15px;background:radial-gradient(ellipse,#d9eeff70,transparent 75%)}

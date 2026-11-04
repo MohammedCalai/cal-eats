@@ -1,19 +1,27 @@
-import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { api } from "../api";
+import { useRef, useState } from "react";
+import { KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { api, API_BASE_URL } from "../api";
+import { requestKey } from "../model";
 import { Brand, Button, Card, ErrorBanner, Field } from "../components";
 import { colours } from "../theme";
 import type { User } from "../types";
 
-type Mode = "login" | "register" | "forgot" | "reset";
+type Mode = "login" | "register" | "apply" | "forgot" | "reset";
 export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: string, user: User) => Promise<void> }) {
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [resetToken, setResetToken] = useState("");
+  const [restaurantName, setRestaurantName] = useState(""); const [address, setAddress] = useState(""); const [mobile, setMobile] = useState("");
+  const [applicationReceived, setApplicationReceived] = useState(false); const applicationKey = useRef<string | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
 
   async function submit() {
     setBusy(true); setError(""); setNotice("");
     try {
+      if (mode === "apply") {
+        applicationKey.current ??= requestKey("business-application");
+        await api("/api/native/business/auth/apply", { method: "POST", idempotencyKey: applicationKey.current, body: JSON.stringify({ name, email, password, restaurantName, address, mobile }) });
+        setApplicationReceived(true); setPassword(""); return;
+      }
       if (mode === "forgot") {
         await api<{ accepted: true; delivery: string }>("/api/native/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
         setNotice("If the account exists, a reset token was written to the local development mail sink. No email delivery is claimed."); setMode("reset"); return;
@@ -32,15 +40,17 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Brand/><View style={styles.hero}><Text style={styles.kicker}>Local food, made easy</Text><Text style={styles.headline}>Order from independent restaurants near you.</Text><Text style={styles.sub}>This development app talks only to the Cal-Eats API address configured on your device.</Text></View>
-      <Card><Text style={styles.cardTitle}>{mode === "register" ? "Create your account" : mode === "forgot" ? "Recover your account" : mode === "reset" ? "Set a new password" : "Welcome back"}</Text>
-        {mode === "register" ? <Field label="Name" value={name} onChangeText={setName} autoComplete="name" maxLength={100}/> : null}
+      {applicationReceived ? <Card><Text style={styles.cardTitle}>Application received</Text><Text style={styles.sub}>Thank you for applying, {restaurantName}. The Calai team will contact you within 72 hours.</Text><Text style={styles.sub}>Your restaurant stays private while we review your application. An acknowledgement has been queued for {email}.</Text><Button onPress={() => void Linking.openURL(`${API_BASE_URL}/business/login`)}>View your pending application</Button><Button tone="quiet" onPress={() => { setApplicationReceived(false); setMode("login"); setError(""); }}>Back to customer sign in</Button></Card> : <Card><Text style={styles.cardTitle}>{mode === "apply" ? "List your restaurant" : mode === "register" ? "Create your account" : mode === "forgot" ? "Recover your account" : mode === "reset" ? "Set a new password" : "Welcome back"}</Text>
+        {mode === "register" || mode === "apply" ? <Field label={mode === "apply" ? "Your name" : "Name"} value={name} onChangeText={setName} autoComplete="name" maxLength={100}/> : null}
+        {mode === "apply" ? <><Field label="Your business name" value={restaurantName} onChangeText={setRestaurantName} maxLength={150}/><Field label="Full business address" value={address} onChangeText={setAddress} multiline maxLength={500} autoComplete="street-address" hint="Include the street address, town or city and postcode."/><Field label="Your mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" autoComplete="tel" maxLength={30}/></> : null}
         {mode !== "reset" ? <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" maxLength={254}/> : null}
         {mode === "reset" ? <Field label="Reset token" value={resetToken} onChangeText={setResetToken} autoCapitalize="none" autoCorrect={false} hint="Copy this from the local development mail sink."/> : null}
-        {mode !== "forgot" ? <Field label={mode === "reset" ? "New password" : "Password"} value={password} onChangeText={setPassword} secureTextEntry autoComplete={mode === "login" ? "current-password" : "new-password"} maxLength={128}/> : null}
+        {mode !== "forgot" ? <Field label={mode === "apply" ? "Set new password" : mode === "reset" ? "New password" : "Password"} value={password} onChangeText={setPassword} secureTextEntry autoComplete={mode === "login" ? "current-password" : "new-password"} maxLength={128} hint={mode === "apply" ? "Use at least 12 characters." : undefined}/> : null}
         <ErrorBanner message={error}/>{notice ? <Text style={styles.notice}>{notice}</Text> : null}
-        <Button busy={busy} onPress={submit}>{mode === "register" ? "Create account" : mode === "forgot" ? "Request reset" : mode === "reset" ? "Reset password" : "Sign in"}</Button>
-        {mode === "login" ? <><Button tone="quiet" onPress={() => setMode("register")}>New here? Create an account</Button><Button tone="quiet" onPress={() => setMode("forgot")}>Forgot password</Button></> : <Button tone="quiet" onPress={() => { setMode("login"); setError(""); setNotice(""); }}>Back to sign in</Button>}
-      </Card>
+        <Button busy={busy} onPress={submit}>{mode === "apply" ? "Submit application" : mode === "register" ? "Create account" : mode === "forgot" ? "Request reset" : mode === "reset" ? "Reset password" : "Sign in"}</Button>
+        {mode === "apply" ? <Text style={styles.sub}>The Calai team will contact you within 72 hours. Your restaurant stays private until reviewed and approved.</Text> : null}
+        {mode === "login" ? <><Button tone="quiet" onPress={() => setMode("register")}>New here? Create an account</Button><Button tone="quiet" onPress={() => setMode("forgot")}>Forgot password</Button><Button tone="quiet" onPress={() => { applicationKey.current = null; setMode("apply"); setError(""); setNotice(""); }}>List your restaurant</Button></> : <Button tone="quiet" onPress={() => { setMode("login"); setError(""); setNotice(""); }}>Back to sign in</Button>}
+      </Card>}
       <Text style={styles.legal}>By continuing, you can review the development Terms and Privacy notice after signing in. Mock card payments do not charge money.</Text>
     </ScrollView>
   </KeyboardAvoidingView>;
