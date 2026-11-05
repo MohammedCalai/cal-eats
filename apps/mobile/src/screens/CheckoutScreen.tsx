@@ -156,7 +156,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
       </> : <View style={styles.collection}><Text style={styles.lineName}>{restaurant.name}</Text><Text style={styles.meta}>{restaurant.profile.address||"Your restaurant will confirm your collection details."}</Text></View>}
       <View style={styles.rule}/>
       <SchedulePicker token={token} restaurantId={restaurant.id} fulfillment={fulfillment} acceptingOrders={restaurant.acceptingOrders} mode={scheduleMode} value={targetTime} onModeChange={mode=>{setScheduleMode(mode);setError("");}} onChange={value=>{setScheduledFor(value);setError("");}} disabled={locked} asapMinutes={fulfillment==="delivery"?restaurant.profile.estimatedDeliveryMinutes:restaurant.profile.estimatedCollectionMinutes}/>
-      <Field editable={!locked} label="Contact mobile (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" maxLength={30} placeholder="So the restaurant can reach you"/>
+      <Field editable={!locked} label="Contact mobile" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" maxLength={30} placeholder="So the restaurant can reach you"/>
       {fulfillment === "delivery" ? <OptionalCheckoutSection title="Delivery instructions"><Field editable={!locked} label="Delivery instructions" value={instructions} onChangeText={setInstructions} multiline maxLength={500} placeholder="Building access, doorbell or a useful delivery note"/></OptionalCheckoutSection> : null}
     </View>
 

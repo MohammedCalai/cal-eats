@@ -3,7 +3,8 @@ import { useForegroundRefresh } from "../useForegroundRefresh";
 import { CustomerConversationList, CustomerContactThread } from "../CustomerContact";
 import { OfferInbox } from "../OfferInbox";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { CustomerIcon } from "../CustomerBrandBanner";
 import { api } from "../api";
 import { Button, Card, Empty, ErrorBanner, Pill, SectionTitle } from "../components";
 import { colours } from "../theme";
@@ -18,6 +19,8 @@ export function InboxScreen({ embedded=false,onOpenOffers,onScrollOffset,token, 
   const [contact, setContact] = useState<{ id: string; title: string; support?: boolean } | null>(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const reading=useRef(new Set<string>()),unreadRef=useRef(unread);unreadRef.current=unread;
   const notificationRequest=useRef(0),notificationReadRevision=useRef(0);
+  const notificationUnreadIds=useRef(new Set<string>());
+  const [notificationBusy,setNotificationBusy]=useState<string[]>([]);
   const offerPosition=useRef<{index:number;cursors:Array<string|null>}>({index:0,cursors:[null]}),offerRequest=useRef(0),currentToken=useRef(token),offerScope=useRef(0);currentToken.current=token;
   const [offerNotice,setOfferNotice]=useState("");
   const [offerPage,setOfferPage]=useState(0),[offerNext,setOfferNext]=useState<string|null>(null),[offersLoading,setOffersLoading]=useState(false);
@@ -29,7 +32,7 @@ export function InboxScreen({ embedded=false,onOpenOffers,onScrollOffset,token, 
     try {
       // A marketing failure must not hide otherwise available order updates.
       await Promise.all([
-        api<{items:NotificationRecord[];unreadCount:number}>("/api/notifications",{token}).then(n=>{if(!current()||notificationReadRevision.current!==readRevision||notificationRevision()!==sharedRevision)return;setNotifications(n.items.filter(item=>!item.readAt));unreadRef.current=n.unreadCount;setUnread(n.unreadCount);onUnreadChange?.(n.unreadCount);}).catch(caught=>{if(!quiet&&current())setError((caught as Error).message);}),
+        api<{items:NotificationRecord[];unreadCount:number}>("/api/notifications",{token}).then(n=>{if(!current()||notificationReadRevision.current!==readRevision||notificationRevision()!==sharedRevision)return;const unreadItems=n.items.filter(item=>!item.readAt);notificationUnreadIds.current=new Set(unreadItems.map(item=>item.id));setNotifications(unreadItems);unreadRef.current=n.unreadCount;setUnread(n.unreadCount);onUnreadChange?.(n.unreadCount);}).catch(caught=>{if(!quiet&&current())setError((caught as Error).message);}),
         loadOfferPage().catch(caught=>{if(!quiet&&current()&&tab==="offers")setError((caught as Error).message);})
       ]);
     } finally {if(current())setLoading(false);}
@@ -38,13 +41,47 @@ export function InboxScreen({ embedded=false,onOpenOffers,onScrollOffset,token, 
   async function changeOfferPage(next:number){if(offersLoading||next<0)return;if(next>offerPage){if(!offerNext)return;offerPosition.current.cursors=[...offerPosition.current.cursors.slice(0,next),offerNext];}try{setError("");await loadOfferPage(next);}catch(caught){setError((caught as Error).message);}}
   useEffect(() => { offerPosition.current={index:0,cursors:[null]};void load();return()=>{offerRequest.current++;offerScope.current++;}; }, [token]);
   useForegroundRefresh(() => load(true), !contact);
-  async function readNotification(item: NotificationRecord) { if(reading.current.has(item.id))return;onScrollOffset?.(0);reading.current.add(item.id);const requestedToken=token,scope=offerScope.current;try { if (!item.readAt) await api(`/api/notifications/${encodeURIComponent(item.id)}`, { method: "PATCH", token, body: JSON.stringify({ read: true }) }); if(currentToken.current!==requestedToken||offerScope.current!==scope)return;notificationReadRevision.current++;setNotifications(rows=>rows.filter(row=>row.id!==item.id));if(!item.readAt){const next=Math.max(0,unreadRef.current-1);unreadRef.current=next;setUnread(next);onUnreadChange?.(next);} if (item.supportCaseId) setContact({ id: item.supportCaseId, title: item.title, support: true }); else if (item.conversationId) setContact({ id: item.conversationId, title: item.title }); else if (item.orderId) onOpenOrder(item.orderId); else if (item.type.includes("offer")||item.type==="platform_voucher") { if(onOpenOffers)onOpenOffers();else{setTab("offers"); await load();} } else await load(); } catch (caught) { if(currentToken.current===requestedToken&&offerScope.current===scope)setError((caught as Error).message); } finally{reading.current.delete(item.id);} }
+  async function readNotification(item: NotificationRecord, navigate=true) {
+    if(reading.current.has(item.id))return;
+    if(navigate)onScrollOffset?.(0);
+    reading.current.add(item.id);setError("");setNotificationBusy(ids=>[...ids,item.id]);
+    const requestedToken=token,scope=offerScope.current;
+    const current=()=>currentToken.current===requestedToken&&offerScope.current===scope;
+    try {
+      if(!item.readAt)await api(`/api/notifications/${encodeURIComponent(item.id)}`,{method:"PATCH",token,body:JSON.stringify({read:true})});
+      if(!current())return;
+      notificationReadRevision.current++;
+      setNotifications(rows=>rows.filter(row=>row.id!==item.id));
+      const wasUnread=notificationUnreadIds.current.delete(item.id);
+      if(wasUnread&&!item.readAt){const next=Math.max(0,unreadRef.current-1);unreadRef.current=next;setUnread(next);onUnreadChange?.(next);}
+      if(!navigate)return;
+      if(item.supportCaseId)setContact({id:item.supportCaseId,title:item.title,support:true});
+      else if(item.conversationId)setContact({id:item.conversationId,title:item.title});
+      else if(item.orderId)onOpenOrder(item.orderId);
+      else if(item.type.includes("offer")||item.type==="platform_voucher"){if(onOpenOffers)onOpenOffers();else{setTab("offers");await load();}}
+      else await load();
+    } catch(caught){if(current())setError((caught as Error).message);}
+    finally{reading.current.delete(item.id);if(current())setNotificationBusy(ids=>ids.filter(id=>id!==item.id));}
+  }
   async function viewOffer(offer: Offer) { const requestedToken=token,scope=offerScope.current;try { await api<Offer>(`/api/offers/${encodeURIComponent(offer.id)}`,{token}); if (!offer.viewedAt) await api(`/api/offers/${encodeURIComponent(offer.id)}`, { method: "PATCH", token, body: JSON.stringify({ viewed: true }) }); if(currentToken.current!==requestedToken||offerScope.current!==scope)return false;await load(); return currentToken.current===requestedToken&&offerScope.current===scope; } catch (caught) { if(currentToken.current===requestedToken&&offerScope.current===scope)setError((caught as Error).message); return false; } }
   if (contact) return <CustomerContactThread key={contact.id} token={token} {...contact} onClose={() => { setContact(null); void load(); }}/>;
   return <ScrollView style={embedded?{flex:1}:undefined} scrollEventThrottle={32} onScroll={event=>onScrollOffset?.(event.nativeEvent.contentOffset.y)} contentContainerStyle={[styles.page,embedded&&{paddingBottom:20}]} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()}/> }>{!embedded?<SectionTitle eyebrow="Cal-Eats" title={tab==="messages"?"Messages":tab==="offers"?"Offers":tab==="updates"?"Notifications":"Order help"}/>:null}{!embedded&&initialTab!=="messages"&&initialTab!=="offers"?<View style={styles.tabs}>{(["updates", "messages", "offers"] as Tab[]).map((value) => <Pressable accessibilityRole="tab" accessibilityState={{selected:tab===value}} key={value} onPress={() => {onScrollOffset?.(0);setTab(value);}} style={[styles.tab, tab === value && styles.tabActive]}><Text style={[styles.tabText, tab === value && { color: colours.white }]}>{label(value)}{value === "updates" && unread ? ` (${unread})` : ""}</Text></Pressable>)}</View>:null}<ErrorBanner message={error}/>
-    {tab === "updates" ? notifications.length ? notifications.map((item) => <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}. ${item.message}`} key={item.id} onPress={() => void readNotification(item)}><Card tone={!item.readAt ? "info" : "plain"}><View style={styles.row}><Text style={styles.title}>{item.title}</Text>{!item.readAt ? <Pill>New</Pill> : null}</View><Text style={styles.body}>{item.message}</Text>{item.type==="shop_rating"?<View style={styles.ratingPrompt}><Text style={styles.ratingStars} accessibilityLabel="Rate from 1 to 5 stars">☆ ☆ ☆ ☆ ☆</Text><Text style={styles.ratingLink}>Rate restaurant →</Text></View>:null}<Text style={styles.meta}>{new Date(item.createdAt).toLocaleString("en-GB")}</Text></Card></Pressable>) : <Empty>No in-app updates yet.</Empty> : null}
+    {tab === "updates" ? notifications.length ? notifications.map(item=><View key={item.id} style={notificationStyles.frame}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}. ${item.message}`} disabled={notificationBusy.includes(item.id)} onPress={()=>void readNotification(item)}>
+        <Card tone={!item.readAt?"info":"plain"}><View style={notificationStyles.copy}>
+          <View style={styles.row}><Text style={[styles.title,{flex:1}]}>{item.title}</Text>{!item.readAt?<Pill>New</Pill>:null}</View>
+          <Text style={styles.body}>{item.message}</Text>
+          {item.type==="shop_rating"?<View style={styles.ratingPrompt}><Text style={styles.ratingStars} accessibilityLabel="Rate from 1 to 5 stars">☆ ☆ ☆ ☆ ☆</Text><Text style={styles.ratingLink}>Rate restaurant →</Text></View>:null}
+          <Text style={styles.meta}>{new Date(item.createdAt).toLocaleString("en-GB")}</Text>
+        </View></Card>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Dismiss notification: ${item.title}`} accessibilityHint="Marks this notification as read and removes it from the list." accessibilityState={{disabled:notificationBusy.includes(item.id),busy:notificationBusy.includes(item.id)}} disabled={notificationBusy.includes(item.id)} onPress={()=>void readNotification(item,false)} style={notificationStyles.dismiss}>
+        {notificationBusy.includes(item.id)?<ActivityIndicator color={colours.blueDark} size="small"/>:<CustomerIcon name="close" size={21} colour={colours.blueDark}/>}
+      </Pressable>
+    </View>):<Empty>No in-app updates yet.</Empty>:null}
     {tab === "messages" ? <CustomerConversationList token={token} onOpen={(id, title) => {onScrollOffset?.(0);setContact({ id, title });}}/> : null}
     {tab === "offers" ? <><PlatformVoucherWallet token={token}/>{offerNotice?<Text style={styles.meta}>{offerNotice}</Text>:null}<OfferInbox offers={offers} onView={viewOffer} onDismiss={dismissOffer} onUse={onUseOffer}/><View style={styles.actions}><Button tone="secondary" disabled={offerPage===0||offersLoading} onPress={()=>void changeOfferPage(offerPage-1)}>Previous</Button><Text style={styles.meta}>Page {offerPage+1} · Up to 20 offers</Text><Button tone="secondary" disabled={!offerNext||offersLoading} onPress={()=>void changeOfferPage(offerPage+1)}>Next</Button></View></> : null}
   </ScrollView>;
 }
+const notificationStyles=StyleSheet.create({frame:{position:"relative"},copy:{paddingRight:38,gap:10},dismiss:{position:"absolute",right:8,top:8,width:44,height:44,borderRadius:14,alignItems:"center",justifyContent:"center",backgroundColor:"#F2F8FF",borderWidth:1,borderColor:colours.line}});
 const styles = StyleSheet.create({ ratingPrompt:{gap:5,paddingVertical:4},ratingStars:{color:colours.blue,fontSize:28,lineHeight:35,letterSpacing:2},ratingLink:{color:colours.blueDark,fontWeight:"800",fontSize:13,lineHeight:20},page: { padding: 18, paddingBottom: 90, gap: 14, backgroundColor: colours.cream }, tabs: { flexDirection: "row", gap: 6 }, tab: { flex: 1, minHeight: 44, justifyContent: "center", alignItems: "center", paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: colours.line, backgroundColor: colours.panel }, tabActive: { backgroundColor: colours.blue, borderColor: colours.blue }, tabText: { color: colours.ink, fontWeight: "700", fontSize: 13 }, title: { flexShrink: 1, color: colours.ink, fontSize: 17, lineHeight: 23, fontWeight: "800" }, body: { color: colours.ink, lineHeight: 21 }, meta: { color: colours.muted, lineHeight: 21 }, row: { flexDirection: "row", gap: 10, justifyContent: "space-between", alignItems: "center" }, message: { borderLeftWidth: 3, borderLeftColor: colours.blue, paddingLeft: 12, gap: 5, paddingVertical: 5 }, messageAudience: { color: colours.blue, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }, actions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" } });
