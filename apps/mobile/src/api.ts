@@ -24,7 +24,7 @@ export class ApiError extends Error {
 
 type ApiOptions = RequestInit & { token?: string | null; idempotencyKey?: string };
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  if (!API_BASE_URL) throw new ApiError("Set EXPO_PUBLIC_API_BASE_URL to this independent Cal-Eats API before using the app.", 0, "API_NOT_CONFIGURED");
+  if (!API_BASE_URL) throw new ApiError("Cal-Eats is temporarily unavailable. Please try again shortly.", 0, "API_NOT_CONFIGURED");
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   // Native guest requests do not receive the browser's automatic Origin header.
@@ -38,13 +38,13 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, signal: controller.signal, credentials: "omit", redirect: "error" });
     const payload = await response.json().catch(() => null) as { data?: T; error?: { code?: string; message?: string } } | null;
     if (!response.ok) throw new ApiError(String(payload?.error?.message ?? `Request failed (${response.status}).`).replace(/\bStripe\b/gi,"card payment service"), response.status, payload?.error?.code);
-    if (!payload || !Object.prototype.hasOwnProperty.call(payload, "data")) throw new ApiError("The API returned a malformed response.", response.status, "MALFORMED_RESPONSE");
+    if (!payload || !Object.prototype.hasOwnProperty.call(payload, "data")) throw new ApiError("We couldn’t load this information. Please try again.", response.status, "MALFORMED_RESPONSE");
     if ((options.method ?? "GET").toUpperCase() === "PATCH" && /^\/api\/notifications\/[^/?]+(?:\?|$)/.test(path)) invalidateNotifications();
     return payload.data as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if ((error as Error).name === "AbortError") throw new ApiError("The request timed out. Check your connection and try again.", 0, "TIMEOUT");
-    throw new ApiError("Could not reach the configured Cal-Eats API.", 0, "NETWORK_ERROR");
+    throw new ApiError("Could not connect to Cal-Eats. Check your connection and try again.", 0, "NETWORK_ERROR");
   } finally { clearTimeout(timeout); }
 }
 

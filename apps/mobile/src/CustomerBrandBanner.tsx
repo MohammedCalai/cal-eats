@@ -103,6 +103,34 @@ export function LiveOrderEnergy() {
 
 
 const TAB_IMAGES = {
+  offer_delivery: require("../assets/customer-icons/offer_delivery.png"),
+  offer_bundle: require("../assets/customer-icons/offer_bundle.png"),
+  offer_hour: require("../assets/customer-icons/offer_hour.png"),
+  offer_gift: require("../assets/customer-icons/offer_gift.png"),
+  offer_money: require("../assets/customer-icons/offer_money.png"),
+  offer_percent: require("../assets/customer-icons/offer_percent.png"),
+  offer_general: require("../assets/customer-icons/offer_general.png"),
+  send: require("../assets/customer-icons/send.png"),
+  check: require("../assets/customer-icons/check.png"),
+  plus: require("../assets/customer-icons/plus.png"),
+  minus: require("../assets/customer-icons/minus.png"),
+  close: require("../assets/customer-icons/close.png"),
+  chevron: require("../assets/customer-icons/chevron.png"),
+  down: require("../assets/customer-icons/down.png"),
+  back: require("../assets/customer-icons/back.png"),
+  forward: require("../assets/customer-icons/forward.png"),
+  gps: require("../assets/customer-icons/gps.png"),
+  edit: require("../assets/customer-icons/edit.png"),
+  help: require("../assets/customer-icons/help.png"),
+  search: require("../assets/customer-icons/search.png"),
+  phone: require("../assets/customer-icons/phone.png"),
+  clock: require("../assets/customer-icons/clock.png"),
+  delivery: require("../assets/customer-icons/delivery.png"),
+  location: require("../assets/customer-icons/location.png"),
+  work: require("../assets/customer-icons/work.png"),
+  shield: require("../assets/customer-icons/shield.png"),
+  storefront: require("../assets/customer-icons/storefront.png"),
+  messages: require("../assets/customer-icons/messages.png"),
   discover: require("../assets/customer-icons/discover.png"),
   orders: require("../assets/customer-icons/orders.png"),
   offers: require("../assets/customer-icons/offers.png"),
@@ -113,6 +141,9 @@ const TAB_IMAGES = {
 };
 export function CustomerTabIcon({name, active, colourOverride, size = 25}: {name: keyof typeof TAB_IMAGES; active: boolean; colourOverride?: string; size?: number}) {
   return <Image accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={TAB_IMAGES[name]} resizeMode="contain" style={{width: size, height: size, tintColor: colourOverride || (active ? "#095AAA" : "#547C9F")}}/>;
+}
+export function CustomerIcon({name,size=22,colour,colourOverride,active=false}:{name:keyof typeof TAB_IMAGES;size?:number;colour?:string;colourOverride?:string;active?:boolean}){
+  return <CustomerTabIcon name={name} size={size} colourOverride={colourOverride??colour??colours.ink} active={active}/>;
 }
 
 const s = StyleSheet.create({

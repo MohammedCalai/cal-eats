@@ -34,6 +34,7 @@ export interface Restaurant {
     minDeliverySubtotalMinor: number;
   };
   profile: {
+    address?: string;
     description?: string;
     cuisine?: string;
     collectionEnabled: boolean;
