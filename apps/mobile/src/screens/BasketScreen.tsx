@@ -15,7 +15,7 @@ export function BasketScreen({ token, restaurant, cart, fulfillment, initialAddr
   onOffer: (id?: string) => void; onCart: (cart: CartEntry[]) => void; onBack: () => void; onCheckout: () => void;
 }) {
   const [quoteResult,setQuoteResult]=useState<{request:string;value:BasketQuote}|null>(null),[quoting,setQuoting]=useState(false),[error,setError]=useState(""),[revision,setRevision]=useState(0);
-  const quoteReady=Boolean(restaurant.acceptingOrders&&cart.length&&(fulfillment==="collection"||completeAddress(initialAddress)));
+  const quoteReady=Boolean(token&&restaurant.acceptingOrders&&cart.length&&(fulfillment==="collection"||completeAddress(initialAddress)));
   const request=JSON.stringify({restaurantId:restaurant.id,items:orderItems(cart),fulfillment,autoApplyOffers:true,...(fulfillment==="delivery"&&initialAddress?{deliveryAddress:{line1:initialAddress.line1.trim(),...(initialAddress.line2?.trim()?{line2:initialAddress.line2.trim()}:{}),city:initialAddress.city.trim(),postcode:initialAddress.postcode.trim().toUpperCase()}}:{})});
   const quote=quoteResult?.request===request?quoteResult.value:null,totals=quote??cartTotals(cart,fulfillment,restaurant),resolvedOffer=useRef(onOffer);resolvedOffer.current=onOffer;
   const scheduledOnly=Boolean(restaurant.schedulingAvailable&&!restaurant.acceptingOrders);

@@ -54,7 +54,7 @@ export function DiscoverScreen(props: Props) {
       if (query.trim()) params.set("q", query.trim());
       if (browsingFilters.cuisine) params.set("cuisine", browsingFilters.cuisine);
       params.set("collection",browsingFilters.offersOnly?"offers":browsingFilters.collection==="free"?"free-delivery":browsingFilters.collection==="home"?"all":browsingFilters.collection);params.set("sort",browsingFilters.sort);
-      const [result, availableOffers] = await Promise.all([api<Restaurant[]>(`/api/restaurants?${params}`, { token }), append ? Promise.resolve(offers) : api<Offer[]>("/api/offers", { token }).catch(() => [])]);
+      const [result, availableOffers] = await Promise.all([api<Restaurant[]>(`/api/restaurants?${params}`, { token }), append ? Promise.resolve(offers) : token ? api<Offer[]>("/api/offers", { token }).catch(() => []) : Promise.resolve<Offer[]>([])]);
       if (!current()) return;
       setRestaurants(previous => append ? [...new Map([...previous, ...result].map(restaurant => [restaurant.id, restaurant])).values()] : result);
       setOffers(availableOffers);

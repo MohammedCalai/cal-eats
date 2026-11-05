@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="eats" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#00d6e8"/>
+      <stop offset="1" stop-color="#0078f6"/>
+    </linearGradient>
+    <filter id="symbol" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 1 0 0" result="blue"/>
+      <feComponentTransfer in="blue" result="mask"><feFuncA type="linear" slope="6" intercept="-.5"/></feComponentTransfer>
+      <feComposite in="SourceGraphic" in2="mask" operator="in"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="#103657"/>
+  <image href="./calai-symbol.png" x="154" y="-25" width="719" height="719" filter="url(#symbol)"/>
+  <text x="512" y="868" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="205" letter-spacing="-7"><tspan fill="#ffffff">Cal</tspan><tspan fill="url(#eats)" font-style="italic"> Eats</tspan></text>
+</svg>

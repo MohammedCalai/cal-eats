@@ -1,19 +1,99 @@
 import { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, AppState, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Animated, AppState, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { colours } from "./theme";
 
-export function CustomerBrandBanner({basketCount=0,onBasket,unreadCount=0,onBell,reminderPending=false,compact=false}:{basketCount?:number;onBasket?:()=>void;unreadCount?:number;onBell?:()=>void;reminderPending?:boolean;compact?:boolean}) {
-  const first = useRef(new Animated.Value(0)).current, second = useRef(new Animated.Value(0)).current;
-  const [reduceMotion, setReduceMotion] = useState(true);
-  useEffect(() => { let current = true; void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (current) setReduceMotion(value); }); const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion); return () => { current = false; subscription.remove(); }; }, []);
+export const CUSTOMER_BANNER_HEIGHT = 60;
+export const CUSTOMER_WORDMARK_WIDTH = 134;
+const WORDMARK_HEIGHT = CUSTOMER_WORDMARK_WIDTH * 41 / 148;
+const IMAGE_WIDTH_RATIO = 1.62425;
+const IMAGE_LEFT_RATIO = -0.32036;
+const IMAGE_TOP_RATIO = -0.48649;
+const LOGO = require("../assets/cal-eats-logo.png");
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(true);
   useEffect(() => {
-    if (reduceMotion) { first.setValue(0); second.setValue(0); return; }
-    const drop = () => { if (AppState.currentState !== "active") return; first.setValue(-64); second.setValue(-64); Animated.stagger(170, [Animated.spring(first, {toValue:0, damping:15, stiffness:160, useNativeDriver:true}), Animated.spring(second, {toValue:0, damping:15, stiffness:160, useNativeDriver:true})]).start(); };
-    drop(); const timer = setInterval(drop, 30_000); return () => { clearInterval(timer); first.stopAnimation(); second.stopAnimation(); };
-  }, [reduceMotion, first, second]);
-  return <View style={[s.banner,compact&&s.bannerCompact]}><View style={[s.logoFrame,compact&&s.logoFrameCompact]}><View style={[s.mark,compact&&s.markCompact]} accessibilityRole="image" accessibilityLabel="Cal-Eats" accessible><Animated.View style={[s.part,s.first,{transform:[{translateY:first}]}]}><Image source={require("../assets/cal-eats-logo.png")} style={s.image}/></Animated.View><Animated.View style={[s.part,s.second,{transform:[{translateY:second}]}]}><Image source={require("../assets/cal-eats-logo.png")} style={[s.image,{left:-223}]}/></Animated.View></View></View>{onBell?<Pressable accessibilityRole="button" accessibilityLabel={`Notifications, ${unreadCount} unread${reminderPending?", new updates need your attention":""}`} onPress={onBell} style={[s.bell,compact&&s.controlCompact,reminderPending&&s.bellPending]}><CustomerTabIcon name="bell" active colourOverride={colours.white}/>{unreadCount>0?<View style={s.notificationBadge}><Text style={s.notificationCount}>{unreadCount>99?"99+":unreadCount}</Text></View>:null}</Pressable>:null}{onBasket?<Pressable accessibilityRole="button" accessibilityLabel={`Open basket, ${basketCount} item${basketCount===1?"":"s"}`} onPress={onBasket} style={[s.basket,compact&&s.basketCompact]}><CustomerTabIcon name="basket" active colourOverride={colours.white}/><Text style={s.basketText}>{compact?basketCount>99?"99+":basketCount:`Basket (${basketCount})`}</Text></Pressable>:null}</View>;
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) setReduced(value); });
+    const listener = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
+    return () => { mounted = false; listener.remove(); };
+  }, []);
+  return reduced;
 }
-const s=StyleSheet.create({bannerCompact:{height:68,flexDirection:"row",justifyContent:"space-between",paddingHorizontal:12,paddingTop:0,gap:8},logoFrame:{width:245,height:70},logoFrameCompact:{width:148,height:46,flexShrink:1},markCompact:{position:"absolute",left:-48.5,top:-12,transform:[{scale:.6}]},controlCompact:{position:"relative",left:0,bottom:0,flexShrink:0},basketCompact:{position:"relative",right:0,bottom:0,paddingHorizontal:8,gap:6,minWidth:64,flexShrink:0},banner:{width:"100%",height:124,alignItems:"center",justifyContent:"flex-start",paddingTop:4,backgroundColor:"#103657",overflow:"hidden"},mark:{width:245,height:70,flexDirection:"row",overflow:"hidden",mixBlendMode:"lighten"},part:{height:70,overflow:"hidden"},first:{width:145},second:{width:100},image:{position:"absolute",width:398,height:133,left:-78,top:-33},basket:{position:"absolute",right:14,bottom:7,flexDirection:"row",alignItems:"center",gap:8,minHeight:44,paddingHorizontal:12,paddingVertical:5,borderWidth:1,borderColor:"#A8D9FF",borderRadius:20,backgroundColor:"#1D55C4"},basketText:{fontSize:13,fontWeight:"800",color:colours.white},bell:{position:"absolute",left:14,bottom:7,width:46,height:44,alignItems:"center",justifyContent:"center",borderRadius:18,borderWidth:1,borderColor:"#A8D9FF",backgroundColor:"#1D55C4"},bellPending:{borderColor:"#FFE6A2",borderWidth:2,backgroundColor:"#174CB5"},notificationBadge:{position:"absolute",right:-5,top:-5,minWidth:19,height:19,borderRadius:10,backgroundColor:"#F6C651",alignItems:"center",justifyContent:"center",paddingHorizontal:3},notificationCount:{fontSize:10,fontWeight:"800",color:"#183F70"},soundToggle:{position:"absolute",left:70,bottom:7,minHeight:44,paddingHorizontal:8,justifyContent:"center"},soundText:{color:colours.white,fontSize:12,fontWeight:"600"}});
+
+// The crop ratios and 60/40 split are the same as the approved web wordmark.
+// Both animated pieces stay inside a fixed frame, so scrolling never resizes it.
+export function CustomerWordmark() {
+  const prefix = useRef(new Animated.Value(0)).current;
+  const suffix = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    let animation: Animated.CompositeAnimation | undefined;
+    const drop = () => {
+      animation?.stop();
+      if (reduced || AppState.currentState !== "active") { prefix.setValue(0); suffix.setValue(0); return; }
+      prefix.setValue(-90); suffix.setValue(-90);
+      const piece = (value: Animated.Value, delay: number) => Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(value, {toValue: 0, duration: 510, useNativeDriver: true}),
+        Animated.timing(value, {toValue: -3, duration: 150, useNativeDriver: true}),
+        Animated.timing(value, {toValue: 0, duration: 180, useNativeDriver: true})
+      ]);
+      animation = Animated.parallel([piece(prefix, 0), piece(suffix, 480)]);
+      animation.start();
+    };
+    drop();
+    const timer = setInterval(drop, 30_000);
+    const listener = AppState.addEventListener("change", state => { if (state === "active") drop(); else animation?.stop(); });
+    return () => { clearInterval(timer); listener.remove(); animation?.stop(); };
+  }, [reduced, prefix, suffix]);
+  const width = CUSTOMER_WORDMARK_WIDTH, height = WORDMARK_HEIGHT;
+  const split = width * 0.6;
+  const imageWidth = width * IMAGE_WIDTH_RATIO;
+  const image = {width: imageWidth, height: imageWidth * 725 / 2170, top: height * IMAGE_TOP_RATIO};
+  return <View accessible accessibilityRole="image" accessibilityLabel="Cal-Eats" style={[s.wordmark, {width, height}]}>
+    <Animated.View style={[s.wordmarkPiece, {left: 0, width: split, height, transform: [{translateY: prefix}]}]}>
+      <Image accessible={false} accessibilityIgnoresInvertColors source={LOGO} resizeMode="stretch" style={[s.wordmarkImage, image, {left: width * IMAGE_LEFT_RATIO}]}/>
+    </Animated.View>
+    <Animated.View style={[s.wordmarkPiece, {left: split, width: width - split, height, transform: [{translateY: suffix}]}]}>
+      <Image accessible={false} accessibilityIgnoresInvertColors source={LOGO} resizeMode="stretch" style={[s.wordmarkImage, image, {left: width * IMAGE_LEFT_RATIO - split}]}/>
+    </Animated.View>
+  </View>;
+}
+
+type BannerProps = { basketCount?: number; onBasket?: () => void; unreadCount?: number; onBell?: () => void; reminderPending?: boolean; compact?: boolean; onHome?: () => void };
+export function CustomerBrandBanner({basketCount = 0, onBasket, unreadCount = 0, onBell, reminderPending = false, onHome}: BannerProps) {
+  const {width} = useWindowDimensions();
+  const reduced = useReducedMotion();
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    pulse.setValue(0);
+    if (!reminderPending || reduced) return;
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, {toValue: 1, duration: 900, useNativeDriver: true}),
+      Animated.timing(pulse, {toValue: 0, duration: 900, useNativeDriver: true})
+    ]));
+    animation.start(); return () => animation.stop();
+  }, [reminderPending, reduced, pulse]);
+  const wordmark = <CustomerWordmark/>;
+  return <View style={s.banner}>
+    {onHome ? <Pressable accessibilityRole="button" accessibilityLabel="Cal-Eats home" onPress={onHome} style={s.home}>{wordmark}</Pressable> : <View style={s.home}>{wordmark}</View>}
+    <View style={s.controls}>
+      {onBasket ? <Pressable accessibilityRole="button" accessibilityLabel={`Open basket, ${basketCount} item${basketCount === 1 ? "" : "s"}`} onPress={onBasket} style={s.basket}>
+        <CustomerTabIcon name="basket" active colourOverride={colours.white} size={20}/>
+        {width >= 360 ? <Text style={s.basketText}>Basket</Text> : null}
+        <View style={s.basketBadge}><Text style={s.basketCount}>{basketCount > 99 ? "99+" : basketCount}</Text></View>
+      </Pressable> : null}
+      {onBell ? <View style={s.bellFrame}>
+        {reminderPending ? <Animated.View pointerEvents="none" style={[s.bellHalo, {opacity: pulse.interpolate({inputRange:[0,1],outputRange:[0.2,0.55]}), transform:[{scale:pulse.interpolate({inputRange:[0,1],outputRange:[1,1.12]})}]}]}/> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Notifications, ${unreadCount} unread${reminderPending ? ", new updates need your attention" : ""}`} onPress={onBell} style={[s.bell, reminderPending && s.bellPending]}>
+          <CustomerTabIcon name="bell" active colourOverride={colours.white} size={22}/>
+          {unreadCount > 0 ? <View style={s.notificationBadge}><Text style={s.notificationCount}>{unreadCount > 99 ? "99+" : unreadCount}</Text></View> : null}
+        </Pressable>
+      </View> : null}
+    </View>
+  </View>;
+}
 
 export function LiveOrderEnergy() {
   const phase=useRef(new Animated.Value(0)).current;
@@ -21,8 +101,35 @@ export function LiveOrderEnergy() {
   return <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{position:"absolute",left:0,right:0,top:0,bottom:0,overflow:"hidden",borderRadius:16,borderWidth:2,borderColor:"#3EA5FF"}}><Animated.View style={{position:"absolute",top:-30,bottom:-30,width:32,backgroundColor:"#4CAEFF",opacity:.12,transform:[{translateX:phase.interpolate({inputRange:[0,1],outputRange:[-100,650]})},{skewX:"-22deg"}]}}/></View>;
 }
 
-export function CustomerTabIcon({name,active,colourOverride}:{name:"discover"|"orders"|"offers"|"inbox"|"account"|"basket"|"bell";active:boolean;colourOverride?:string}) {
-  const colour=colourOverride||(active?colours.blue:colours.muted),tint=colourOverride===colours.white?"rgba(255,255,255,.13)":active?"#CDE6FF":"#EAF3FA";
-  const line={borderColor:colour,borderWidth:1.7};
-  return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{width:27,height:27,alignItems:"center",justifyContent:"center"}}>{name==="bell"?<><View style={[line,{width:17,height:17,backgroundColor:tint,borderTopLeftRadius:10,borderTopRightRadius:10,position:"absolute",top:4}]}/><View style={{width:23,height:2,borderRadius:1,backgroundColor:colour,position:"absolute",top:20}}/><View style={{width:5,height:3,borderRadius:3,backgroundColor:colour,position:"absolute",bottom:1}}/></>:name==="discover"?<><View style={[line,{width:24,height:24,borderRadius:13,backgroundColor:tint}]}/>{[0,1,2,3].map(i=><View key={i} style={{position:"absolute",width:2,height:3,borderRadius:1,backgroundColor:colour,opacity:.6,transform:[{rotate:(i*90)+"deg"},{translateY:-8}]}}/>)}<View style={[line,{position:"absolute",width:8,height:14,borderTopLeftRadius:7,borderBottomRightRadius:7,backgroundColor:active?"#A8D3FA":"#D4E6F5",transform:[{rotate:"35deg"}]}]}/><View style={{position:"absolute",width:3,height:3,borderRadius:2,backgroundColor:colour}}/></>:name==="orders"?<><View style={[line,{width:19,height:24,borderRadius:3,backgroundColor:tint}]}/>{[7,11].map(top=><View key={top} style={{position:"absolute",left:8,top,width:11,height:1.7,borderRadius:1,backgroundColor:colour}}/>)}<View style={{position:"absolute",left:8,top:17,width:4,height:2,backgroundColor:colour,transform:[{rotate:"45deg"}]}}/><View style={{position:"absolute",left:10,top:16,width:8,height:2,backgroundColor:colour,transform:[{rotate:"-45deg"}]}}/></>:name==="offers"?<View style={[line,{width:25,height:20,borderRadius:5,backgroundColor:tint,alignItems:"center",justifyContent:"center"}]}><View style={{position:"absolute",width:12,height:1.7,borderRadius:1,backgroundColor:colour,transform:[{rotate:"-52deg"}]}}/>{[{left:5,top:3},{left:15,top:11}].map((position,i)=><View key={i} style={[{position:"absolute",width:4,height:4,borderWidth:1.4,borderColor:colour,borderRadius:3},position]}/>)}</View>:name==="inbox"?<><View style={[line,{width:25,height:19,borderRadius:7,backgroundColor:tint,position:"absolute",top:3}]}/><View style={{position:"absolute",left:6,top:19,width:6,height:6,borderLeftWidth:1.7,borderBottomWidth:1.7,borderColor:colour,backgroundColor:tint,transform:[{skewY:"-25deg"}]}}/>{[{top:9,width:13},{top:13,width:9}].map(row=><View key={row.top} style={{position:"absolute",left:7,top:row.top,width:row.width,height:1.7,borderRadius:1,backgroundColor:colour}}/>)}</>:name==="account"?<><View style={[line,{width:10,height:10,borderRadius:6,backgroundColor:tint,position:"absolute",top:1}]}/><View style={[line,{width:23,height:12,borderTopLeftRadius:13,borderTopRightRadius:13,borderBottomLeftRadius:4,borderBottomRightRadius:4,backgroundColor:tint,position:"absolute",bottom:1}]}/></>:<><View style={[line,{width:23,height:16,backgroundColor:tint,borderBottomLeftRadius:5,borderBottomRightRadius:5,position:"absolute",bottom:1}]}/><View style={[line,{width:11,height:10,borderTopLeftRadius:8,borderTopRightRadius:8,position:"absolute",top:1}]}/></>}</View>;
+
+const TAB_IMAGES = {
+  discover: require("../assets/customer-icons/discover.png"),
+  orders: require("../assets/customer-icons/orders.png"),
+  offers: require("../assets/customer-icons/offers.png"),
+  inbox: require("../assets/customer-icons/messages.png"),
+  account: require("../assets/customer-icons/account.png"),
+  basket: require("../assets/customer-icons/basket.png"),
+  bell: require("../assets/customer-icons/bell.png")
+};
+export function CustomerTabIcon({name, active, colourOverride, size = 25}: {name: keyof typeof TAB_IMAGES; active: boolean; colourOverride?: string; size?: number}) {
+  return <Image accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={TAB_IMAGES[name]} resizeMode="contain" style={{width: size, height: size, tintColor: colourOverride || (active ? "#095AAA" : "#547C9F")}}/>;
 }
+
+const s = StyleSheet.create({
+  banner: {width: "100%", height: CUSTOMER_BANNER_HEIGHT, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, gap: 8, backgroundColor: "#103657", borderBottomWidth: 1, borderBottomColor: "#2E6089", shadowColor: "#0C2F55", shadowOpacity: 0.14, shadowRadius: 9, shadowOffset: {width:0,height:3}, elevation: 3},
+  home: {width: CUSTOMER_WORDMARK_WIDTH, minHeight: 44, justifyContent: "center", flexShrink: 0},
+  wordmark: {position: "relative", overflow: "hidden", mixBlendMode: "lighten"},
+  wordmarkPiece: {position: "absolute", top: 0, overflow: "hidden"},
+  wordmarkImage: {position: "absolute"},
+  controls: {flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0},
+  basket: {minHeight: 44, paddingHorizontal: 7, gap: 5, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#AACCEB", borderRadius: 12, backgroundColor: "rgba(255,255,255,0.086)"},
+  basketText: {fontSize: 12, fontWeight: "700", color: colours.white},
+  basketBadge: {height: 18, minWidth: 18, paddingHorizontal: 4, borderRadius: 12, backgroundColor: colours.white, alignItems: "center", justifyContent: "center"},
+  basketCount: {fontSize: 10, fontWeight: "800", color: "#124B88"},
+  bellFrame: {width: 44, height: 44},
+  bell: {width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: "#91B9DF", backgroundColor: "rgba(255,255,255,0.078)"},
+  bellPending: {borderColor: "#B9E3FF", borderWidth: 2},
+  bellHalo: {position: "absolute", left: -3, top: -3, width: 50, height: 50, borderRadius: 18, borderWidth: 2, borderColor: "#A3D3FF", backgroundColor: "#63AEFF"},
+  notificationBadge: {position: "absolute", right: -4, top: -5, minWidth: 19, height: 19, borderRadius: 11, backgroundColor: "#1767D2", borderWidth: 1, borderColor: "#A8D3FF", alignItems: "center", justifyContent: "center", paddingHorizontal: 3},
+  notificationCount: {fontSize: 10, fontWeight: "800", color: colours.white}
+});

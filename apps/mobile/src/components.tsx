@@ -1,9 +1,10 @@
 import type { PropsWithChildren, ReactNode } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
 import { colours, radii } from "./theme";
+import { CustomerBrandBanner } from "./CustomerBrandBanner";
 
 export function Brand() {
-  return <View style={styles.brand}><Image accessibilityIgnoresInvertColors accessible accessibilityLabel="Cal-Eats" source={require("../assets/cal-eats-logo.png")} style={styles.brandLogo} resizeMode="cover"/></View>;
+  return <CustomerBrandBanner/>;
 }
 
 export function Field({ label, hint, ...props }: TextInputProps & { label: string; hint?: string }) {
@@ -27,8 +28,6 @@ export function ErrorBanner({ message }: { message?: string | null }) { return m
 export function SectionTitle({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: ReactNode }) { return <View style={styles.sectionHead}><View style={{ flex: 1, gap: 4 }}>{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text accessibilityRole="header" style={styles.title}>{title}</Text></View>{action}</View>; }
 
 const styles = StyleSheet.create({
-  brand: { alignSelf: "flex-start", width: 230, maxWidth: "92%", aspectRatio: 4.096, overflow: "hidden" },
-  brandLogo: { width: "100%", height: "100%", transform: [{ scale: 1.45 }] },
   fieldWrap: { gap: 7 }, label: { color: colours.ink, fontWeight: "700", fontSize: 14, lineHeight: 20 },
   input: { minHeight: 48, borderWidth: 1, borderColor: colours.line, borderRadius: radii.small, paddingHorizontal: 13, paddingVertical: 11, color: colours.ink, backgroundColor: colours.panel, fontSize: 16 },
   inputDisabled: { backgroundColor: colours.cream, color: colours.muted },

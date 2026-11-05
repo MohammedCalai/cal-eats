@@ -24,7 +24,10 @@ export async function routeNativeAuth({req,res,url,db,config,session,checkRate})
     const b=await readJson(req,config.bodyLimit);exactObject(b,["email","password"]);const email=typeof b.email==="string"?b.email.trim().toLowerCase():"",password=typeof b.password==="string"?b.password:"";checkRate(req,email);
     for(let attempt=0;attempt<2;attempt++){
       const user=db.prepare("SELECT * FROM users WHERE email=? AND account_enabled=1").get(email),verifiedHash=user?.password_hash;
-      if(!(await verifyPassword(password,verifiedHash))||!user||user.role!==role||(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id)))throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
+      if(!(await verifyPassword(password,verifiedHash))||!user)throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
+      // Explain the account boundary only after its password has been verified.
+      if(user.role!==role)throw new HttpError(401,business?"BUSINESS_ACCOUNT_REQUIRED":"CUSTOMER_ACCOUNT_REQUIRED",business?"Use a restaurant account to sign in to the business platform.":"Use a customer account to sign in to the Cal-Eats app. Business and administrator accounts use the business platform.");
+      if(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id))throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
       const created=withTransaction(db,()=>{const current=db.prepare("SELECT password_hash,role,account_enabled FROM users WHERE id=?").get(user.id);if(!current||current.password_hash!==verifiedHash||current.role!==role||!current.account_enabled||(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id)))return null;return create(db,user.id,config,business?"business":"customer");});
       if(created)return sendJson(res,200,{data:{user:publicUser(user),token:created.token,expiresAt:created.expiresAt}});
     }
