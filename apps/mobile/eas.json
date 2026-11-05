@@ -39,6 +39,15 @@
         "CAL_EATS_STORE_DISTRIBUTION": "testing",
         "CAL_EATS_PUBLIC_RELEASE_BUILD": "false"
       }
+    },
+    "android-store-test": {
+      "extends": "store-test",
+      "credentialsSource": "local",
+      "env": {
+        "CAL_EATS_EXPO_OWNER": "bondu17",
+        "CAL_EATS_EAS_PROJECT_ID": "f76a2adf-34ca-438a-9208-bdb5d4e65ded",
+        "CAL_EATS_BUILD_PLATFORM": "android"
+      }
     }
   },
   "submit": {
