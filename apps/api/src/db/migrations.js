@@ -1,4 +1,5 @@
 import {restaurantCommissionMigration39} from "../restaurant-commission-migration.js";
+import {restaurantCommissionEmailMigration40} from "../restaurant-commission-email-migration.js";
 import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
 import {businessApplicationMigration37} from "../business-application-migration.js";
 import { menuDetailsMigration30 } from "../menu-details.js";
@@ -281,5 +282,6 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
   scheduledOrdersRatingsMigration36,
   businessApplicationMigration37,
   platformVouchersMigration38,
-  restaurantCommissionMigration39
+  restaurantCommissionMigration39,
+  restaurantCommissionEmailMigration40
 ];

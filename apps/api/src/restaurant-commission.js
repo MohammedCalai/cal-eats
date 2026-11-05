@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {requireRole} from "./auth/authorization.js";
 import {withTransaction} from "./db/index.js";
 import {HttpError,exactObject,readJson,sendJson} from "./http.js";
+import {enqueueRestaurantCommissionEmails,restaurantCommissionEmailSummary} from "./restaurant-commission-emails.js";
 
 const DAY=86400000;
 const settings=(db,restaurantId)=>db.prepare("SELECT * FROM restaurant_commission_controls WHERE restaurant_id=?").get(restaurantId);
@@ -23,7 +24,7 @@ function normalRate(db,restaurantId,now){
 }
 function dto(db,restaurantId,now){
   const row=settings(db,restaurantId),normalRateBasisPoints=normalRate(db,restaurantId,now),resolved=resolveRestaurantCommission(db,restaurantId,now,normalRateBasisPoints),free=period(row);
-  return {restaurantId,enabled:row?.enabled!==0,revision:row?.revision??0,normalRateBasisPoints,effectiveRateBasisPoints:resolved.rateBasisPoints,state:resolved.snapshot.mode,freePeriod:free,nextChangeAt:row?.enabled===0||!free?null:now<free.startsAt?free.startsAt:now<free.endsAt?free.endsAt:null,timeZone:"Europe/London",serverNow:now,updatedAt:row?.updated_at??null,snapshot:resolved.snapshot};
+  return {restaurantId,enabled:row?.enabled!==0,revision:row?.revision??0,normalRateBasisPoints,effectiveRateBasisPoints:resolved.rateBasisPoints,state:resolved.snapshot.mode,freePeriod:free,nextChangeAt:row?.enabled===0||!free?null:now<free.startsAt?free.startsAt:now<free.endsAt?free.endsAt:null,timeZone:"Europe/London",serverNow:now,updatedAt:row?.updated_at??null,snapshot:resolved.snapshot,confirmationEmail:restaurantCommissionEmailSummary(db,restaurantId,row?.revision??0)};
 }
 function timestamp(value,label){
   if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value)||!Number.isFinite(Date.parse(value)))throw new HttpError(400,"VALIDATION_ERROR",`${label} needs an ISO date and explicit time zone`);
@@ -56,6 +57,7 @@ export async function routeRestaurantCommission({req,res,url,db,config,session})
     const revision=(current?.revision??0)+1;
     db.prepare("INSERT INTO restaurant_commission_controls(restaurant_id,enabled,free_period_starts_at,free_period_ends_at,revision,updated_by_user_id,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(restaurant_id) DO UPDATE SET enabled=excluded.enabled,free_period_starts_at=excluded.free_period_starts_at,free_period_ends_at=excluded.free_period_ends_at,revision=excluded.revision,updated_by_user_id=excluded.updated_by_user_id,updated_at=excluded.updated_at").run(restaurantId,enabled,free?.startsAt??null,free?.endsAt??null,revision,admin.id,now);
     db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),admin.id,"restaurant_commission",restaurantId,`commission_${body.action}`,JSON.stringify({before,after:{...after,revision},reason,timeZone:"Europe/London",historicalOrdersChanged:false}),now);
+    enqueueRestaurantCommissionEmails(db,config,{restaurantId,revision,before,after,normalRateBasisPoints:normalRate(db,restaurantId,now),now});
     return dto(db,restaurantId,now);
   });
   return sendJson(res,200,{data:result});
