@@ -21,7 +21,8 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
           <Amount label="Food before money-off offers" value={value.totals.grossFoodMinor}/>
           <Amount label="Restaurant-funded money-off" value={value.totals.restaurantDiscountMinor} negative/>
           <Amount label="Food after money-off" value={value.totals.foodChargedMinor}/>
-          <Amount label="Delivery fee" value={value.totals.deliveryFeeMinor}/>
+          {value.totals.deliveryDiscountMinor>0&&<><Amount label="Delivery before offer" value={value.totals.grossDeliveryFeeMinor}/><Amount label="Restaurant-funded delivery offer" value={value.totals.deliveryDiscountMinor} negative/></>}
+          <Amount label={value.totals.deliveryDiscountMinor>0?"Delivery charged":"Delivery fee"} value={value.totals.deliveryFeeMinor}/>
           <Amount label="Order value" value={value.totals.orderValueMinor??value.totals.customerChargedMinor} strong/>
           {value.totals.platformVoucherMinor>0&&<><Amount label="Cal-Eats funded voucher" value={value.totals.platformVoucherMinor} negative/><Amount label="Customer payment" value={value.totals.customerPayableMinor??value.totals.customerChargedMinor}/><p className="fine">Cal-Eats funds this voucher. Your commission base and restaurant earnings follow the saved order value.</p></>}
           <Amount label="Food refunded" value={value.totals.refundedFoodMinor} negative/>
@@ -44,9 +45,10 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
       </div>
       <section className="finance-breakdown-card"><h4>Items on this order</h4><div className="finance-item-list">{value.items.map((item, index) => <article key={item.id || index}><div><strong>{item.quantity} × {item.name}</strong><span>{item.isOfferItem ? "Free offer item" : pounds(item.lineTotalMinor)}</span></div>{item.modifiers?.length > 0 && <small>{item.modifiers.map(modifier => `${modifier.name}${modifier.priceMinor ? ` (${pounds(modifier.priceMinor)})` : ""}`).join(" · ")}</small>}</article>)}</div></section>
       <section className="finance-breakdown-card"><h4>Promotional offers</h4>{!value.promotion ? <p className="fine">No promotional offer was applied to this order.</p> : <>
-        <div className="finance-promotion-heading"><strong>{value.promotion.title || "Restaurant offer"}</strong><span className="pill">{readable(value.promotion.offerType)}</span></div>
+        <div className="finance-promotion-heading"><strong>{value.promotion.title || "Restaurant offer"}</strong><span className="pill">{readable(value.promotion.campaignType || value.promotion.offerType)}</span></div>
         <p className="fine">Funded by your restaurant. The amounts below are the values saved when this order was placed.</p>
         <Amount label="Money-off discount" value={value.promotion.discountMinor}/>
+        {value.promotion.deliveryDiscountMinor>0&&<><Amount label="Delivery fee waived" value={value.promotion.deliveryDiscountMinor}/><p className="fine">This saving is already included in the delivery charged and order value. It is not deducted from earnings again.</p></>}
         {value.promotion.freeItems.length > 0 && <><div className="finance-item-list">{value.promotion.freeItems.map((item, index) => <article key={`${item.name}:${index}`}><div><strong>{item.quantity} × {item.name}</strong><span>{pounds(item.retailValueMinor)} retail value</span></div></article>)}</div><Amount label="Free-item retail value" value={value.promotion.freeItemRetailValueMinor}/><p className="fine">Free items were charged at £0. Their retail value is shown for reference; it is not your food cost and is not deducted from earnings again.</p></>}
         {value.promotion.allocations.length > 0 && <details><summary>Discount by item</summary><div className="finance-item-list">{value.promotion.allocations.map((item, index) => <article key={`${item.menuItemId}:${index}`}><strong>{item.name}</strong><small>Before discount {pounds(item.grossMinor)} · discount {pounds(item.discountMinor)} · charged {pounds(item.netMinor)}</small></article>)}</div></details>}
       </>}</section>

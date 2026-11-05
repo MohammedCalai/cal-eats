@@ -125,12 +125,31 @@ test("automatic quotes skip invalid or exhausted grants, respect consent and kee
   } finally { await f.close(); }
 });
 
-test("automatic offer evaluation is bounded and reports truncation", async () => {
+test("automatic offer evaluation pages every eligible grant without truncation", async () => {
   const f = await setup();
   try {
     for (let index = 0; index < 101; index++) f.grant("amount_order", { value: 1 });
     const quote = await f.quote();
     assert.equal(quote.totalMinor, 999);
-    assert.deepEqual(quote.autoOfferSelection, { candidateLimit: 100, truncated: true, candidatesChecked: 100 });
+    assert.deepEqual(quote.autoOfferSelection, { candidateLimit: null, truncated: false, candidatesChecked: 101 });
+  } finally { await f.close(); }
+});
+
+test("older savings, BOGO and delivery offers survive newer pages and final orders reserve only the selected grant", async () => {
+  const f = await setup();
+  try {
+    const older = (type, options) => { const grant=f.grant(type,options);f.db.prepare("UPDATE offer_grants SET created_at='2025-12-31T23:59:00.000Z' WHERE id=?").run(grant.id);return grant; };
+    const best=older("amount_order",{value:900}),delivery=older("free_delivery"),bogo=older("buy_one_get_one",{eligibleIds:[f.main.id]});
+    for(let index=0;index<205;index++)f.grant("amount_order",{value:1});
+    let quote=await f.quote();
+    assert.equal(quote.offerId,best.id);assert.equal(quote.totalMinor,100);assert.equal(quote.autoOfferSelection.candidatesChecked,208);
+    const {autoApplyOffers,...basket}=f.payload();
+    const placed=await f.json("/api/orders",{method:"POST",cookie:f.customer,headers:{"Idempotency-Key":"older-selected-offer"},body:{...basket,paymentMethod:"mock_card",offerId:quote.offerId,expectedTotalMinor:quote.totalMinor}});
+    assert.equal(placed.status,201,placed.text);assert.equal(placed.body.data.subtotalMinor,100);assert.equal(placed.body.data.commissionMinor,7);
+    assert.equal(f.db.prepare("SELECT status FROM offer_grants WHERE id=?").get(best.id).status,"reserved");
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM offer_grants WHERE status='reserved'").get().n,1);
+    quote=await f.quote();assert.equal(quote.totalMinor,999);assert.notEqual(quote.offerId,best.id);
+    quote=await f.quote(f.payload(1,true));assert.equal(quote.offerId,delivery.id);assert.equal(quote.deliveryDiscountMinor,250);assert.equal(quote.deliveryFeeMinor,0);
+    quote=await f.quote(f.payload(2));assert.equal(quote.offerId,bogo.id);assert.equal(quote.restaurantDiscountMinor,1000);assert.equal(quote.totalMinor,1000);
   } finally { await f.close(); }
 });

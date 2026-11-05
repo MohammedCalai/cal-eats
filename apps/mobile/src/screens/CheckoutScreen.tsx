@@ -18,7 +18,7 @@ type Quote = {
   voucherId?:string|null;platformVoucherMinor?:number;customerPayableMinor?:number;orderValueMinor?:number;voucher?:{id:string;title:string;amountMinor:number;fundingParty:"platform";retainedForMinimumPaymentMinor?:number}|null;
   commissionMinor?:number; commission?:unknown; offerId:string|null;
   promotion:{grantId:string;title:string;campaignType:string;gift?:{menuItemId:string;name:string;quantity:number;valueMinor:number}|null;[key:string]:unknown}|null;
-  autoOfferSelection:{candidateLimit:number;truncated:boolean;candidatesChecked:number};
+  autoOfferSelection:{candidateLimit:number|null;truncated:boolean;candidatesChecked:number};
 };
 function addressComplete(address:Address) { return Boolean(address.line1.trim() && address.line1.trim().length<=120 && (!address.line2 || address.line2.trim().length<=120) && address.city.trim() && address.city.trim().length<=100 && /^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})$/.test(address.postcode.toUpperCase().replace(/\s+/g,""))); }
 function quoteSignature(value:Quote) { return JSON.stringify([value.scheduledFor,value.grossFoodMinor,value.restaurantDiscountMinor,value.subtotalMinor,value.deliveryFeeMinor,value.deliveryDiscountMinor,value.totalMinor,value.commissionMinor,value.commission??null,value.offerId,value.promotion,value.voucherId??null,value.platformVoucherMinor??0]); }

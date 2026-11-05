@@ -101,7 +101,9 @@ function orderRows(db, restaurantId, range, owner, page, pageSize) {
     const confirmed = ["accepted", "preparing", "ready", "out_for_delivery", "completed"].includes(order.status) && (order.payment_method !== "card" || ["stripe_captured", "stripe_partially_refunded", "stripe_refunded"].includes(order.payment_status));
     const commission = confirmed ? Math.max(0, order.commission_minor - order.reversal_minor) : 0, net = confirmed ? Math.max(0, order.total_minor - order.refund_minor - commission) : 0;
     const providerMode = order.provider_mode ?? "local_simulator";
-    return { ...base, totalMinor: order.total_minor,customerPayableMinor:order.customer_payable_minor??order.total_minor,platformVoucherMinor:order.platform_voucher_minor??0, refundsMinor: order.refund_minor, commissionMinor: commission, netEarningsMinor: net, paymentMethod: order.payment_method, paymentState: order.payment_status, providerMode, ...payoutState(db, order, net, providerMode) };
+    let deliveryDiscountMinor=0;
+    try { const saved=JSON.parse(order.promotion_snapshot||order.offer_snapshot||"null");if(Number.isSafeInteger(saved?.deliveryDiscountMinor)&&saved.deliveryDiscountMinor>=0)deliveryDiscountMinor=saved.deliveryDiscountMinor; } catch { /* Historical orders without a promotion have no waived fee. */ }
+    return { ...base, deliveryFeeMinor:order.delivery_fee_minor,deliveryBeforeOfferMinor:order.delivery_fee_minor+deliveryDiscountMinor,deliveryDiscountMinor,totalMinor: order.total_minor,customerPayableMinor:order.customer_payable_minor??order.total_minor,platformVoucherMinor:order.platform_voucher_minor??0, refundsMinor: order.refund_minor, commissionMinor: commission, netEarningsMinor: net, paymentMethod: order.payment_method, paymentState: order.payment_status, providerMode, ...payoutState(db, order, net, providerMode) };
   });
   return { items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
 }

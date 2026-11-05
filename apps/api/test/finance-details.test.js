@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { journeyFixture } from "./helpers.js";
 import { createStripeTestAdapter } from "../src/payments/stripe-test.js";
 import { buildWeeklyStatementSnapshot, weeklyStatementPeriod } from "../src/business-weekly-statements.js";
+import { buildOrderFinancialBreakdown } from "../src/finance-details.js";
 
 async function setup(f) {
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310");
@@ -11,6 +12,41 @@ async function setup(f) {
   const item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
   return{owner,customer,other,restaurant,otherRestaurant,item,root:`/api/restaurant/restaurants/${restaurant.id}/finance`};
 }
+
+test("saved delivery waivers appear in owner earnings, breakdown and weekly CSV without reducing earnings twice",async()=>{
+  const f=await journeyFixture({now:()=>new Date("2026-01-01T01:00:00.000Z"),paymentProviderMode:"local_simulator",orderAlertEmail:{mode:"off"},businessStatements:{sendEnabled:false},rateLimit:{attempts:60,windowMs:60000}});
+  try{
+    const s=await setup(f),restaurantRoot=s.root.replace('/finance','');
+    const updateDelivery=async fee=>{const response=await f.json(`${restaurantRoot}/delivery`,{method:"PATCH",cookie:s.owner,body:{enabled:true,outcodes:["LU1"],deliveryFeeMinor:fee,minDeliverySubtotalMinor:0}});assert.equal(response.status,200,response.text);};
+    await updateDelivery(250);
+    assert.equal((await f.json(`${restaurantRoot}/menu/${s.item.id}`,{method:"PATCH",cookie:s.owner,body:{priceMinor:1500}})).status,200);
+    assert.equal((await f.json("/api/account/marketing-preferences",{method:"PATCH",cookie:s.customer,body:{inAppPromotions:true,pushPromotions:false,source:"delivery-waiver-regression"}})).status,200);
+    const campaign=await f.json(`${restaurantRoot}/loyalty/promotions`,{method:"POST",cookie:s.owner,headers:{"Idempotency-Key":"saved-delivery-waiver"},body:{title:"Delivery on us",message:"Restaurant-funded delivery offer",campaignType:"free_delivery",offerType:"fixed_off",value:0,menuItemId:null,minSubtotalMinor:1000,startsAt:"2026-01-01T00:00:00.000Z",expiresAt:"2026-01-10T00:00:00.000Z",redemptionLimit:10,budgetMinor:10000,eligibleItemIds:[],eligibleCategories:[],recipientSegment:"first_order",customerIds:[],stackingPolicy:"exclusive",fundingParty:"restaurant"}});
+    assert.equal(campaign.status,201,campaign.text);
+    const claimed=await f.json(`/api/promotions/${campaign.body.data.id}/claim`,{method:"POST",cookie:s.customer,body:{}});assert.equal(claimed.status,200,claimed.text);
+    const basket={restaurantId:s.restaurant.id,items:[{menuItemId:s.item.id,quantity:1}],fulfillment:"delivery",deliveryAddress:{line1:"10 Fictional Road",city:"Luton",postcode:"LU1 2AB"}};
+    const quoted=await f.json("/api/orders/quote",{method:"POST",cookie:s.customer,body:{...basket,autoApplyOffers:true}});assert.equal(quoted.status,200,quoted.text);assert.equal(quoted.body.data.offerId,claimed.body.data.id);
+    const placed=await f.json("/api/orders",{method:"POST",cookie:s.customer,headers:{"Idempotency-Key":"delivery-waiver-order"},body:{...basket,paymentMethod:"mock_card",offerId:quoted.body.data.offerId,expectedTotalMinor:quoted.body.data.totalMinor}});assert.equal(placed.status,201,placed.text);
+    const order=placed.body.data;assert.equal(order.totalMinor,1500);assert.equal(order.commissionMinor,105);
+    assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"accepted"}})).status,200);
+    await updateDelivery(900);
+    f.db.prepare("UPDATE offer_campaigns SET title='Later campaign title' WHERE id=?").run(campaign.body.data.id);
+    const detail=(await f.json(`${s.root}/orders/${order.id}/breakdown`,{cookie:s.owner})).body.data;
+    assert.equal(detail.totals.grossDeliveryFeeMinor,250);assert.equal(detail.totals.deliveryDiscountMinor,250);assert.equal(detail.totals.deliveryFeeMinor,0);
+    assert.equal(detail.promotion.title,"Delivery on us");assert.equal(detail.promotion.campaignType,"free_delivery");assert.equal(detail.promotion.deliveryDiscountMinor,250);
+    assert.equal(detail.commission.commissionableMinor,1500);assert.equal(detail.commission.originalMinor,105);assert.equal(detail.earnings.currentMinor,1395);
+    const dashboard=(await f.json(`${restaurantRoot}/dashboard?period=today`,{cookie:s.owner})).body.data;
+    const saved=dashboard.orders.items.find(row=>row.id===order.id);
+    assert.equal(saved.deliveryBeforeOfferMinor,250);assert.equal(saved.deliveryDiscountMinor,250);assert.equal(saved.deliveryFeeMinor,0);assert.equal(saved.netEarningsMinor,1395);
+    const statement=buildWeeklyStatementSnapshot(f.db,s.restaurant.id,weeklyStatementPeriod("2026-01-05T09:00:00.000Z"),f.config);
+    const rows=statement.csv.trim().split("\r\n").map(line=>[...line.matchAll(/"((?:[^"]|"")*)"(?:,|$)/g)].map(match=>match[1].replaceAll('""','"'))),headers=rows.shift(),pricing=rows.find(row=>row[0]==="order_placed"&&row[2]===order.id);
+    for(const [column,expected] of Object.entries({deliveryBeforeOfferMinor:250,deliveryDiscountMinor:250,deliveryFeeMinor:0,originalCommissionMinor:105}))assert.equal(Number(pricing[headers.indexOf(column)]),expected,column);
+    assert.equal(pricing[headers.indexOf("promotionCampaignType")],"free_delivery");assert.equal(statement.summary.netEarningsMinor,1395);
+    const savedOrder=f.db.prepare("SELECT * FROM orders WHERE id=?").get(order.id);
+    const zeroRate=buildOrderFinancialBreakdown(f.db,{...savedOrder,contract_rate_bps:0,commission_minor:0});
+    assert.equal(zeroRate.commission.rateBasisPoints,0);assert.equal(zeroRate.commission.originalMinor,0);assert.equal(zeroRate.earnings.currentMinor,1500);assert.equal(zeroRate.promotion.deliveryDiscountMinor,250);
+  }finally{await f.close();}
+});
 
 test("owner order breakdown preserves promotion/commission/refund snapshots and excludes other roles",async()=>{
   const f=await journeyFixture({rateLimit:{attempts:30,windowMs:60000}});

@@ -7,7 +7,7 @@ import { colours } from "../theme";
 import { CustomerIcon } from "../CustomerBrandBanner";
 import type { Address, CartEntry, Fulfillment, Restaurant } from "../types";
 
-type BasketQuote={grossFoodMinor:number;restaurantDiscountMinor:number;subtotalMinor:number;deliveryFeeMinor:number;deliveryDiscountMinor:number;totalMinor:number;offerId:string|null;promotion:{grantId:string;title:string;campaignType:string;gift?:{menuItemId:string;name:string;quantity:number}|null}|null;autoOfferSelection:{candidateLimit:number;truncated:boolean;candidatesChecked:number}};
+type BasketQuote={grossFoodMinor:number;restaurantDiscountMinor:number;subtotalMinor:number;deliveryFeeMinor:number;deliveryDiscountMinor:number;totalMinor:number;offerId:string|null;promotion:{grantId:string;title:string;campaignType:string;gift?:{menuItemId:string;name:string;quantity:number}|null}|null;autoOfferSelection:{candidateLimit:number|null;truncated:boolean;candidatesChecked:number}};
 function completeAddress(address?:Address|null){return Boolean(address&&address.line1.trim()&&address.line1.trim().length<=120&&(!address.line2||address.line2.trim().length<=120)&&address.city.trim()&&address.city.trim().length<=100&&/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})$/.test(address.postcode.toUpperCase().replace(/\s+/g,"")));}
 
 export function BasketScreen({ token, restaurant, cart, fulfillment, initialAddress, onOffer, onCart, onBack, onCheckout, onScrollOffset }: {

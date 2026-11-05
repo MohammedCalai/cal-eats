@@ -33,6 +33,8 @@ test("dashboard CSV exports enforce owner/admin scope, London periods, privacy a
       return response.body.data;
     }
     const ownToday = await place("2026-10-29T08:00:00.000Z"), ownYesterday = await place("2026-10-28T23:59:59.999Z");
+    f.db.prepare("UPDATE orders SET fulfillment='delivery',delivery_fee_minor=0,promotion_snapshot=? WHERE id=?").run(JSON.stringify({campaignType:"free_delivery",deliveryDiscountMinor:375}),ownYesterday.id);
+    f.db.prepare("UPDATE restaurants SET delivery_fee_minor=999 WHERE id=?").run(restaurant.id);
     const chat = await f.json(`/api/orders/${ownToday.id}/messages`, { method: "POST", cookie: customerCookie, headers: { "Idempotency-Key": "csv-private-message" }, body: { message: "CSV_PRIVATE_CHAT_MARKER" } });
     assert.equal(chat.status, 201, chat.text);
     f.db.prepare("UPDATE orders SET status='completed',payment_status='mock_captured',customer_name='CSV_PRIVATE_CUSTOMER_MARKER',delivery_address=? WHERE id=?").run(JSON.stringify({ line1: "CSV_PRIVATE_ADDRESS_MARKER" }), ownToday.id);
@@ -57,11 +59,13 @@ test("dashboard CSV exports enforce owner/admin scope, London periods, privacy a
     const orders = await request(`${base}/orders.csv?period=today`);
     assert.equal(orders.status, 200, orders.errorMessage); assert.equal(orders.handled, true); assert.equal(orders.rows.length, 1);
     assert.equal(orders.rows[0].orderId, ownToday.id); assert.equal(orders.rows[0].status, "completed"); assert.equal(orders.rows[0].fulfillment, "collection");
+    assert.equal(orders.rows[0].deliveryBeforeOfferMinor,"0");assert.equal(orders.rows[0].deliveryDiscountMinor,"0");
     assert.equal(orders.rows[0].restaurantName, "'" + formulaName);
     assert.equal(orders.text.charCodeAt(0), 0xFEFF); assert.match(orders.headers.get("content-type"), /text\/csv/); assert.match(orders.headers.get("content-disposition"), /attachment; filename="Cal-Eats-business-orders-2026-10-29-2026-10-29.csv"/); assert.equal(orders.headers.get("cache-control"), "no-store");
     for (const value of [foreignId, ownYesterday.id, "CSV_PRIVATE_CHAT_MARKER", "CSV_PRIVATE_CUSTOMER_MARKER", "CSV_PRIVATE_ADDRESS_MARKER", customer.id, "password", "totalMinor", "commissionMinor", "paymentStatus"]) assert.equal(orders.text.includes(value), false, value);
     const yesterday = await request(`${base}/orders.csv?period=yesterday`);
     assert.deepEqual(yesterday.rows.map(row => row.orderId), [ownYesterday.id]);
+    assert.equal(yesterday.rows[0].deliveryBeforeOfferMinor,"375");assert.equal(yesterday.rows[0].deliveryDiscountMinor,"375","Exports use the saved waiver rather than the restaurant's current fee");
     const metrics = await request(`${base}/metrics.csv?period=today`);
     assert.equal(metrics.status, 200);
     assert.equal(metrics.rows.find(row => row.metric === "ordersPlaced").value, "1");
@@ -78,6 +82,7 @@ test("dashboard CSV exports enforce owner/admin scope, London periods, privacy a
     const adminOrders = await request("/api/admin/dashboard/orders.csv?from=2026-10-29&to=2026-10-29", admin);
     assert.equal(adminOrders.status, 200); assert.equal(adminOrders.rows.length, 2); assert.equal(adminOrders.rows.some(row => row.orderId === foreignId), true);
     assert.equal(adminOrders.rows.find(row => row.orderId === ownToday.id).totalMinor, String(ownToday.totalMinor));
+    assert.equal(adminOrders.rows.find(row=>row.orderId===ownToday.id).deliveryDiscountMinor,"0");
     for (const value of ["CSV_PRIVATE_CHAT_MARKER", "CSV_PRIVATE_CUSTOMER_MARKER", "CSV_PRIVATE_ADDRESS_MARKER", customer.id]) assert.equal(adminOrders.text.includes(value), false, value);
     for (const [amount, stamp, key] of [[10000, "2026-10-29T10:00:00.000Z", "selected"], [50000, "2026-10-28T10:00:00.000Z", "outside"]]) {
       f.db.prepare("INSERT INTO marketplace_operations(id,operation_key,restaurant_id,order_id,kind,status,amount_minor,currency,provider_mode,metadata,created_at,updated_at) VALUES(?,?,?,?,'provider_cost','confirmed',?,'GBP','local_simulator','{}',?,?)").run(randomUUID(), `csv-cost-${key}`, restaurant.id, ownToday.id, amount, stamp, stamp);
