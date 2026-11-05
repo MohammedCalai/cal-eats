@@ -84,3 +84,8 @@
 @media(max-width:520px){.brand-logo,.topbar .brand-logo{width:min(178px,51vw);max-height:48px}}
 
 .discovery-pages{display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px 16px 32px}.discovery-pages button{min-height:48px;min-width:240px}
+
+/* Keep each notification title and dismiss control together on phones. */
+.customer-app .notification-list .notification-heading{display:flex;flex-direction:row;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+.customer-app .notification-list .notification-heading>h3{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
+.customer-app .notification-list .notification-heading>.notification-dismiss{display:inline-flex;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;align-items:center;justify-content:center;padding:0}
