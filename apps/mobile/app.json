@@ -18,6 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.co.calai.caleats",
+      "appleTeamId": "HB56AJWWY2",
       "config": {
         "usesNonExemptEncryption": false
       },

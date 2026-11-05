@@ -29,3 +29,7 @@ coverage/
 *.tar
 *.tar.gz
 *.tgz
+**/credentials.json
+*.p12
+*.mobileprovision
+*.p8
