@@ -2,34 +2,7 @@ import React, { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { api } from "./api.js";
 import { shortDate } from "./model.js";
-import { readBusinessSoundPreference, subscribeBusinessSoundPreference } from "./business-sound-preference.js";
-import { printerConnectionSummary, startDashboardReminder } from "./dashboard-attention-model.js";
-
-// A separate player keeps reminders from changing the unconfirmed-order alarm.
-export function useDashboardAttentionSound({ userId, restaurantId, pending, orderAlarmActive }) {
-  const [soundEnabled, setSoundEnabled] = useState(() => readBusinessSoundPreference(userId));
-  const [blocked, setBlocked] = useState(false);
-  useEffect(() => {
-    setSoundEnabled(readBusinessSoundPreference(userId));
-    return subscribeBusinessSoundPreference(userId, setSoundEnabled);
-  }, [userId]);
-  useEffect(() => {
-    setBlocked(false);
-    if (!soundEnabled || !pending || orderAlarmActive) return;
-    const player = new Audio("/business/notification.wav");
-    player.preload = "auto";
-    const reminder = startDashboardReminder(player, { onBlocked: setBlocked });
-    const interact = event => reminder.interact(event);
-    document.addEventListener("pointerdown", interact, true);
-    document.addEventListener("keydown", interact, true);
-    return () => {
-      document.removeEventListener("pointerdown", interact, true);
-      document.removeEventListener("keydown", interact, true);
-      reminder.stop();
-    };
-  }, [restaurantId, userId, soundEnabled, Boolean(pending), orderAlarmActive]);
-  return { soundEnabled, blocked };
-}
+import { printerConnectionSummary } from "./dashboard-attention-model.js";
 
 export function DashboardPrinterWarning({ restaurantId, canManage = false }) {
   const [state, setState] = useState({ restaurantId: "", items: null, error: "" });

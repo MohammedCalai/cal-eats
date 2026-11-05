@@ -4,6 +4,7 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { decryptMessage, encryptMessage, messageFingerprint } from "./message-encryption.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
+import { restaurantMessageArrivalRevision } from "./business-message-attention.js";
 
 const DAY = 86400_000;
 const RETENTION_MS = 30 * DAY;
@@ -218,14 +219,15 @@ async function markRead(req, db, thread, user, config) {
   if (!thread) throw notFound();
   const messageId = clean(body.lastMessageId, 1, 100, "Message"), now = config.now().toISOString(), row = db.prepare("SELECT * FROM restaurant_customer_messages WHERE id=? AND thread_id=? AND expires_at>?").get(messageId, thread.id, now);
   if (!row) throw notFound();
-  withTransaction(db, () => {
+  const messageAttentionRevision = withTransaction(db, () => {
     const prior = db.prepare("SELECT * FROM restaurant_customer_message_reads WHERE thread_id=? AND user_id=?").get(thread.id, user.id);
     if (!prior || row.ingest_sequence > prior.last_read_sequence) {
       db.prepare("INSERT INTO restaurant_customer_message_reads(thread_id,user_id,last_read_created_at,last_read_message_id,updated_at,last_read_sequence) VALUES(?,?,?,?,?,?) ON CONFLICT(thread_id,user_id) DO UPDATE SET last_read_created_at=excluded.last_read_created_at,last_read_message_id=excluded.last_read_message_id,updated_at=excluded.updated_at,last_read_sequence=excluded.last_read_sequence").run(thread.id, user.id, row.created_at, row.id, now, row.ingest_sequence);
       db.prepare("UPDATE user_notifications SET read_at=? WHERE user_id=? AND conversation_id=? AND type='customer_message' AND read_at IS NULL AND event_key IN (SELECT 'customer-message:'||id FROM restaurant_customer_messages WHERE thread_id=? AND ingest_sequence<=?)").run(now, user.id, thread.id, thread.id, row.ingest_sequence);
     }
+    return restaurantMessageArrivalRevision(db, thread.restaurant_id, user.id);
   });
-  return { threadId: thread.id, lastMessageId: row.id, unreadCount: unreadCount(db, thread.id, user.id, now) };
+  return { threadId: thread.id, restaurantId:thread.restaurant_id, viewerUserId:user.id, messageAttentionRevision, lastMessageId: row.id, unreadCount: unreadCount(db, thread.id, user.id, now) };
 }
 
 export function runCustomerMessageRetention(db, config) {

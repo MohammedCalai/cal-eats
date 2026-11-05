@@ -1,33 +1,41 @@
 import "./BusinessCommunication.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api, json, newKey } from "./api.js";
+import { MESSAGE_OPENED_EVENT } from "./BusinessMessageReminder.jsx";
 
 const time = (value) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 
-export function useLiveNotifications({ onNotification, soundPreferenceKey = "calai-message-sound" } = {}) {
-  const seen = useRef(new Set()); const audio = useRef(null); const callback = useRef(onNotification); callback.current = onNotification; const [connected, setConnected] = useState(false); const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(soundPreferenceKey) === "on");
-  const enableSound = useCallback(async () => {
-    const Context = window.AudioContext || window.webkitAudioContext; if (!Context) return false;
-    audio.current ??= new Context(); await audio.current.resume(); localStorage.setItem(soundPreferenceKey, "on"); setSoundEnabled(true); return true;
-  }, [soundPreferenceKey]);
+export function useLiveNotifications({ onNotification } = {}) {
+  const seen = useRef(new Set()); const callback = useRef(onNotification); callback.current = onNotification; const [connected, setConnected] = useState(false);
   useEffect(() => {
     const source = new EventSource("/api/notifications/stream");
     const receive = (event) => {
       let item; try { item = JSON.parse(event.data); } catch { return; }
       if (seen.current.has(item.id)) return; seen.current.add(item.id); callback.current?.(item);
-      if (soundEnabled && item.type === "order_message" && audio.current) {
-        const ctx = audio.current, oscillator = ctx.createOscillator(), gain = ctx.createGain(); oscillator.frequency.value = 660; gain.gain.setValueAtTime(0.05, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18); oscillator.connect(gain).connect(ctx.destination); oscillator.start(); oscillator.stop(ctx.currentTime + 0.18);
-      }
     };
     source.onopen = () => setConnected(true); source.onerror = () => setConnected(false); source.addEventListener("notification", receive); return () => { setConnected(false); source.close(); };
-  }, [soundEnabled]);
-  return { connected, soundEnabled, enableSound, disableSound() { localStorage.setItem(soundPreferenceKey, "off"); setSoundEnabled(false); } };
+  }, []);
+  return { connected };
 }
 
 export function OrderConversation({ orderId, onClose }) {
-  const [conversation, setConversation] = useState(null), [message, setMessage] = useState(""), [reportReason, setReportReason] = useState(""), [error, setError] = useState(""), [sending, setSending] = useState(false); const pendingKey = useRef(null);
-  const load = useCallback(async () => { try { const data = await api(`/api/orders/${encodeURIComponent(orderId)}/messages`); setConversation(data); setError(""); const last = data.items.at(-1); if (last) { await api(`/api/orders/${encodeURIComponent(orderId)}/messages/read`, json("POST", { lastMessageId: last.id })); window.dispatchEvent(new CustomEvent("cal-eats-notifications-read", { detail: { orderId } })); } } catch (e) { if (e.status === 410 || e.code === "MESSAGING_CLOSED") setConversation({ items: [], isOpen: false, closedAt: null }); setError(e.message); } }, [orderId]);
-  useEffect(() => { load(); }, [load]);
+  const [conversation, setConversation] = useState(null), [message, setMessage] = useState(""), [reportReason, setReportReason] = useState(""), [error, setError] = useState(""), [sending, setSending] = useState(false); const pendingKey = useRef(null),lastRead=useRef(null),mounted=useRef(false),loadSequence=useRef(0);
+  const load = useCallback(async () => {
+    const request=++loadSequence.current;
+    try{
+      const data=await api(`/api/orders/${encodeURIComponent(orderId)}/messages`);
+      if(!mounted.current||request!==loadSequence.current)return;
+      setConversation(data);setError("");const last=data.items.at(-1);
+      if(last&&lastRead.current!==last.id&&!document.hidden){
+        const read=await api(`/api/orders/${encodeURIComponent(orderId)}/messages/read`,json("POST",{lastMessageId:last.id}));
+        if(!mounted.current||request!==loadSequence.current||document.hidden)return;
+        lastRead.current=last.id;
+        window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,orderId}}));
+        window.dispatchEvent(new CustomEvent("cal-eats-notifications-read",{detail:{orderId}}));
+      }
+    }catch(e){if(!mounted.current||request!==loadSequence.current)return;if(e.status===410||e.code==="MESSAGING_CLOSED")setConversation({items:[],isOpen:false,closedAt:null});setError(e.message);}
+  },[orderId]);
+  useEffect(()=>{mounted.current=true;lastRead.current=null;void load();const visible=()=>{if(!document.hidden)void load();};document.addEventListener("visibilitychange",visible);return()=>{mounted.current=false;loadSequence.current++;document.removeEventListener("visibilitychange",visible);};},[load]);
   const live = useLiveNotifications({ onNotification: useCallback((item) => { if (item.orderId === orderId && ["order_message", "order_status"].includes(item.type)) load(); }, [load, orderId]) });
   useEffect(() => { if (live.connected) return; const poll = () => { if (document.visibilityState === "visible") load(); }; const timer = setInterval(poll, 30_000); document.addEventListener("visibilitychange", poll); return () => { clearInterval(timer); document.removeEventListener("visibilitychange", poll); }; }, [live.connected, load]);
   useEffect(() => { if (!conversation?.isOpen || !conversation.closedAt) return; const delay = Date.parse(conversation.closedAt) - Date.now(); if (delay <= 0) { setConversation({ items: [], isOpen: false, closedAt: conversation.closedAt }); return; } const timer = setTimeout(() => { setConversation({ items: [], isOpen: false, closedAt: conversation.closedAt }); }, Math.min(delay, 2_147_483_647)); return () => clearTimeout(timer); }, [conversation?.isOpen, conversation?.closedAt]);

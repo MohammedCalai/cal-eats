@@ -5,6 +5,7 @@ import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { decryptMessage, encryptMessage, messageFingerprint } from "./message-encryption.js";
 import { notificationStreamHub } from "./notification-stream.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
+import { restaurantMessageArrivalRevision } from "./business-message-attention.js";
 
 export const DEFAULT_QUICK_RESPONSES = ["We’re preparing your order now.", "Sorry for the delay, we’re very busy.", "Your order will be ready shortly.", "Your driver is on the way.", "Your order is ready for collection.", "Thank you for ordering."];
 export function quickResponsesForOrder(responses,fulfillment) {
@@ -122,14 +123,16 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const granted = access(db, session, match[1]); const body = await readJson(req, config.bodyLimit); exactObject(body, ["lastMessageId"]); const id = clean(body.lastMessageId, 1, 100, "Message");
     if (!availability(db, granted.order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
     const row = db.prepare("SELECT * FROM order_messages WHERE id=? AND order_id=? AND expires_at>?").get(id, granted.order.id, nowIso(config)); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    const prior = db.prepare("SELECT * FROM order_message_reads WHERE order_id=? AND user_id=?").get(granted.order.id, granted.user.id);
-    if (!prior || row.created_at > prior.last_read_created_at || (row.created_at === prior.last_read_created_at && row.id > prior.last_read_message_id)) {
-      const readAt = nowIso(config); withTransaction(db, () => {
+    const messageAttentionRevision = withTransaction(db, () => {
+      const prior = db.prepare("SELECT * FROM order_message_reads WHERE order_id=? AND user_id=?").get(granted.order.id, granted.user.id);
+      if (!prior || row.created_at > prior.last_read_created_at || (row.created_at === prior.last_read_created_at && row.id > prior.last_read_message_id)) {
+        const readAt = nowIso(config);
         db.prepare("INSERT INTO order_message_reads VALUES(?,?,?,?,?) ON CONFLICT(order_id,user_id) DO UPDATE SET last_read_created_at=excluded.last_read_created_at,last_read_message_id=excluded.last_read_message_id,updated_at=excluded.updated_at").run(granted.order.id, granted.user.id, row.created_at, row.id, readAt);
         db.prepare("UPDATE user_notifications SET read_at=? WHERE user_id=? AND order_id=? AND type='order_message' AND read_at IS NULL AND event_key IN (SELECT 'order-message:'||id FROM order_messages WHERE order_id=? AND (created_at<? OR (created_at=? AND id<=?)))").run(readAt, granted.user.id, granted.order.id, granted.order.id, row.created_at, row.created_at, row.id);
-      });
-    }
-    return sendJson(res, 200, { data: { orderId: granted.order.id, lastMessageId: id, unreadCount: unreadCount(db, granted.order.id, granted.user.id, nowIso(config)) } });
+      }
+      return restaurantMessageArrivalRevision(db, granted.order.restaurant_id, granted.user.id);
+    });
+    return sendJson(res, 200, { data: { orderId: granted.order.id, restaurantId: granted.order.restaurant_id, viewerUserId:granted.user.id, messageAttentionRevision, lastMessageId: id, unreadCount: unreadCount(db, granted.order.id, granted.user.id, nowIso(config)) } });
   }
   match = url.pathname.match(/^\/api\/orders\/([^/]+)\/messages$/);
   if (!match) return false;

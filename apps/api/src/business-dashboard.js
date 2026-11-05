@@ -2,6 +2,8 @@ import { requireRestaurantMembership } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { buildFinanceSummary, parseLondonDateRange } from "./marketplace-reporting.js";
 import { PAYABLE_ORDER_SQL } from "./order-confirmation.js";
+import { orderMessageWindow } from "./order-messaging.js";
+import { restaurantMessageArrivalRevision } from "./business-message-attention.js";
 
 const CONFIRMED = "'accepted','preparing','ready','out_for_delivery','completed'";
 const recognized = (alias = "o") => `${alias}.status IN (${CONFIRMED}) AND (${alias}.payment_method<>'card' OR ${alias}.payment_status IN ('stripe_captured','stripe_partially_refunded','stripe_refunded'))`;
@@ -40,15 +42,23 @@ function dashboardInsights(db, restaurantId, range, now) {
   return { comparison: { fromDate: previous.fromDate, toDate: previous.toDate, salesChangePercent: growth(currentFinance.grossSalesMinor, previousFinance.grossSalesMinor), ordersChangePercent: growth(currentOrders, previousOrders), previousOrders, previousSalesMinor: previousFinance.grossSalesMinor }, marketing: { ...marketing, activeOffers, basis: "confirmed_orders_before_refunds" } };
 }
 
+function unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, actionableConfig = null) {
+  const orderScope = `FROM order_messages m JOIN orders o ON o.id=m.order_id LEFT JOIN order_message_reads r ON r.order_id=m.order_id AND r.user_id=? WHERE o.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND (r.order_id IS NULL OR m.created_at>r.last_read_created_at OR (m.created_at=r.last_read_created_at AND m.id>r.last_read_message_id))`;
+  const orderMessages = actionableConfig
+    ? db.prepare(`SELECT o.*,COUNT(*) AS unread_count ${orderScope} GROUP BY o.id`).all(userId, restaurantId, now)
+      .filter(order => orderMessageWindow(db, order, actionableConfig).messagingAvailable).reduce((sum, order) => sum + order.unread_count, 0)
+    : db.prepare(`SELECT COUNT(*) AS count ${orderScope}`).get(userId, restaurantId, now).count;
+  const customerMessages = owner ? db.prepare(`SELECT COUNT(*) AS count FROM restaurant_customer_messages m JOIN restaurant_customer_threads t ON t.id=m.thread_id LEFT JOIN restaurant_customer_message_reads r ON r.thread_id=m.thread_id AND r.user_id=? WHERE t.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND m.ingest_sequence>COALESCE(r.last_read_sequence,0)`).get(userId, restaurantId, now).count : 0;
+  return orderMessages + customerMessages;
+}
+
 function operationalCounts(db, restaurantId, userId, owner, now) {
   const pending = db.prepare(`SELECT COUNT(*) AS pending,SUM(CASE WHEN o.confirmation_due_at<=? THEN 1 ELSE 0 END) AS overdue FROM orders o WHERE o.restaurant_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}`).get(now, restaurantId);
   const active = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready','out_for_delivery') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId).count;
   const kitchen = db.prepare(`SELECT COUNT(*) AS liveOrders,COALESCE(SUM(CASE WHEN o.status IN ('accepted','preparing') THEN 1 ELSE 0 END),0) AS confirmedInKitchen,COALESCE(SUM(CASE WHEN o.status='ready' THEN 1 ELSE 0 END),0) AS readyForHandover FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId);
-  const orderMessages = db.prepare(`SELECT COUNT(*) AS count FROM order_messages m JOIN orders o ON o.id=m.order_id LEFT JOIN order_message_reads r ON r.order_id=m.order_id AND r.user_id=? WHERE o.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND (r.order_id IS NULL OR m.created_at>r.last_read_created_at OR (m.created_at=r.last_read_created_at AND m.id>r.last_read_message_id))`).get(userId, restaurantId, now).count;
-  const customerMessages = owner ? db.prepare(`SELECT COUNT(*) AS count FROM restaurant_customer_messages m JOIN restaurant_customer_threads t ON t.id=m.thread_id LEFT JOIN restaurant_customer_message_reads r ON r.thread_id=m.thread_id AND r.user_id=? WHERE t.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND m.ingest_sequence>COALESCE(r.last_read_sequence,0)`).get(userId, restaurantId, now).count : 0;
   return {
     pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active, ...kitchen,
-    unreadMessages: orderMessages + customerMessages,
+    unreadMessages: unreadRestaurantMessageCount(db, restaurantId, userId, owner, now),
     openOrderHelp: owner ? db.prepare("SELECT COUNT(*) count FROM support_cases s JOIN users u ON u.id=s.user_id WHERE s.restaurant_id=? AND s.order_id IS NOT NULL AND u.role='customer' AND s.status<>'resolved' AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.id=s.id)").get(restaurantId).count : null,
     actionRequiredOrderHelp: owner ? db.prepare("SELECT COUNT(*) count FROM support_cases s JOIN users u ON u.id=s.user_id WHERE s.restaurant_id=? AND s.order_id IS NOT NULL AND u.role='customer' AND s.status<>'resolved' AND s.waiting_for='team' AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.id=s.id)").get(restaurantId).count : null,
     openRefundCases: owner ? db.prepare("SELECT COUNT(*) AS count FROM refund_cases WHERE restaurant_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(restaurantId).count : null,
@@ -109,10 +119,15 @@ function orderRows(db, restaurantId, range, owner, page, pageSize) {
 }
 
 export async function routeBusinessDashboard({ req, res, url, db, config, session }) {
-  const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/dashboard$/);
+  const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/(dashboard|message-attention)$/);
   if (req.method !== "GET" || !match) return false;
   const restaurantId = match[1], user = requireRestaurantMembership(db, session, restaurantId);
   const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id).permission, owner = permission === "owner";
+  if (match[2] === "message-attention") {
+    const now = config.now().toISOString();
+    const revision = restaurantMessageArrivalRevision(db, restaurantId, user.id);
+    return sendJson(res, 200, { data: { restaurantId, unreadCount: unreadRestaurantMessageCount(db, restaurantId, user.id, owner, now, {...config,now:()=>new Date(now)}), revision } });
+  }
   const view = url.searchParams.get("view") ?? "full";
   if (!["full", "operations"].includes(view)) throw new HttpError(400, "VALIDATION_ERROR", "Dashboard view is invalid");
   const includeFinance = owner && view === "full";

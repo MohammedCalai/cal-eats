@@ -1,4 +1,5 @@
 import "./BusinessCommunication.css";
+import { MESSAGE_OPENED_EVENT } from "./BusinessMessageReminder.jsx";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useSearchParams } from "react-router-dom";
 import { api, json, newKey } from "./api.js";
@@ -56,10 +57,21 @@ export function CustomerInbox({restaurantId}) {
 
 export function CustomerConversation({restaurantId,customerId,customerName,onChange}) {
   const path=`/api/restaurant/restaurants/${restaurantId}/customers/${customerId}/conversation`;
-  const result=useResult(path),[message,setMessage]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false),[statusBusy,setStatusBusy]=useState(false),[older,setOlder]=useState([]),[olderCursor,setOlderCursor]=useState(undefined),[olderBusy,setOlderBusy]=useState(false);const key=useRef(null),lastRead=useRef(null),olderSequence=useRef(0);
+  const result=useResult(path),[message,setMessage]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false),[statusBusy,setStatusBusy]=useState(false),[older,setOlder]=useState([]),[olderCursor,setOlderCursor]=useState(undefined),[olderBusy,setOlderBusy]=useState(false),[visible,setVisible]=useState(()=>!document.hidden);const key=useRef(null),lastRead=useRef(null),olderSequence=useRef(0),mounted=useRef(false),currentPath=useRef(path);currentPath.current=path;
+  useEffect(()=>{mounted.current=true;const changed=()=>setVisible(!document.hidden);document.addEventListener("visibilitychange",changed);return()=>{mounted.current=false;document.removeEventListener("visibilitychange",changed);};},[]);
   useEffect(()=>{setOlder([]);setOlderCursor(undefined);setMessage("");setError("");key.current=null;olderSequence.current++;},[path]);
   useEffect(()=>connectLiveNotifications({onRefresh:result.reload}),[result.reload]);
-  useEffect(()=>{const id=result.value?.readThroughMessageId||result.value?.items?.at(-1)?.id;if(!id||lastRead.current===id)return;lastRead.current=id;void api(`${path}/read`,json("POST",{lastMessageId:id})).then(()=>{window.dispatchEvent(new Event("cal-eats-notifications-read"));onChange?.();}).catch(()=>{lastRead.current=null;});},[result.value,path]);
+  useEffect(()=>{
+    const id=result.value?.readThroughMessageId||result.value?.items?.at(-1)?.id;
+    if(!visible||document.hidden||!id||lastRead.current===id)return;
+    lastRead.current=id;const requestedPath=path;
+    void api(`${path}/read`,json("POST",{lastMessageId:id})).then(read=>{
+      if(!mounted.current||currentPath.current!==requestedPath)return;
+      if(document.hidden){if(lastRead.current===id)lastRead.current=null;return;}
+      window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,customerId}}));
+      window.dispatchEvent(new Event("cal-eats-notifications-read"));onChange?.();
+    }).catch(()=>{if(currentPath.current===requestedPath&&lastRead.current===id)lastRead.current=null;});
+  },[result.value,path,visible]);
   async function send(e){e.preventDefault();const text=message.trim();if(!text||busy)return;setBusy(true);setError("");if(key.current?.text!==text)key.current={text,key:newKey("customer-message")};try{await api(path,json("POST",{message:text},key.current.key));key.current=null;setMessage("");await result.reload();onChange?.();}catch(x){setError(x.message);}finally{setBusy(false);}}
   async function updateStatus(status){setStatusBusy(true);setError("");try{await api(path,json("PATCH",{status}));await result.reload();onChange?.();}catch(x){setError(x.message);}finally{setStatusBusy(false);}}
   const cursor=olderCursor===undefined?result.value?.nextCursor:olderCursor;
