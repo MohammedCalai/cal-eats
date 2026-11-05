@@ -1,3 +1,4 @@
+import { invalidateNotifications } from "./notificationRevision.ts";
 const RAW_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "") ?? "";
 
 export function validateBase(raw: string): string {
@@ -26,6 +27,8 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   if (!API_BASE_URL) throw new ApiError("Set EXPO_PUBLIC_API_BASE_URL to this independent Cal-Eats API before using the app.", 0, "API_NOT_CONFIGURED");
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
+  // Native guest requests do not receive the browser's automatic Origin header.
+  if (["POST", "PUT", "PATCH", "DELETE"].includes((options.method ?? "GET").toUpperCase())) headers.set("Origin", new URL(API_BASE_URL).origin);
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
   if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
@@ -36,6 +39,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     const payload = await response.json().catch(() => null) as { data?: T; error?: { code?: string; message?: string } } | null;
     if (!response.ok) throw new ApiError(String(payload?.error?.message ?? `Request failed (${response.status}).`).replace(/\bStripe\b/gi,"card payment service"), response.status, payload?.error?.code);
     if (!payload || !Object.prototype.hasOwnProperty.call(payload, "data")) throw new ApiError("The API returned a malformed response.", response.status, "MALFORMED_RESPONSE");
+    if ((options.method ?? "GET").toUpperCase() === "PATCH" && /^\/api\/notifications\/[^/?]+(?:\?|$)/.test(path)) invalidateNotifications();
     return payload.data as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;

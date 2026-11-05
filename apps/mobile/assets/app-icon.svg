@@ -11,6 +11,6 @@
     </filter>
   </defs>
   <rect width="1024" height="1024" fill="#103657"/>
-  <image href="./calai-symbol.png" x="154" y="-25" width="719" height="719" filter="url(#symbol)"/>
-  <text x="512" y="868" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="205" letter-spacing="-7"><tspan fill="#ffffff">Cal</tspan><tspan fill="url(#eats)" font-style="italic"> Eats</tspan></text>
+  <image href="./calai-symbol.png" x="261" y="136" width="503" height="503" filter="url(#symbol)"/>
+  <text x="512" y="804" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="205" letter-spacing="-7"><tspan fill="#ffffff">Cal</tspan><tspan fill="url(#eats)" font-style="italic"> Eats</tspan></text>
 </svg>

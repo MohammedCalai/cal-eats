@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2170" height="725" viewBox="0 0 2170 725">
+  <defs>
+    <!-- The original blue and white artwork has a bright blue channel. Its
+         baked near-black canvas does not. Keep original artwork RGB values;
+         use that channel only to remove the canvas and existing letter holes. -->
+    <filter id="clear-canvas" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 1 0 0" result="blue-channel"/>
+      <feComponentTransfer in="blue-channel" result="artwork-mask">
+        <feFuncA type="linear" slope="16" intercept="-2"/>
+      </feComponentTransfer>
+      <feComposite in="SourceGraphic" in2="artwork-mask" operator="in"/>
+    </filter>
+  </defs>
+  <image href="./cal-eats-logo.png" width="2170" height="725" filter="url(#clear-canvas)"/>
+</svg>

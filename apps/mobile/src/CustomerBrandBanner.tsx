@@ -8,7 +8,7 @@ const WORDMARK_HEIGHT = CUSTOMER_WORDMARK_WIDTH * 41 / 148;
 const IMAGE_WIDTH_RATIO = 1.62425;
 const IMAGE_LEFT_RATIO = -0.32036;
 const IMAGE_TOP_RATIO = -0.48649;
-const LOGO = require("../assets/cal-eats-logo.png");
+const LOGO = require("../assets/cal-eats-header.png");
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(true);
@@ -118,7 +118,7 @@ export function CustomerTabIcon({name, active, colourOverride, size = 25}: {name
 const s = StyleSheet.create({
   banner: {width: "100%", height: CUSTOMER_BANNER_HEIGHT, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, gap: 8, backgroundColor: "#103657", borderBottomWidth: 1, borderBottomColor: "#2E6089", shadowColor: "#0C2F55", shadowOpacity: 0.14, shadowRadius: 9, shadowOffset: {width:0,height:3}, elevation: 3},
   home: {width: CUSTOMER_WORDMARK_WIDTH, minHeight: 44, justifyContent: "center", flexShrink: 0},
-  wordmark: {position: "relative", overflow: "hidden", mixBlendMode: "lighten"},
+  wordmark: {position: "relative", overflow: "hidden"},
   wordmarkPiece: {position: "absolute", top: 0, overflow: "hidden"},
   wordmarkImage: {position: "absolute"},
   controls: {flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0},
