@@ -9,6 +9,7 @@ const assets = new Map([
   ["/checkout-ui.js",["checkout-ui.js","text/javascript; charset=utf-8"]],
   ["/checkout-polish.css",["checkout-polish.css","text/css; charset=utf-8"]],
   ["/order-experience.js",["order-experience.js","text/javascript; charset=utf-8"]],
+  ["/order-progress.js",["order-progress.js","text/javascript; charset=utf-8"]],
   ["/order-experience.css",["order-experience.css","text/css; charset=utf-8"]],
   ["/order-history-groups.js",["order-history-groups.js","text/javascript; charset=utf-8"]],
   ["/", ["landing.html", "text/html; charset=utf-8"]],
