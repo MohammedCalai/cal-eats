@@ -84,6 +84,50 @@ test("weekly delivery revalidates ownership and never blindly resends after a di
   }finally{if(recovery)closeDatabase(recovery);await f.close();}
 });
 
+test("archived businesses never queue or send weekly statements while historical CSV stays available",async()=>{
+  const f=await fixture();try{
+    await f.place("mock_card");
+    const period=weeklyStatementPeriod("2026-10-26T09:00:00Z"),snapshot=buildWeeklyStatementSnapshot(f.db,f.restaurant.id,period,f.config);
+    const userId=f.db.prepare("SELECT id FROM users WHERE email='restaurant@calai.local'").get().id;
+    const retained=[],unsent=[];
+    for(const[status,week]of[["sent","2026-09-07"],["local_saved","2026-09-14"],["unknown","2026-09-21"],["pending","2026-09-28"],["failed","2026-10-05"],["claimed","2026-10-12"]]){
+      const id=randomUUID(),dispatched=["sent","local_saved","unknown"].includes(status);
+      f.db.prepare("INSERT INTO business_weekly_statement_outbox(id,restaurant_id,user_id,recipient,week_from,week_to,summary,csv,message_id,mode,status,lease_owner,lease_expires_at,dispatch_started_at,queued_at,sent_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,f.restaurant.id,userId,"restaurant@calai.local",week,week,JSON.stringify(snapshot.summary),snapshot.csv,`<${id}@calai.info>`,"local",status,status==="claimed"?"expired-worker":null,status==="claimed"?"2026-10-26T08:00:00.000Z":null,dispatched?"2026-10-20T09:00:00.000Z":null,"2026-10-20T08:00:00.000Z",["sent","local_saved"].includes(status)?"2026-10-20T09:00:00.000Z":null,"2026-10-20T09:00:00.000Z");
+      (dispatched?retained:unsent).push(id);
+    }
+    const historyBefore=retained.map(id=>f.db.prepare("SELECT * FROM business_weekly_statement_outbox WHERE id=?").get(id));
+    // A removed preference must not be recreated automatically for an archived owner.
+    f.db.prepare("DELETE FROM business_statement_preferences WHERE restaurant_id<>?").run(f.restaurant.id);
+    const preferencesBefore=f.db.prepare("SELECT * FROM business_statement_preferences ORDER BY restaurant_id,user_id").all();
+    f.set("2026-10-26T09:00:00Z");
+    f.db.prepare("UPDATE restaurants SET archived_at=?").run(f.config.now().toISOString());
+    let sends=0;
+    const result=await runBusinessWeeklyStatements(f.db,f.config,{adapter:async()=>{sends++;return{status:"sent"};}});
+    assert.equal(result.queued,0);assert.equal(result.sent,0);assert.equal(result.localSaved,0);assert.equal(result.cancelled,3);assert.equal(sends,0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM business_weekly_statement_outbox").get().n,6);
+    assert.deepEqual(f.db.prepare("SELECT * FROM business_statement_preferences ORDER BY restaurant_id,user_id").all(),preferencesBefore);
+    assert.deepEqual(retained.map(id=>f.db.prepare("SELECT * FROM business_weekly_statement_outbox WHERE id=?").get(id)),historyBefore);
+    for(const id of unsent){const row=f.db.prepare("SELECT * FROM business_weekly_statement_outbox WHERE id=?").get(id);assert.equal(row.status,"cancelled");assert.equal(row.last_error,"STATEMENT_RESTAURANT_ARCHIVED");assert.equal(row.csv,snapshot.csv);assert.equal(row.summary,JSON.stringify(snapshot.summary));}
+    const history=await f.json(f.root,{cookie:f.owner});assert.equal(history.status,200,history.text);assert.equal(history.body.data.items.length,6);
+    const download=await f.request(`${f.root}/${retained[0]}.csv`,{cookie:f.owner});assert.equal(download.status,200);assert.equal(download.text,snapshot.csv);
+    assert.deepEqual(buildWeeklyStatementSnapshot(f.db,f.restaurant.id,period,f.config),snapshot);
+    // Archiving after the adapter starts must still fail its final pre-send check.
+    f.db.prepare("UPDATE restaurants SET archived_at=NULL WHERE id=?").run(f.restaurant.id);
+    const race=await runBusinessWeeklyStatements(f.db,f.config,{limit:1,adapter:async(_message,{beforeSend})=>{
+      f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(f.config.now().toISOString(),f.restaurant.id);
+      assert.equal(beforeSend(),false);
+      return{status:"cancelled"};
+    }});
+    assert.equal(race.queued,1);assert.equal(race.sent,0);assert.equal(sends,0);
+    const cancelled=f.db.prepare("SELECT * FROM business_weekly_statement_outbox WHERE week_from='2026-10-19'").get();
+    assert.equal(cancelled.status,"cancelled");assert.equal(cancelled.last_error,"STATEMENT_RESTAURANT_ARCHIVED");assert.equal(cancelled.dispatch_started_at,null);
+    assert.equal((await runBusinessWeeklyStatements(f.db,f.config,{adapter:async()=>{sends++;return{status:"sent"};}})).queued,0);
+    assert.equal(sends,0);assert.deepEqual(buildWeeklyStatementSnapshot(f.db,f.restaurant.id,period,f.config),snapshot);
+    assert.deepEqual(retained.map(id=>f.db.prepare("SELECT * FROM business_weekly_statement_outbox WHERE id=?").get(id)),historyBefore);
+    assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length,0);
+  }finally{await f.close();}
+});
+
 test("bounded statement CSV is transmitted by mail adapters without file or URL attachments",async()=>{
   const f=await fixture();try{
     const snapshot=buildWeeklyStatementSnapshot(f.db,f.restaurant.id,weeklyStatementPeriod("2026-10-26T09:00:00Z"),f.config),id=randomUUID();

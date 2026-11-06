@@ -35,7 +35,7 @@ const deliveryMode = config => config.businessStatements?.sendEnabled ? config.o
 function deliverySettings(config) { return { ...config.orderAlertEmail, mode: deliveryMode(config), localDirectory: path.join(config.orderAlertEmail.localDirectory, "business-statements") }; }
 export function initializeBusinessWeeklyStatements(db, config) {
   const now = config.now().toISOString();
-  db.prepare("INSERT OR IGNORE INTO business_statement_preferences(restaurant_id,user_id,enabled,activated_at,next_due_at,updated_at) SELECT m.restaurant_id,m.user_id,1,?,?,? FROM restaurant_memberships m JOIN users u ON u.id=m.user_id WHERE m.permission='owner' AND u.role='restaurant' AND u.account_enabled=1").run(now, nextWeeklyStatementAt(config.now()), now);
+  db.prepare("INSERT OR IGNORE INTO business_statement_preferences(restaurant_id,user_id,enabled,activated_at,next_due_at,updated_at) SELECT m.restaurant_id,m.user_id,1,?,?,? FROM restaurant_memberships m JOIN users u ON u.id=m.user_id JOIN restaurants r ON r.id=m.restaurant_id WHERE m.permission='owner' AND u.role='restaurant' AND u.account_enabled=1 AND r.archived_at IS NULL").run(now, nextWeeklyStatementAt(config.now()), now);
 }
 
 function csvCell(value) { let text = String(value ?? ""); if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`; return `"${text.replaceAll('"', '""')}"`; }
@@ -103,6 +103,7 @@ function settingsDto(db, restaurantId, userId, config) {
   return { enabled: Boolean(preference.enabled), recipient: user.email, schedule: { day: "monday", hour: 9, timeZone: ZONE, description: "Monday at 09:00 UK time, covering the previous Monday–Sunday" }, nextScheduledAt: preference.enabled ? preference.next_due_at : null, email: { mode: email.mode, configured: email.configured, realDeliveryEnabled: Boolean(config.businessStatements?.sendEnabled && email.realDeliveryEnabled), note: config.businessStatements?.sendEnabled ? email.note : "Weekly statements are saved as private email previews. Hosted sending must be explicitly connected and enabled." } };
 }
 function currentSource(db, row, config) {
+  if (!db.prepare("SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL").get(row.restaurant_id)) return "STATEMENT_RESTAURANT_ARCHIVED";
   const owner = db.prepare("SELECT u.email,p.enabled FROM users u JOIN restaurant_memberships m ON m.user_id=u.id AND m.restaurant_id=? AND m.permission='owner' JOIN business_statement_preferences p ON p.user_id=u.id AND p.restaurant_id=m.restaurant_id WHERE u.id=? AND u.account_enabled=1 AND u.role='restaurant'").get(row.restaurant_id, row.user_id);
   if (!owner || !owner.enabled || !validEmail(owner.email) || owner.email.toLowerCase() !== row.recipient.toLowerCase()) return "STATEMENT_OWNER_OR_EMAIL_CHANGED";
   if (deliveryMode(config) !== row.mode) return "STATEMENT_DELIVERY_MODE_CHANGED";
@@ -126,7 +127,7 @@ function queueDueStatements(db, config, limit) {
   let queued = 0;
   for (let index = 0; index < limit; index++) {
     const stamp = config.now().toISOString();
-    const preference = db.prepare("SELECT p.*,u.email FROM business_statement_preferences p JOIN users u ON u.id=p.user_id JOIN restaurant_memberships m ON m.user_id=p.user_id AND m.restaurant_id=p.restaurant_id AND m.permission='owner' WHERE p.enabled=1 AND p.next_due_at<=? AND u.account_enabled=1 AND u.role='restaurant' ORDER BY p.next_due_at,p.restaurant_id,p.user_id LIMIT 1").get(stamp);
+    const preference = db.prepare("SELECT p.*,u.email FROM business_statement_preferences p JOIN users u ON u.id=p.user_id JOIN restaurant_memberships m ON m.user_id=p.user_id AND m.restaurant_id=p.restaurant_id AND m.permission='owner' JOIN restaurants r ON r.id=p.restaurant_id WHERE p.enabled=1 AND p.next_due_at<=? AND u.account_enabled=1 AND u.role='restaurant' AND r.archived_at IS NULL ORDER BY p.next_due_at,p.restaurant_id,p.user_id LIMIT 1").get(stamp);
     if (!preference) break;
     const period = weeklyStatementPeriod(preference.next_due_at), id = randomUUID();
     let snapshot, failure = null;
@@ -145,6 +146,7 @@ async function run(db, config, { workerId = randomUUID(), limit = 25, adapter, b
   const result = { queued: queueDueStatements(db, config, limit), sent: 0, localSaved: 0, failed: 0, unknown: 0, cancelled: 0 }, stamp = config.now().toISOString();
   withTransaction(db, () => {
     db.prepare("UPDATE business_weekly_statement_outbox SET status=CASE WHEN dispatch_started_at IS NULL THEN 'pending' ELSE 'unknown' END,last_error=CASE WHEN dispatch_started_at IS NULL THEN 'STATEMENT_LEASE_RECOVERED' ELSE 'STATEMENT_DISPATCH_OUTCOME_UNKNOWN' END,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE status='claimed' AND lease_expires_at<=?").run(stamp, stamp);
+    result.cancelled += db.prepare("UPDATE business_weekly_statement_outbox SET status='cancelled',last_error='STATEMENT_RESTAURANT_ARCHIVED',lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE status IN ('pending','failed') AND dispatch_started_at IS NULL AND EXISTS(SELECT 1 FROM restaurants r WHERE r.id=business_weekly_statement_outbox.restaurant_id AND r.archived_at IS NOT NULL)").run(stamp).changes;
   });
   const sender = adapter ?? createOrderAlertEmailAdapter(deliverySettings(config));
   for (let index = 0; index < limit; index++) {
