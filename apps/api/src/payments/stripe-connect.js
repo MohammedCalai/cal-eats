@@ -115,8 +115,8 @@ export async function routeStripeConnect(ctx) {
   }
   if (req.method === "GET" && url.pathname === "/api/admin/finance/stripe/readiness") {
     requireRole(session,"admin"); const mode = stripeMode(config);
-    const accounts = db.prepare("SELECT status,COUNT(*) n FROM provider_accounts WHERE provider_mode=? GROUP BY status").all(mode ?? "unconfigured");
-    return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,configured:configured(config),webhookConfigured:Boolean(config.paymentProviderWebhookSecret && config.paymentProviderConnectWebhookSecret),accounts:Object.fromEntries(accounts.map(row=>[row.status,row.n])),orders:{pending:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments WHERE provider_mode=? AND status IN ('pending','unknown')").get(mode).n,failed:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments WHERE provider_mode=? AND status='failed'").get(mode).n},payoutSchedule:schedule}});
+    const accounts = db.prepare("SELECT a.status,COUNT(*) n FROM provider_accounts a JOIN restaurants r ON r.id=a.restaurant_id WHERE a.provider_mode=? AND r.archived_at IS NULL GROUP BY a.status").all(mode ?? "unconfigured");
+    return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,configured:configured(config),webhookConfigured:Boolean(config.paymentProviderWebhookSecret && config.paymentProviderConnectWebhookSecret),accounts:Object.fromEntries(accounts.map(row=>[row.status,row.n])),orders:{pending:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments p JOIN orders o ON o.id=p.order_id JOIN restaurants r ON r.id=o.restaurant_id WHERE p.provider_mode=? AND p.status IN ('pending','unknown') AND r.archived_at IS NULL").get(mode).n,failed:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments p JOIN orders o ON o.id=p.order_id JOIN restaurants r ON r.id=o.restaurant_id WHERE p.provider_mode=? AND p.status='failed' AND r.archived_at IS NULL").get(mode).n},payoutSchedule:schedule}});
   }
   if (req.method === "GET" && url.pathname === "/api/admin/finance/stripe/payouts") {
     requireRole(session,"admin");

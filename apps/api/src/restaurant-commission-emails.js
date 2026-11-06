@@ -13,6 +13,7 @@ const rowsFor=(db,restaurantId,revision)=>db.prepare("SELECT o.* FROM restaurant
 
 /** Must run in the same transaction as the commission revision and audit event. */
 export function enqueueRestaurantCommissionEmails(db,config,{restaurantId,revision,before,after,normalRateBasisPoints,now}){
+  if(!db.prepare("SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL").get(restaurantId))return;
   // Never allow an earlier queued confirmation to describe a replaced or cancelled promise.
   db.prepare("UPDATE restaurant_commission_email_outbox SET status='cancelled',last_error='COMMISSION_SETTINGS_SUPERSEDED',next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE event_id IN (SELECT id FROM restaurant_commission_email_events WHERE restaurant_id=? AND settings_revision<?) AND (status IN ('pending','failed') OR (status='claimed' AND dispatch_started_at IS NULL))").run(now,restaurantId,revision);
   const hadPeriod=Boolean(before.freePeriod&&before.freePeriod.endsAt>now);
@@ -61,6 +62,7 @@ export function buildRestaurantCommissionEmail(row,config){
 }
 
 function sourceFailure(db,row,now,config){
+  if(!db.prepare("SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL").get(row.restaurant_id))return "COMMISSION_EMAIL_RESTAURANT_ARCHIVED";
   if(row.mode!==mode(config))return "COMMISSION_EMAIL_TRANSPORT_CHANGED";
   const owner=db.prepare("SELECT u.email FROM users u JOIN restaurant_memberships m ON m.user_id=u.id AND m.restaurant_id=? AND m.permission='owner' WHERE u.id=? AND u.role='restaurant' AND u.account_enabled=1").get(row.restaurant_id,row.user_id);
   if(!owner||!validEmail(owner.email)||owner.email.toLowerCase()!==row.recipient.toLowerCase())return "COMMISSION_EMAIL_OWNER_CHANGED";
@@ -77,6 +79,7 @@ async function run(db,config,{workerId=randomUUID(),limit=25,adapter,beforeDispa
   const result={sent:0,localSaved:0,failed:0,unknown:0,cancelled:0},stamp=config.now().toISOString();
   withTransaction(db,()=>{
     db.prepare("UPDATE restaurant_commission_email_outbox SET status=CASE WHEN dispatch_started_at IS NULL THEN 'pending' ELSE 'unknown' END,last_error=CASE WHEN dispatch_started_at IS NULL THEN 'EMAIL_LEASE_RECOVERED_BEFORE_DISPATCH' ELSE 'EMAIL_LEASE_EXPIRED_AFTER_DISPATCH' END,next_attempt_at=CASE WHEN dispatch_started_at IS NULL THEN ? ELSE NULL END,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE status='claimed' AND lease_expires_at<=?").run(stamp,stamp,stamp);
+    result.cancelled+=db.prepare("UPDATE restaurant_commission_email_outbox SET status='cancelled',last_error='COMMISSION_EMAIL_RESTAURANT_ARCHIVED',next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE status IN ('pending','failed') AND dispatch_started_at IS NULL AND EXISTS(SELECT 1 FROM restaurant_commission_email_events e JOIN restaurants r ON r.id=e.restaurant_id WHERE e.id=restaurant_commission_email_outbox.event_id AND r.archived_at IS NOT NULL)").run(stamp).changes;
   });
   if(!adapters.has(config))adapters.set(config,createOrderAlertEmailAdapter(config.orderAlertEmail));
   const sender=adapter??adapters.get(config);

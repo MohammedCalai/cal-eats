@@ -21,6 +21,35 @@ function unzipStored(bytes){
   return entries;
 }
 
+test("archived restaurants cannot claim paired printer jobs and existing acknowledgements remain valid",async()=>{
+  const f=await journeyFixture();
+  try{
+    const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
+    const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],root=`/api/restaurant/restaurants/${restaurant.id}`;
+    const item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
+    const printer=(await f.json(`${root}/printers`,{method:"POST",cookie:owner,body:{name:"Archived kitchen",enabled:true}})).body.data;
+    const code=(await f.json(`${root}/printers/${printer.id}/pairing-code`,{method:"POST",cookie:owner,body:{}})).body.data.code;
+    const paired=await f.json("/api/devices/pair",{method:"POST",body:{code,name:"Archive fixture"}});assert.equal(paired.status,201,paired.text);
+    const headers={authorization:`Bearer ${paired.body.data.token}`};
+    for(let i=0;i<2;i++){
+      const order=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`archived-printer-${i}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:"collection"}});assert.equal(order.status,201,order.text);
+      const accepted=await f.json(`/api/restaurant/orders/${order.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted"}});assert.equal(accepted.status,200,accepted.text);
+    }
+    const first=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(first.status,200,first.text);assert.ok(first.body.data.job);
+    const jobs=()=>f.db.prepare("SELECT * FROM device_print_jobs ORDER BY id").all(),tokens=()=>f.db.prepare("SELECT * FROM printer_job_claim_tokens ORDER BY job_id,token_hash").all();
+    const beforeJobs=jobs(),beforeTokens=tokens();assert.deepEqual(beforeJobs.map(row=>row.status).sort(),["claimed","queued"]);
+    f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(f.config.now().toISOString(),restaurant.id);
+    const blocked=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(blocked.status,200,blocked.text);assert.equal(blocked.body.data.job,null);
+    assert.deepEqual(jobs(),beforeJobs);assert.deepEqual(tokens(),beforeTokens);
+    const claimed=first.body.data.job;
+    const ack=await f.json(`/api/devices/jobs/${claimed.id}/ack`,{method:"POST",headers,body:{claimToken:claimed.claimToken,outcome:"printed"}});assert.equal(ack.status,200,ack.text);assert.equal(ack.body.data.status,"printed");
+    assert.equal((await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}})).body.data.job,null);
+    f.db.prepare("UPDATE restaurants SET archived_at=NULL WHERE id=?").run(restaurant.id);
+    const restored=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(restored.status,200,restored.text);assert.ok(restored.body.data.job);assert.notEqual(restored.body.data.job.id,claimed.id);
+    assert.equal(f.db.prepare("SELECT status FROM device_print_jobs WHERE id=?").get(claimed.id).status,"printed");assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length,0);
+  }finally{await f.close();}
+});
+
 test("staff can see safe printer connection status without accessing printer management",async()=>{
   const f=await journeyFixture();
   try{

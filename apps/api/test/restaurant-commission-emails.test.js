@@ -15,6 +15,41 @@ const freePeriod={startsAt:"2026-03-22T09:30:00.000Z",endsAt:"2026-03-29T08:30:0
 const schedule=(revision=0,period=freePeriod)=>({action:"schedule_free",expectedRevision:revision,freePeriod:period});
 const outbox=db=>db.prepare("SELECT o.*,e.restaurant_id,e.settings_revision,e.kind,e.payload FROM restaurant_commission_email_outbox o JOIN restaurant_commission_email_events e ON e.id=o.event_id ORDER BY o.queued_at,o.rowid").all();
 
+test("archived restaurants cannot queue or send commission emails and accepted history stays unchanged",async()=>{
+  const f=await setup();try{
+    await f.change(schedule());
+    let row=outbox(f.db).at(-1);
+    f.db.prepare("UPDATE restaurant_commission_email_outbox SET status='sent',dispatch_started_at=?,sent_at=?,next_attempt_at=NULL WHERE id=?").run(f.config.now().toISOString(),f.config.now().toISOString(),row.id);
+    await f.change(schedule(1,{...freePeriod,endsAt:"2026-04-05T08:30:00.000Z"}));
+    row=outbox(f.db).at(-1);f.db.prepare("UPDATE restaurant_commission_email_outbox SET status='unknown',dispatch_started_at=?,next_attempt_at=NULL WHERE id=?").run(f.config.now().toISOString(),row.id);
+    const retained=outbox(f.db);
+    await f.change(schedule(2,{...freePeriod,endsAt:"2026-04-12T08:30:00.000Z"}));
+    row=outbox(f.db).at(-1);
+    f.db.prepare("UPDATE restaurant_commission_email_outbox SET status='failed',next_attempt_at='2026-01-02T01:00:00.000Z' WHERE id=?").run(row.id);
+    const controls=f.db.prepare("SELECT * FROM restaurant_commission_controls ORDER BY restaurant_id").all(),events=f.db.prepare("SELECT * FROM restaurant_commission_email_events ORDER BY id").all();
+    f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(f.config.now().toISOString(),f.restaurant.id);
+    let sends=0;
+    const result=await runRestaurantCommissionEmails(f.db,f.config,{adapter:async()=>{sends++;return{status:"sent"};}});
+    assert.equal(result.cancelled,1);assert.equal(result.sent,0);assert.equal(sends,0);
+    assert.equal(outbox(f.db).at(-1).last_error,"COMMISSION_EMAIL_RESTAURANT_ARCHIVED");assert.equal(outbox(f.db).at(-1).next_attempt_at,null);
+    assert.deepEqual(outbox(f.db).slice(0,2),retained);
+    const payload=JSON.parse(row.payload);
+    enqueueRestaurantCommissionEmails(f.db,f.config,{restaurantId:f.restaurant.id,revision:999,before:payload.before,after:payload.after,normalRateBasisPoints:700,now:f.config.now().toISOString()});
+    assert.equal(outbox(f.db).length,3);assert.deepEqual(f.db.prepare("SELECT * FROM restaurant_commission_email_events ORDER BY id").all(),events);
+    assert.deepEqual(f.db.prepare("SELECT * FROM restaurant_commission_controls ORDER BY restaurant_id").all(),controls);
+    // An archive racing with asynchronous email preparation is checked at final dispatch.
+    f.db.prepare("UPDATE restaurants SET archived_at=NULL WHERE id=?").run(f.restaurant.id);
+    await f.change(schedule(3,{...freePeriod,endsAt:"2026-04-19T08:30:00.000Z"}));
+    await runRestaurantCommissionEmails(f.db,f.config,{adapter:async(_message,{beforeSend})=>{
+      f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(f.config.now().toISOString(),f.restaurant.id);
+      assert.equal(beforeSend(),false);return{status:"cancelled"};
+    }});
+    const latest=outbox(f.db).at(-1);assert.equal(latest.status,"cancelled");assert.equal(latest.last_error,"COMMISSION_EMAIL_RESTAURANT_ARCHIVED");assert.equal(latest.dispatch_started_at,null);
+    assert.deepEqual(outbox(f.db).slice(0,2),retained);assert.equal(sends,0);
+    assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length,0);
+  }finally{await f.close();}
+});
+
 test("commission scheduling atomically queues the actual owner once, rejects stale/other roles, and rolls back on queue failure",async()=>{
   const f=await setup();try{
     assert.equal((await f.json(f.route,{cookie:f.admin})).body.data.confirmationEmail,null);
