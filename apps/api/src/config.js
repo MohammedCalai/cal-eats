@@ -38,6 +38,7 @@ export function loadConfig(overrides = {}) {
   const paymentProviderWebhookSecret = overrides.paymentProviderWebhookSecret ?? (stripeMode === "live" ? process.env.CALAI_STRIPE_LIVE_WEBHOOK_SECRET : process.env.CALAI_STRIPE_TEST_WEBHOOK_SECRET);
   const paymentProviderConnectWebhookSecret = overrides.paymentProviderConnectWebhookSecret ?? (stripeMode === "live" ? process.env.CALAI_STRIPE_LIVE_CONNECT_WEBHOOK_SECRET : process.env.CALAI_STRIPE_TEST_CONNECT_WEBHOOK_SECRET);
   if (paymentProviderMode === "stripe_live" && (![paymentProviderWebhookSecret, paymentProviderConnectWebhookSecret].every(value => typeof value === "string" && /^whsec_[A-Za-z0-9_]{8,}$/.test(value)))) throw new Error("Live Stripe requires separate platform and Connect webhook signing secrets");
+  if (paymentProviderMode === "stripe_live" && paymentProviderWebhookSecret === paymentProviderConnectWebhookSecret) throw new Error("Live Stripe requires distinct platform and Connect webhook signing secrets");
   const messagingSupportHours = overrides.messagingSupportHours ?? Number(process.env.CALAI_MESSAGE_SUPPORT_HOURS ?? 2);
   if (!Number.isFinite(messagingSupportHours) || messagingSupportHours < 0 || messagingSupportHours > 24) throw new Error("CALAI_MESSAGE_SUPPORT_HOURS must be from 0 to 24");
   const dbPath = overrides.dbPath ?? process.env.CALAI_DB_PATH ?? path.resolve("data/calai-eats.sqlite");

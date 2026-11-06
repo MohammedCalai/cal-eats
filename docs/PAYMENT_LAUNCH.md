@@ -12,7 +12,9 @@ Reviewed 6 November 2026. The hosted preview remains in test mode; this change d
 - Checkout authorises the card. Restaurant confirmation captures it. Completion makes the saved restaurant net eligible for transfer; a transfer to a payment balance is distinct from a bank payout.
 - Provider calls use persisted operation keys and verified order/account/amount bindings. Workers claim, recover and fail only jobs belonging to their configured test or live mode.
 
-Focused fixtures cover the discounted delivery example, zero commission, a platform voucher, separate processing costs, duplicate confirmation/transfer protection and preservation of foreign-mode jobs. They make no real provider transactions.
+Focused fixtures cover the discounted delivery example, zero commission, a platform voucher, separate processing costs, duplicate confirmation/transfer protection and preservation of foreign-mode jobs. They also place an order during a scheduled free period, confirm/complete it after expiry and verify that its commission stays zero while a new order returns to 7%. They make no real provider transactions.
+
+Hosted Checkout explicitly offers the supported card method with manual capture. The adapter pins Stripe API `2025-06-30.basil`; weekly bank setup uses that version's `payouts[schedule][weekly_payout_days][]` field and verifies the exact saved schedule before reporting success. Live startup rejects reused platform/Connect signing secrets.
 
 ## Admin visibility
 
@@ -31,12 +33,12 @@ Live credentials require explicit approval of their permissions and storage. Kee
 ## Before activating real orders
 
 1. Confirm the restaurant bank-payout schedule. Weekly Monday is currently the development default, not a confirmed live instruction. Do not change Calai's own platform payout schedule.
-2. Decide how cash commission is collected. Real automatic cash collection is not connected; a card-only launch must be enforced if selected.
+2. Decide how cash commission is collected. Real automatic cash collection is not connected; a card-only launch must be enforced at the platform if selected. Merely disabling cash on current restaurant records is insufficient because an owner can change that preference.
 3. Complete genuine restaurant business/bank onboarding and accepted non-demo terms, using the correct commission base. Do not relabel demo agreements as accepted real terms.
 4. Design the test-to-live data handover. The current restaurant account table has one active account per restaurant and rejects switching an existing sandbox binding to live. Preserve old account references and pending history, or isolate live data in a separately reviewed environment.
 5. Review the launch catalogue and audience. Current testing apps use the same public API; changing that API to live affects those apps too. Fictional demonstration restaurants must not become real checkout destinations.
 6. Confirm the live business activity and customer/restaurant payment terms cover the Cal-Eats marketplace as well as Calai's subscription activity. Existing card capability does not establish that this review is complete.
-7. Verify the dedicated account identity, minimum permissions, separate signed event delivery, restaurant payout readiness and available platform funding for vouchers/fee costs.
+7. Verify the dedicated account identity, minimum permissions, separate signed event delivery, restaurant payout readiness and available platform funding for vouchers/fee costs. Voucher-funded transfers use the platform's available balance. A voucher's internal redemption record does not reserve provider funds; exhausted failed transfers need monitored recovery after funding, rather than an assumption that adding balance automatically requeues them.
 8. Review the exact activation change and obtain approval before enabling real payment mode. A real charge or payout is completed by the account holder, not by an unattended test.
 
 The admin report documents these gaps; it does not bypass them or certify the app ready for public launch.

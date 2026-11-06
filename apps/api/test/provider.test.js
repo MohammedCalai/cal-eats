@@ -40,18 +40,24 @@ test("unavailable refund parent proof retains reference without confirming money
   assert.deepEqual(await adapter.retrieveRefund({refundId:"re_unproven"}),{ok:false,status:"unknown",providerReference:"re_unproven",errorCode:"STRIPE_REFUND_MODE_UNVERIFIED"});
 });
 
-test("Stripe hosted Checkout preserves its provider fragment on create and retrieval", async () => {
+test("Stripe hosted Checkout requests card-only manual capture and preserves its provider fragment", async () => {
   const checkoutUrl = "https://checkout.stripe.com/c/pay/cs_test_fragment#fidkdWxOYHwnPyd1blpxYHZxWjA0";
-  const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async () => jsonResponse({
+  const calls=[];
+  const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async (url,init) => {calls.push({url:String(url),init});return jsonResponse({
     id: "cs_test_fragment", object: "checkout.session", livemode: false,
     status: "open", amount_total: 1200, currency: "gbp", url: checkoutUrl,
     metadata: { order_id: "order-1", restaurant_id: "restaurant-1" },
-  }) });
+  });} });
   const created = await adapter.createCheckoutSession({ orderId: "order-1", restaurantId: "restaurant-1", amountMinor: 1200,
     transferGroup: "order:order-1", successUrl: "https://eats.example.test/order/?success=1",
     cancelUrl: "https://eats.example.test/order/?cancelled=1", idempotencyKey: "checkout-fragment-1" });
   assert.equal(created.checkoutUrl, checkoutUrl);
   assert.equal(created.url, checkoutUrl);
+  assert.equal(calls[0].url,"https://api.stripe.com/v1/checkout/sessions");
+  assert.equal(calls[0].init.headers["Stripe-Version"],"2025-06-30.basil");
+  const fields=new URLSearchParams(calls[0].init.body);
+  assert.deepEqual(fields.getAll("payment_method_types[]"),["card"]);
+  assert.equal(fields.get("payment_intent_data[capture_method]"),"manual");
   const retrieved = await adapter.retrieveCheckoutSession({ sessionId: created.providerReference });
   assert.equal(retrieved.checkoutUrl, checkoutUrl);
   assert.equal(retrieved.amountMinor, 1200);
@@ -192,19 +198,38 @@ test("connected account result exposes capability and requirement state", async 
   assert.deepEqual(result.requirements, ["company.tax_id"]);
 });
 
-test("weekly payout schedule uses the anchor supported by the pinned Basil API", async () => {
+test("weekly payout schedule uses exact Monday days supported by the pinned Basil API", async () => {
   let call;
   const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async (url, init) => {
     call = { url: String(url), init };
-    return jsonResponse({ object: "balance_settings", payouts: { schedule: { interval: "weekly", weekly_anchor: "monday" } } });
+    return jsonResponse({ object: "balance_settings", payouts: { schedule: { interval: "weekly", weekly_payout_days: ["monday"] } } });
   } });
-  await adapter.configureWeeklyPayouts({ accountId: "acct_test123", weeklyAnchor: "monday", idempotencyKey: "weekly-payouts-1" });
+  const result=await adapter.configureWeeklyPayouts({ accountId: "acct_test123", weeklyAnchor: "monday", idempotencyKey: "weekly-payouts-1" });
+  assert.equal(result.status,"confirmed");
+  assert.equal(result.providerReference,"acct_test123");
   assert.equal(call.url, "https://api.stripe.com/v1/balance_settings");
   assert.equal(call.init.headers["Stripe-Version"], "2025-06-30.basil");
   assert.equal(call.init.headers["Stripe-Account"], "acct_test123");
   assert.deepEqual(Object.fromEntries(new URLSearchParams(call.init.body)), {
-    "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_anchor]": "monday",
+    "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_payout_days][]": "monday",
   });
+});
+
+test("weekly payout schedule refuses missing or mismatched saved settings",async()=>{
+  for(const body of [
+    null,
+    {},
+    {object:"account",payouts:{schedule:{interval:"weekly",weekly_payout_days:["monday"]}}},
+    {object:"balance_settings"},
+    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_anchor:"monday"}}},
+    {object:"balance_settings",payouts:{schedule:{interval:"daily",weekly_payout_days:["monday"]}}},
+    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:[]}}},
+    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:["friday"]}}},
+    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:["monday","friday"]}}},
+  ]){
+    const adapter=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>jsonResponse(body)});
+    assert.deepEqual(await adapter.configureWeeklyPayouts({accountId:"acct_test123",weeklyAnchor:"monday",idempotencyKey:"weekly-payout-mismatch"}),{ok:false,status:"failed",providerReference:"acct_test123",errorCode:"STRIPE_PAYOUT_SCHEDULE_MISMATCH"});
+  }
 });
 
 test("webhook verification uses raw bytes, timestamp tolerance and rejects live events", () => {

@@ -16,6 +16,7 @@ test("live Stripe requires explicit activation, hosted HTTPS, account binding an
   assert.throws(() => loadConfig({ ...live, nodeEnv: "development" }), /production/);
   assert.throws(() => loadConfig({ ...live, stripePlatformAccountId: null }), /ACCOUNT_ID/);
   assert.throws(() => loadConfig({ ...live, paymentProviderConnectWebhookSecret: "" }), /webhook/);
+  assert.throws(() => loadConfig({ ...live, paymentProviderConnectWebhookSecret: live.paymentProviderWebhookSecret }), /distinct.*webhook/);
   assert.equal(loadConfig(live).paymentProviderMode, "stripe_live");
 });
 

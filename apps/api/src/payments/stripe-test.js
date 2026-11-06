@@ -76,16 +76,19 @@ export function createStripeAdapter(config = {}) {
     },
     async createAccountLoginLink(input){const accountId=ref(input.accountId,"acct"),result=await request("POST",`/v1/accounts/${accountId}/login_links`,{},{idempotencyKey:input.idempotencyKey});return result.ok?normalized(result.body,{status:"confirmed",providerReference:accountId,actionUrl:httpsUrl(result.body.url)}):result;},
     async configureWeeklyPayouts(input) {
-      const accountId=ref(input.accountId,"acct");
-      const result = await request("POST", "/v1/balance_settings", { "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_anchor]": weekday(input.weeklyAnchor || "monday") }, { idempotencyKey: input.idempotencyKey, stripeAccount: accountId });
-      return result.ok ? normalized(result.body, { status: "confirmed", providerReference: accountId }) : result;
+      const accountId=ref(input.accountId,"acct"),weeklyAnchor=weekday(input.weeklyAnchor || "monday");
+      const result = await request("POST", "/v1/balance_settings", { "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_payout_days][]": weeklyAnchor }, { idempotencyKey: input.idempotencyKey, stripeAccount: accountId });
+      if (!result.ok) return result;
+      const schedule=result.body?.payouts?.schedule;
+      if(result.body?.object!=="balance_settings"||schedule?.interval!=="weekly"||!Array.isArray(schedule.weekly_payout_days)||schedule.weekly_payout_days.length!==1||schedule.weekly_payout_days[0]!==weeklyAnchor)return {ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_SCHEDULE_MISMATCH"};
+      return normalized(result.body, { status: "confirmed", providerReference: accountId });
     },
     async authorizePayment(input) {
       const result = await request("POST", "/v1/payment_intents", { amount: money(input.amountMinor), currency: "gbp", payment_method: ref(input.paymentMethodId,"pm"), confirm: true, capture_method: "manual", "payment_method_types[]": "card", "expand[]":"latest_charge.balance_transaction", transfer_group: bounded(input.transferGroup,1,100,"transferGroup"), "metadata[order_id]": bounded(input.orderId,1,100,"orderId") }, { idempotencyKey: input.idempotencyKey, requireTestObject:true });
       return paymentResult(result);
     },
     async createCheckoutSession(input){
-      const fields={mode:"payment",success_url:httpsUrl(input.successUrl),cancel_url:httpsUrl(input.cancelUrl),"line_items[0][quantity]":1,"line_items[0][price_data][currency]":"gbp","line_items[0][price_data][unit_amount]":money(input.amountMinor),"line_items[0][price_data][product_data][name]":"Cal-Eats order","payment_intent_data[capture_method]":"manual","payment_intent_data[transfer_group]":bounded(input.transferGroup,1,100,"transferGroup"),"payment_intent_data[metadata][order_id]":bounded(input.orderId,1,100,"orderId"),"payment_intent_data[metadata][restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId"),"metadata[order_id]":bounded(input.orderId,1,100,"orderId"),"metadata[restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId"),...(input.expiresAt?{expires_at:expirySeconds(input.expiresAt)}:{})};
+      const fields={mode:"payment","payment_method_types[]":"card",success_url:httpsUrl(input.successUrl),cancel_url:httpsUrl(input.cancelUrl),"line_items[0][quantity]":1,"line_items[0][price_data][currency]":"gbp","line_items[0][price_data][unit_amount]":money(input.amountMinor),"line_items[0][price_data][product_data][name]":"Cal-Eats order","payment_intent_data[capture_method]":"manual","payment_intent_data[transfer_group]":bounded(input.transferGroup,1,100,"transferGroup"),"payment_intent_data[metadata][order_id]":bounded(input.orderId,1,100,"orderId"),"payment_intent_data[metadata][restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId"),"metadata[order_id]":bounded(input.orderId,1,100,"orderId"),"metadata[restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId"),...(input.expiresAt?{expires_at:expirySeconds(input.expiresAt)}:{})};
       return checkoutResult(await request("POST","/v1/checkout/sessions",fields,{idempotencyKey:input.idempotencyKey,requireTestObject:true}));
     },
     async retrieveCheckoutSession(input){return checkoutResult(await request("GET",`/v1/checkout/sessions/${ref(input.sessionId,"cs")}`,{"expand[]":"payment_intent.latest_charge.balance_transaction"},{requireTestObject:true}));},

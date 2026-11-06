@@ -53,12 +53,12 @@ test("Stripe workers claim and recover only their own mode, preserving foreign q
 });
 
 test("discounted delivery captures once and transfers the saved merchant net, including free commission and platform-funded vouchers",async()=>{
-  for(const scenario of[{free:false,voucher:0},{free:true,voucher:0},{free:false,voucher:500}]){
-    let paymentState="authorized",orderId,restaurantId,chargeAmount,captureCalls=0,transferCalls=0;
+  for(const scenario of[{free:false,voucher:0},{free:true,voucher:0},{free:true,scheduled:true,voucher:0},{free:false,voucher:500}]){
+    let paymentState="authorized",orderId,restaurantId,chargeAmount,captureCalls=0,transferCalls=0,clock=stamp;
     const commission=scenario.free?0:91,net=1300-commission;
     const facts=()=>({ok:true,status:"confirmed",providerReference:"pi_money",paymentIntentId:"pi_money",paymentState,captureMethod:"manual",amountMinor:chargeAmount,currency:"GBP",orderId,restaurantId,latestChargeId:paymentState==="captured"?"ch_money":null,providerCostMinor:37});
     const adapter={retrievePlatformAccount:async()=>({status:"confirmed",providerReference:"acct_platform"}),createCheckoutSession:async input=>{chargeAmount=input.amountMinor;return{...facts(),providerReference:"cs_money",checkoutUrl:"https://checkout.stripe.com/c/pay/cs_money"};},retrieveCheckoutSession:async()=>facts(),retrievePayment:async()=>facts(),capturePayment:async input=>{captureCalls++;assert.equal(input.amountMinor,1300-scenario.voucher);paymentState="captured";return facts();},refreshConnectedAccount:async()=>({status:"confirmed",providerReference:"acct_restaurant",chargesEnabled:true,payoutsEnabled:true,capabilities:["card_payments","transfers"]}),createTransfer:async input=>{transferCalls++;assert.equal(input.amountMinor,net);assert.equal(input.platformFunded,Boolean(scenario.voucher));assert.equal(input.sourceTransactionId,scenario.voucher?null:"ch_money");return{ok:true,status:"confirmed",providerReference:"tr_money",amountMinor:input.amountMinor,currency:"GBP",destinationAccountId:input.destinationAccountId,sourceTransactionId:input.sourceTransactionId,transferGroup:input.transferGroup};}};
-    const f=await journeyFixture({paymentProviderMode:"stripe_test",paymentProvider:adapter,stripePlatformAccountId:"acct_platform",paymentProviderWebhookSecret:"whsec_platform",paymentProviderConnectWebhookSecret:"whsec_connect",orderAlertEmail:{mode:"off"},now:()=>new Date(stamp)});
+    const f=await journeyFixture({paymentProviderMode:"stripe_test",paymentProvider:adapter,stripePlatformAccountId:"acct_platform",paymentProviderWebhookSecret:"whsec_platform",paymentProviderConnectWebhookSecret:"whsec_connect",orderAlertEmail:{mode:"off"},now:()=>new Date(clock)});
     try{
       const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310"),restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];restaurantId=restaurant.id;
       const call=async(route,options)=>{const response=await f.json(route,options);assert.ok(response.status<300,response.text);return response.body.data;};
@@ -66,7 +66,7 @@ test("discounted delivery captures once and transfers the saved merchant net, in
       f.db.prepare("UPDATE restaurants SET delivery_enabled=1,delivery_outcodes='[\"LU1\"]',delivery_fee_minor=200,min_delivery_subtotal_minor=0 WHERE id=?").run(restaurantId);
       f.db.prepare("INSERT INTO provider_accounts VALUES('money-account',?,'stripe_test','enabled',?,'[]','acct_restaurant',?,?)").run(restaurantId,JSON.stringify(["card_payments","transfers"]),stamp,stamp);
       f.db.prepare("INSERT INTO stripe_account_readiness VALUES(?,'stripe_test','acct_restaurant',1,1,?)").run(restaurantId,stamp);
-      if(scenario.free)await call(`/api/admin/restaurants/${restaurantId}/commission`,{method:"PATCH",cookie:admin,body:{action:"disable",expectedRevision:0}});
+      if(scenario.free)await call(`/api/admin/restaurants/${restaurantId}/commission`,{method:"PATCH",cookie:admin,body:scenario.scheduled?{action:"schedule_free",expectedRevision:0,freePeriod:{startsAt:stamp,endsAt:"2026-01-01T12:01:00.000Z"}}:{action:"disable",expectedRevision:0}});
       await call("/api/account/marketing-preferences",{method:"PATCH",cookie:customer,body:{inAppPromotions:true,pushPromotions:false,source:"money-flow-fixture"}});
       const campaign=await call(`/api/restaurant/restaurants/${restaurantId}/loyalty/promotions`,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"money-promotion"},body:{title:"Four pounds off",message:"Fixture restaurant offer",offerType:"fixed_off",campaignType:"amount_order",value:400,minSubtotalMinor:0,startsAt:"2026-01-01T00:00:00Z",expiresAt:"2026-01-10T00:00:00Z",redemptionLimit:1,budgetMinor:10000,eligibleItemIds:[],eligibleCategories:[],recipientSegment:"first_order",customerIds:[],stackingPolicy:"exclusive",fundingParty:"restaurant"}});
       const offer=await call(`/api/promotions/${campaign.id}/claim`,{method:"POST",cookie:customer,body:{}});
@@ -79,6 +79,7 @@ test("discounted delivery captures once and transfers the saved merchant net, in
       assert.equal(order.totalMinor,1300);assert.equal(order.commissionMinor,commission);assert.equal(order.customerPayableMinor,1300-scenario.voucher);
       await call(`/api/orders/${orderId}/checkout`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"money-checkout"},body:{}});
       await call(`/api/orders/${orderId}/payment/refresh`,{method:"POST",cookie:customer,body:{}});
+      if(scenario.scheduled)clock="2026-01-01T12:02:00.000Z";
       const status=value=>call(`/api/restaurant/orders/${orderId}/status`,{method:"PATCH",cookie:owner,body:{status:value}});
       await status("accepted");await status("accepted");assert.equal(captureCalls,1);
       for(const value of["preparing","ready","out_for_delivery","completed"])await status(value);
@@ -88,6 +89,13 @@ test("discounted delivery captures once and transfers the saved merchant net, in
       assert.equal(f.db.prepare("SELECT amount_minor FROM marketplace_operations WHERE order_id=? AND kind='merchant_transfer'").get(orderId).amount_minor,net);
       assert.equal(f.db.prepare("SELECT amount_minor FROM marketplace_operations WHERE order_id=? AND kind='provider_cost'").get(orderId).amount_minor,37,"Processing costs are recorded for Cal-Eats, not deducted again from the merchant");
       assert.equal(f.db.prepare("SELECT COUNT(*) n FROM marketplace_operations WHERE order_id=? AND kind='payment_capture'").get(orderId).n,1);
+      if(scenario.scheduled){
+        assert.equal(f.db.prepare("SELECT commission_minor FROM orders WHERE id=?").get(orderId).commission_minor,0,"Confirming and completing after the free period ends must retain zero commission");
+        const nextBasket={...basket};delete nextBasket.offerId;
+        const nextQuote=await call("/api/orders/quote",{method:"POST",cookie:customer,body:nextBasket});assert.equal(nextQuote.commissionMinor,119);
+        const nextOrder=await call("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":"after-free-period-order"},body:{...nextBasket,expectedTotalMinor:1700}});
+        assert.equal(nextOrder.commissionMinor,119);assert.equal(nextOrder.contract.rateBasisPoints,700,"New orders return to the normal rate after expiry");
+      }
     }finally{await f.close();}
   }
 });
