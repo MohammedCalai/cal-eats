@@ -45,6 +45,7 @@ const assets = new Map([
   ["/customer-additions.js", ["customer-additions.js", "text/javascript; charset=utf-8"]],
   ["/stripe-ui.js", ["stripe-ui.js", "text/javascript; charset=utf-8"]],
   ["/customer-contact.js", ["customer-contact.js", "text/javascript; charset=utf-8"]],
+  ["/chat-scroll.js", ["chat-scroll.js", "text/javascript; charset=utf-8"]],
   ["/calai-theme.css", ["calai-theme.css", "text/css; charset=utf-8"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json; charset=utf-8"]],

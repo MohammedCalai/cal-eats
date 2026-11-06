@@ -1,4 +1,5 @@
 import { customerRestaurantVisual } from "./customer-ui.js";
+import { createChatScroll } from "./chat-scroll.js";
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const validDate = value => { const date = new Date(value); return value && Number.isFinite(date.getTime()) ? date : null; };
 const when = value => { const date = validDate(value); return date ? date.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "Date unavailable"; };
@@ -23,21 +24,21 @@ export function customerMessagesHtml(messages = [], { title = "Restaurant", init
   let lastDay = "";
   return rows.map(item => { const key = dateKey(item.createdAt), date = validDate(item.createdAt), separator = key && key !== lastDay ? `<div class="customer-chat-day"><span>${escape(dayLabel(item.createdAt, now))}</span></div>` : ""; if (key) lastDay = key;
     const mine = item.senderRole === "customer", sender = mine ? "You" : item.senderRole === "admin" ? "Cal-Eats support" : title;
-    return `${separator}<article class="contact-bubble ${mine ? "mine" : "theirs"}" aria-label="${escape(sender)} message">${item.originalRequest ? '<strong class="customer-chat-request-label">Your original request</strong>' : !mine ? `<strong class="customer-chat-sender">${escape(sender)}</strong>` : ""}<p>${escape(item.message)}</p>${date ? `<time datetime="${escape(item.createdAt)}" title="${escape(when(item.createdAt))}">${date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}</time>` : ""}</article>`;
+    return `${separator}<article class="contact-bubble ${mine ? "mine" : "theirs"}" data-chat-message-id="${escape(item.id)}" aria-label="${escape(sender)} message">${item.originalRequest ? '<strong class="customer-chat-request-label">Your original request</strong>' : !mine ? `<strong class="customer-chat-sender">${escape(sender)}</strong>` : ""}<p>${escape(item.message)}</p>${date ? `<time datetime="${escape(item.createdAt)}" title="${escape(when(item.createdAt))}">${date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}</time>` : ""}</article>`;
   }).join("");
 }
 
 export async function mountCustomerThread({ api, container, id, support = false, title = "Restaurant messages", onClose = () => {} }) {
-  let closed = false, sending = false, data, messages = [], lastRead = null, timer, olderCursor = null, loadedOlder = false, initialVisible = false, inFlight = null, loaded = false, renderedMessagesHtml = "";
+  let closed = false, sending = false, data, messages = [], lastRead = null, timer, olderCursor = null, loadedOlder = false, initialVisible = false, inFlight = null, renderedMessagesHtml = "";
   const retryKeys = new Map(), path = support ? `/api/support/${encodeURIComponent(id)}` : `/api/customer/conversations/${encodeURIComponent(id)}/messages`;
   const readPath = support ? `${path}/read` : `/api/customer/conversations/${encodeURIComponent(id)}/read`;
   container.innerHTML = `<section class="contact-thread customer-chat"><header class="customer-chat-header"><button type="button" class="customer-chat-back" data-contact-close aria-label="Close conversation">${icon("back")}</button>${avatar(title)}<div class="customer-chat-heading"><h2>${escape(title)}</h2><p data-contact-subtitle>Loading conversation…</p></div></header><p class="form-error error customer-chat-error" role="alert" data-contact-error></p><div class="customer-chat-history"><button type="button" class="customer-chat-older" data-contact-older hidden>Load earlier messages</button><div class="contact-messages" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions" data-contact-messages><p class="customer-chat-loading" role="status">Loading messages…</p></div><button type="button" class="customer-chat-latest" data-contact-latest hidden>Latest messages ↓</button></div><form class="customer-chat-composer" data-contact-form><label class="sr-only" for="contact-message-${escape(id)}">Your message</label><div class="customer-chat-compose-row"><textarea id="contact-message-${escape(id)}" name="message" rows="1" maxlength="${support ? 2000 : 300}" required placeholder="Write a message…"></textarea><button type="submit" class="customer-chat-send" data-contact-send aria-label="Send message" disabled>${icon("send")}<span class="sr-only">Send message</span></button></div><div class="customer-chat-compose-meta"><span data-contact-send-status role="status"></span><span data-contact-count>0/${support ? 2000 : 300}</span></div></form><details class="customer-chat-details"><summary>Conversation information</summary><p>Messages do not change an order or authorise a refund.</p><button type="button" class="quiet" data-contact-resolve ${support ? "" : "hidden"}>Mark request resolved</button></details></section>`;
   const field = container.querySelector("textarea"), form = container.querySelector("form"), send = container.querySelector("[data-contact-send]"), sendStatus = container.querySelector("[data-contact-send-status]"), counter = container.querySelector("[data-contact-count]"), errorBox = container.querySelector("[data-contact-error]"), list = container.querySelector("[data-contact-messages]"), older = container.querySelector("[data-contact-older]"), subtitle = container.querySelector("[data-contact-subtitle]"), resolveButton = container.querySelector("[data-contact-resolve]"), latestButton = container.querySelector("[data-contact-latest]");
-  const nearLatest = () => list.scrollHeight - list.scrollTop - list.clientHeight < 70;
+  const scroll = createChatScroll({ list, latestButton });
   function updateComposer() { send.disabled = sending || !data || data.canReply === false || !field.value.trim(); send.setAttribute("aria-busy", String(sending)); field.disabled = data?.canReply === false; counter.textContent = `${field.value.length}/${support ? 2000 : 300}`; field.style.height = "auto"; field.style.height = `${Math.min(120, Math.max(44, field.scrollHeight))}px`; }
-  const close = () => { if (closed) return; closed = true; clearInterval(timer); document.removeEventListener("visibilitychange", visible); onClose(); };
+  const close = () => { if (closed) return; closed = true; scroll.close(); clearInterval(timer); document.removeEventListener("visibilitychange", visible); onClose(); };
   function render({ previous = false } = {}) {
-    const scrollTop = list.scrollTop, scrollHeight = list.scrollHeight, followLatest = !loaded || nearLatest(), name = support ? data.recipient || title : data.thread?.restaurantName || title;
+    const before = scroll.snapshot(), name = support ? data.recipient || title : data.thread?.restaurantName || title;
     const initialRequest = support && initialVisible ? { id: `initial-${id}`, message: data.message, createdAt: data.createdAt } : null;
     const messageHtml = customerMessagesHtml(messages, { title: name, initialRequest }) || `<div class="customer-chat-empty">${icon("chat")}<strong>No messages yet</strong><p>Send your first message to start the conversation.</p></div>`;
     if (messageHtml !== renderedMessagesHtml) { list.innerHTML = messageHtml; renderedMessagesHtml = messageHtml; }
@@ -45,10 +46,7 @@ export async function mountCustomerThread({ api, container, id, support = false,
     container.querySelector(".customer-chat-header .customer-chat-avatar").innerHTML = customerRestaurantVisual(data.thread || {});
     subtitle.textContent = support ? `#${data.reference} · ${label(data.status === "resolved" ? "resolved" : data.waitingFor)}` : conversationLabel(data.thread?.status);
     older.hidden = !olderCursor; resolveButton.textContent = data.status === "resolved" ? "Reopen request" : "Mark request resolved";
-    if (previous) list.scrollTop = scrollTop + list.scrollHeight - scrollHeight;
-    else if (followLatest) list.scrollTop = list.scrollHeight;
-    else list.scrollTop = scrollTop;
-    latestButton.hidden = nearLatest(); loaded = true; updateComposer();
+    updateComposer(); scroll.restore(before, { previous });
     if (data.canReply === false) errorBox.textContent = data.replyUnavailableReason || "Replies are temporarily unavailable. Your draft is kept here.";
   }
   async function refresh({ previous = false, force = false } = {}) {
@@ -59,7 +57,9 @@ export async function mountCustomerThread({ api, container, id, support = false,
         const cursor = previous && olderCursor ? `?${new URLSearchParams(olderCursor)}` : "";
         const result = await api(path + cursor); if (closed || !container.isConnected) return;
         const incoming = support ? result.messages : result.items;
-        if (previous) loadedOlder = true;
+        // A newest-page response can slide its first message forward. Keep the
+        // reader's loaded window and cursor until they explicitly page further.
+        if (previous || !scroll.snapshot().follow) loadedOlder = true;
         if (previous || !loadedOlder) olderCursor = result.nextCursor;
         if (support && !result.nextCursor) initialVisible = true;
         messages = loadedOlder ? [...messages, ...(incoming || [])].filter((item, index, all) => all.findIndex(other => other.id === item.id) === index).filter(item => support || !item.expiresAt || Date.parse(item.expiresAt) > Date.now()).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id)) : incoming || [];
@@ -77,16 +77,15 @@ export async function mountCustomerThread({ api, container, id, support = false,
   const visible = () => { if (!document.hidden) void refresh(); };
   container.querySelector("[data-contact-close]").onclick = close;
   older.onclick = () => refresh({ previous: true });
-  list.onscroll = () => { latestButton.hidden = nearLatest(); };
-  latestButton.onclick = () => { list.scrollTop = list.scrollHeight; latestButton.hidden = true; };
-  field.oninput = updateComposer;
+  latestButton.onclick = () => scroll.latest();
+  field.oninput = () => { updateComposer(); scroll.resized(); };
   form.onsubmit = async event => {
     event.preventDefault(); if (sending || closed || !data || data.canReply === false || !field.value.trim()) return;
     const message = field.value.trim(), key = retryKeys.get(message) || `contact-${crypto.randomUUID()}`; retryKeys.set(message, key);
     sending = true; updateComposer(); sendStatus.textContent = "Sending…"; errorBox.textContent = "";
     try {
       await api(support ? `${path}/messages` : path, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ message }) });
-      if (!closed) { retryKeys.delete(message); if (field.value.trim() === message) field.value = ""; sendStatus.textContent = "Message sent"; await refresh({ force: true }); list.scrollTop = list.scrollHeight; field.focus(); }
+      if (!closed) { retryKeys.delete(message); if (field.value.trim() === message) field.value = ""; sendStatus.textContent = "Message sent"; await refresh({ force: true }); if (!closed) { updateComposer(); field.focus({ preventScroll: true }); scroll.latest(); } }
     } catch (error) { if (!closed) { errorBox.textContent = `${error.message} Your message is kept here so you can retry.`; sendStatus.textContent = "Not sent · try again"; } }
     finally { sending = false; if (!closed) updateComposer(); }
   };
@@ -97,7 +96,7 @@ export async function mountCustomerThread({ api, container, id, support = false,
     finally { if (!closed) resolveButton.disabled = false; }
   };
   await refresh();
-  if (closed || !container.isConnected) { closed = true; return { close, refresh }; }
+  if (closed || !container.isConnected) { scroll.close(); closed = true; return { close, refresh }; }
   timer = setInterval(() => { if (!document.hidden && container.isConnected) void refresh(); }, 15000);
   document.addEventListener("visibilitychange", visible);
   return { close, refresh };

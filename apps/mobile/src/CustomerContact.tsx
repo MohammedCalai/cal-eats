@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { AppState, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { api } from "./api";
 import { Button, Card, Empty, ErrorBanner, Field, Pill, SectionTitle } from "./components";
 import { CustomerIcon } from "./CustomerBrandBanner";
 import { colours } from "./theme";
 import { createConversationRefresh } from "./conversation-refresh";
 import { useForegroundRefresh } from "./useForegroundRefresh";
+import { completeThreadSend, createThreadRefresh, createThreadWindow } from "./thread-refresh";
+import { useThreadScroll } from "./useThreadScroll";
 
 type Cursor = { before: string; beforeId: string };
 type Message = { id: string; senderRole: string; message: string; createdAt: string; ingestSequence?: number };
@@ -38,49 +40,66 @@ export function CustomerConversationList({ token, onOpen }: { token: string; onO
 }
 
 export function CustomerContactThread({ token, id, title, support = false, onClose }: { token: string; id: string; title: string; support?: boolean; onClose: () => void }) {
-  const [data, setData] = useState<Thread | null>(null), [older, setOlder] = useState<Message[]>([]), [cursor, setCursor] = useState<Cursor | null | undefined>(), [message, setMessage] = useState(""), [error, setError] = useState(""), [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
-  const scroll=useRef<ScrollView>(null),nearBottom=useRef(true);
-  const generation = useRef(0), read = useRef<string | null>(null), pending = useRef<{ message: string; key: string } | null>(null), oldest = useRef<Cursor | null | undefined>(undefined), inFlight = useRef(false);
+  const [data, setData] = useState<Thread | null>(null), [cursor, setCursor] = useState<Cursor | null | undefined>(), [message, setMessage] = useState(""), [error, setError] = useState(""), [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
   const path = support ? `/api/support/${encodeURIComponent(id)}` : `/api/customer/conversations/${encodeURIComponent(id)}/messages`;
   const readPath = support ? `${path}/read` : `/api/customer/conversations/${encodeURIComponent(id)}/read`;
-  async function load(previous = false) {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    const current = generation.current; setLoading(true);
-    try {
-      const value = await api<Thread>(path + (previous && oldest.current ? `?${new URLSearchParams(oldest.current)}` : ""), { token });
-      if (current !== generation.current) return;
-      const items = support ? value.messages || [] : value.items || [];
-      if (previous) { setOlder(old => [...items, ...old]); oldest.current = value.nextCursor || null; setCursor(oldest.current); }
-      else { setData(value); if (oldest.current === undefined) { oldest.current = value.nextCursor || null; setCursor(oldest.current); } }
-      setError("");
-      const last = support ? items.at(-1)?.id || "initial" : value.readThroughMessageId || items.at(-1)?.id;
-      if (last && last !== read.current) {
-        await api(readPath, { token, method: "POST", body: JSON.stringify(support ? {} : { lastMessageId: last }) });
-        if (current === generation.current) read.current = last;
-      }
-    } catch (cause) { if (current === generation.current) setError((cause as Error).message); }
-    finally { inFlight.current = false; if (current === generation.current) setLoading(false); }
-  }
+  const active = useRef({ token, path });
+  if (active.current.token !== token || active.current.path !== path) active.current = { token, path };
+  const threadScroll = useThreadScroll(active.current);
+  const refresh = useRef<ReturnType<typeof createThreadRefresh<Thread>> | null>(null);
+  const messageWindow = useRef<ReturnType<typeof createThreadWindow<Message>> | null>(null);
+  const read = useRef<string | null>(null), pending = useRef<{ message: string; key: string } | null>(null), sendingScope = useRef<object | null>(null);
   useEffect(() => {
-    generation.current++; read.current = null; oldest.current = undefined; setOlder([]); setCursor(undefined); setMessage(""); pending.current = null; void load();
-    const timer = setInterval(() => { if (AppState.currentState === "active") void load(); }, 15000);
-    return () => { generation.current++; clearInterval(timer); };
+    const scope = active.current;
+    const window = createThreadWindow<Message>(); messageWindow.current = window;
+    read.current = null; pending.current = null;
+    setData(null); setCursor(undefined); setMessage(""); setError(""); setSending(false);
+    const controller = createThreadRefresh<Thread>({
+      isCurrent: () => active.current === scope,
+      load: page => { const before = window.cursor(); return api<Thread>(path + (page === "earlier" && before ? `?${new URLSearchParams(before)}` : ""), { token }); },
+      apply: async (value, page) => {
+        const items = support ? value.messages || [] : value.items || [];
+        const retained = window.receive(items, value.nextCursor || null, page, !threadScroll.isFollowing());
+        setData({ ...value, ...(support ? { messages: retained.items } : { items: retained.items }) }); setCursor(retained.nextCursor);
+        setError("");
+        const last = support ? items.at(-1)?.id || "initial" : value.readThroughMessageId || items.at(-1)?.id;
+        if (last && last !== read.current) {
+          await api(readPath, { token, method: "POST", body: JSON.stringify(support ? {} : { lastMessageId: last }) });
+          if (active.current === scope) read.current = last;
+        }
+      },
+      onError: cause => setError((cause as Error).message), onLoading: setLoading
+    });
+    refresh.current = controller; void controller.refresh();
+    return () => { controller.dispose(); if (refresh.current === controller) { refresh.current = null; messageWindow.current = null; } };
   }, [token, path]);
+  useForegroundRefresh(() => refresh.current?.refresh("latest", true) ?? Promise.resolve(), true, 15000);
+  const load = (previous = false) => refresh.current?.refresh(previous ? "earlier" : "latest") ?? Promise.resolve();
   async function send() {
-    const content = message.trim(); if (!content || sending) return;
+    const content = message.trim(), scope = active.current, controller = refresh.current;
+    if (!content || sendingScope.current === scope || !controller) return;
     if (pending.current?.message !== content) pending.current = { message: content, key: key() };
-    const current = generation.current; setSending(true); setError("");
+    const messageKey = pending.current.key;
+    sendingScope.current = scope; setSending(true); setError("");
     try {
-      await api(support ? `${path}/messages` : path, { token, method: "POST", headers: { "Idempotency-Key": pending.current.key }, body: JSON.stringify({ message: content }) });
-      if (current === generation.current) { pending.current = null; nearBottom.current=true;setMessage(""); await load(); }
-    } catch (cause) { if (current === generation.current) setError(`${(cause as Error).message} Your draft is still here.`); }
-    finally { if (current === generation.current) setSending(false); }
+      await completeThreadSend({
+        send: () => api<Message>(support ? `${path}/messages` : path, { token, method: "POST", headers: { "Idempotency-Key": messageKey }, body: JSON.stringify({ message: content }) }),
+        text: content, isCurrent: () => active.current === scope && controller.isActive(), updateDraft: setMessage,
+        onSent: async sent => {
+          controller.invalidate(); pending.current = null; threadScroll.requestLatest();
+          const retained = messageWindow.current!.append(sent); setCursor(retained.nextCursor);
+          setData(value => ({ ...value, ...(support ? { messages: retained.items } : { items: retained.items }) }));
+          await controller.refresh("latest", true);
+        }
+      });
+    } catch (cause) { if (active.current === scope && controller.isActive()) setError(`${(cause as Error).message} Your draft is still here.`); }
+    finally { if (active.current === scope && controller.isActive()) { sendingScope.current = null; setSending(false); } }
   }
   async function toggleResolved() {
-    try { await api(path, { token, method: "PATCH", body: JSON.stringify({ status: data?.status === "resolved" ? "open" : "resolved" }) }); await load(); }
-    catch (cause) { setError((cause as Error).message); }
+    const scope = active.current, controller = refresh.current;
+    try { await api(path, { token, method: "PATCH", body: JSON.stringify({ status: data?.status === "resolved" ? "open" : "resolved" }) }); if (active.current === scope && controller?.isActive()) { controller.invalidate(); await controller.refresh(); } }
+    catch (cause) { if (active.current === scope && controller?.isActive()) setError((cause as Error).message); }
   }
-  const items = [...new Map([...older, ...(support ? data?.messages || [] : data?.items || [])].map(item => [item.id, item])).values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  return <View style={styles.threadShell}><View style={styles.chatHeader}><Pressable accessibilityRole="button" accessibilityLabel="Back to messages" onPress={onClose} style={styles.backButton}><CustomerIcon name="back" size={24} colour="#195D9B"/></Pressable><View style={styles.smallAvatar}><CustomerIcon name={support?"help":"storefront"} size={24} colour="#175C9B"/></View><View style={{flex:1,gap:3}}><Text numberOfLines={1} style={styles.chatName}>{data?.subject||title}</Text><Text numberOfLines={1} style={styles.chatPreview}>{support?`${data?.recipient||"Cal-Eats support"} · ${label(data?.status==="resolved"?"resolved":data?.waitingFor||"team")}`:label(data?.thread?.status)||"Restaurant conversation"}</Text></View></View><ScrollView ref={scroll} contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" scrollEventThrottle={100} onScroll={event=>{const n=event.nativeEvent;nearBottom.current=n.contentSize.height-n.layoutMeasurement.height-n.contentOffset.y<90;}} onContentSizeChange={()=>{if(nearBottom.current)scroll.current?.scrollToEnd({animated:true});}} maintainVisibleContentPosition={{minIndexForVisible:0}} refreshControl={<RefreshControl refreshing={loading} onRefresh={()=>void load()}/>}><ErrorBanner message={error}/>{cursor?<Button tone="quiet" busy={loading} onPress={()=>{nearBottom.current=false;void load(true);}}>Earlier messages</Button>:null}{support&&data?.message?<View style={[styles.bubble,styles.bubbleMine]}><Text style={styles.messageBody}>{data.message}</Text><Text style={styles.bubbleMeta}>Your original request</Text></View>:null}{items.map((item,index)=><Fragment key={item.id}>{index===0||londonDay(items[index-1]?.createdAt)!==londonDay(item.createdAt)?<View style={styles.day}><Text style={styles.dayText}>{chatDay(item.createdAt)}</Text></View>:null}<View style={[styles.bubble,item.senderRole==="customer"?styles.bubbleMine:styles.bubbleOther]}><Text style={styles.bubbleAuthor}>{item.senderRole==="customer"?"You":item.senderRole==="admin"?"Cal-Eats support":title}</Text><Text style={styles.messageBody}>{item.message}</Text><Text style={styles.bubbleMeta}>{new Date(item.createdAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</Text></View></Fragment>)}{!items.length&&!data?.message&&!loading?<Text style={[styles.meta,{textAlign:"center",padding:24}]}>Your messages with {title} will appear here.</Text>:null}{support?<Button tone="quiet" onPress={()=>void toggleResolved()}>{data?.status==="resolved"?"Reopen request":"Mark request resolved"}</Button>:null}</ScrollView><View style={styles.composer}><View style={styles.composerRow}><TextInput accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={colours.muted} value={message} onChangeText={setMessage} multiline maxLength={2000} style={styles.composerInput}/><Pressable accessibilityRole="button" accessibilityLabel={sending?"Sending message":"Send message"} accessibilityState={{disabled:sending||!message.trim(),busy:sending}} disabled={sending||!message.trim()} onPress={()=>void send()} style={[styles.sendButton,(sending||!message.trim())&&{opacity:.45}]}>{sending?<Text style={styles.sendText}>…</Text>:<CustomerIcon name="send" size={22} colour={colours.white}/>}</Pressable></View><View style={styles.composerMeta}><Text style={styles.composerHint}>Messages cannot change paid items or prices.</Text><Text style={styles.composerHint}>{message.length}/2000</Text></View></View></View>;
+  const items = support ? data?.messages || [] : data?.items || [];
+  return <View style={styles.threadShell}><View style={styles.chatHeader}><Pressable accessibilityRole="button" accessibilityLabel="Back to messages" onPress={onClose} style={styles.backButton}><CustomerIcon name="back" size={24} colour="#195D9B"/></Pressable><View style={styles.smallAvatar}><CustomerIcon name={support?"help":"storefront"} size={24} colour="#175C9B"/></View><View style={{flex:1,gap:3}}><Text numberOfLines={1} style={styles.chatName}>{data?.subject||title}</Text><Text numberOfLines={1} style={styles.chatPreview}>{support?`${data?.recipient||"Cal-Eats support"} · ${label(data?.status==="resolved"?"resolved":data?.waitingFor||"team")}`:label(data?.thread?.status)||"Restaurant conversation"}</Text></View></View><ScrollView {...threadScroll.scrollProps} contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={()=>void load()}/>}><ErrorBanner message={error}/>{cursor?<Button tone="quiet" busy={loading} onPress={()=>{threadScroll.preserveHistory();void load(true);}}>Earlier messages</Button>:null}{support&&data?.message?<View style={[styles.bubble,styles.bubbleMine]}><Text style={styles.messageBody}>{data.message}</Text><Text style={styles.bubbleMeta}>Your original request</Text></View>:null}{items.map((item,index)=><Fragment key={item.id}>{index===0||londonDay(items[index-1]?.createdAt)!==londonDay(item.createdAt)?<View style={styles.day}><Text style={styles.dayText}>{chatDay(item.createdAt)}</Text></View>:null}<View style={[styles.bubble,item.senderRole==="customer"?styles.bubbleMine:styles.bubbleOther]}><Text style={styles.bubbleAuthor}>{item.senderRole==="customer"?"You":item.senderRole==="admin"?"Cal-Eats support":title}</Text><Text style={styles.messageBody}>{item.message}</Text><Text style={styles.bubbleMeta}>{new Date(item.createdAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</Text></View></Fragment>)}{!items.length&&!data?.message&&!loading?<Text style={[styles.meta,{textAlign:"center",padding:24}]}>Your messages with {title} will appear here.</Text>:null}{support?<Button tone="quiet" onPress={()=>void toggleResolved()}>{data?.status==="resolved"?"Reopen request":"Mark request resolved"}</Button>:null}</ScrollView><View style={styles.composer} onLayout={threadScroll.geometryChanged}><View style={styles.composerRow}><TextInput accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={colours.muted} value={message} onChangeText={setMessage} multiline onContentSizeChange={threadScroll.geometryChanged} maxLength={2000} style={styles.composerInput}/><Pressable accessibilityRole="button" accessibilityLabel={sending?"Sending message":"Send message"} accessibilityState={{disabled:sending||!message.trim(),busy:sending}} disabled={sending||!message.trim()} onPress={()=>void send()} style={[styles.sendButton,(sending||!message.trim())&&{opacity:.45}]}>{sending?<Text style={styles.sendText}>…</Text>:<CustomerIcon name="send" size={22} colour={colours.white}/>}</Pressable></View><View style={styles.composerMeta}><Text style={styles.composerHint}>Messages cannot change paid items or prices.</Text><Text style={styles.composerHint}>{message.length}/2000</Text></View></View></View>;
 }const styles = StyleSheet.create({ inboxPanel:{borderWidth:1,borderColor:colours.line,borderRadius:18,overflow:"hidden",backgroundColor:colours.panel},restaurantPhoto:{width:"100%",height:"100%"},filters:{flexDirection:"row",gap:8,paddingHorizontal:14,paddingBottom:13,borderBottomWidth:1,borderColor:"#E2EDF5"},filter:{minHeight:44,borderWidth:1,borderColor:"transparent",borderRadius:22,paddingVertical:10,paddingHorizontal:15,justifyContent:"center",backgroundColor:"#EFF5FA"},filterSelected:{backgroundColor:"#DBEEFF",borderColor:"#BDDBF7"},filterText:{fontSize:13,fontWeight:"700",color:colours.muted},pagination:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,padding:14,borderTopWidth:1,borderColor:"#E0EDF6"},empty:{minHeight:220,justifyContent:"center",alignItems:"center",padding:26,gap:10},emptyTitle:{fontSize:18,lineHeight:25,color:colours.ink,fontWeight:"800",textAlign:"center"},emptyCopy:{fontSize:13,lineHeight:21,color:colours.muted,textAlign:"center"},backButton:{width:44,height:44,alignItems:"center",justifyContent:"center",borderRadius:12},day:{alignItems:"center",marginVertical:8},dayText:{paddingHorizontal:11,paddingVertical:5,borderRadius:20,borderWidth:1,borderColor:"#D4E4F1",backgroundColor:"#DFECF7",fontSize:11,fontWeight:"600",color:"#5C7C97"},composerMeta:{flexDirection:"row",alignItems:"flex-start",justifyContent:"space-between",gap:10}, threadShell:{flex:1,backgroundColor:"#EFF7FF"},chatHeader:{flexDirection:"row",alignItems:"center",gap:10,paddingHorizontal:10,paddingVertical:10,backgroundColor:colours.panel,borderBottomWidth:1,borderColor:colours.line},smallAvatar:{width:38,height:38,borderRadius:13,backgroundColor:colours.sky,alignItems:"center",justifyContent:"center"},searchBox:{flexDirection:"row",alignItems:"center",gap:11,margin:14,marginBottom:10,borderRadius:14,backgroundColor:"#EDF6FF",borderWidth:1,borderColor:"#D1E4F3",paddingHorizontal:12},searchInput:{flex:1,minHeight:46,fontSize:16,color:colours.ink},chatRow:{flexDirection:"row",alignItems:"center",gap:12,paddingVertical:16,paddingHorizontal:14,borderBottomWidth:1,borderColor:colours.line},avatar:{width:46,height:46,borderRadius:15,overflow:"hidden",backgroundColor:colours.sky,alignItems:"center",justifyContent:"center"},avatarText:{fontSize:16,fontWeight:"800",color:colours.blueDark},chatCopy:{flex:1,gap:7},chatTitleRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:10},chatName:{flex:1,fontSize:16,lineHeight:22,fontWeight:"800",color:colours.ink},chatTime:{fontSize:11,color:colours.muted},chatPreview:{flex:1,fontSize:13,lineHeight:18,color:colours.muted},unreadBadge:{backgroundColor:colours.blue,borderRadius:12,minWidth:22,height:22,paddingHorizontal:5,alignItems:"center",justifyContent:"center"},unreadText:{color:colours.white,fontWeight:"800",fontSize:11},messages:{padding:16,gap:10,paddingBottom:22,flexGrow:1},bubble:{maxWidth:"86%",paddingHorizontal:14,paddingVertical:10,gap:5,borderRadius:17},bubbleMine:{alignSelf:"flex-end",backgroundColor:"#D9ECFF",borderBottomRightRadius:5,borderWidth:1,borderColor:"#BFDBF4"},bubbleOther:{alignSelf:"flex-start",backgroundColor:colours.panel,borderBottomLeftRadius:4,borderWidth:1,borderColor:"#DCE6EF"},bubbleAuthor:{fontSize:11,fontWeight:"700",color:colours.blueDark},messageBody:{color:colours.ink,fontSize:14,lineHeight:22},bubbleMeta:{color:colours.muted,fontSize:11,lineHeight:16,alignSelf:"flex-end"},composer:{backgroundColor:colours.panel,borderTopWidth:1,borderColor:colours.line,paddingHorizontal:12,paddingTop:10,paddingBottom:8,gap:5},composerRow:{flexDirection:"row",alignItems:"flex-end",gap:8},composerInput:{flex:1,minHeight:46,maxHeight:120,paddingHorizontal:15,paddingVertical:12,borderWidth:1,borderColor:colours.line,borderRadius:23,fontSize:15,color:colours.ink,backgroundColor:colours.cream},sendButton:{width:46,height:46,borderRadius:23,backgroundColor:colours.blue,alignItems:"center",justifyContent:"center"},sendText:{fontSize:26,color:colours.white,fontWeight:"700"},composerHint:{color:colours.muted,fontSize:11,lineHeight:16}, page: { padding: 18, paddingBottom: 90, gap: 14, backgroundColor: colours.cream }, stack: { gap: 14 }, row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }, meta: { color: colours.muted, lineHeight: 20 }, body: { color: colours.ink, lineHeight: 23 }, author: { color: colours.ink, fontWeight: "800" } });
