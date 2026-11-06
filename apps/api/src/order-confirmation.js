@@ -3,16 +3,18 @@ import { withTransaction } from "./db/index.js";
 import { requireRole } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { createOrderAlertEmailAdapter, orderAlertEmailReadiness } from "./order-alert-email.js";
+import {includeArchivedRestaurants} from "./restaurant-catalogue.js";
 
 export const ORDER_CONFIRMATION_MS = 180000;
 export const PAYABLE_ORDER_SQL = `(o.payment_method='cash' AND o.payment_status='cash_due' OR o.payment_method='mock_card' AND o.payment_status IN ('mock_authorized','mock_captured') OR o.payment_method='card' AND o.payment_status IN ('stripe_authorized','stripe_captured') OR o.payment_method='voucher' AND o.payment_status IN ('voucher_reserved','voucher_redeemed'))`;
-const dueSql = `o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND o.confirmation_due_at<=$now AND ${PAYABLE_ORDER_SQL}`;
+const dueSql = `o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND o.confirmation_due_at<=$now AND ${PAYABLE_ORDER_SQL} AND EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=o.restaurant_id AND ar.archived_at IS NULL)`;
 const safe = (value, max = 180) => String(value ?? "").replace(/[\r\n\0]+/g," ").trim().slice(0,max);
 const workers = new WeakMap();
 const iso = config => config.now().toISOString();
 const payable = order => order.payment_method === "voucher" ? ["voucher_reserved","voucher_redeemed"].includes(order.payment_status) : order.payment_method === "cash" ? order.payment_status === "cash_due" : order.payment_method === "mock_card" ? ["mock_authorized","mock_captured"].includes(order.payment_status) : ["stripe_authorized","stripe_captured"].includes(order.payment_status);
 
 export function markMerchantOrderVisible(db, orderId, stamp) {
+  if(!db.prepare("SELECT 1 FROM orders o JOIN restaurants r ON r.id=o.restaurant_id WHERE o.id=? AND r.archived_at IS NULL").get(orderId))return false;
   const due = new Date(Date.parse(stamp) + ORDER_CONFIRMATION_MS).toISOString();
   db.prepare(`UPDATE orders AS o SET merchant_visible_at=COALESCE(merchant_visible_at,?),confirmation_due_at=COALESCE(confirmation_due_at,?) WHERE o.id=? AND o.status='placed' AND ${PAYABLE_ORDER_SQL}`).run(stamp,due,orderId);
   return db.prepare(`SELECT 1 FROM orders o WHERE o.id=? AND o.merchant_visible_at IS NOT NULL AND o.status='placed' AND ${PAYABLE_ORDER_SQL}`).get(orderId) !== undefined;
@@ -118,7 +120,8 @@ export async function routeOrderConfirmationAlerts({req,res,url,db,config,sessio
   if (req.method !== "GET" || url.pathname !== "/api/admin/order-confirmation-alerts") return false;
   requireRole(session,"admin"); const rawPage = url.searchParams.get("page") ?? "1", rawLimit = url.searchParams.get("pageSize") ?? "25", page=Number(rawPage),pageSize=Number(rawLimit);
   if (!/^[1-9][0-9]*$/.test(rawPage) || !/^[1-9][0-9]*$/.test(rawLimit) || !Number.isSafeInteger(page) || page>100000 || pageSize>100) throw new HttpError(400,"VALIDATION_ERROR","Alert pagination is invalid");
-  const total = db.prepare("SELECT COUNT(*) n FROM order_confirmation_email_outbox").get().n, rows=db.prepare("SELECT e.*,o.status order_status,r.name restaurant_name FROM order_confirmation_email_outbox e JOIN orders o ON o.id=e.order_id JOIN restaurants r ON r.id=e.restaurant_id ORDER BY e.queued_at DESC,e.id DESC LIMIT ? OFFSET ?").all(pageSize,(page-1)*pageSize);
-  const summary=Object.fromEntries(db.prepare("SELECT status,COUNT(*) n FROM order_confirmation_email_outbox GROUP BY status").all().map(row=>[row.status,row.n]));
+  const from="FROM order_confirmation_email_outbox e JOIN orders o ON o.id=e.order_id JOIN restaurants r ON r.id=e.restaurant_id",where=includeArchivedRestaurants(url)?"":" WHERE r.archived_at IS NULL";
+  const total = db.prepare(`SELECT COUNT(*) n ${from}${where}`).get().n, rows=db.prepare(`SELECT e.*,o.status order_status,r.name restaurant_name ${from}${where} ORDER BY e.queued_at DESC,e.id DESC LIMIT ? OFFSET ?`).all(pageSize,(page-1)*pageSize);
+  const summary=Object.fromEntries(db.prepare(`SELECT e.status,COUNT(*) n ${from}${where} GROUP BY e.status`).all().map(row=>[row.status,row.n]));
   return sendJson(res,200,{data:{items:rows.map(row=>({id:row.id,orderId:row.order_id,restaurantId:row.restaurant_id,restaurantName:row.restaurant_name,recipient:row.recipient,status:row.status,orderStatus:row.order_status,mode:row.mode,attempts:row.attempts,errorCode:row.last_error,queuedAt:row.queued_at,sentAt:row.sent_at,updatedAt:row.updated_at,dispatchStartedAt:row.dispatch_started_at})),pagination:{page,pageSize,total,totalPages:Math.ceil(total/pageSize),hasNext:page*pageSize<total,hasPrevious:page>1},summary,email:orderAlertEmailReadiness(config.orderAlertEmail)}});
 }

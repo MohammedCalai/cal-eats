@@ -69,7 +69,7 @@ function customerOffers({res,url,db,config,user}){
   const empty=paged?{items:[],hasMore:false,nextCursor:null}:[];
   const permitted=Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed);
   if(!permitted)return sendJson(res,200,{data:empty});
-  const params={user:user.id,now:config.now().toISOString(),limit:limit+1},filters=["g.customer_id=$user","g.dismissed_at IS NULL"];
+  const params={user:user.id,now:config.now().toISOString(),limit:limit+1},filters=["g.customer_id=$user","g.dismissed_at IS NULL","r.archived_at IS NULL"];
   if(restaurantId){filters.push("g.restaurant_id=$restaurant");params.restaurant=restaurantId;}
   if(scope==="active")filters.push("(g.status='reserved' OR (g.status='available' AND c.expires_at>$now))");
   if(after){const prior=db.prepare(`SELECT g.*,${personalPriority} personal_priority FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=? AND g.customer_id=?`).get(after,user.id);if(!prior||(restaurantId&&prior.restaurant_id!==restaurantId))throw new HttpError(404,"NOT_FOUND","Offer cursor is unavailable");filters.push(`(${personalPriority}<$priority OR (${personalPriority}=$priority AND (g.created_at<$created OR (g.created_at=$created AND g.id<$id))))`);Object.assign(params,{priority:prior.personal_priority,created:prior.created_at,id:prior.id});}
@@ -89,6 +89,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (before && Number.isNaN(Date.parse(before))) || (beforeId && (!before || beforeId.length > 100))) throw new HttpError(400,"VALIDATION_ERROR","Notification pagination is invalid");
     const params = { uid: user.id, role: user.role, permitsOffers: Number(permitsOffers) };
     const allowed = `user_id=$uid AND (type<>'offer' OR $permitsOffers=1)
+      AND (restaurant_id IS NULL OR ($role NOT IN ('restaurant','admin') AND type<>'offer') OR EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=user_notifications.restaurant_id AND ar.archived_at IS NULL))
       AND ($role<>'restaurant' OR restaurant_id IS NULL OR EXISTS(SELECT 1 FROM restaurant_memberships mm WHERE mm.restaurant_id=user_notifications.restaurant_id AND mm.user_id=$uid))
       AND (type<>'customer_message' OR EXISTS(SELECT 1 FROM restaurant_customer_threads t WHERE t.id=user_notifications.conversation_id AND (t.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships cm WHERE cm.restaurant_id=t.restaurant_id AND cm.user_id=$uid AND cm.permission='owner'))))
       AND (type<>'order_message' OR EXISTS(SELECT 1 FROM orders o WHERE o.id=user_notifications.order_id AND (o.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships om WHERE om.restaurant_id=o.restaurant_id AND om.user_id=$uid))))
@@ -118,7 +119,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
   }
   match = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
   if(match&&req.method==="GET"){
-    const user=requireRole(session,"customer"),row=db.prepare(`${grantSelect} WHERE g.id=? AND g.customer_id=? AND g.dismissed_at IS NULL`).get(match[1],user.id);
+    const user=requireRole(session,"customer"),row=db.prepare(`${grantSelect} WHERE g.id=? AND g.customer_id=? AND g.dismissed_at IS NULL AND r.archived_at IS NULL`).get(match[1],user.id);
     if(!row)throw new HttpError(404,"NOT_FOUND","Offer is unavailable");
     const allowed=db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed;if(!allowed)throw new HttpError(409,"MARKETING_CONSENT_WITHDRAWN","Promotion is unavailable because marketing consent is off");
     return sendJson(res,200,{data:grantDto(row,config.now().toISOString())});

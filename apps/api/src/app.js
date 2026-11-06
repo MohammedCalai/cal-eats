@@ -1,6 +1,7 @@
 import {routeAdminRestaurantWorkspace} from "./admin-restaurant-workspace.js";
 import {routeRestaurantCommission} from "./restaurant-commission.js";
 import {routePaymentLaunch} from "./payment-launch.js";
+import {routePasswordChange} from "./auth/password-change.js";
 import {routeAdminWorkspace} from "./admin-workspace.js";
 import {routePlatformVouchers} from "./platform-vouchers.js";
 import {routeBusinessDirectResolution} from "./business-direct-resolution.js";
@@ -110,6 +111,8 @@ export function createApp({ db, config, logger = console }) {
       if (accountAccessHandled || res.writableEnded || res.headersSent) return;
       const nativeHandled = await routeNativeAuth({ req, res, url, db, config, session, checkRate });
       if (nativeHandled || res.writableEnded || res.headersSent) return;
+      const passwordChanged=await routePasswordChange({req,res,url,db,config,session,checkRate});
+      if(passwordChanged||res.writableEnded||res.headersSent)return;
 
       if (req.method === "POST" && url.pathname === "/api/auth/register") {
         const body = await readJson(req, config.bodyLimit);

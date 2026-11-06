@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import {includeArchivedRestaurants} from "./restaurant-catalogue.js";
 import { requireRole } from "./auth/authorization.js";
 import { scopedAdminRestaurantSession } from "./auth/admin-restaurant-scope.js";
 import { HttpError, sendJson } from "./http.js";
@@ -21,7 +22,7 @@ export async function routeAdminRestaurantWorkspace(context) {
   const {req,res,url,db,config,session}=context;
   if(url.pathname==="/api/admin/restaurant-promotions"&&req.method==="GET"){
     requireRole(session,"admin");const page=number(url,"page",1,100000),pageSize=25,q=(url.searchParams.get("q")??"").trim();if(q.length>100)throw new HttpError(400,"VALIDATION_ERROR","Search is too long");
-    const where="c.title LIKE ? ESCAPE '\\' OR r.name LIKE ? ESCAPE '\\'",values=[like(q),like(q)],total=db.prepare(`SELECT COUNT(*) n FROM offer_campaigns c JOIN restaurants r ON r.id=c.restaurant_id WHERE ${where}`).get(...values).n,now=config.now().toISOString();
+    const where="r.archived_at IS NULL AND (c.title LIKE ? ESCAPE '\\' OR r.name LIKE ? ESCAPE '\\')",values=[like(q),like(q)],total=db.prepare(`SELECT COUNT(*) n FROM offer_campaigns c JOIN restaurants r ON r.id=c.restaurant_id WHERE ${where}`).get(...values).n,now=config.now().toISOString();
     const items=db.prepare(`SELECT c.id,c.restaurant_id,c.title,c.starts_at,c.expires_at,r.name restaurant_name,(SELECT COUNT(*) FROM offer_grants g WHERE g.campaign_id=c.id AND g.status='redeemed') redeemed FROM offer_campaigns c JOIN restaurants r ON r.id=c.restaurant_id WHERE ${where} ORDER BY c.created_at DESC,c.id DESC LIMIT ? OFFSET ?`).all(...values,pageSize,(page-1)*pageSize).map(row=>({id:row.id,restaurantId:row.restaurant_id,restaurantName:row.restaurant_name,title:row.title,startsAt:row.starts_at,expiresAt:row.expires_at,redeemedCount:row.redeemed,status:row.expires_at<=now?"Ended":row.starts_at>now?"Scheduled":"Active"}));
     return sendJson(res,200,{data:{items,pagination:pagination(page,pageSize,total)}});
   }
@@ -29,7 +30,7 @@ export async function routeAdminRestaurantWorkspace(context) {
     requireRole(session,"admin");
     const page=number(url,"page",1,100000),pageSize=number(url,"pageSize",25,100),q=(url.searchParams.get("q")??"").trim(),status=url.searchParams.get("status")??"all";
     if(q.length>100||!["all","approved","pending","rejected","suspended"].includes(status))throw new HttpError(400,"VALIDATION_ERROR","Restaurant filters are invalid");
-    const filters=["1=1"],values=[];
+    const filters=includeArchivedRestaurants(url)?["1=1"]:["archived_at IS NULL"],values=[];
     if(q){filters.push("(name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR cuisine LIKE ? ESCAPE '\\')");values.push(like(q),like(q),like(q));}
     if(status==="suspended")filters.push("suspended=1");else if(status!=="all"){filters.push("status=?");values.push(status);}
     const where=filters.join(" AND "),total=db.prepare(`SELECT COUNT(*) n FROM restaurants WHERE ${where}`).get(...values).n;

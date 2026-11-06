@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useRef,useState} from "react";
 import {Link} from "react-router-dom";
 import {api} from "./api.js";
+import BankingPasswordChange from "./BankingPasswordChange.jsx";
 import "./PaymentLaunchReadiness.css";
 
 const money=value=>new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(value/100);
@@ -9,20 +10,26 @@ const rate=value=>Number.isSafeInteger(value)&&value>=0&&value<=10000?`${value/1
 const stateLabel=value=>({ready:"Ready",blocked:"Needs setup",review:"Needs review"})[value]||"Needs review";
 
 export default function PaymentLaunchReadiness(){
-  const [page,setPage]=useState(1),[value,setValue]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState("");
+  const [page,setPage]=useState(1),[value,setValue]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[security,setSecurity]=useState(null),[securityError,setSecurityError]=useState(""),[securityNotice,setSecurityNotice]=useState("");
   const generation=useRef(0);
   const load=useCallback(async()=>{
-    const request=++generation.current;setLoading(true);setError("");
-    try{const next=await api(`/api/admin/finance/payment-launch?page=${page}&pageSize=25`);if(request===generation.current)setValue(next);}
-    catch(cause){if(request===generation.current)setError(cause.message||"Payment readiness could not be checked.");}
-    finally{if(request===generation.current)setLoading(false);}
+    const request=++generation.current;setLoading(true);setError("");setSecurityError("");
+    const [readiness,accountSecurity]=await Promise.allSettled([api(`/api/admin/finance/payment-launch?page=${page}&pageSize=25`),api("/api/auth/password-security")]);
+    if(request!==generation.current)return;
+    if(readiness.status==="fulfilled")setValue(readiness.value);else setError(readiness.reason?.message||"Payment readiness could not be checked.");
+    if(accountSecurity.status==="fulfilled")setSecurity(accountSecurity.value);else{setSecurity(null);setSecurityError("Your account security could not be checked. Refresh checks to try again.");}
+    setLoading(false);
   },[page]);
   useEffect(()=>{void load();return()=>{generation.current++;};},[load]);
+  async function passwordChanged(){setSecurityNotice("Your administrator password has been updated.");await load();}
   const restaurants=value?.restaurants,items=restaurants?.items||[],currentPage=restaurants?.page||page,total=restaurants?.total||0,pageSize=restaurants?.pageSize||25;
   const normalRate=value?.commission?.normalRateBasisPoints,exampleCommission=Number.isSafeInteger(normalRate)?Math.round(1300*normalRate/10000):null;
   return <section className="payment-launch" aria-labelledby="payment-launch-title" aria-busy={loading}>
     <header className="payment-launch-heading"><div><p className="eyebrow">Payment readiness</p><h2 id="payment-launch-title">Prepare real payments</h2><p>Review the connection, restaurant accounts and launch checks before accepting real card payments.</p></div><button type="button" className="quiet" disabled={loading} onClick={()=>void load()}>{loading?"Checking…":"Refresh checks"}</button></header>
     {error&&<p className="alert" role="alert">{error}</p>}
+    {securityError&&<p className="alert" role="alert">{securityError}</p>}
+    {securityNotice&&<p className="alert success" role="status">{securityNotice}</p>}
+    {security?.passwordChangeRequired&&<BankingPasswordChange title="Secure your administrator account" description="Before real bank setup, replace your testing password with a unique password only you know. Use at least 12 characters with letters and numbers." onChanged={passwordChanged}/>}
     {!value?<p role="status">{loading?"Checking payment readiness…":"Payment readiness is unavailable. Refresh to try again."}</p>:<>
       <div className="payment-launch-summary"><div><span>Current connection</span><strong>{paymentMode(value.currentMode)}</strong></div><div><span>Real payments</span><strong>{value.livePaymentsEnabled&&value.currentMode==="stripe_live"?"Enabled":"Not enabled"}</strong></div><div><span>Launch checks</span><strong>{value.ready?"Ready for final review":"Further setup needed"}</strong></div></div>
       <p className="payment-launch-notice">This page checks readiness. It does not enable payments, move money or change any restaurant’s bank account.</p>

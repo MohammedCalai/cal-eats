@@ -26,6 +26,8 @@ The prospective `CALAI_STRIPE_LIVE_ACCOUNT_ID` is inventory-only: it lets the re
 
 Use a dedicated restricted server key and separate platform/connected-account event connections within the existing approved Calai live account. Keep the original Calai subscription keys, webhook, business profile and platform bank-payout schedule untouched.
 
+Because this uses the existing live Calai account, captured Cal-Eats customer charges enter that same platform Stripe balance. A separate key does not create a separate financial balance. Cal-Eats records the order attribution and retained commission, then transfers each completed order's saved restaurant net into that restaurant's connected-account balance. Available connected-account funds are paid to the restaurant bank on its weekly plan; settlement and bank processing affect arrival. Processing costs are paid from the platform balance.
+
 Prepared live endpoint paths are `/api/provider-events/stripe-live` and `/api/provider-events/stripe-live/connect`. They deliberately reject requests while the runtime is in test mode. Do not claim successful signed live delivery until the reviewed live environment can receive and reconcile it.
 
 Live credentials require explicit approval of their permissions and storage. Keep secrets in private Git-ignored files and the Cal-Eats hosting secret store; never commit or include them in reports.
@@ -42,3 +44,11 @@ Live credentials require explicit approval of their permissions and storage. Kee
 8. Review the exact activation change and obtain approval before enabling real payment mode. A real charge or payout is completed by the account holder, not by an unattended test.
 
 The admin report documents these gaps; it does not bypass them or certify the app ready for public launch.
+
+## First real restaurant preparation
+
+The administrator selected Arndale Market Curry Centre (`027d8cb9-f2ee-4aab-b893-1b1e2997c367`) for the first real pilot. It remains collection-only and paused until real menu/prices, business details, accepted non-demo terms and bank onboarding are ready. Sample menu items and offers must not be published as genuine restaurant data. Other catalogue entries are archived reversibly; their orders and financial history remain.
+
+`CALAI_LIVE_ONBOARDING_RESTAURANT_IDS` is an explicit allowlist for real bank preparation through the existing owner finance endpoints. It does not enable real customer checkout, live payment events or live transfer workers. Its provider exposes bank-onboarding and read methods only, without charge/capture/transfer methods. Existing sandbox bindings are refused rather than overwritten.
+
+Before accessing real banking, the owner and every enabled platform administrator must choose new secure passwords through the app. `POST /api/auth/password` verifies the current password, records only a credential fingerprint, revokes other sessions and invalidates old reset links. The banking policy is tied to the current hash, so a subsequent password reset cannot reuse stale approval. The agent does not choose or enter these new passwords. Real financial account creation and bank entry are user initiated.

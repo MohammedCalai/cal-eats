@@ -7,6 +7,8 @@ import { finalizeStripeRefund, queueStripeTransferReversal, recordMarketplaceAcc
 import { releaseOfferForOrder, notifyNewOrder, notifyOrderStatus } from "../offers.js";
 import { retrieveAuthoritativeProviderState } from "./provider-events.js";
 import { queueEligibleStripeTransfers } from "./stripe-settlement.js";
+import { restaurantBankingConfig,bankingPaymentScope } from "./live-onboarding.js";
+import { hasLiveBankingCredential,requireLiveBankingCredential } from "../auth/password-change.js";
 
 const stripeMode = config => ["stripe_test", "stripe_live"].includes(config.paymentProviderMode) ? config.paymentProviderMode : null;
 const provider = config => config.stripeProvider ?? config.paymentProvider;
@@ -55,6 +57,9 @@ function saveAccount(db, config, restaurantId, result) {
   if (result?.ok === false || !["confirmed", "pending", "failed"].includes(result?.status) || !/^acct_[A-Za-z0-9_]+$/.test(result.providerReference || "")) throw new HttpError(502,"STRIPE_ACCOUNT_REFRESH_FAILED","Stripe account status could not be confirmed");
   const stamp = now(config), mode = stripeMode(config);
   withTransaction(db, () => {
+    // Recheck after any asynchronous provider request, before updating a binding.
+    const existing=accountForMode(db,restaurantId,config);
+    if(existing?.provider_reference&&existing.provider_reference!==result.providerReference)throw new HttpError(409,"STRIPE_ACCOUNT_MISMATCH","Restaurant banking account cannot be replaced during setup");
     const status = result.chargesEnabled && result.payoutsEnabled ? "enabled" : result.status === "failed" ? "restricted" : "pending";
     db.prepare("INSERT INTO provider_accounts VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(restaurant_id) DO UPDATE SET provider_mode=excluded.provider_mode,status=excluded.status,capabilities=excluded.capabilities,requirements=excluded.requirements,provider_reference=excluded.provider_reference,updated_at=excluded.updated_at").run(randomUUID(),restaurantId,mode,status,JSON.stringify(result.capabilities ?? []),JSON.stringify(result.requirements ?? []),result.providerReference,stamp,stamp);
     recordAccountReadiness(db, { restaurantId, mode, accountId: result.providerReference, result, stamp });
@@ -87,22 +92,26 @@ export async function routeStripeConnect(ctx) {
   if (req.method === "GET" && url.pathname === "/api/payments/config") return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,cardAvailable:configured(config),stripeMode:stripeMode(config)?.replace("stripe_","") ?? null,payoutSchedule:schedule,commissionRateBasisPoints:700}});
   let match = url.pathname.match(/^\/api\/orders\/([^/]+)\/(checkout|payment\/refresh)$/);
   if (match && req.method === "POST") {
-    const access = ownedCardOrder(db,session,match[1],config); await ensurePlatform(config);
+    const access = ownedCardOrder(db,session,match[1],config);
+    if(match[2]==="checkout"&&db.prepare("SELECT * FROM restaurants WHERE id=?").get(access.order.restaurant_id)?.archived_at)throw new HttpError(409,"RESTAURANT_UNAVAILABLE","This restaurant is no longer accepting new payments");
+    await ensurePlatform(config);
     return match[2] === "checkout" ? checkout({ ...ctx, ...access }) : refreshPayment({ ...ctx, ...access });
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/stripe(?:\/(onboarding|refresh|dashboard|payouts|banking))?$/);
   if (match) {
-    const owner = requireRestaurantOwner(db,session,match[1]), mode = stripeMode(config);
+    const owner = requireRestaurantOwner(db,session,match[1]),bankConfig=restaurantBankingConfig(config,match[1]),bankCtx={...ctx,config:bankConfig},mode=stripeMode(bankConfig),scope=bankingPaymentScope(bankConfig);
+    if(mode==="stripe_live"&&match[2]){requireRole(session,"restaurant");requireLiveBankingCredential(db,owner.id);}
     if (req.method === "GET" && !match[2]) {
-      const row = mode ? accountForMode(db,match[1],config) : null;
-      return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,configured:configured(config),account:accountDto(db,row),payoutSchedule:schedule}});
+      const row = mode ? accountForMode(db,match[1],bankConfig) : null;
+      if(scope.onboardingOnly)await ensurePlatform(bankConfig);
+      return sendJson(res,200,{data:{providerMode:bankConfig.paymentProviderMode,configured:configured(bankConfig),account:accountDto(db,row),payoutSchedule:schedule,...scope,passwordChangeRequired:mode==="stripe_live"&&(owner.role!=="restaurant"||!hasLiveBankingCredential(db,owner.id))}});
     }
     if (req.method === "GET" && match[2] === "payouts") {
-      if (!mode || !configured(config) || !accountForMode(db,match[1],config)?.provider_reference) return sendJson(res,200,{data:{items:[],hasMore:false,nextCursor:null,providerMode:config.paymentProviderMode,configured:false}});
-      await ensurePlatform(config); return listPayouts({ ...ctx, restaurantId:match[1] });
+      if (!mode || !configured(bankConfig) || !accountForMode(db,match[1],bankConfig)?.provider_reference) return sendJson(res,200,{data:{items:[],hasMore:false,nextCursor:null,providerMode:bankConfig.paymentProviderMode,configured:false,...scope}});
+      await ensurePlatform(bankConfig); return listPayouts({ ...bankCtx, restaurantId:match[1] });
     }
-    if (req.method === "GET" && match[2] === "banking") return bankingDetails({ ...ctx, restaurantId:match[1] });
-    if (req.method === "POST" && ["onboarding","refresh","dashboard"].includes(match[2])) { await ensurePlatform(config); return accountAction({ ...ctx, owner, restaurantId:match[1], action:match[2] }); }
+    if (req.method === "GET" && match[2] === "banking") return bankingDetails({ ...bankCtx, restaurantId:match[1] });
+    if (req.method === "POST" && ["onboarding","refresh","dashboard"].includes(match[2])) { await ensurePlatform(bankConfig); return accountAction({ ...bankCtx, owner, restaurantId:match[1], action:match[2] }); }
   }
   if (req.method === "GET" && url.pathname === "/api/admin/finance/stripe/readiness") {
     requireRole(session,"admin"); const mode = stripeMode(config);
@@ -159,22 +168,22 @@ async function accountAction({ req, res, db, config, owner, restaurantId, action
     if (payoutPolicy?.status !== "confirmed" || payoutPolicy?.ok === false) throw new HttpError(503,"STRIPE_PAYOUT_POLICY_PENDING","Weekly payout settings could not be confirmed. Retry setup");
     const result = await adapter.createAccountLink({accountId:row.provider_reference,refreshUrl:new URL("/business/owner/stripe",config.origin).href,returnUrl:new URL("/business/owner/stripe",config.origin).href,idempotencyKey:`connect-link:${mode}:${restaurantId}:${retryKey}`});
     if (!result?.actionUrl || result.ok === false) throw new HttpError(503,"STRIPE_LINK_UNAVAILABLE","Stripe verification link is unavailable. Try again");
-    return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode,expiresAt:result.expiresAt}});
+    return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode,expiresAt:result.expiresAt,...bankingPaymentScope(config)}});
   }
   if (!row?.provider_reference) throw new HttpError(409,"CONNECT_ACCOUNT_REQUIRED","Complete Stripe onboarding first");
   if (action === "refresh") {
     const result = await adapter.refreshConnectedAccount({accountId:row.provider_reference});
     if (result?.providerReference !== row.provider_reference) throw new HttpError(409,"STRIPE_ACCOUNT_MISMATCH","Restaurant account could not be verified");
     row = saveAccount(db,config,restaurantId,result);
-    return sendJson(res,200,{data:{providerMode:mode,configured:configured(config),account:accountDto(db,row),payoutSchedule:schedule}});
+    return sendJson(res,200,{data:{providerMode:mode,configured:configured(config),account:accountDto(db,row),payoutSchedule:schedule,...bankingPaymentScope(config)}});
   }
   const result = await adapter.createAccountLoginLink({accountId:row.provider_reference,idempotencyKey:`connect-dashboard:${mode}:${restaurantId}:${key(req)}`});
   if (!result?.actionUrl || result.ok === false) throw new HttpError(503,"STRIPE_LINK_UNAVAILABLE","Stripe dashboard is unavailable. Try again");
-  return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode}});
+  return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode,...bankingPaymentScope(config)}});
 }
 async function bankingDetails({ res, db, config, restaurantId }) {
   const mode=stripeMode(config),row=mode?accountForMode(db,restaurantId,config):null;
-  const base={providerMode:config.paymentProviderMode,configured:configured(config),connected:Boolean(row?.provider_reference),canManageBankDetails:Boolean(configured(config)&&row?.provider_reference),account:accountDto(db,row),bankDetailsAvailable:false,bankAccounts:[],payoutSchedule:schedule,refreshedAt:null};
+  const base={providerMode:config.paymentProviderMode,configured:configured(config),connected:Boolean(row?.provider_reference),canManageBankDetails:Boolean(configured(config)&&row?.provider_reference),account:accountDto(db,row),bankDetailsAvailable:false,bankAccounts:[],payoutSchedule:schedule,refreshedAt:null,...bankingPaymentScope(config)};
   if(!mode||!configured(config)||!row?.provider_reference)return sendJson(res,200,{data:{...base,note:"No Stripe bank details are connected to this payment mode. Complete Stripe setup to view bank and payout information."}});
   await ensurePlatform(config);
   const adapter=provider(config),account=await adapter.refreshConnectedAccount({accountId:row.provider_reference});
@@ -203,7 +212,7 @@ async function listPayouts({ res, url, db, config, restaurantId }) {
     return{id:item.providerReference,amountMinor:item.amountMinor,currency,status,createdAt:item.createdAt??null,arrivalAt:item.arrivalAt??null,expectedArrivalAt:item.arrivalAt??null,paidAt:paid?.provider_created_at??null,updatedAt:stamp,failure:safeProviderError(item.errorCode)};
   });
   withTransaction(db,()=>{for(const item of items){const existing=db.prepare("SELECT * FROM stripe_connected_payouts WHERE id=?").get(item.id);if(existing&&(existing.restaurant_id!==restaurantId||existing.provider_account_id!==row.provider_reference||existing.amount_minor!==item.amountMinor))throw new HttpError(409,"STRIPE_PAYOUT_BINDING_MISMATCH","Stripe payout does not match this restaurant");db.prepare("INSERT INTO stripe_connected_payouts VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,arrival_at=excluded.arrival_at,failure=excluded.failure,updated_at=excluded.updated_at").run(item.id,restaurantId,row.provider_reference,item.amountMinor,item.status,item.arrivalAt,item.failure,stamp,stamp);}});
-  return sendJson(res,200,{data:{items,hasMore:Boolean(result.hasMore),nextCursor:result.hasMore&&items.length?items.at(-1).id:null,providerMode:stripeMode(config),configured:true}});
+  return sendJson(res,200,{data:{items,hasMore:Boolean(result.hasMore),nextCursor:result.hasMore&&items.length?items.at(-1).id:null,providerMode:stripeMode(config),configured:true,...bankingPaymentScope(config)}});
 }
 
 export async function runStripeConnectWorker(db, config, { workerId = randomUUID(), limit = 25 } = {}) {

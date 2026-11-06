@@ -3,6 +3,7 @@ import { api, json, newKey } from "./api.js";
 import { BankPayoutPanel } from "./EarningsPage.jsx";
 import { useFinanceResource } from "./finance-resource.js";
 import PaymentLaunchReadiness from "./PaymentLaunchReadiness.jsx";
+import BankingPasswordChange from "./BankingPasswordChange.jsx";
 
 export function StripeAdminReadiness(){return <><PaymentLaunchReadiness/><StripeConnectionReadiness/></>;}
 
@@ -15,11 +16,11 @@ export function StripeRestaurantFinance({ restaurantId }) {
 }
 function StripeRestaurantWorkspace({ restaurantId }) {
   const root = `/api/restaurant/restaurants/${restaurantId}/finance/stripe`;
-  const result = useFinanceResource(root), [error, setError] = useState(""), [busy, setBusy] = useState(""), [bankVersion, setBankVersion] = useState(0);
+  const result = useFinanceResource(root), [error, setError] = useState(""), [busy, setBusy] = useState(""), [bankVersion, setBankVersion] = useState(0),[securityNotice,setSecurityNotice]=useState("");
   const pending = useRef(false), active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   async function action(kind, hosts) {
-    if (pending.current) return;
+    if (pending.current||result.value?.onboardingOnly&&result.value?.passwordChangeRequired) return;
     pending.current = true; setBusy(kind); setError("");
     try {
       const value = await api(`${root}/${kind}`, json("POST", {}, newKey(`stripe-${kind}`)));
@@ -29,17 +30,20 @@ function StripeRestaurantWorkspace({ restaurantId }) {
     } catch (caught) { if (active.current) setError(caught.message); }
     finally { pending.current = false; if (active.current) setBusy(""); }
   }
-  const stripe = result.value, account = stripe?.account || {};
+  const stripe = result.value, account = stripe?.account || {}, onboardingOnly=stripe?.onboardingOnly===true,passwordRequired=onboardingOnly&&stripe?.passwordChangeRequired===true;
+  async function passwordChanged(){if(!active.current)return;setSecurityNotice("Your password has been updated. Continue with secure bank setup when you are ready.");await result.reload();}
   return <section className="finance-payment-setup">
-    <div className="panel"><h2>Payment setup &amp; verification</h2>
+    <div className="panel"><h2>{onboardingOnly?"Set up real bank payouts":"Payment setup & verification"}</h2>
     {(result.error || error) && <p className="alert" role="alert">{merchantCopy(result.error || error)}</p>}
-    {!stripe ? <p role="status">{result.loading ? "Loading payment setup…" : "Payment setup status is unavailable. Refresh to try again."}</p> : !stripe.configured ? <div className="finance-empty"><h3>Card payments awaiting connection</h3><p>Card payments and bank payouts are unavailable for this restaurant until its payment setup is completed.</p><ol><li>Cal-Eats connects the payment account.</li><li>You enter your business and bank details securely with the payment provider.</li><li>Once verified, completed orders become eligible for restaurant transfers.</li><li>The payment provider pays available funds to your connected bank account.</li></ol><p>Your order statements show the saved commission and confirmed refunds. Cash stays a separate payment to your restaurant.</p></div> : <>
-      <p><strong>{stripe.providerMode === "stripe_live" ? "Live card payments" : "Card payment test mode"}</strong>. Bank details and identity verification are entered on the payment provider’s secure pages.</p>
-      <div className="finance-account-state"><span>Account: <strong>{String(account.status || "Not started").replaceAll("_", " ")}</strong></span><span>Card payments: <strong>{account.chargesEnabled ? "Enabled" : "Not enabled"}</strong></span><span>Bank payouts: <strong>{account.payoutsEnabled ? "Enabled" : "Not enabled"}</strong></span></div>
+    {securityNotice&&<p className="alert success" role="status">{securityNotice}</p>}
+    {passwordRequired&&<BankingPasswordChange onChanged={passwordChanged}/>}
+    {!stripe ? <p role="status">{result.loading ? "Loading payment setup…" : "Payment setup status is unavailable. Refresh to try again."}</p> : !stripe.configured ? <div className="finance-empty"><h3>{onboardingOnly?"Real bank setup awaiting connection":"Card payments awaiting connection"}</h3><p>{onboardingOnly?"Cal-Eats is preparing your real bank-payout connection. Customer ordering stays paused until Cal-Eats completes launch checks.":"Card payments and bank payouts are unavailable for this restaurant until its payment setup is completed."}</p><ol><li>Cal-Eats connects the payment account.</li><li>You enter your business and bank details securely with the payment provider.</li><li>{onboardingOnly?"After verification and launch, completed orders become eligible for restaurant transfers.":"Once verified, completed orders become eligible for restaurant transfers."}</li><li>The payment provider pays available funds to your connected bank account.</li></ol><p>Your order statements show the saved commission and confirmed refunds. Cash stays a separate payment to your restaurant.</p></div> : <>
+      <p><strong>{onboardingOnly?"Real bank-payout setup":stripe.providerMode === "stripe_live" ? "Live card payments" : "Card payment test mode"}</strong>. {onboardingOnly?"Enter your real business and bank details securely. Customer ordering stays paused until Cal-Eats completes launch checks.":"Bank details and identity verification are entered on the payment provider’s secure pages."}</p>
+      <div className="finance-account-state"><span>Account: <strong>{String(account.status || "Not started").replaceAll("_", " ")}</strong></span><span>{onboardingOnly?"Provider card capability":"Card payments"}: <strong>{account.chargesEnabled ? "Enabled" : "Not enabled"}</strong></span><span>Bank payouts: <strong>{account.payoutsEnabled ? "Enabled" : "Not enabled"}</strong></span>{onboardingOnly&&<span>Customer ordering: <strong>{stripe.customerPaymentsLive?"Live":"Paused before launch"}</strong></span>}</div>
       {account.requirements?.length > 0 && <p className="finance-preview-note">Your payment account needs more information to complete verification. Continue setup to review the remaining tasks.</p>}
-      <div className="button-row"><button className="primary" disabled={Boolean(busy)} onClick={() => void action("onboarding", ["connect.stripe.com"])}>{busy === "onboarding" ? "Opening secure account…" : "Complete payment setup"}</button><button className="quiet" disabled={Boolean(busy)} onClick={() => void action("refresh", [])}>{busy === "refresh" ? "Refreshing…" : "Refresh status"}</button><button className="quiet" disabled={Boolean(busy)} onClick={() => void action("dashboard", ["dashboard.stripe.com", "connect.stripe.com"])}>{busy === "dashboard" ? "Opening secure account…" : "Open payment account"}</button></div>
+      <div className="button-row"><button className="primary" disabled={Boolean(busy)||passwordRequired} onClick={() => void action("onboarding", ["connect.stripe.com"])}>{busy === "onboarding" ? "Opening secure account…" : "Complete payment setup"}</button><button className="quiet" disabled={Boolean(busy)||passwordRequired} onClick={() => void action("refresh", [])}>{busy === "refresh" ? "Refreshing…" : "Refresh status"}</button><button className="quiet" disabled={Boolean(busy)||passwordRequired} onClick={() => void action("dashboard", ["dashboard.stripe.com", "connect.stripe.com"])}>{busy === "dashboard" ? "Opening secure account…" : "Open payment account"}</button></div>
     </>}
-    </div><BankPayoutPanel key={bankVersion} restaurantId={restaurantId} showSetupLink={false}/>
+    </div>{stripe&&!passwordRequired&&<BankPayoutPanel key={bankVersion} restaurantId={restaurantId} showSetupLink={false}/>}
   </section>;
 }
 

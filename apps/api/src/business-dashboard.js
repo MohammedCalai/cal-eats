@@ -43,6 +43,7 @@ function dashboardInsights(db, restaurantId, range, now) {
 }
 
 function unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, actionableConfig = null) {
+  if(db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(restaurantId)?.archived_at)return 0;
   const orderScope = `FROM order_messages m JOIN orders o ON o.id=m.order_id LEFT JOIN order_message_reads r ON r.order_id=m.order_id AND r.user_id=? WHERE o.restaurant_id=? AND m.sender_role='customer' AND m.expires_at>? AND (r.order_id IS NULL OR m.created_at>r.last_read_created_at OR (m.created_at=r.last_read_created_at AND m.id>r.last_read_message_id))`;
   const orderMessages = actionableConfig
     ? db.prepare(`SELECT o.*,COUNT(*) AS unread_count ${orderScope} GROUP BY o.id`).all(userId, restaurantId, now)
@@ -53,6 +54,7 @@ function unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, acti
 }
 
 function operationalCounts(db, restaurantId, userId, owner, now) {
+  if(db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(restaurantId)?.archived_at)return {pendingConfirmation:0,overdueConfirmation:0,activeOrders:0,liveOrders:0,confirmedInKitchen:0,readyForHandover:0,unreadMessages:0,openOrderHelp:owner?0:null,actionRequiredOrderHelp:owner?0:null,openRefundCases:owner?0:null,actionRequiredRefundCases:owner?0:null};
   const pending = db.prepare(`SELECT COUNT(*) AS pending,SUM(CASE WHEN o.confirmation_due_at<=? THEN 1 ELSE 0 END) AS overdue FROM orders o WHERE o.restaurant_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}`).get(now, restaurantId);
   const active = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready','out_for_delivery') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId).count;
   const kitchen = db.prepare(`SELECT COUNT(*) AS liveOrders,COALESCE(SUM(CASE WHEN o.status IN ('accepted','preparing') THEN 1 ELSE 0 END),0) AS confirmedInKitchen,COALESCE(SUM(CASE WHEN o.status='ready' THEN 1 ELSE 0 END),0) AS readyForHandover FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId);

@@ -20,7 +20,7 @@ export function discoverRestaurants(db, url, now, customerId = null) {
     outcode = match[1];
   }
   if ((q?.length || 0) > 100 || (cuisine?.length || 0) > 80) throw new HttpError(400, "VALIDATION_ERROR", "Search is too long");
-  const clauses = ["r.status='approved'", "r.suspended=0"], parameters = { now: now.toISOString(), since: new Date(now.getTime() - 30 * 86400000).toISOString(), limit: pageSize + 1, offset: (page - 1) * pageSize };
+  const clauses = ["r.status='approved'", "r.suspended=0", "r.archived_at IS NULL"], parameters = { now: now.toISOString(), since: new Date(now.getTime() - 30 * 86400000).toISOString(), limit: pageSize + 1, offset: (page - 1) * pageSize };
   if (fulfillment === "delivery") {
     clauses.push("r.delivery_enabled=1");
     if (outcode) { clauses.push("EXISTS (SELECT 1 FROM json_each(r.delivery_outcodes) WHERE value=$outcode)"); parameters.outcode = outcode; }

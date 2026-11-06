@@ -20,7 +20,7 @@ const parsed = value => { try { return JSON.parse(value || "{}"); } catch { retu
 export function adminUnconfirmedOrders(db, url, now) {
   const paging = pagination(url), q = search(url), state = url.searchParams.get("state") || "all";
   if (!["all","confirmation","overdue","payment"].includes(state)) throw new HttpError(400,"VALIDATION_ERROR","Confirmation filter is invalid");
-  const base = "o.status='placed' AND o.confirmed_at IS NULL", args = [], where = [base];
+  const base = "o.status='placed' AND o.confirmed_at IS NULL AND r.archived_at IS NULL", args = [], where = [base];
   if (state === "confirmation") where.push(PAYABLE_ORDER_SQL);
   if (state === "payment") where.push(`NOT ${PAYABLE_ORDER_SQL}`);
   if (state === "overdue") { where.push(PAYABLE_ORDER_SQL, "o.confirmation_due_at<=?"); args.push(now.toISOString()); }
@@ -47,8 +47,8 @@ function dashboard(db,url,now) {
   const range=parseLondonDateRange(url),where=["o.status IN ('accepted','preparing','ready','out_for_delivery','completed')","(o.payment_method!='card' OR o.payment_status IN ('stripe_captured','stripe_partially_refunded','stripe_refunded'))"],args=[];
   if(range.from){where.push("o.created_at>=?");args.push(range.from);}if(range.toExclusive){where.push("o.created_at<?");args.push(range.toExclusive);}
   const orders=db.prepare(`SELECT COUNT(*) order_count,COALESCE(SUM(o.total_minor),0) order_value,COALESCE(SUM(o.commission_minor),0) order_commission FROM orders o WHERE ${where.join(" AND ")}`).get(...args);
-  const restaurants=db.prepare("SELECT COUNT(*) total,COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) pending FROM restaurants").get();
-  return {restaurants:{total:restaurants.total,pending:restaurants.pending},customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,orders:{count:orders.order_count,valueMinor:orders.order_value,commissionMinor:orders.order_commission},liveOrders:db.prepare("SELECT COUNT(*) n FROM orders WHERE status IN ('placed','accepted','preparing','ready')").get().n,checkedAt:now.toISOString()};
+  const restaurants=db.prepare("SELECT COUNT(*) total,COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) pending FROM restaurants WHERE archived_at IS NULL").get();
+  return {restaurants:{total:restaurants.total,pending:restaurants.pending},customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,orders:{count:orders.order_count,valueMinor:orders.order_value,commissionMinor:orders.order_commission},liveOrders:db.prepare("SELECT COUNT(*) n FROM orders WHERE status IN ('placed','accepted','preparing','ready') AND EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=orders.restaurant_id AND ar.archived_at IS NULL)").get().n,checkedAt:now.toISOString()};
 }
 
 function operations(db,url) {
@@ -87,7 +87,7 @@ export async function routeAdminWorkspace({req,res,url,db,config,session}) {
   else if(url.pathname==="/api/admin/workspace/restaurant-options"){
     const q=search(url),id=url.searchParams.get("restaurantId");
     if(id&&id.length>100)throw new HttpError(400,"VALIDATION_ERROR","Restaurant is invalid");
-    data={items:db.prepare("SELECT id,name FROM restaurants WHERE name LIKE ? ESCAPE '\\' ORDER BY name,id LIMIT 25").all(`%${escapeLike(q)}%`),selected:id?db.prepare("SELECT id,name FROM restaurants WHERE id=?").get(id)??null:null};
+    data={items:db.prepare("SELECT id,name FROM restaurants WHERE archived_at IS NULL AND name LIKE ? ESCAPE '\\' ORDER BY name,id LIMIT 25").all(`%${escapeLike(q)}%`),selected:id?db.prepare("SELECT id,name FROM restaurants WHERE id=?").get(id)??null:null};
   }
   else if(url.pathname.match(/^\/api\/admin\/workspace\/orders\/[^/]+(?:\/breakdown)?$/)){
     const match=url.pathname.match(/^\/api\/admin\/workspace\/orders\/([^/]+)(\/breakdown)?$/),row=db.prepare("SELECT * FROM orders WHERE id=?").get(match[1]);
@@ -102,6 +102,7 @@ export function adminOrderDirectory(db,url,config){
   const paging=pagination(url),range=parseLondonDateRange(url),q=search(url),status=url.searchParams.get("status")||"all",restaurantId=url.searchParams.get("restaurantId"),fulfillment=url.searchParams.get("fulfillment")||"all",where=[],args=[];
   if(!["all","live","unconfirmed","placed","accepted","preparing","ready","out_for_delivery","completed","rejected"].includes(status)||!["all","delivery","collection"].includes(fulfillment))throw new HttpError(400,"VALIDATION_ERROR","Order filter is invalid");
   if(restaurantId&&restaurantId.length>100)throw new HttpError(400,"VALIDATION_ERROR","Restaurant is invalid");
+  if(["live","unconfirmed","placed","accepted","preparing","ready","out_for_delivery"].includes(status))where.push("EXISTS(SELECT 1 FROM restaurants r WHERE r.id=o.restaurant_id AND r.archived_at IS NULL)");
   if(status==="live")where.push("o.status IN ('placed','accepted','preparing','ready')");
   else if(status==="unconfirmed")where.push("o.status='placed' AND o.confirmed_at IS NULL");
   else if(status!=="all"){where.push("o.status=?");args.push(status);}

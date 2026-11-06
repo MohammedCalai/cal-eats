@@ -285,5 +285,15 @@ CREATE TABLE refund_response_deadlines (case_id TEXT PRIMARY KEY REFERENCES refu
   platformVouchersMigration38,
   restaurantCommissionMigration39,
   restaurantCommissionEmailMigration40,
-  businessMessageAttentionMigration41
+  businessMessageAttentionMigration41,
+  {
+    version: 42,
+    name: "restaurant_catalogue_archive",
+    sql: `
+ALTER TABLE restaurants ADD COLUMN archived_at TEXT;
+ALTER TABLE restaurants ADD COLUMN archive_reason TEXT NOT NULL DEFAULT '';
+CREATE INDEX restaurants_catalogue_archive_idx ON restaurants(archived_at,status,suspended);
+CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,action);
+`
+  }
 ];

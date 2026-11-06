@@ -15,7 +15,7 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
   const keyConfigured=/^(?:rk|sk)_live_[A-Za-z0-9_]+$/.test(environment.CALAI_STRIPE_LIVE_SECRET_KEY||"");
   const platformEvents=environment.CALAI_STRIPE_LIVE_WEBHOOK_SECRET,connectEvents=environment.CALAI_STRIPE_LIVE_CONNECT_WEBHOOK_SECRET;
   const separateEventSecrets=validSecret(platformEvents)&&validSecret(connectEvents)&&platformEvents!==connectEvents;
-  const total=db.prepare("SELECT COUNT(*) n FROM restaurants").get().n;
+  const total=db.prepare("SELECT COUNT(*) n FROM restaurants WHERE archived_at IS NULL").get().n;
   // Join the exact current commercial policy used when a new order is saved.
   const selection=`SELECT r.*,a.provider_mode AS account_mode,a.status AS account_status,a.capabilities,s.charges_enabled,s.payouts_enabled,
     c.rate_bps AS contract_rate,c.demo_only,c.accepted_at AS contract_accepted,
@@ -35,7 +35,7 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
     LEFT JOIN stripe_account_readiness s ON s.restaurant_id=r.id AND s.provider_mode=a.provider_mode AND s.provider_account_id=a.provider_reference
     LEFT JOIN contracts c ON c.restaurant_id=r.id
     LEFT JOIN commission_policies p ON p.id=(SELECT id FROM commission_policies WHERE restaurant_id=r.id AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1)
-    WHERE r.status='approved'`).get(now,now);
+    WHERE r.status='approved' AND r.archived_at IS NULL`).get(now,now);
   const history={
     testPayments:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments WHERE provider_mode='stripe_test'").get().n,
     testJobsPending:db.prepare(`SELECT COUNT(*) n FROM marketplace_worker_jobs j LEFT JOIN marketplace_operations o ON o.operation_key=j.operation_key LEFT JOIN refund_cases c ON c.id=j.entity_id AND j.kind IN ('stripe_refund','stripe_transfer_reversal') WHERE ${pendingJobs} AND COALESCE(o.provider_mode,c.provider_mode)='stripe_test'`).get().n,
@@ -54,7 +54,7 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
     {id:"cash_collection",label:"Commission on cash orders",state:Number(counts.cash_enabled)?"blocked":"ready",detail:Number(counts.cash_enabled)?"Automatic cash-commission collection is not connected. Use a card-only launch or finish that collection flow before accepting live cash orders.":"Cash is not offered by the approved restaurants. It will not create an uncollected commission balance."},
     {id:"test_handover",label:"Preserve testing history",state:history.testJobsPending||history.outstandingTestAuthorisations||history.modeMismatchedAccounts?"review":"ready",detail:history.testJobsPending||history.outstandingTestAuthorisations||history.modeMismatchedAccounts?"Complete a reviewed handover or isolate live data. Do not replace test bank accounts or lose outstanding test history.":"No outstanding test account handover was found."}
   ];
-  const items=db.prepare(`${selection} ORDER BY r.name COLLATE NOCASE,r.id LIMIT ? OFFSET ?`).all(now,now,pageSize,(page-1)*pageSize).map(row=>{
+  const items=db.prepare(`${selection} WHERE r.archived_at IS NULL ORDER BY r.name COLLATE NOCASE,r.id LIMIT ? OFFSET ?`).all(now,now,pageSize,(page-1)*pageSize).map(row=>{
     const terms=termsApproved(row),bank=accountReady(row),normalRate=row.policy_rate??row.contract_rate??700,reasons=[];
     if(!bank)reasons.push(row.account_mode&&row.account_mode!=="stripe_live"?"Create a real restaurant payment account; retain the test account history.":"Complete real business and bank onboarding.");
     if(!terms)reasons.push("Review and accept the real commercial agreement.");

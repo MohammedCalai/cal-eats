@@ -1,5 +1,6 @@
 import {quotePlatformVoucher,reservePlatformVoucher,customerPayableMinor,platformVoucherMinor,fullyVoucherFunded,voucherProviderBinding} from "./platform-vouchers.js";
 import {resolveRestaurantCommission} from "./restaurant-commission.js";
+import {includeArchivedRestaurants} from "./restaurant-catalogue.js";
 import { parseLondonDateRange } from "./marketplace-reporting.js";
 import { menuDetails } from "./menu-details.js";
 import { assertRestaurantServiceArea } from "./service-areas.js";
@@ -43,10 +44,10 @@ function deliveryFromRow(row) {
   return { enabled: Boolean(row.delivery_enabled), outcodes: JSON.parse(row.delivery_outcodes), deliveryFeeMinor: row.delivery_fee_minor, minDeliverySubtotalMinor: row.min_delivery_subtotal_minor };
 }
 export function restaurantDto(row, { privateDetails = false, now = new Date(), db = null } = {}) {
-  const availability = restaurantAvailability(row, now);
+  const availability = row.archived_at ? {acceptingOrders:false,closedReason:"Restaurant is archived"} : restaurantAvailability(row, now);
   const profile = { description: row.description, cuisine: row.cuisine, phone: row.phone, address: row.address, collectionEnabled: Boolean(row.collection_enabled), cashEnabled: Boolean(row.cash_enabled), paused: Boolean(row.paused), busyMinutes: row.busy_minutes, estimatedDeliveryMinutes: row.estimated_delivery_minutes, estimatedCollectionMinutes: row.estimated_collection_minutes, openingHours: JSON.parse(row.opening_hours ?? "[]"), holidayDates: JSON.parse(row.holiday_dates ?? "[]"), alwaysOpen: Boolean(row.always_open) };
   const rating = row.rating_count !== undefined ? { ratingCount: row.rating_count, ratingAverage: row.rating_average === null ? null : Math.round(row.rating_average * 10) / 10 } : db ? restaurantRatingSummary(db, row.id) : { ratingCount: 0, ratingAverage: null };
-  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, availableOfferId: row.available_offer_id ?? null, ...(row.search_terms ? { searchTerms: row.search_terms } : {}), coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, schedulingAvailable:row.status==="approved"&&!row.suspended&&!row.paused&&(profile.alwaysOpen||profile.openingHours.length>0), ...availability, ...rating, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
+  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, ...(privateDetails ? {archivedAt:row.archived_at??null,archiveReason:row.archive_reason??""} : {}), availableOfferId: row.available_offer_id ?? null, ...(row.search_terms ? { searchTerms: row.search_terms } : {}), coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, schedulingAvailable:row.status==="approved"&&!row.archived_at&&!row.suspended&&!row.paused&&(profile.alwaysOpen||profile.openingHours.length>0), ...availability, ...rating, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
 }
 export function itemDto(row) {
   return { id: row.id, restaurantId: row.restaurant_id, name: row.name, description: row.description, priceMinor: row.price_minor, available: Boolean(row.available), category: row.category, allergens: JSON.parse(row.allergens ?? "[]"), dietaryTags: JSON.parse(row.dietary_tags ?? "[]"), modifierGroups: JSON.parse(row.modifier_groups ?? "[]"), sortOrder: row.sort_order ?? 0, productType: row.product_type ?? "", energyKcal: row.energy_kcal ?? null, energyKj: row.energy_kj ?? null, photoUrl: row.photo_media_id ? `/api/media/${row.photo_media_id}` : null };
@@ -138,14 +139,14 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   }
   let match = url.pathname.match(/^\/api\/restaurants\/([^/]+)\/menu$/);
   if (req.method === "GET" && match) {
-    const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(match[1]);
+    const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(match[1]);
     if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     const items = db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? AND available=1 ORDER BY sort_order,created_at,rowid").all(restaurant.id).map(itemDto);
     return sendJson(res, 200, { data: { restaurant: restaurantDto(restaurant, { now: config.now(), db }), items } });
   }
   if (req.method === "GET" && url.pathname === "/api/restaurant/restaurants") {
     const user = requireRole(session, "restaurant");
-    const rows = db.prepare("SELECT r.*,m.permission FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id WHERE m.user_id=? ORDER BY r.created_at").all(user.id);
+    const rows = db.prepare("SELECT r.*,m.permission FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id WHERE m.user_id=? AND r.archived_at IS NULL ORDER BY r.created_at").all(user.id);
     return sendJson(res, 200, { data: rows.map((row) => restaurantDto(row, { privateDetails: true, now: config.now(), db })) });
   }
   if (req.method === "POST" && url.pathname === "/api/restaurant/restaurants") {
@@ -210,7 +211,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   }
   if (req.method === "GET" && url.pathname === "/api/admin/restaurants") {
     requireRole(session, "admin");
-    return sendJson(res, 200, { data: db.prepare("SELECT * FROM restaurants ORDER BY created_at").all().map((row) => restaurantDto(row, { privateDetails: true, now: config.now(), db })) });
+    return sendJson(res, 200, { data: db.prepare(`SELECT * FROM restaurants ${includeArchivedRestaurants(url)?"":"WHERE archived_at IS NULL"} ORDER BY created_at`).all().map((row) => restaurantDto(row, { privateDetails: true, now: config.now(), db })) });
   }
   match = url.pathname.match(/^\/api\/admin\/restaurants\/([^/]+)\/approval$/);
   if (match && req.method === "PATCH") {
@@ -242,7 +243,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/restaurant/orders/pending-confirmation") {
     const user=requireRole(session,"restaurant"),restaurantId=url.searchParams.get("restaurantId");
     if(restaurantId)requireRestaurantMembership(db,session,restaurantId);
-    const where=`m.user_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}${restaurantId?" AND o.restaurant_id=?":""}`,parameters=restaurantId?[user.id,restaurantId]:[user.id];
+    const where=`m.user_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL} AND EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=o.restaurant_id AND ar.archived_at IS NULL)${restaurantId?" AND o.restaurant_id=?":""}`,parameters=restaurantId?[user.id,restaurantId]:[user.id];
     const total=db.prepare(`SELECT COUNT(*) n FROM orders o JOIN restaurant_memberships m ON m.restaurant_id=o.restaurant_id WHERE ${where}`).get(...parameters).n;
     const rows=db.prepare(`SELECT o.*,m.permission FROM orders o JOIN restaurant_memberships m ON m.restaurant_id=o.restaurant_id WHERE ${where} ORDER BY o.confirmation_due_at,o.id LIMIT 100`).all(...parameters);
     return sendJson(res,200,{data:{items:rows.map(row=>orderDto(db,row,false,row.permission==="owner",config)),total,limit:100}});
@@ -254,6 +255,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     const status=url.searchParams.get("status")??"all",paged=url.searchParams.has("page")||url.searchParams.has("pageSize"),rawPage=url.searchParams.get("page")??"1",rawSize=url.searchParams.get("pageSize")??"25",page=Number(rawPage),pageSize=Number(rawSize);
     if(!["all","placed","accepted","preparing","ready","out_for_delivery","completed","rejected"].includes(status)||!/^\d+$/.test(rawPage)||!/^\d+$/.test(rawSize)||!Number.isSafeInteger(page)||page<1||page>100000||pageSize<1||pageSize>100)throw new HttpError(400,"VALIDATION_ERROR","Order filters are invalid");
     const range=parseLondonDateRange(url);
+    if(["placed","accepted","preparing","ready","out_for_delivery"].includes(status)&&db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(match[1])?.archived_at)return sendJson(res,200,{data:paged?{items:[],pagination:{page,pageSize,total:0,totalPages:0,hasNext:false,hasPrevious:page>1}}:[]});
     const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}${range.from?" AND created_at>=?":""}${range.toExclusive?" AND created_at<?":""}`,parameters=[match[1],...(status==="all"?[]:[status]),...(range.from?[range.from]:[]),...(range.toExclusive?[range.toExclusive]:[])];
     const rows=db.prepare(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC,id DESC${paged?" LIMIT ? OFFSET ?":""}`).all(...parameters,...(paged?[pageSize,(page-1)*pageSize]:[])).map(row=>orderDto(db,row,permission==="owner",permission==="owner",config));
     if(!paged)return sendJson(res,200,{data:rows});
@@ -289,7 +291,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
 
 async function quoteOrder({req,res,db,config,session}){
   const user=requireRole(session,"customer"),body=await readJson(req,config.bodyLimit);exactObject(body,["restaurantId","items","fulfillment","deliveryAddress","offerId","autoApplyOffers","scheduledFor","voucherId","autoApplyVouchers","paymentMethod"]);if(typeof body.restaurantId!=="string"||!Array.isArray(body.items)||!body.items.length||body.items.length>VALIDATION.orderItemsMax||!["collection","delivery"].includes(body.fulfillment)||(body.autoApplyOffers!==undefined&&typeof body.autoApplyOffers!=="boolean"))throw new HttpError(400,"VALIDATION_ERROR","Quote is invalid");
-  const restaurant=db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(body.restaurantId);if(!restaurant)throw new HttpError(404,"NOT_FOUND","Resource not found");const address=body.fulfillment==="delivery"?normalizeAddress(body.deliveryAddress):null;if(body.fulfillment==="collection"&&body.deliveryAddress!==undefined)throw new HttpError(400,"VALIDATION_ERROR","Collection quotes cannot include an address");
+  const restaurant=db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);if(!restaurant)throw new HttpError(404,"NOT_FOUND","Resource not found");const address=body.fulfillment==="delivery"?normalizeAddress(body.deliveryAddress):null;if(body.fulfillment==="collection"&&body.deliveryAddress!==undefined)throw new HttpError(400,"VALIDATION_ERROR","Collection quotes cannot include an address");
   const schedule=validateOrderSchedule(restaurant,body.fulfillment,normalizeScheduledFor(body.scheduledFor),config.now());
   assertRestaurantServiceArea(db,restaurant,body.fulfillment,address);
   const normalized=body.items.map((entry)=>{exactObject(entry,["menuItemId","quantity","modifiers"]);return{menuItemId:text(entry.menuItemId,1,100,"Menu item"),quantity:integer(entry.quantity,1,VALIDATION.quantityMax,"Quantity"),modifiers:entry.modifiers??[]};});if(new Set(normalized.map(x=>x.menuItemId)).size!==normalized.length)throw new HttpError(400,"VALIDATION_ERROR","Duplicate menu items are not allowed");
@@ -333,7 +335,7 @@ async function createOrder({ req, res, db, config, session }) {
     if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request");
     return { replay: prior };
   }
-  const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(body.restaurantId);
+  const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);
   if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
   if (restaurant.suspended) throw new HttpError(409, "RESTAURANT_SUSPENDED", "Restaurant is suspended");
   assertRestaurantServiceArea(db,restaurant,body.fulfillment,address);
@@ -449,7 +451,7 @@ async function updateStatus({ req, res, db, config, session, id }) {
     const totals = db.prepare("SELECT COUNT(*) count,COALESCE(SUM(food_amount_minor),0) AS food,COALESCE(SUM(delivery_amount_minor),0) AS delivery FROM refunds WHERE order_id=?").get(order.id);
     if (totals.count > 0 && totals.food === order.subtotal_minor && totals.delivery === order.delivery_fee_minor) throw new HttpError(409, "ORDER_FULLY_REFUNDED", "Fully refunded orders cannot advance");
     if (!paths[order.status]?.includes(body.status)) throw new HttpError(409, "INVALID_TRANSITION", "Order status transition is not allowed");
-    if (order.status === "placed" && body.status === "accepted" && !db.prepare("SELECT 1 FROM restaurants WHERE id=? AND status='approved' AND suspended=0").get(order.restaurant_id)) throw new HttpError(409, "RESTAURANT_UNAVAILABLE", "Restaurant is not approved or is suspended");
+    if (order.status === "placed" && body.status === "accepted" && !db.prepare("SELECT 1 FROM restaurants WHERE id=? AND status='approved' AND suspended=0 AND archived_at IS NULL").get(order.restaurant_id)) throw new HttpError(409, "RESTAURANT_UNAVAILABLE", "Restaurant is not approved or is suspended");
     const now = config.now().toISOString();
     let paymentStatus = order.payment_status;
     if (body.status === "accepted" && order.payment_method === "mock_card") {
