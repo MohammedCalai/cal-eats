@@ -69,10 +69,11 @@ export async function routeAdminRestaurantWorkspace(context) {
     }
     throw new HttpError(404,"NOT_FOUND","Resource not found");
   }
+  if(tail==="delivery"&&req.method!=="GET")throw new HttpError(403,"OWNER_DELIVERY_SETTINGS_REQUIRED","Only the business owner can change delivery fees and delivery settings. Administrators can inspect the current settings in the restaurant overview.");
   // Only these existing owner operations are exposed. Payments, order transitions,
-  // printers, customer-message sending and account credentials are deliberately absent.
+  // delivery settings, printers, customer-message sending and account credentials are deliberately absent.
   const permitted=(/^menu(?:\/(?:order|import|[^/]+(?:\/photo)?))?$/.test(tail)&&["GET","POST","PATCH","PUT","DELETE"].includes(req.method))
-    ||(["profile","delivery"].includes(tail)&&req.method==="PATCH")
+    ||(tail==="profile"&&req.method==="PATCH")
     ||(tail==="loyalty"&&req.method==="GET")
     ||(/^loyalty\/promotions(?:\/[^/]+(?:\/end)?)?$/.test(tail)&&["GET","POST","PATCH"].includes(req.method))
     ||(/^customers(?:\/[^/]+\/profile)?$/.test(tail)&&req.method==="GET");

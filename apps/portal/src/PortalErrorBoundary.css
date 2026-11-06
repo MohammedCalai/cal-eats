@@ -1,0 +1,25 @@
+.portal-recovery {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #111113;
+  color: #f0f5ff;
+}
+.portal-recovery-card {
+  width: min(100%, 540px);
+  padding: clamp(24px, 6vw, 40px);
+  border: 1px solid #333947;
+  border-radius: 20px;
+  background: #191b21;
+  box-shadow: 0 16px 52px #00000033;
+}
+.portal-recovery-card h1 { font-size: clamp(24px, 5vw, 32px); line-height: 1.2; margin: 20px 0 14px; }
+.portal-recovery-card p { line-height: 1.65; color: #c2cbdc; }
+.portal-recovery-card .portal-recovery-brand { margin: 0 0 24px; color: #8cbcff; font-size: 13px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.portal-recovery-icon { display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #385f9a; border-radius: 16px; background: #17335a; color: #a8ceff; }
+.portal-recovery-icon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.portal-recovery-card .portal-recovery-warning { color: #aebbd0; font-size: 13px; }
+.portal-recovery-card button { display: block; width: 100%; min-height: 48px; margin: 24px 0 18px; }
+.portal-recovery-card a { color: #a8ceff; font-size: 14px; line-height: 1.6; }

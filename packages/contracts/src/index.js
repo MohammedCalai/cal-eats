@@ -27,7 +27,7 @@ export const VALIDATION = Object.freeze({
 });
 
 export function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  return { id: user.id, name: user.name, email: user.email, role: user.role, ...(typeof user.phone === "string" && user.phone.trim() ? { phone: user.phone } : {}) };
 }
 
 export function calculateCommission(subtotalMinor) {

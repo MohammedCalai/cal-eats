@@ -4,6 +4,8 @@ import { api } from "./api";
 import { Button, Card, Empty, ErrorBanner, Field, Pill, SectionTitle } from "./components";
 import { CustomerIcon } from "./CustomerBrandBanner";
 import { colours } from "./theme";
+import { createConversationRefresh } from "./conversation-refresh";
+import { useForegroundRefresh } from "./useForegroundRefresh";
 
 type Cursor = { before: string; beforeId: string };
 type Message = { id: string; senderRole: string; message: string; createdAt: string; ingestSequence?: number };
@@ -21,13 +23,17 @@ function ContactVisual({contact}:{contact:Pick<Contact,"restaurantImageUrl"|"ima
 
 export function CustomerConversationList({ token, onOpen }: { token: string; onOpen: (id: string, title: string) => void }) {
   const [data, setData] = useState<List | null>(null), [page, setPage] = useState(1), [query, setQuery] = useState(""), [search, setSearch] = useState(""), [error, setError] = useState(""),[unreadOnly,setUnreadOnly]=useState(false),[loading,setLoading]=useState(false);
+  const refresher=useRef<ReturnType<typeof createConversationRefresh<List>>|null>(null);
   useEffect(() => { const timer = setTimeout(() => { setSearch(query.trim()); setPage(1); }, 250); return () => clearTimeout(timer); }, [query]);
   useEffect(() => {
-    let active = true;setLoading(true);
-    void api<List>(`/api/customer/conversations?${new URLSearchParams({ page: String(page), pageSize: "20", ...(search ? { q: search } : {}),...(unreadOnly?{unread:"true"}:{}) })}`, { token })
-      .then(value => { if (active) { setData(value); setError(""); } }).catch(cause => { if (active) setError(cause.message); }).finally(()=>{if(active)setLoading(false);});
-    return () => { active = false; };
+    const current=createConversationRefresh<List>({
+      load:()=>api<List>(`/api/customer/conversations?${new URLSearchParams({ page: String(page), pageSize: "20", ...(search ? { q: search } : {}),...(unreadOnly?{unread:"true"}:{}) })}`, { token }),
+      apply:setData,onError:setError,onLoading:setLoading
+    });
+    refresher.current=current;void current.refresh();
+    return () => { current.dispose();if(refresher.current===current)refresher.current=null; };
   }, [token, page, search,unreadOnly]);
+  useForegroundRefresh(()=>refresher.current?.refresh(true)??Promise.resolve());
   return <View style={styles.inboxPanel}><View style={styles.searchBox}><CustomerIcon name="search" size={20} colour="#5480A4"/><TextInput accessibilityLabel="Search your chats" value={query} onChangeText={setQuery} placeholder="Search restaurants" placeholderTextColor={colours.muted} style={styles.searchInput}/></View><View style={styles.filters}>{([false,true] as const).map(unread=><Pressable key={String(unread)} accessibilityRole="button" accessibilityState={{selected:unreadOnly===unread}} onPress={()=>{setUnreadOnly(unread);setPage(1);}} style={[styles.filter,unreadOnly===unread&&styles.filterSelected]}><Text style={[styles.filterText,unreadOnly===unread&&{color:colours.blueDark}]}>{unread?"Unread":"All messages"}</Text></Pressable>)}</View><ErrorBanner message={error}/>{data?.items.length ? data.items.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${item.restaurantName}, ${item.unreadMessageCount} unread messages`} onPress={()=>onOpen(item.id,item.restaurantName)} style={({pressed})=>[styles.chatRow,pressed&&{opacity:.7}]}><View style={styles.avatar}><ContactVisual contact={item}/></View><View style={styles.chatCopy}><View style={styles.chatTitleRow}><Text numberOfLines={1} style={styles.chatName}>{item.restaurantName}</Text><Text style={styles.chatTime}>{chatTime(item.lastMessageAt)}</Text></View><View style={styles.chatTitleRow}><Text numberOfLines={1} style={styles.chatPreview}>{({open:"Restaurant conversation",resolved:"Conversation resolved",awaiting_restaurant:"Waiting for restaurant reply",awaiting_customer:"Waiting for your reply"})[item.status as "open"]||"Restaurant conversation"}</Text>{item.unreadMessageCount?<View style={styles.unreadBadge}><Text style={styles.unreadText}>{item.unreadMessageCount>99?"99+":item.unreadMessageCount}</Text></View>:<CustomerIcon name="chevron" size={18} colour="#8EA8BD"/>}</View></View></Pressable>) : <View style={styles.empty}><CustomerIcon name="messages" size={44} colour="#83B8E3"/><Text style={styles.emptyTitle}>{loading?"Loading your conversations…":search?"No matching conversations":unreadOnly?"You’re all caught up":"Your conversations start here"}</Text><Text style={styles.emptyCopy}>{search?"Try another restaurant name.":unreadOnly?"New restaurant replies will appear here.":"Messages from restaurants you’ve ordered from will appear here. For a current order, message your restaurant from Orders."}</Text>{search||unreadOnly?<Button tone="quiet" onPress={()=>{setQuery("");setSearch("");setUnreadOnly(false);setPage(1);}}>Show all conversations</Button>:null}</View>}<View style={styles.pagination}><Button tone="quiet" disabled={loading||!data?.pagination.hasPrevious} onPress={() => setPage(value => Math.max(1, value - 1))}>Previous</Button><Text style={styles.meta}>Page {page} · {data?.pagination.total || 0} conversations</Text><Button tone="quiet" disabled={loading||!data?.pagination.hasNext} onPress={() => setPage(value => value + 1)}>Next</Button></View></View>;
 }
 

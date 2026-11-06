@@ -9,6 +9,7 @@ import { ApiError, api } from "./src/api";
 import { notificationRevision } from "./src/notificationRevision";
 import { Button, ErrorBanner } from "./src/components";
 import { sessionStore } from "./src/session";
+import { bindCustomerProfileUpdate } from "./src/session-identity";
 import { colours } from "./src/theme";
 import type { CartEntry, Fulfillment, Restaurant, User } from "./src/types";
 import { AccountScreen } from "./src/screens/AccountScreen";
@@ -91,7 +92,7 @@ export default function App() {
     {tab === "orders" && token ? <OrdersScreen onScrollOffset={onScrollOffset} token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
     {tab === "offers" && token ? <InboxScreen onScrollOffset={onScrollOffset} key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
     {tab === "inbox" && token ? <InboxScreen onScrollOffset={onScrollOffset} key={`messages:${inboxRoute}`} initialTab={inboxRoute} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
-    {tab === "account" && token && user ? <AccountScreen onScrollOffset={onScrollOffset} token={token} user={user} onUser={setUser} onLogout={logout} soundEnabled={customerAlerts.enabled} onSoundChange={customerAlerts.toggleSound}/> : null}
+    {tab === "account" && token && user ? <AccountScreen onScrollOffset={onScrollOffset} token={token} user={user} onUser={bindCustomerProfileUpdate<User>(token,user.id,()=>tokenRef.current,setUser)} onLogout={logout} soundEnabled={customerAlerts.enabled} onSoundChange={customerAlerts.toggleSound}/> : null}
   </KeyboardAvoidingView>{navigation}</SafeAreaView>;
 }
 

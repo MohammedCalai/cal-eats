@@ -75,7 +75,7 @@ export function mountCheckoutQuote(form,{api,body,mode="checkout"}) {
   function changed(event){
     if(event?.target&&!['line1','line2','city','postcode','scheduledFor','timingMode','scheduleDay','scheduleTime','paymentMethod'].includes(event.target.name)&&event.target.id!=="saved-address")return;
     clearTimeout(timer);clearTimeout(retryTimer);sequence++;activeRequest?.abort();pending=false;last=null;retries=0;resetView();
-    panel.textContent="Your total updates automatically when your delivery address is complete.";
+    panel.textContent="Your total updates automatically as you complete your order details.";
     timer=setTimeout(()=>void refresh(),350);
   }
   function foreground(){if(!document.hidden&&!pending&&!stopped){retries=0;void refresh();}}

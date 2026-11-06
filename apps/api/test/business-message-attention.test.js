@@ -3,7 +3,8 @@ import test from "node:test";
 import {randomUUID} from "node:crypto";
 import {journeyFixture} from "./helpers.js";
 import {addNotification} from "../src/offers.js";
-import {migrateDatabase} from "../src/db/index.js";
+import {migrateDatabase,openDatabase} from "../src/db/index.js";
+import {migrations} from "../src/db/migrations.js";
 import {restaurantMessageArrivalRevision} from "../src/business-message-attention.js";
 
 test("business message attention uses actual scoped read cursors and a recipient arrival revision",async()=>{
@@ -65,17 +66,28 @@ test("business message attention uses actual scoped read cursors and a recipient
 });
 
 test("message arrival migration backfills business recipients in original arrival order, including read notifications",async()=>{
-  const f=await journeyFixture();
+  const db=openDatabase(":memory:");
   try{
-    const owner=f.db.prepare("SELECT id FROM users WHERE email='restaurant@calai.local'").get(),customer=f.db.prepare("SELECT id FROM users WHERE email='customer@calai.local'").get(),restaurant=f.db.prepare("SELECT restaurant_id FROM restaurant_memberships WHERE user_id=?").get(owner.id).restaurant_id;
-    f.db.exec("DROP TRIGGER business_message_arrival_insert; DROP TABLE business_message_arrivals; DELETE FROM schema_migrations WHERE version=41");
-    const insert=(userId,type,key)=>addNotification(f.db,{userId,restaurantId:restaurant,type,title:"Historical message",message:"Existing notification",eventKey:key,now:"2026-01-01T00:00:00.000Z"});
+    // Start from a real contiguous pre-41 release. Removing one migration from a
+    // current database leaves an invalid history gap and must stay rejected.
+    db.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,applied_at TEXT NOT NULL)");
+    for(const migration of migrations.filter(row=>row.version<41)){
+      if(migration.foreignKeysOff)db.exec("PRAGMA foreign_keys=OFF");
+      db.exec("BEGIN IMMEDIATE");db.exec(migration.sql);db.prepare("INSERT INTO schema_migrations VALUES(?,?,?)").run(migration.version,migration.name,"2026-01-01T00:00:00.000Z");db.exec("COMMIT");
+      if(migration.foreignKeysOff)db.exec("PRAGMA foreign_keys=ON");
+    }
+    const owner={id:randomUUID()},customer={id:randomUUID()},restaurant=randomUUID();
+    for(const [user,role]of [[owner,"restaurant"],[customer,"customer"]])db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(user.id,role,`${role}@example.invalid`,"unused-fixture-hash",role,"2026-01-01T00:00:00.000Z");
+    db.prepare("INSERT INTO restaurants(id,name,status,created_at) VALUES(?,?,'approved',?)").run(restaurant,"Legacy restaurant","2026-01-01T00:00:00.000Z");
+    db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at) VALUES(?,?,?)").run(restaurant,owner.id,"2026-01-01T00:00:00.000Z");
+    const insert=(userId,type,key)=>addNotification(db,{userId,restaurantId:restaurant,type,title:"Historical message",message:"Existing notification",eventKey:key,now:"2026-01-01T00:00:00.000Z"});
     insert(owner.id,"customer_message","arrival-history-first");insert(customer.id,"order_message","arrival-customer-excluded");insert(owner.id,"support_request","arrival-support-excluded");insert(owner.id,"order_message","arrival-history-second");
-    f.db.prepare("UPDATE user_notifications SET read_at='2026-01-01T01:00:00.000Z' WHERE event_key='arrival-history-first'").run();
-    migrateDatabase(f.db);
-    const rows=f.db.prepare("SELECT a.sequence,n.event_key FROM business_message_arrivals a JOIN user_notifications n ON n.id=a.notification_id ORDER BY a.sequence").all();
+    db.prepare("UPDATE user_notifications SET read_at='2026-01-01T01:00:00.000Z' WHERE event_key='arrival-history-first'").run();
+    migrateDatabase(db);
+    const rows=db.prepare("SELECT a.sequence,n.event_key FROM business_message_arrivals a JOIN user_notifications n ON n.id=a.notification_id ORDER BY a.sequence").all();
     assert.deepEqual(rows.map(row=>row.event_key),["arrival-history-first","arrival-history-second"]);assert.ok(rows[1].sequence>rows[0].sequence);
-    assert.equal(restaurantMessageArrivalRevision(f.db,restaurant,owner.id),rows[1].sequence);assert.equal(restaurantMessageArrivalRevision(f.db,restaurant,customer.id),0);
-    assert.equal(f.db.prepare("PRAGMA foreign_key_check").get(),undefined);
-  }finally{await f.close();}
+    assert.equal(restaurantMessageArrivalRevision(db,restaurant,owner.id),rows[1].sequence);assert.equal(restaurantMessageArrivalRevision(db,restaurant,customer.id),0);
+    migrateDatabase(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM business_message_arrivals").get().n,2,"Re-running current migrations never duplicates historical arrivals");
+    assert.equal(db.prepare("PRAGMA foreign_key_check").get(),undefined);
+  }finally{db.close();}
 });

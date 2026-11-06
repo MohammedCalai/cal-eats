@@ -15,7 +15,7 @@ export function createSession(db, userId, config) {
 
 export function readSession(db, token, config) {
   if (!token) return null;
-  const row = db.prepare(`SELECT u.id,u.name,u.email,u.role,s.id AS session_id,s.expires_at
+  const row = db.prepare(`SELECT u.id,u.name,u.email,u.role,u.phone,s.id AS session_id,s.expires_at
     FROM sessions s JOIN users u ON u.id=s.user_id
     WHERE s.token_hash=? AND s.revoked_at IS NULL AND u.account_enabled=1`).get(tokenHash(token));
   if (!row || Date.parse(row.expires_at) <= config.now().getTime()) return null;

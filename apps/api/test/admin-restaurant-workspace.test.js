@@ -5,6 +5,7 @@ import { journeyFixture } from './helpers.js';
 import { routeAdminRestaurantWorkspace } from '../src/admin-restaurant-workspace.js';
 import { requireRestaurantOwner } from '../src/auth/authorization.js';
 import { scopedAdminRestaurantSession } from '../src/auth/admin-restaurant-scope.js';
+import { adminRestaurantAvailabilityLabel } from '../../portal/src/admin-restaurant-presentation.js';
 
 async function setup() {
  const f=await journeyFixture({now:()=>new Date('2026-01-01T10:00:00.000Z')});
@@ -37,6 +38,20 @@ test('admin restaurant management is explicitly scoped, keeps the administrator 
  }finally{await f.close();}
 });
 
+test('admin availability display follows workspace acceptingOrders for open, closed and paused restaurants',async()=>{
+ const f=await setup();try{
+  const path=`/api/admin/restaurants/${f.restaurant.id}/workspace`;
+  async function inspect(expected,accepting){const response=await f.request(path);assert.equal(response.status,200);const restaurant=response.body.data.restaurant;assert.equal(restaurant.acceptingOrders,accepting);assert.equal(adminRestaurantAvailabilityLabel(restaurant),expected);return restaurant;}
+  f.db.prepare("UPDATE restaurants SET status='approved',always_open=1,paused=0,suspended=0,archived_at=NULL,holiday_dates='[]' WHERE id=?").run(f.restaurant.id);
+  const opened=await inspect('Open now',true);assert.equal(Object.hasOwn(opened,'openNow'),false,'The UI must use the canonical DTO field, not an absent alias');
+  f.db.prepare("UPDATE restaurants SET always_open=0,opening_hours='[]' WHERE id=?").run(f.restaurant.id);await inspect('Closed now',false);
+  f.db.prepare('UPDATE restaurants SET always_open=1,paused=1 WHERE id=?').run(f.restaurant.id);await inspect('Paused',false);
+  f.db.prepare('UPDATE restaurants SET suspended=1 WHERE id=?').run(f.restaurant.id);await inspect('Suspended',false);
+  f.db.prepare("UPDATE restaurants SET suspended=0,paused=0,status='pending' WHERE id=?").run(f.restaurant.id);await inspect('Pending approval',true);
+  f.db.prepare('UPDATE restaurants SET archived_at=? WHERE id=?').run(f.config.now().toISOString(),f.restaurant.id);await inspect('Archived',false);
+ }finally{await f.close();}
+});
+
 test('admin restaurant directory, orders and access candidates are bounded and restaurant scoped',async()=>{
  const f=await setup();try{
   const now=f.config.now().toISOString();for(let index=0;index<30;index++)f.db.prepare('INSERT INTO restaurants(id,name,status,created_at) VALUES(?,?,?,?)').run(`paging-${index}`,`Paging Restaurant ${String(index).padStart(2,'0')}`,'pending',now);
@@ -53,6 +68,24 @@ test('admin restaurant directory, orders and access candidates are bounded and r
   result=await f.request(`${root}/orders?state=live&page=1`);assert.equal(result.body.data.items.length,1);assert.equal(result.body.data.items[0].id,order.body.data.id);assert.equal(result.body.data.items[0].customerEmail,'customer@calai.local');
   assert.equal((await f.request(`/api/admin/restaurants/${f.other.id}/workspace/orders?state=live`)).body.data.items.length,0);
   assert.equal((await f.request(`${root}/orders?state=past`)).body.data.items.length,0);
+ }finally{await f.close();}
+});
+
+test('delivery fees remain owner-only while administrators inspect settings and edit permitted restaurant details',async()=>{
+ const f=await setup();try{
+  const root=`/api/admin/restaurants/${f.restaurant.id}/manage`,workspace=`/api/admin/restaurants/${f.restaurant.id}/workspace`,read=()=>f.db.prepare('SELECT delivery_enabled,delivery_outcodes,delivery_fee_minor,min_delivery_subtotal_minor FROM restaurants WHERE id=?').get(f.restaurant.id),before=read();
+  const denied=await f.request(`${root}/delivery`,{method:'PATCH',body:{enabled:true,outcodes:['LU1'],deliveryFeeMinor:1,minDeliverySubtotalMinor:0}});
+  assert.equal(denied.status,403);assert.equal(denied.error.code,'OWNER_DELIVERY_SETTINGS_REQUIRED');assert.deepEqual(read(),before);
+  for(const body of [{deliveryFeeMinor:1},{delivery_fee_minor:1},{delivery:{deliveryFeeMinor:1}},{minDeliverySubtotalMinor:0}])assert.equal((await f.request(`${root}/profile`,{method:'PATCH',body})).status,400);
+  assert.equal((await f.request(`${root}/settings`,{method:'PATCH',body:{deliveryFeeMinor:1}})).status,404);assert.deepEqual(read(),before);
+  const contact=await f.request(`${root}/profile`,{method:'PATCH',body:{phone:'01582000000'}});assert.equal(contact.status,200);assert.deepEqual(read(),before);
+  const inspected=await f.request(workspace);assert.equal(inspected.status,200);assert.equal(inspected.body.data.restaurant.delivery.deliveryFeeMinor,before.delivery_fee_minor);
+  const ownerCookie=await f.login('restaurant@calai.local','LocalRestaurant!4310');
+  const configured=await f.json(`/api/restaurant/restaurants/${f.restaurant.id}/delivery`,{method:'PATCH',cookie:ownerCookie,body:{enabled:true,outcodes:['LU1'],deliveryFeeMinor:399,minDeliverySubtotalMinor:100}});assert.equal(configured.status,200,configured.text);assert.equal(configured.body.data.delivery.deliveryFeeMinor,399);
+  assert.equal((await f.request(workspace)).body.data.restaurant.delivery.deliveryFeeMinor,399);
+  const item=f.db.prepare('SELECT id FROM menu_items WHERE restaurant_id=? LIMIT 1').get(f.restaurant.id),edited=await f.request(`${root}/menu/${item.id}`,{method:'PATCH',body:{name:'Permitted admin menu correction',priceMinor:875}});assert.equal(edited.status,200);assert.equal(edited.body.data.priceMinor,875);
+  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM audit_events WHERE action='admin_restaurant_managed' AND json_extract(details,'$.resource')='delivery'").get().n,0);
+  assert.equal(f.db.prepare('PRAGMA foreign_key_check').all().length,0);
  }finally{await f.close();}
 });
 

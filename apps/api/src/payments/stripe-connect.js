@@ -184,7 +184,7 @@ async function accountAction({ req, res, db, config, owner, restaurantId, action
 async function bankingDetails({ res, db, config, restaurantId }) {
   const mode=stripeMode(config),row=mode?accountForMode(db,restaurantId,config):null;
   const base={providerMode:config.paymentProviderMode,configured:configured(config),connected:Boolean(row?.provider_reference),canManageBankDetails:Boolean(configured(config)&&row?.provider_reference),account:accountDto(db,row),bankDetailsAvailable:false,bankAccounts:[],payoutSchedule:schedule,refreshedAt:null,...bankingPaymentScope(config)};
-  if(!mode||!configured(config)||!row?.provider_reference)return sendJson(res,200,{data:{...base,note:"No Stripe bank details are connected to this payment mode. Complete Stripe setup to view bank and payout information."}});
+  if(!mode||!configured(config)||!row?.provider_reference)return sendJson(res,200,{data:{...base,note:"No bank account is connected for this payment mode. Complete payment setup to view your bank and payout information."}});
   await ensurePlatform(config);
   const adapter=provider(config),account=await adapter.refreshConnectedAccount({accountId:row.provider_reference});
   if(account?.providerReference!==row.provider_reference||account.ok===false)throw new HttpError(503,"STRIPE_BANKING_UNAVAILABLE","Stripe account details could not be refreshed");
