@@ -160,7 +160,7 @@ async function boot() {
   try { paymentConfig=await api("/api/payments/config"); } catch { /* simulator-safe defaults */ }
   try { const returned=await refreshReturnedPayment({api}); returnedPayment=returned; if(returned) paymentReturnNotice=returned.cancelled?"Card checkout was cancelled. Payment status was refreshed.":`Payment status: ${statusLabel(returned.payment.status)}.`; } catch(error) { paymentReturnNotice=`Payment status could not be refreshed: ${error.message}`; }
   const runtimeBanner=document.querySelector("#runtime-banner");
-  if(state.runtime.mode==="hosted-preview"){runtimeBanner.hidden=paymentConfig.providerMode==="stripe_live";runtimeBanner.textContent=paymentConfig.providerMode==="stripe_test"?"Test checkout · no real money moves":"Hosted preview · simulated payments · no real orders or provider email";}
+  if(state.runtime.mode==="hosted-preview"){runtimeBanner.hidden=paymentConfig.providerMode==="stripe_live";runtimeBanner.textContent=paymentConfig.providerMode==="stripe_test"?"Test checkout · no real money moves":paymentConfig.providerMode==="local_simulator"?"Preview checkout · simulated payments":"Payment availability could not be confirmed. Card checkout is unavailable.";}
   setAccount();
   try { const result = await api("/api/auth/me"); resetIdentity(result.user); } catch { resetIdentity(null); }
   if(paymentReturnNotice)message(paymentReturnNotice);

@@ -16,6 +16,13 @@ const schedule = { interval: "weekly", weeklyAnchor: "monday" };
 const configured = config => Boolean(stripeMode(config) && provider(config) && config.stripePlatformAccountId && config.paymentProviderWebhookSecret && config.paymentProviderConnectWebhookSecret);
 const paymentDto = (row, order) => ({ orderId: order.id, checkoutUrl: row?.checkout_url ?? null, providerMode: row?.provider_mode ?? "unconfigured", status: row?.status ?? "pending", checkoutAvailable: order.status === "placed" && ["pending", "unknown", "failed"].includes(row?.status ?? "pending") });
 const verifiedAdapters = new WeakMap();
+// Existing financial operations own a job's mode. A newly queued refund may not
+// have an operation yet, so its persisted case supplies that binding instead.
+const stripeWorkerModeSql = `COALESCE(
+  (SELECT op.provider_mode FROM marketplace_operations op WHERE op.operation_key=marketplace_worker_jobs.operation_key),
+  (SELECT c.provider_mode FROM refund_cases c WHERE c.id=marketplace_worker_jobs.entity_id
+    AND marketplace_worker_jobs.kind IN ('stripe_refund','stripe_transfer_reversal'))
+)=$mode`;
 
 export async function ensureStripePlatform(config) {
   const adapter = provider(config), expected = config.stripePlatformAccountId;
@@ -211,10 +218,11 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
     const stamp = now(config), lease = new Date(config.now().getTime()+120_000).toISOString();
     const job = withTransaction(db, () => {
       const financialPolicy=config.financialRemediesEnabled===true?1:0;
-      db.prepare("UPDATE marketplace_operations SET status='failed',error='PROVIDER_RETRY_EXHAUSTED',updated_at=? WHERE status<>'confirmed' AND operation_key IN (SELECT operation_key FROM marketplace_worker_jobs WHERE kind LIKE 'stripe_%' AND (?=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND status='claimed' AND lease_expires_at<=? AND attempts>=5)").run(stamp,financialPolicy,stamp);
-      db.prepare("UPDATE marketplace_worker_jobs SET status='failed',lease_owner=NULL,lease_expires_at=NULL,error='PROVIDER_RETRY_EXHAUSTED',updated_at=? WHERE kind LIKE 'stripe_%' AND (?=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND status='claimed' AND lease_expires_at<=? AND attempts>=5").run(stamp,financialPolicy,stamp);
+      const workerScope={mode,financialPolicy,stamp};
+      db.prepare(`UPDATE marketplace_operations SET status='failed',error='PROVIDER_RETRY_EXHAUSTED',updated_at=$stamp WHERE provider_mode=$mode AND status<>'confirmed' AND operation_key IN (SELECT operation_key FROM marketplace_worker_jobs WHERE kind IN ('stripe_transfer','stripe_refund','stripe_transfer_reversal') AND ${stripeWorkerModeSql} AND ($financialPolicy=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND status='claimed' AND lease_expires_at<=$stamp AND attempts>=5)`).run(workerScope);
+      db.prepare(`UPDATE marketplace_worker_jobs SET status='failed',lease_owner=NULL,lease_expires_at=NULL,error='PROVIDER_RETRY_EXHAUSTED',updated_at=$stamp WHERE kind IN ('stripe_transfer','stripe_refund','stripe_transfer_reversal') AND ${stripeWorkerModeSql} AND ($financialPolicy=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND status='claimed' AND lease_expires_at<=$stamp AND attempts>=5`).run(workerScope);
       // Existing provider references can be reconciled without creating another refund.
-      const row = db.prepare("SELECT * FROM marketplace_worker_jobs WHERE kind IN ('stripe_transfer','stripe_refund','stripe_transfer_reversal') AND (?=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND ((status IN ('queued','delayed') AND available_at<=?) OR (status='claimed' AND lease_expires_at<=?)) AND attempts<5 ORDER BY created_at,id LIMIT 1").get(financialPolicy,stamp,stamp);
+      const row = db.prepare(`SELECT * FROM marketplace_worker_jobs WHERE kind IN ('stripe_transfer','stripe_refund','stripe_transfer_reversal') AND ${stripeWorkerModeSql} AND ($financialPolicy=1 OR kind<>'stripe_refund' OR EXISTS(SELECT 1 FROM marketplace_operations m WHERE m.operation_key=marketplace_worker_jobs.operation_key AND m.provider_reference IS NOT NULL)) AND ((status IN ('queued','delayed') AND available_at<=$stamp) OR (status='claimed' AND lease_expires_at<=$stamp)) AND attempts<5 ORDER BY created_at,id LIMIT 1`).get(workerScope);
       if (!row) return null;
       db.prepare("UPDATE marketplace_worker_jobs SET status='claimed',lease_owner=?,lease_expires_at=?,attempts=attempts+1,updated_at=? WHERE id=?").run(workerId,lease,stamp,row.id);
       return db.prepare("SELECT * FROM marketplace_worker_jobs WHERE id=?").get(row.id);

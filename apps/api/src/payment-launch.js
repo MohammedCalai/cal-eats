@@ -1,0 +1,79 @@
+import {requireRole} from "./auth/authorization.js";
+import {HttpError,sendJson} from "./http.js";
+import {resolveRestaurantCommission} from "./restaurant-commission.js";
+
+const validAccount=value=>typeof value==="string"&&/^acct_[A-Za-z0-9]+$/.test(value);
+const validSecret=value=>typeof value==="string"&&/^whsec_[A-Za-z0-9_]{8,}$/.test(value);
+const pendingJobs="j.status IN ('queued','delayed','claimed') AND j.kind IN ('stripe_transfer','stripe_transfer_reversal','stripe_refund')";
+const capabilitySql="EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(a.capabilities) THEN a.capabilities ELSE '[]' END) WHERE value='card_payments') AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(a.capabilities) THEN a.capabilities ELSE '[]' END) WHERE value='transfers')";
+const hasCapabilities=value=>{try{const list=JSON.parse(value);return Array.isArray(list)&&list.includes("card_payments")&&list.includes("transfers");}catch{return false;}};
+
+/** Non-mutating launch inventory. Secret values never enter this response. */
+export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=process.env}={}){
+  const now=config.now().toISOString(),currentMode=config.paymentProviderMode;
+  const liveAccountId=environment.CALAI_STRIPE_LIVE_ACCOUNT_ID||(currentMode==="stripe_live"?config.stripePlatformAccountId:null);
+  const keyConfigured=/^(?:rk|sk)_live_[A-Za-z0-9_]+$/.test(environment.CALAI_STRIPE_LIVE_SECRET_KEY||"");
+  const platformEvents=environment.CALAI_STRIPE_LIVE_WEBHOOK_SECRET,connectEvents=environment.CALAI_STRIPE_LIVE_CONNECT_WEBHOOK_SECRET;
+  const separateEventSecrets=validSecret(platformEvents)&&validSecret(connectEvents)&&platformEvents!==connectEvents;
+  const total=db.prepare("SELECT COUNT(*) n FROM restaurants").get().n;
+  // Join the exact current commercial policy used when a new order is saved.
+  const selection=`SELECT r.*,a.provider_mode AS account_mode,a.status AS account_status,a.capabilities,s.charges_enabled,s.payouts_enabled,
+    c.rate_bps AS contract_rate,c.demo_only,c.accepted_at AS contract_accepted,
+    p.rate_bps AS policy_rate,p.commission_base,p.development_assumption,p.accepted_at AS policy_accepted
+    FROM restaurants r LEFT JOIN provider_accounts a ON a.restaurant_id=r.id
+    LEFT JOIN stripe_account_readiness s ON s.restaurant_id=r.id AND s.provider_mode=a.provider_mode AND s.provider_account_id=a.provider_reference
+    LEFT JOIN contracts c ON c.restaurant_id=r.id
+    LEFT JOIN commission_policies p ON p.id=(SELECT id FROM commission_policies WHERE restaurant_id=r.id AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1)`;
+  const termsApproved=row=>Boolean(row.policy_accepted?!row.development_assumption:row.contract_accepted&&!row.demo_only);
+  const accountReady=row=>row.account_mode==="stripe_live"&&row.account_status==="enabled"&&Boolean(row.charges_enabled&&row.payouts_enabled)&&hasCapabilities(row.capabilities);
+  const baseCorrect=row=>!row.policy_accepted||row.commission_base==="food_plus_delivery";
+  const counts=db.prepare(`SELECT COUNT(*) AS approved,SUM(a.provider_mode='stripe_live' AND a.status='enabled' AND s.charges_enabled=1 AND s.payouts_enabled=1 AND ${capabilitySql}) AS bank_ready,
+    SUM(CASE WHEN p.id IS NOT NULL THEN p.development_assumption=0 ELSE c.accepted_at IS NOT NULL AND c.demo_only=0 END) AS terms_ready,
+    SUM(COALESCE(p.commission_base,'food_plus_delivery')='food_plus_delivery') AS base_ready,
+    SUM(r.cash_enabled=1) AS cash_enabled
+    FROM restaurants r LEFT JOIN provider_accounts a ON a.restaurant_id=r.id
+    LEFT JOIN stripe_account_readiness s ON s.restaurant_id=r.id AND s.provider_mode=a.provider_mode AND s.provider_account_id=a.provider_reference
+    LEFT JOIN contracts c ON c.restaurant_id=r.id
+    LEFT JOIN commission_policies p ON p.id=(SELECT id FROM commission_policies WHERE restaurant_id=r.id AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1)
+    WHERE r.status='approved'`).get(now,now);
+  const history={
+    testPayments:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments WHERE provider_mode='stripe_test'").get().n,
+    testJobsPending:db.prepare(`SELECT COUNT(*) n FROM marketplace_worker_jobs j LEFT JOIN marketplace_operations o ON o.operation_key=j.operation_key LEFT JOIN refund_cases c ON c.id=j.entity_id AND j.kind IN ('stripe_refund','stripe_transfer_reversal') WHERE ${pendingJobs} AND COALESCE(o.provider_mode,c.provider_mode)='stripe_test'`).get().n,
+    modeMismatchedAccounts:db.prepare("SELECT COUNT(*) n FROM provider_accounts WHERE provider_mode<>'stripe_live'").get().n,
+    outstandingTestAuthorisations:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments WHERE provider_mode='stripe_test' AND status IN ('pending','authorized','unknown')").get().n
+  };
+  const approved=Number(counts.approved)||0,readyAccounts=Number(counts.bank_ready)||0,approvedTerms=Number(counts.terms_ready)||0;
+  const scheduleConfirmed=environment.CALAI_LIVE_PAYOUT_SCHEDULE_CONFIRMED==="true";
+  const checks=[
+    {id:"live_mode",label:"Real card payments",state:currentMode==="stripe_live"&&config.livePaymentsEnabled?"ready":"blocked",detail:currentMode==="stripe_live"&&config.livePaymentsEnabled?"Real payment mode is enabled.":"Payments are still in testing. Live activation needs a separate reviewed change."},
+    {id:"live_connection",label:"Dedicated Cal-Eats live connection",state:validAccount(liveAccountId)&&keyConfigured?"review":"blocked",detail:validAccount(liveAccountId)&&keyConfigured?"Live connection details are staged; verify the exact Stripe account before activation.":"Stage the confirmed live account and a dedicated restricted server key. Existing Calai keys must stay separate."},
+    {id:"live_events",label:"Payment and restaurant payout updates",state:separateEventSecrets?"review":"blocked",detail:separateEventSecrets?"Separate signing secrets are present. Successful signed deliveries must be checked before launch.":"Two separate live event connections and signing secrets are required."},
+    {id:"restaurant_accounts",label:"Real restaurant bank onboarding",state:approved>0&&readyAccounts===approved?"ready":"blocked",detail:`${readyAccounts} of ${approved} approved restaurants have a verified live payment and payout account. Test bank accounts cannot be reused.`},
+    {id:"commercial_terms",label:"Approved restaurant commission terms",state:approved>0&&approvedTerms===approved&&Number(counts.base_ready)===approved?"ready":"blocked",detail:`${approvedTerms} of ${approved} approved restaurants have non-demo accepted terms. Commission must include discounted food and charged delivery.`},
+    {id:"payout_schedule",label:"Restaurant bank payout schedule",state:scheduleConfirmed?"ready":"review",detail:scheduleConfirmed?"The configured weekly Monday payout plan has been confirmed.":"Weekly Monday is the development default. Confirm the live payout schedule before onboarding restaurants."},
+    {id:"cash_collection",label:"Commission on cash orders",state:Number(counts.cash_enabled)?"blocked":"ready",detail:Number(counts.cash_enabled)?"Automatic cash-commission collection is not connected. Use a card-only launch or finish that collection flow before accepting live cash orders.":"Cash is not offered by the approved restaurants. It will not create an uncollected commission balance."},
+    {id:"test_handover",label:"Preserve testing history",state:history.testJobsPending||history.outstandingTestAuthorisations||history.modeMismatchedAccounts?"review":"ready",detail:history.testJobsPending||history.outstandingTestAuthorisations||history.modeMismatchedAccounts?"Complete a reviewed handover or isolate live data. Do not replace test bank accounts or lose outstanding test history.":"No outstanding test account handover was found."}
+  ];
+  const items=db.prepare(`${selection} ORDER BY r.name COLLATE NOCASE,r.id LIMIT ? OFFSET ?`).all(now,now,pageSize,(page-1)*pageSize).map(row=>{
+    const terms=termsApproved(row),bank=accountReady(row),normalRate=row.policy_rate??row.contract_rate??700,reasons=[];
+    if(!bank)reasons.push(row.account_mode&&row.account_mode!=="stripe_live"?"Create a real restaurant payment account; retain the test account history.":"Complete real business and bank onboarding.");
+    if(!terms)reasons.push("Review and accept the real commercial agreement.");
+    if(!baseCorrect(row))reasons.push("The commission agreement does not include charged delivery.");
+    if(row.status!=="approved")reasons.push("Restaurant approval is pending.");
+    return {id:row.id,name:row.name,accountMode:row.account_mode??null,accountReady:bank,termsApproved:terms,effectiveRateBasisPoints:resolveRestaurantCommission(db,row.id,now,normalRate).rateBasisPoints,reasons};
+  });
+  return {currentMode,livePaymentsEnabled:Boolean(config.livePaymentsEnabled),ready:checks.every(check=>check.state==="ready"),
+    commission:{normalRateBasisPoints:700,base:"discounted_food_plus_charged_delivery",processingFeesPaidBy:"platform",captureAt:"restaurant_confirmation",settlementAt:"completed",cashCommissionCollection:"not_connected"},
+    payoutSchedule:{interval:"weekly",weeklyAnchor:"monday",confirmed:scheduleConfirmed},checks,
+    restaurants:{items,page,pageSize,total,hasMore:page*pageSize<total},history,
+    reviews:["Current testing apps use the same public API. Review the launch audience and restaurant catalogue before changing that API to live payments.","Live business activity and payment terms must cover the Cal-Eats marketplace, in addition to the existing Calai subscription business.","Cal-Eats covers normal processing costs, including commission-free periods and any platform-funded vouchers."]};
+}
+
+export async function routePaymentLaunch({req,res,url,db,config,session}){
+  if(url.pathname!=="/api/admin/finance/payment-launch")return false;
+  requireRole(session,"admin");
+  if(req.method!=="GET")throw new HttpError(405,"METHOD_NOT_ALLOWED","Payment launch checks are read-only");
+  const page=Number(url.searchParams.get("page")??1),pageSize=Number(url.searchParams.get("pageSize")??25);
+  if(!Number.isSafeInteger(page)||page<1||page>100000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)throw new HttpError(400,"VALIDATION_ERROR","Restaurant payment pagination is invalid");
+  return sendJson(res,200,{data:paymentLaunchReport(db,config,{page,pageSize})});
+}

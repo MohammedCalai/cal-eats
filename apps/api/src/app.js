@@ -1,5 +1,6 @@
 import {routeAdminRestaurantWorkspace} from "./admin-restaurant-workspace.js";
 import {routeRestaurantCommission} from "./restaurant-commission.js";
+import {routePaymentLaunch} from "./payment-launch.js";
 import {routeAdminWorkspace} from "./admin-workspace.js";
 import {routePlatformVouchers} from "./platform-vouchers.js";
 import {routeBusinessDirectResolution} from "./business-direct-resolution.js";
@@ -164,7 +165,7 @@ export function createApp({ db, config, logger = console }) {
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
       if (await serveStatic(req, res, url.pathname)) return;
-      for(const route of [routeRestaurantCommission,routeAdminRestaurantWorkspace,routeAdminWorkspace,routePlatformVouchers]){const result=await route({req,res,url,db,config,session,checkRate});if(result||res.writableEnded||res.headersSent)return;}
+      for(const route of [routePaymentLaunch,routeRestaurantCommission,routeAdminRestaurantWorkspace,routeAdminWorkspace,routePlatformVouchers]){const result=await route({req,res,url,db,config,session,checkRate});if(result||res.writableEnded||res.headersSent)return;}
       const resolutionHandled=routeBusinessDirectResolution({req,res,url,db,config,session});
       if(resolutionHandled||res.writableEnded||res.headersSent)return;
       const scheduledHandled=await routeScheduledOrders({req,res,url,db,config,session});
