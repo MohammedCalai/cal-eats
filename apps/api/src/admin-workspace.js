@@ -5,6 +5,7 @@ import { parseLondonDateRange } from "./marketplace-reporting.js";
 import { routeAdminFinanceWorkspace } from "./admin-finance-workspace.js";
 import { orderDto } from "./journey.js";
 import { buildOrderFinancialBreakdown } from "./finance-details.js";
+import { verifiedLoginClosure } from "./account-closure.js";
 
 function pagination(url, maximum = 50) {
   const pageText = url.searchParams.get("page") ?? "1", sizeText = url.searchParams.get("pageSize") ?? "25";
@@ -64,7 +65,7 @@ function operations(db,url) {
   }
   if(kind==="deletions") {
     const total=db.prepare("SELECT COUNT(*) n FROM deletion_requests").get().n;
-    return result(db.prepare("SELECT d.*,u.name user_name,u.email user_email FROM deletion_requests d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC,d.id DESC LIMIT ? OFFSET ?").all(paging.pageSize,paging.offset).map(row=>({id:row.id,userId:row.user_id,userName:row.user_name,userEmail:row.user_email,reason:row.reason,status:row.status,note:row.note,createdAt:row.created_at,updatedAt:row.updated_at})),total,paging);
+    return result(db.prepare("SELECT d.*,u.name user_name,u.email user_email,u.role user_role,u.account_enabled FROM deletion_requests d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC,d.id DESC LIMIT ? OFFSET ?").all(paging.pageSize,paging.offset).map(row=>{const closure=verifiedLoginClosure(db,row.id);return {id:row.id,userId:row.user_id,userName:row.user_name,userEmail:row.user_email,userRole:row.user_role,accountEnabled:Boolean(row.account_enabled),loginClosedAt:closure?.closedAt??null,closureNote:closure?.note??null,reason:row.reason,status:row.status,note:row.note,createdAt:row.created_at,updatedAt:row.updated_at};}),total,paging);
   }
   if(kind==="integrations") {
     const total=db.prepare("SELECT COUNT(*) n FROM integration_status").get().n;

@@ -6,6 +6,7 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { orderDto } from "./journey.js";
 import { isDemoEmail } from "./seed.js";
+import { handleVerifiedAccountClosure } from "./account-closure.js";
 
 const clean = (value, min, max, label) => { const result = typeof value === "string" ? value.trim() : ""; if (result.length < min || result.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); return result; };
 const accountDto = (row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, phone: row.phone, emailVerified: Boolean(row.email_verified_at), emailVerifiedAt: row.email_verified_at });
@@ -13,6 +14,7 @@ const supportDto = (row) => ({ id: row.id, userId: row.user_id, orderId: row.ord
 const deletionDto = (row) => ({ id: row.id, userId: row.user_id, reason: row.reason, status: row.status, note: row.note, createdAt: row.created_at, updatedAt: row.updated_at });
 
 export async function routeProduct({ req, res, url, db, config, session }) {
+  if (await handleVerifiedAccountClosure({ req, res, url, db, config, session })) return true;
   let match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/staff$/);
   if (match && req.method === "GET") {
     requireRestaurantOwner(db, session, match[1]);

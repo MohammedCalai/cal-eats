@@ -330,6 +330,7 @@ async function createOrder({ req, res, db, config, session }) {
   const canonicalBody = { ...(voucherId?{voucherId}:{}), ...(scheduledFor ? { scheduledFor } : {}), restaurantId: body.restaurantId, items: normalizedItems, paymentMethod: body.paymentMethod, fulfillment: body.fulfillment, customerPhone, deliveryInstructions, allergyNotes, ...(expectedTotalMinor === null ? {} : { expectedTotalMinor }), ...(offerId ? { offerId } : {}), ...(address ? { deliveryAddress: address } : {}) };
   const hash = requestHash(canonicalBody);
   const outcome = withTransaction(db, () => {
+  if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role='customer' AND account_enabled=1").get(user.id)) throw new HttpError(401, "AUTH_REQUIRED", "Sign in with an active customer account to place an order.");
   const prior = db.prepare("SELECT * FROM orders WHERE customer_id=? AND idempotency_key=?").get(user.id, key);
   if (prior) {
     if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request");
