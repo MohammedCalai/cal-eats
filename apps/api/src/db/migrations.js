@@ -1,4 +1,5 @@
 import {restaurantCommissionMigration39} from "../restaurant-commission-migration.js";
+import {accountAccessEmailMigration43} from "../account-access-email.js";
 import {restaurantCommissionEmailMigration40} from "../restaurant-commission-email-migration.js";
 import {businessMessageAttentionMigration41} from "../business-message-attention-migration.js";
 import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
@@ -295,5 +296,6 @@ ALTER TABLE restaurants ADD COLUMN archive_reason TEXT NOT NULL DEFAULT '';
 CREATE INDEX restaurants_catalogue_archive_idx ON restaurants(archived_at,status,suspended);
 CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,action);
 `
-  }
+  },
+  accountAccessEmailMigration43
 ];

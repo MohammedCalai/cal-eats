@@ -36,7 +36,7 @@ export function createOrderAlertEmailAdapter(settings, { transportFactory, graph
   let transport;
   const graph = settings.mode === "graph" ? createGraphMailAdapter(settings.graph, graphOptions) : null;
   return async (message, { beforeSend = () => true } = {}) => {
-    if (!/^[A-Za-z0-9-]{1,80}$/.test(message.id) || !email(message.to) || !email(message.from) || message.from.toLowerCase() !== settings.from.toLowerCase() || /[\r\n\0]/.test(message.subject) || !/^<cal-eats-(?:order-alert|customer-email|business-statement|commission-email)-[A-Za-z0-9-]+@[A-Za-z0-9.-]+>$/.test(message.messageId)) return { status: "failed", errorCode: "EMAIL_MESSAGE_INVALID" };
+    if (!/^[A-Za-z0-9-]{1,80}$/.test(message.id) || !email(message.to) || !email(message.from) || message.from.toLowerCase() !== settings.from.toLowerCase() || /[\r\n\0]/.test(message.subject) || !/^<cal-eats-(?:order-alert|customer-email|business-statement|commission-email|account-email)-[A-Za-z0-9-]+@[A-Za-z0-9.-]+>$/.test(message.messageId)) return { status: "failed", errorCode: "EMAIL_MESSAGE_INVALID" };
     let attachments;
     try { attachments = mailAttachments(message.attachments); } catch { return { status: "failed", errorCode: "EMAIL_ATTACHMENT_INVALID" }; }
     if (settings.mode === "off") return { status: "failed", errorCode: "EMAIL_DISABLED" };

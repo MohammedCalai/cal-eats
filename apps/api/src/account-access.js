@@ -5,6 +5,7 @@ import { revokeUserSessions } from "./auth/session-management.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { VALIDATION } from "../../../packages/contracts/src/index.js";
+import {accountAccessEmailDelivery,enqueueAccountAccessEmail} from "./account-access-email.js";
 
 const RESET_MS = 30 * 60_000;
 const VERIFY_MS = 24 * 60 * 60_000;
@@ -21,8 +22,10 @@ function storeMail(db, { user, purpose, token, origin, now }) {
 function issue(db, config, user, purpose, lifetimeMs) {
   const token = newToken(); const nowDate = config.now(); const now = nowDate.toISOString(); const expires = new Date(nowDate.getTime() + lifetimeMs).toISOString();
   db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE user_id=? AND purpose=? AND consumed_at IS NULL").run(now, user.id, purpose);
-  db.prepare("INSERT INTO account_access_tokens(id,user_id,purpose,token_hash,expires_at,consumed_at,created_at) VALUES(?,?,?,?,?,NULL,?)").run(randomUUID(), user.id, purpose, tokenHash(token), expires, now);
-  storeMail(db, { user, purpose, token, origin: config.origin, now });
+  const id=randomUUID();
+  db.prepare("INSERT INTO account_access_tokens(id,user_id,purpose,token_hash,expires_at,consumed_at,created_at,issued_email) VALUES(?,?,?,?,?,NULL,?,?)").run(id, user.id, purpose, tokenHash(token), expires, now,user.email);
+  if(config.runMode==="local")storeMail(db, { user, purpose, token, origin: config.origin, now });
+  else enqueueAccountAccessEmail(db,config,{id,user,purpose,token,expiresAt:expires,now});
 }
 
 function readToken(body) {
@@ -36,9 +39,10 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["email"]);
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (!validEmail(email)) throw new HttpError(400, "VALIDATION_ERROR", "Email is invalid");
-    checkRate(req, email); const user = db.prepare("SELECT id,email FROM users WHERE email=?").get(email);
-    if (user) withTransaction(db, () => issue(db, config, user, "password_reset", RESET_MS));
-    return sendJson(res, 202, { data: { accepted: true, ...(url.pathname.startsWith("/api/native/") ? { delivery: "local_simulation" } : {}) } });
+    checkRate(req, email); const user = db.prepare("SELECT id,email FROM users WHERE email=? AND account_enabled=1").get(email),delivery=accountAccessEmailDelivery(config);
+    // Delivery/configuration errors must never reveal whether an address exists.
+    if(user&&delivery!=="unavailable")try{withTransaction(db, () => issue(db, config, user, "password_reset", RESET_MS));}catch{}
+    return sendJson(res, 202, { data: { accepted: true,delivery } });
   }
   if (req.method === "POST" && ["/api/auth/password/reset", "/api/native/auth/reset-password"].includes(url.pathname)) {
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["token", "password"]); checkRate(req, "password-reset");
@@ -46,7 +50,7 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
     if (password.length < VALIDATION.passwordMin || password.length > VALIDATION.passwordMax) throw new HttpError(400, "VALIDATION_ERROR", "Password is invalid");
     const passwordHash = await hashPassword(password); const now = config.now().toISOString();
     withTransaction(db, () => {
-      const row = db.prepare("SELECT * FROM account_access_tokens WHERE token_hash=? AND purpose='password_reset' AND consumed_at IS NULL AND expires_at>?").get(tokenHash(token), now);
+      const row = db.prepare("SELECT t.* FROM account_access_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.purpose='password_reset' AND t.consumed_at IS NULL AND t.expires_at>? AND u.account_enabled=1 AND u.email=t.issued_email COLLATE NOCASE").get(tokenHash(token), now);
       if (!row) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
       const consumed = db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE id=? AND consumed_at IS NULL").run(now, row.id); if (consumed.changes !== 1) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
       db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, row.user_id);
@@ -58,14 +62,14 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
   }
   if (req.method === "POST" && url.pathname === "/api/auth/email-verification/send") {
     const user = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, []); checkRate(req, user.email);
-    const row = db.prepare("SELECT id,email,email_verified_at FROM users WHERE id=?").get(user.id);
-    if (!row.email_verified_at) withTransaction(db, () => issue(db, config, row, "email_verification", VERIFY_MS));
-    return sendJson(res, 202, { data: { accepted: true } });
+    const row = db.prepare("SELECT id,email,email_verified_at FROM users WHERE id=? AND account_enabled=1").get(user.id),delivery=accountAccessEmailDelivery(config);
+    if(row&&!row.email_verified_at&&delivery!=="unavailable")try{withTransaction(db, () => issue(db, config, row, "email_verification", VERIFY_MS));}catch{}
+    return sendJson(res, 202, { data: { accepted: true,delivery } });
   }
   if (req.method === "POST" && url.pathname === "/api/auth/email-verification/confirm") {
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["token"]); checkRate(req, "email-verification"); const token = readToken(body); const now = config.now().toISOString();
     withTransaction(db, () => {
-      const row = db.prepare("SELECT * FROM account_access_tokens WHERE token_hash=? AND purpose='email_verification' AND consumed_at IS NULL AND expires_at>?").get(tokenHash(token), now);
+      const row = db.prepare("SELECT t.* FROM account_access_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.purpose='email_verification' AND t.consumed_at IS NULL AND t.expires_at>? AND u.account_enabled=1 AND u.email=t.issued_email COLLATE NOCASE").get(tokenHash(token), now);
       if (!row) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
       const consumed = db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE id=? AND consumed_at IS NULL").run(now, row.id); if (consumed.changes !== 1) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
       db.prepare("UPDATE users SET email_verified_at=COALESCE(email_verified_at,?) WHERE id=?").run(now, row.user_id);
