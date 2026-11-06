@@ -17,6 +17,7 @@ import { initializeCustomerEmailDelivery, runCustomerTransactionalEmails } from 
 import { initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "./business-weekly-statements.js";
 import {runRestaurantCommissionEmails} from "./restaurant-commission-emails.js";
 import {runAccountAccessEmails} from "./account-access-email.js";
+import {runCustomerPush} from "./customer-push.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -32,6 +33,13 @@ let currentAlertWorker = Promise.resolve();
 let commissionRunning = false;
 let currentCommissionWorker = Promise.resolve();
 let accountEmailRunning=false,currentAccountEmailWorker=Promise.resolve();
+let customerPushRunning=false,currentCustomerPushWorker=Promise.resolve();
+function triggerCustomerPush(){
+  if(customerPushRunning)return currentCustomerPushWorker;
+  customerPushRunning=true;
+  currentCustomerPushWorker=runCustomerPush(db,config).catch(error=>{console.error("Customer notification worker failed",error instanceof Error?error.name:"unknown error");}).finally(()=>{customerPushRunning=false;});
+  return currentCustomerPushWorker;
+}
 function triggerAccountEmails(){
   if(accountEmailRunning)return currentAccountEmailWorker;
   accountEmailRunning=true;
@@ -82,6 +90,7 @@ console.log(`Cal-Eats API listening at ${config.origin}`);
 // Commission notices must not hold up HTTP startup or urgent order/customer notices.
 void triggerCommissionEmails();
 void triggerAccountEmails();
+void triggerCustomerPush();
 const worker = setInterval(() => { void triggerWorkers(); }, 60_000);
 worker.unref();
 const alertWorker=setInterval(()=>{void triggerOrderAlerts();},5000);
@@ -90,15 +99,17 @@ const commissionWorker=setInterval(()=>{void triggerCommissionEmails();},5000);
 commissionWorker.unref();
 const accountEmailWorker=setInterval(()=>{void triggerAccountEmails();},5000);
 accountEmailWorker.unref();
+const customerPushWorker=setInterval(()=>{void triggerCustomerPush();},5000);
+customerPushWorker.unref();
 
 let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
-  shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);
+  shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);clearInterval(customerPushWorker);
   notificationStreamHub(db).close();
   const result = await closeServer(server, { graceMs: 5_000 });
   if (!result.drained) process.exit(1);
-  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
+  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentCustomerPushWorker]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
   if (!workerDrained) process.exit(1);
   closeDatabase(db);
 }

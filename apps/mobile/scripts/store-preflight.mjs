@@ -16,6 +16,12 @@ check("Internal Android APK and store AAB profiles", eas.build.preview.android.b
 const android = expo.plugins.find(plugin => Array.isArray(plugin) && plugin[0] === "expo-build-properties")?.[1]?.android;
 check("Android target meets the checked API 36 minimum", android?.targetSdkVersion >= 36 && android?.compileSdkVersion >= 36);
 check("Preview has an independent HTTPS API", eas.build.preview.env.EXPO_PUBLIC_API_BASE_URL === "https://eats.calai.info");
+if (process.env.EAS_BUILD_PLATFORM === "android") {
+  const file = process.env.CAL_EATS_GOOGLE_SERVICES_FILE?.trim() || process.env.GOOGLE_SERVICES_JSON?.trim();
+  let firebase = null;
+  try { if (file) firebase = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* Report the configuration check without file contents or private paths. */ }
+  check("Android notifications use the Cal-Eats Firebase configuration", Boolean(firebase?.project_info?.project_number && firebase?.client?.some(client => client.client_info?.android_client_info?.package_name === "uk.co.calai.caleats")));
+}
 const pending = Object.entries(readiness).filter(([, value]) => value !== true).map(([name]) => name);
 const production = process.env.EAS_BUILD_PROFILE === "production" || process.env.CAL_EATS_PUBLIC_RELEASE_BUILD === "true" || process.argv.includes("--production");
 check("Approved Cal-Eats Expo project and owner", expo.extra?.eas?.projectId === "5bf59184-c670-44f4-be78-5229cbd02300" && expo.owner === "yankee1707");

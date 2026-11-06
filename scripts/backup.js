@@ -47,11 +47,12 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
   try {
     db = new DatabaseSync(sourcePath, { readOnly: true });
     await sqliteBackup(db, destinationPath);
-    // Temporary chats are deliberately excluded from managed backups. Formal
-    // order/dispute records remain intact and keep their separate policies.
+    // Temporary chats and phone-delivery registrations are excluded. Restoring
+    // a backup must not revive old device registrations or replay queued alerts.
+    // Formal order/dispute records retain their separate policies.
     const copy = new DatabaseSync(destinationPath);
     try {
-      const temporaryTables = ["order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
+      const temporaryTables = ["customer_push_outbox", "customer_push_devices", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
       const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
       if (present.length) {
         copy.exec("PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");

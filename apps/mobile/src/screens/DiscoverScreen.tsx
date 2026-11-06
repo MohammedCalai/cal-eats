@@ -50,6 +50,7 @@ export function DiscoverScreen(props: Props) {
       if (!current()) return;
       setServiceArea(area);
       const params = new URLSearchParams({ fulfillment, page: String(page), pageSize: "50" });
+      if (fulfillment === "delivery") params.set("includeCollectionOnly", "true");
       if (postcode.trim() && area.available !== false) params.set("postcode", postcode.trim());
       if (query.trim()) params.set("q", query.trim());
       if (browsingFilters.cuisine) params.set("cuisine", browsingFilters.cuisine);

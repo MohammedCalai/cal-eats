@@ -19,7 +19,8 @@ export function restaurantMatches(restaurant, query = "", postcode = "", fulfill
   const searchable = [restaurant.name, restaurant.profile?.description, restaurant.profile?.cuisine, restaurant.searchTerms].filter(Boolean).join(" ").toLocaleLowerCase("en-GB");
   const textMatch = !needle || searchable.includes(needle);
   const outcode = outwardPostcode(postcode);
-  const deliveryMatch = fulfillment === "collection" || !outcode || (restaurant.delivery?.enabled && restaurant.delivery.outcodes?.includes(outcode));
+  const collectionOnly = restaurant.delivery?.enabled === false && restaurant.profile?.collectionEnabled === true;
+  const deliveryMatch = fulfillment === "collection" || collectionOnly || !outcode || (restaurant.delivery?.enabled && restaurant.delivery.outcodes?.includes(outcode));
   return textMatch && deliveryMatch;
 }
 

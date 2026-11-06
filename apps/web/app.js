@@ -10,7 +10,7 @@ import { createCustomerNotificationAlert } from "./customer-notification-alert.j
 import { menuSections } from "./menu-sections.js";
 import { restaurantMenuHtml as customerMenuHtml, mountRestaurantMenu } from "./restaurant-menu.js";
 import { discoveryFeedHtml, discoveryHeroHtml } from "./discovery-ui.js";
-import { availableDiscoveryOffer } from "./discovery-model.js";
+import { availableDiscoveryOffer, restaurantBrowseFulfillment, canPreviewDiscoveryRestaurant } from "./discovery-model.js";
 import { connectLiveNotifications } from "./live-notifications.js";
 import { supportCardsHtml, mountCustomerThread, mountCustomerInbox } from "./customer-contact.js";
 import { openOrderMessaging } from "./order-messaging.js";
@@ -210,7 +210,7 @@ async function loadDiscover({append=false,quiet=false}={}) {
   try{
     await customerLocation.hydrate();if(generation!==state.generation||navigation!==state.navigationVersion||request!==state.discoverVersion||state.view!=="discover")return;filterScope=scope();
     const service=await api(`/api/service-availability?postcode=${encodeURIComponent(state.postcode)}&fulfillment=${state.fulfillment}`);if(!current())return;state.serviceArea=service;
-    const params=new URLSearchParams({fulfillment:state.fulfillment,page:String(page),pageSize:"50"});if(state.postcode&&service.available!==false)params.set("postcode",state.postcode);if(state.search.trim())params.set("q",state.search.trim());if(state.cuisine)params.set("cuisine",state.cuisine);
+    const params=new URLSearchParams({fulfillment:state.fulfillment,page:String(page),pageSize:"50"});if(state.fulfillment==="delivery")params.set("includeCollectionOnly","true");if(state.postcode&&service.available!==false)params.set("postcode",state.postcode);if(state.search.trim())params.set("q",state.search.trim());if(state.cuisine)params.set("cuisine",state.cuisine);
     params.set("collection",state.discoverOffersOnly?"offers":state.discoverCollection==="home"||!state.discoverCollection?"all":state.discoverCollection);if(state.discoverSort)params.set("sort",state.discoverSort);
     const[restaurants,offers]=await Promise.all([api(`/api/restaurants?${params}`),!append&&state.user?.role==="customer"?api("/api/offers").catch(()=>null):Promise.resolve(null)]);
     if(!current())return;const rows=Array.isArray(restaurants)?restaurants:restaurants.items||[];state.restaurants=append?[...new Map([...state.restaurants,...rows].map(item=>[item.id,item])).values()]:rows;state.discoverPage=page;state.discoverHasMore=rows.length===50;state.discoverLoading=false;state.discoverLoadError="";if(offers!==null){state.offers=Array.isArray(offers)?offers:offers.items||[];state.offerLoadError=false;}
@@ -224,9 +224,10 @@ async function openDiscoveryCollection(collection){state.discoverCollection=coll
 
 async function openMenu(id) {
   stopOrderPolling();
-  if(state.view==="discover"&&state.serviceArea?.available===false){message(state.serviceArea.headline);return;}
+  const preview=state.restaurants.find(restaurant=>restaurant.id===id);
+  if(state.view==="discover"&&!canPreviewDiscoveryRestaurant(preview,state.fulfillment,state.serviceArea?.available)){message(state.serviceArea.headline);return;}
   const generation=state.generation,navigation=++state.navigationVersion;state.view="menu";state.inboxPanel?.close();state.inboxPanel=null;clearTimeout(state.searchTimer);loading("Opening menu");
-  try{const data=await api(`/api/restaurants/${encodeURIComponent(id)}/menu`);if(generation!==state.generation||navigation!==state.navigationVersion||state.view!=="menu")return false;state.selected=data.restaurant;state.menu=data.items;state.cart={};state.modifiers={};state.pendingDraft=readDraft(id);if(state.pendingDraft)restoreBasket(state.pendingDraft);window.scrollTo({top:0,left:0,behavior:"instant"});state.fulfillment=state.postcode&&!state.fulfillmentExplicit?"delivery":state.fulfillment;renderMenu();return true;}catch(error){if(generation===state.generation&&navigation===state.navigationVersion)showError(error,"reload-discover");return false;}
+  try{const data=await api(`/api/restaurants/${encodeURIComponent(id)}/menu`);if(generation!==state.generation||navigation!==state.navigationVersion||state.view!=="menu")return false;state.selected=data.restaurant;state.menu=data.items;state.cart={};state.modifiers={};state.pendingDraft=readDraft(id);if(state.pendingDraft)restoreBasket(state.pendingDraft);window.scrollTo({top:0,left:0,behavior:"instant"});state.fulfillment=restaurantBrowseFulfillment(data.restaurant,state.postcode&&!state.fulfillmentExplicit?"delivery":state.fulfillment);renderMenu();return true;}catch(error){if(generation===state.generation&&navigation===state.navigationVersion)showError(error,"reload-discover");return false;}
 }
 
 function modifierGroupsHtml(item, selections = state.modifiers[item.id] ?? {}, draft = false) {

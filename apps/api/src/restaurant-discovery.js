@@ -9,6 +9,8 @@ function pageNumber(url, key, fallback, max) {
 export function discoverRestaurants(db, url, now, customerId = null) {
   const page = pageNumber(url, "page", 1, 100000), pageSize = pageNumber(url, "pageSize", 50, 100);
   const postcode = url.searchParams.get("postcode"), fulfillment = url.searchParams.get("fulfillment");
+  const includeCollectionOnly = url.searchParams.get("includeCollectionOnly") ?? "false";
+  if (!["true", "false"].includes(includeCollectionOnly)) throw new HttpError(400, "VALIDATION_ERROR", "Collection listing option is invalid");
   const q = url.searchParams.get("q")?.trim().toLowerCase(), cuisine = url.searchParams.get("cuisine")?.trim().toLowerCase();
   const collection = url.searchParams.get("collection") || "all", sort = url.searchParams.get("sort") || "recommended";
   if (fulfillment && !["delivery", "collection"].includes(fulfillment)) throw new HttpError(400, "VALIDATION_ERROR", "Fulfillment filter is invalid");
@@ -22,8 +24,9 @@ export function discoverRestaurants(db, url, now, customerId = null) {
   if ((q?.length || 0) > 100 || (cuisine?.length || 0) > 80) throw new HttpError(400, "VALIDATION_ERROR", "Search is too long");
   const clauses = ["r.status='approved'", "r.suspended=0", "r.archived_at IS NULL"], parameters = { now: now.toISOString(), since: new Date(now.getTime() - 30 * 86400000).toISOString(), limit: pageSize + 1, offset: (page - 1) * pageSize };
   if (fulfillment === "delivery") {
-    clauses.push("r.delivery_enabled=1");
-    if (outcode) { clauses.push("EXISTS (SELECT 1 FROM json_each(r.delivery_outcodes) WHERE value=$outcode)"); parameters.outcode = outcode; }
+    let delivery = "r.delivery_enabled=1";
+    if (outcode) { delivery += " AND EXISTS (SELECT 1 FROM json_each(r.delivery_outcodes) WHERE value=$outcode)"; parameters.outcode = outcode; }
+    clauses.push(includeCollectionOnly === "true" ? `((${delivery}) OR (r.delivery_enabled=0 AND r.collection_enabled=1))` : `(${delivery})`);
   }
   if (fulfillment === "collection") clauses.push("r.collection_enabled=1");
   if (cuisine) { clauses.push("lower(r.cuisine)=$cuisine"); parameters.cuisine = cuisine; }
@@ -36,7 +39,7 @@ export function discoverRestaurants(db, url, now, customerId = null) {
   let availableOffer = "NULL";
   if (permitted) {
     parameters.customer = customerId;
-    availableOffer = `(SELECT g.id FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.restaurant_id=r.id AND g.customer_id=$customer AND g.dismissed_at IS NULL AND g.status='available' AND c.expires_at>$now AND COALESCE(c.starts_at,c.created_at)<=$now${fulfillment === "collection" ? " AND COALESCE(c.campaign_type,'')<>'free_delivery'" : ""} AND (COALESCE(json_extract(c.campaign_rules,'$.audienceSegment'),c.recipient_segment,'')<>'first_order' OR NOT EXISTS(SELECT 1 FROM orders prior WHERE prior.restaurant_id=r.id AND prior.customer_id=$customer AND prior.status='completed')) ORDER BY c.expires_at,g.id LIMIT 1)`;
+    availableOffer = `(SELECT g.id FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.restaurant_id=r.id AND g.customer_id=$customer AND g.dismissed_at IS NULL AND g.status='available' AND c.expires_at>$now AND COALESCE(c.starts_at,c.created_at)<=$now${fulfillment === "collection" ? " AND COALESCE(c.campaign_type,'')<>'free_delivery'" : includeCollectionOnly === "true" ? " AND (r.delivery_enabled=1 OR COALESCE(c.campaign_type,'')<>'free_delivery')" : ""} AND (COALESCE(json_extract(c.campaign_rules,'$.audienceSegment'),c.recipient_segment,'')<>'first_order' OR NOT EXISTS(SELECT 1 FROM orders prior WHERE prior.restaurant_id=r.id AND prior.customer_id=$customer AND prior.status='completed')) ORDER BY c.expires_at,g.id LIMIT 1)`;
   }
   if (collection === "offers") clauses.push(`${availableOffer} IS NOT NULL`);
   if (collection === "popular") clauses.push(`${popularity}>0`);

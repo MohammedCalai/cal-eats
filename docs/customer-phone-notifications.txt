@@ -1,0 +1,78 @@
+CAL-EATS CUSTOMER PHONE NOTIFICATIONS
+
+Scope
+The customer iOS/Android application registers an Expo notification token only
+after customer sign-in and phone permission. Business/admin phone applications
+are not included. Foreground in-app updates remain separate from OS banners.
+
+Delivery setup
+1. Configure Cal-Eats' Apple push credential and an updated signing profile.
+2. Create a separate Firebase project for uk.co.calai.caleats, without analytics
+   or paid services. Upload its messaging-only FCM v1 service credential to the
+   selected Cal-Eats Expo project. Keep secrets in private storage.
+3. Supply GOOGLE_SERVICES_JSON as an EAS file environment variable (or
+   CAL_EATS_GOOGLE_SERVICES_FILE privately for a local build). Android preflight
+   checks the app package in that configuration. Never use an EXPO_PUBLIC_
+   variable for a service credential or Expo sender access token.
+4. Configure these server-only variables on the existing Cal-Eats service:
+   CALAI_EXPO_PUSH_IOS_PROJECT_IDS
+   CALAI_EXPO_PUSH_ANDROID_PROJECT_IDS
+   CALAI_EXPO_PUSH_ACCESS_TOKEN
+   CALAI_CUSTOMER_PUSH_ENABLED=true
+   Registration also needs the separately stored messaging encryption key.
+5. Build and install fresh customer binaries. Installing JavaScript source on
+   the server cannot add a missing notification module to an installed app.
+6. Sign in, allow notifications and inspect Account > phone notification status.
+
+Approved client projects
+iOS and Android: 5bf59184-c670-44f4-be78-5229cbd02300 (@yankee1707/cal-eats)
+Android only: f76a2adf-34ca-438a-9208-bdb5d4e65ded (@bondu17/cal-eats)
+When changing build accounts, preserve the existing signing identity and set
+the Android version code above every version already uploaded to Google Play.
+
+Security and account boundaries
+Device tokens are encrypted with a purpose-derived messaging key. Installation,
+token, customer, native session and generation are bound together. Sign-out and
+native-session revocation retire pending delivery for that session. A new
+account cannot receive old-account push data through notification taps.
+Lock-screen content is generic: no message bodies, delivery addresses, phone
+numbers or bank data. Target identifiers open authenticated app screens.
+Marketing pushes also require the customer's in-app and push preferences.
+Do not enable Expo's ACCOUNT-WIDE enhanced push setting as an incidental change:
+it can affect other projects. Sender requests include private authentication;
+that does not prove account-wide enforcement is enabled.
+
+Operations
+Migration44 adds customer_push_devices and customer_push_outbox. Existing
+notification producers enqueue matching devices when a new notification is
+inserted; historical notifications are not broadcast to newly registered phones.
+The server runs a bounded worker every five seconds. It rechecks account,
+session, read state, ownership, offer dates/preferences, message retention and
+current order state before sending. Scheduled offers wait for activation.
+There is no public endpoint for broadcasting arbitrary messages.
+
+Interpret delivery state accurately
+pending/claimed: queued locally; not proof of provider acceptance.
+accepted: Expo returned a ticket; not proof of phone display.
+receipt_confirmed: the push provider accepted delivery; not proof of user receipt.
+unknown: an unverified provider response is retained for review.
+cancelled: source/device/permission state no longer authorizes that delivery.
+Invalid-device responses retire the matching device generation. Transient
+network, rate-limit and server failures have bounded retries with stable notification identifiers; provider receipts are checked later.
+Never print token ciphertext, plaintext tokens, access keys or raw provider errors.
+
+Acceptance before claiming closed-app delivery works
+Use a physical iPhone and Android phone with the new builds. Test while the app
+is open, backgrounded, closed and the phone is locked: an order confirmation,
+ETA/status update, order message, restaurant conversation, support reply and
+eligible offer. Tap each banner and check the right authenticated screen opens.
+Also test denial/re-enabling of permission, opt-out, sign-out/account switching,
+read/dismissal, an ended/scheduled campaign and checkout tap deferral.
+Keep backgroundNotificationsVerified=false until physical evidence is recorded.
+Phone settings, Focus/Do Not Disturb, Android force-stop and provider/network
+availability can suppress or delay display; no app can override those controls.
+
+Primary technical references
+https://docs.expo.dev/versions/v57.0.0/sdk/notifications/
+https://docs.expo.dev/push-notifications/sending-notifications/
+https://docs.expo.dev/push-notifications/push-notifications-setup/

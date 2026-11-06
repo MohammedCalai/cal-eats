@@ -4,6 +4,8 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressa
 import { StatusBar } from "expo-status-bar";
 import { CustomerBrandBanner, CustomerIcon, CustomerTabIcon } from "./src/CustomerBrandBanner";
 import { useCustomerAlerts } from "./src/useCustomerAlerts";
+import { useCustomerPush } from "./src/useCustomerPush";
+import type { CustomerPushTarget } from "./src/push-model";
 import { useForegroundRefresh } from "./src/useForegroundRefresh";
 import { ApiError, api } from "./src/api";
 import { notificationRevision } from "./src/notificationRevision";
@@ -40,8 +42,10 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("discover"); const [checkout, setCheckout] = useState(false); const [restaurant, setRestaurant] = useState<Restaurant | null>(null); const [cart, setCart] = useState<CartEntry[]>([]); const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery"); const [focusOrder, setFocusOrder] = useState<string | null>(null);
 
   const [notificationIds,setNotificationIds]=useState<string[]>([]),[inboxRoute,setInboxRoute]=useState<"messages"|"updates">("messages");
+  const [focusContact,setFocusContact]=useState<{id:string;title:string;support?:boolean}|null>(null);
   useEffect(resetHeader,[tab,basketOpen,checkout,inboxRoute,user?.id,resetHeader]);
   const tokenRef=useRef(token),unreadRequest=useRef(0);tokenRef.current=token;const customerAlerts=useCustomerAlerts(user?.id||null,notificationIds);
+  const customerPush=useCustomerPush({token,userId:user?.id||null,booting,blocked:checkout,preferencesReady:customerAlerts.ready,soundEnabled:customerAlerts.enabled,unreadCount:unread,onOpen:openPushTarget,onReceived:refreshUnread,onSignIn:requestPushSignIn});
   useEffect(()=>{if(!user)setNotificationsOpen(false);},[user?.id]);
   useEffect(()=>{if(notificationsOpen&&user&&customerAlerts.ready)customerAlerts.acknowledge();},[notificationsOpen,notificationIds.join("|"),user?.id,customerAlerts.ready]);
   async function refreshUnread() { if (token) { const requestedToken=token,revision=notificationRevision(),request=++unreadRequest.current;const result=await api<{unreadCount:number;items:Array<{id:string;readAt?:string|null}>}>("/api/notifications",{token});if(tokenRef.current!==requestedToken||notificationRevision()!==revision||unreadRequest.current!==request)return;setUnread(result.unreadCount);setNotificationIds(result.items.filter(item=>!item.readAt).map(item=>item.id)); } }
@@ -66,7 +70,7 @@ export default function App() {
     if(resumeCheckout&&restaurant&&cart.length){setBasketOpen(false);setCheckout(true);}
     if(resumeNotifications)setNotificationsOpen(true);
   }
-  async function logout() { if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); pendingCheckout.current=false;setAuthOpen(false);setScheduleDraft(null);setDeliveryAddress(null);setToken(null); setUser(null); setUnread(0);setNotificationIds([]); setFocusRestaurantId(null); setPreferredOffer(null); setCart([]); setRestaurant(null); setCheckout(false); setBasketOpen(false); setTab("discover"); }
+  async function logout() { await customerPush.unregister();if (token) await api("/api/native/auth/logout", { method: "POST", token, body: "{}" }).catch(() => undefined); await sessionStore.clear(); pendingCheckout.current=false;setFocusContact(null);setAuthOpen(false);setScheduleDraft(null);setDeliveryAddress(null);setToken(null); setUser(null); setUnread(0);setNotificationIds([]); setFocusRestaurantId(null); setPreferredOffer(null); setCart([]); setRestaurant(null); setCheckout(false); setBasketOpen(false); setTab("discover"); }
   function continueBrowsing(){pendingCheckout.current=false;pendingNotifications.current=false;setAuthOpen(false);setCheckout(false);setBasketOpen(false);setTab("discover");}
   function requestCheckout(){pendingNotifications.current=false;setBasketOpen(false);if(!token||!user){pendingCheckout.current=true;setAuthOpen(true);return;}setCheckout(true);}
   function openNotifications(){customerAlerts.acknowledge();if(checkout){Alert.alert("Checkout is open","Return to your basket or finish checkout before opening notifications.");return;}if(!token||!user){pendingCheckout.current=false;pendingNotifications.current=true;setBasketOpen(false);setTab("account");setAuthOpen(true);return;}setNotificationsOpen(true);}
@@ -75,6 +79,16 @@ export default function App() {
   const basketCount=cart.reduce((sum,line)=>sum+line.quantity,0);
   function openOrder(id: string) { pendingCheckout.current=false;pendingNotifications.current=false;setAuthOpen(false);setBasketOpen(false);setFocusOrder(id);setCheckout(false);setTab("orders"); }
   function openOffers(){pendingCheckout.current=false;pendingNotifications.current=false;setAuthOpen(false);setBasketOpen(false);setCheckout(false);setTab("offers");}
+  function requestPushSignIn(){pendingCheckout.current=false;pendingNotifications.current=false;setBasketOpen(false);setTab("account");setAuthOpen(true);}
+  function openPushTarget(target:CustomerPushTarget){
+    setNotificationsOpen(false);customerAlerts.acknowledge();setFocusContact(null);
+    if(target.kind==="order"&&target.orderId){openOrder(target.orderId);return;}
+    if(target.kind==="offers"){openOffers();return;}
+    pendingCheckout.current=false;pendingNotifications.current=false;setAuthOpen(false);setBasketOpen(false);
+    if(target.kind==="conversation"&&target.conversationId){setFocusContact({id:target.conversationId,title:"Restaurant messages"});setInboxRoute("messages");setTab("inbox");}
+    else if(target.kind==="support"&&target.supportCaseId){setFocusContact({id:target.supportCaseId,title:"Support request",support:true});setInboxRoute("messages");setTab("inbox");}
+    else setTab("account");
+  }
 
   const notificationPanel=token&&user?<Modal transparent visible={notificationsOpen} animationType="fade" onRequestClose={()=>setNotificationsOpen(false)}><SafeAreaView style={styles.dialogBackdrop}><View accessibilityViewIsModal style={styles.notificationDialog}><View style={styles.dialogToolbar}><Text style={styles.dialogTitle}>Notifications</Text><Pressable accessibilityRole="button" accessibilityLabel="Close notifications" onPress={()=>setNotificationsOpen(false)} style={styles.dialogClose}><CustomerIcon name="close" size={22} colour={colours.blueDark}/></Pressable></View><InboxScreen embedded key={`notifications:${user.id}`} initialTab="updates" token={token} onUnreadChange={setUnread} onOpenOrder={id=>{setNotificationsOpen(false);openOrder(id);}} onOpenOffers={()=>{setNotificationsOpen(false);openOffers();}} onUseOffer={(id,offerId,campaign)=>{setNotificationsOpen(false);useOffer(id,offerId,campaign);}} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)}/></View></SafeAreaView></Modal>:null;
   const banner=<><CustomerBrandBanner compact={headerCompact} onHome={()=>selectTab("discover")} basketCount={basketCount} onBasket={openBasket} unreadCount={unread} onBell={openNotifications} reminderPending={customerAlerts.pending}/>{notificationPanel}</>;
@@ -91,8 +105,8 @@ export default function App() {
     {tab === "discover" ? <DiscoverScreen onScrollOffset={onScrollOffset} userId={user?.id||"guest"} address={deliveryAddress} onAddress={setDeliveryAddress} onUseOffer={useOffer} focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token||""} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setBasketOpen(true)}/> : null}
     {tab === "orders" && token ? <OrdersScreen onScrollOffset={onScrollOffset} token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
     {tab === "offers" && token ? <InboxScreen onScrollOffset={onScrollOffset} key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
-    {tab === "inbox" && token ? <InboxScreen onScrollOffset={onScrollOffset} key={`messages:${inboxRoute}`} initialTab={inboxRoute} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
-    {tab === "account" && token && user ? <AccountScreen onScrollOffset={onScrollOffset} token={token} user={user} onUser={bindCustomerProfileUpdate<User>(token,user.id,()=>tokenRef.current,setUser)} onLogout={logout} soundEnabled={customerAlerts.enabled} onSoundChange={customerAlerts.toggleSound}/> : null}
+    {tab === "inbox" && token ? <InboxScreen onScrollOffset={onScrollOffset} key={`messages:${inboxRoute}`} initialTab={inboxRoute} focusContact={focusContact} onContactFocused={()=>setFocusContact(null)} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
+    {tab === "account" && token && user ? <AccountScreen onScrollOffset={onScrollOffset} token={token} user={user} onUser={bindCustomerProfileUpdate<User>(token,user.id,()=>tokenRef.current,setUser)} onLogout={logout} soundEnabled={customerAlerts.enabled} onSoundChange={customerAlerts.toggleSound} phoneNotifications={customerPush.state} onPhoneNotifications={customerPush.requestPermission}/> : null}
   </KeyboardAvoidingView>{navigation}</SafeAreaView>;
 }
 

@@ -28,6 +28,25 @@ test("online backup includes committed data still present in WAL", async () => {
   } finally { item.cleanup(); }
 });
 
+test("restorable backups omit phone tokens and pending alerts without changing the live source or order history", async () => {
+  const item = fixture(`push-${process.pid}`);
+  try {
+    item.db.exec("CREATE TABLE customer_push_devices(id TEXT PRIMARY KEY,ciphertext TEXT); CREATE TABLE customer_push_outbox(id TEXT PRIMARY KEY,device_id TEXT REFERENCES customer_push_devices(id)); INSERT INTO customer_push_devices VALUES('phone-one','private-fixture-token-material'); INSERT INTO customer_push_outbox VALUES('alert-one','phone-one'); INSERT INTO orders VALUES('retained-order');");
+    await createBackup({ source: item.source, destination: item.destination });
+    const backup = new DatabaseSync(item.destination, { readOnly: true });
+    try {
+      assert.equal(backup.prepare("SELECT COUNT(*) n FROM customer_push_devices").get().n, 0);
+      assert.equal(backup.prepare("SELECT COUNT(*) n FROM customer_push_outbox").get().n, 0);
+      assert.equal(backup.prepare("SELECT id FROM orders").get().id, "retained-order");
+      assert.equal(backup.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+      assert.equal(backup.prepare("PRAGMA foreign_key_check").all().length, 0);
+    } finally { backup.close(); }
+    assert.equal(item.db.prepare("SELECT ciphertext FROM customer_push_devices").get().ciphertext, "private-fixture-token-material");
+    assert.equal(item.db.prepare("SELECT COUNT(*) n FROM customer_push_outbox").get().n, 1);
+    assert.equal(fs.readFileSync(item.destination).includes(Buffer.from("private-fixture-token-material")), false);
+  } finally { item.cleanup(); }
+});
+
 test("backup refuses to overwrite an existing destination", async () => {
   const item = fixture(`overwrite-${process.pid}`);
   try {
