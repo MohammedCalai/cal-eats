@@ -20,6 +20,19 @@ async function setup(){
 }
 const fakeTransport=calls=>({send:async(payload,{beforeSend})=>{if(!beforeSend())return {status:'cancelled'};calls.push(payload);return {status:'accepted',ticketId:randomUUID()};},receipt:async()=>({status:'receipt_confirmed'})});
 
+test('customer iOS and Android pushes stay silent with an old app opting in and a legacy audible device row',async()=>{
+ for(const platform of ['ios','android']){
+  const s=await setup(),calls=[];try{
+   const registered=await s.register({...s.registration,platform,soundEnabled:true});assert.equal(registered.status,200,registered.text);
+   assert.equal(s.f.db.prepare('SELECT sound_enabled FROM customer_push_devices').get().sound_enabled,0);
+   s.f.db.prepare('UPDATE customer_push_devices SET sound_enabled=1').run();
+   s.voucher();await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls)});
+   assert.equal(calls.length,1);assert.equal(calls[0].sound,undefined);assert.equal(calls[0].channelId,'cal-eats-updates-quiet');
+   assert.equal(calls[0].priority,'high');assert.ok(calls[0].title&&calls[0].body&&calls[0].data.notificationId);
+  }finally{await s.f.close();}
+ }
+});
+
 test('native push registration protects customer/session/project boundaries, encrypted ownership and logout races',async()=>{
  const s=await setup();try{
   const cookie=await s.f.login('customer@calai.local','LocalCustomer!4310');assert.equal((await s.register(s.registration,{})).status,401);assert.equal((await s.register(s.registration,{cookie})).status,403);
@@ -27,7 +40,7 @@ test('native push registration protects customer/session/project boundaries, enc
   assert.equal((await s.register({...s.registration,projectId:alternate})).status,403);assert.equal((await s.register({...s.registration,expoPushToken:'not-a-token'})).status,400);
   for(const field of ['installationId','expoPushToken','projectId'])assert.equal((await s.register({...s.registration,[field]:[s.registration[field]]})).status,400,'Array values must not bypass token/ID validation');
   const registered=await s.register();assert.equal(registered.status,200,registered.text);assert.equal(registered.body.data.registered,true);assert.equal(registered.text.includes(s.registration.expoPushToken),false);
-  const original=s.f.db.prepare('SELECT * FROM customer_push_devices').get();assert.ok(original.ciphertext);assert.equal(JSON.stringify(original).includes(s.registration.expoPushToken),false);await s.register();assert.equal(s.f.db.prepare('SELECT generation FROM customer_push_devices').get().generation,original.generation);
+  const original=s.f.db.prepare('SELECT * FROM customer_push_devices').get();assert.ok(original.ciphertext);assert.equal(original.sound_enabled,0);assert.equal(JSON.stringify(original).includes(s.registration.expoPushToken),false);await s.register();assert.equal(s.f.db.prepare('SELECT generation FROM customer_push_devices').get().generation,original.generation);
   s.voucher();assert.equal(s.f.db.prepare("SELECT COUNT(*) n FROM customer_push_outbox WHERE status='pending'").get().n,1);
   const other=await s.f.json('/api/native/auth/register',{method:'POST',body:{name:'Other customer',email:'push-other@example.test',password:'OtherPushFixture2026!'}}),otherHeaders={authorization:`Bearer ${other.body.data.token}`};assert.equal(other.status,201);
   assert.equal((await s.register(s.registration,{headers:otherHeaders})).status,200);const rebound=s.f.db.prepare('SELECT * FROM customer_push_devices').get();assert.equal(rebound.user_id,other.body.data.user.id);assert.ok(rebound.generation>original.generation);assert.equal(s.f.db.prepare('SELECT status FROM customer_push_outbox').get().status,'cancelled');
@@ -43,7 +56,7 @@ test('persisted customer notifications deliver safe current actions and honor re
   const placed=await s.f.json('/api/orders',{method:'POST',headers:{...s.headers,'Idempotency-Key':'push-order'},body:{restaurantId:s.restaurant.id,items:[{menuItemId:s.item.id,quantity:1}],paymentMethod:'mock_card',fulfillment:'collection'}});assert.equal(placed.status,201,placed.text);const order=placed.body.data;
   const status=async value=>{const r=await s.f.json(`/api/restaurant/orders/${order.id}/status`,{method:'PATCH',cookie:s.owner,body:{status:value}});assert.equal(r.status,200,r.text);};
   await status('accepted');s.notice('order_status',`order:${order.id}:accepted`,{orderId:order.id,restaurantId:s.restaurant.id});assert.equal(s.f.db.prepare('SELECT COUNT(*) n FROM customer_push_outbox').get().n,1,'Notification replay never duplicates a device job');
-  await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,1);assert.deepEqual(calls[0].data,{notificationId:s.f.db.prepare("SELECT id FROM user_notifications WHERE user_id=? AND type='order_status'").get(s.customerId).id,recipientUserId:s.customerId,kind:'order',orderId:order.id});assert.equal(calls[0].sound,'default');
+  await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,1);assert.deepEqual(calls[0].data,{notificationId:s.f.db.prepare("SELECT id FROM user_notifications WHERE user_id=? AND type='order_status'").get(s.customerId).id,recipientUserId:s.customerId,kind:'order',orderId:order.id});assert.equal(calls[0].sound,undefined);assert.equal(calls[0].channelId,'cal-eats-updates-quiet');
   await status('preparing');await status('ready');await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,2,'Only the latest order status is dispatched');
   const unread=s.notice('order_status',`order:${order.id}:ready:read-race`,{orderId:order.id,restaurantId:s.restaurant.id});await runCustomerPush(s.f.db,s.f.config,{adapter,beforeDispatch:()=>s.f.db.prepare('UPDATE user_notifications SET read_at=? WHERE id=?').run(s.now(),unread.id)});assert.equal(calls.length,2);
   await s.f.json('/api/account/marketing-preferences',{method:'PATCH',headers:s.headers,body:{inAppPromotions:true,pushPromotions:false,source:'push-test'}});s.offer();await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,2);

@@ -8,7 +8,7 @@ import { createPushDeviceBinding, type PushDeviceResult } from "./push-binding";
 import { createCustomerPushTapQueue, customerPushProject, parseCustomerPushTarget, type CustomerPushTarget } from "./push-model";
 
 export type CustomerPushState = { status: "checking" | "enabled" | "pending" | "permission_needed" | "blocked" | "unavailable" | "error"; message: string };
-type Options = { token: string | null; userId: string | null; booting: boolean; blocked: boolean; preferencesReady: boolean; soundEnabled: boolean; unreadCount: number; onOpen: (target: CustomerPushTarget) => void; onReceived: () => Promise<unknown>; onSignIn: () => void };
+type Options = { token: string | null; userId: string | null; booting: boolean; blocked: boolean; unreadCount: number; onOpen: (target: CustomerPushTarget) => void; onReceived: () => Promise<unknown>; onSignIn: () => void };
 const native = Platform.OS === "ios" || Platform.OS === "android";
 let foregroundCustomer: string | null = null;
 let lastResponse: Notifications.NotificationResponse | null = null;
@@ -74,7 +74,7 @@ export function useCustomerPush(options: Options) {
   }, [options.token, options.userId, options.booting, options.blocked, responseVersion, queue]);
 
   useEffect(() => {
-    if (!native || !options.token || !options.userId || !options.preferencesReady) return;
+    if (!native || !options.token || !options.userId) return;
     const token = options.token, scope = ++generation.current;
     if (disabledSession.current && disabledSession.current !== token) disabledSession.current = null;
     const current = () => generation.current === scope && latest.current.token === token && disabledSession.current !== token;
@@ -87,12 +87,11 @@ export function useCustomerPush(options: Options) {
       if (!projectId) { if (current()) setState({ status: "unavailable", message: "Phone notifications are not configured in this build yet." }); return; }
       if (current()) setState({ status: "checking", message: "Connecting phone notifications…" });
       if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("cal-eats-updates", { name: "Cal-Eats updates", importance: Notifications.AndroidImportance.HIGH, sound: "default", vibrationPattern: [0, 200, 100, 200], lightColor: "#2865E9" });
         await Notifications.setNotificationChannelAsync("cal-eats-updates-quiet", { name: "Cal-Eats updates (silent)", importance: Notifications.AndroidImportance.HIGH, sound: null, enableVibrate: false, lightColor: "#2865E9" });
       }
       if (!current()) return;
       let permission = await Notifications.getPermissionsAsync();
-      if (current() && permission.canAskAgain && (permission.status === "undetermined" || ask && permission.status !== "granted")) permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: true } });
+      if (current() && permission.canAskAgain && (permission.status === "undetermined" || ask && permission.status !== "granted")) permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: false } });
       if (!current()) return;
       if (!permission.granted && permission.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) {
         await getInstallationId().then(id => binding.unbind(token, id)).catch(() => undefined); if (!current()) return;
@@ -106,7 +105,7 @@ export function useCustomerPush(options: Options) {
       ]).finally(() => clearTimeout(timeout));
       if (!current()) return;
       binding.activate(token);
-      const result = await binding.bind(token, { installationId, expoPushToken: pushToken.data, platform: Platform.OS as "ios" | "android", projectId, soundEnabled: latest.current.soundEnabled });
+      const result = await binding.bind(token, { installationId, expoPushToken: pushToken.data, platform: Platform.OS as "ios" | "android", projectId, soundEnabled: false });
       if (!current() || !result) return;
       setState(result.pushEnabled ? { status: "enabled", message: "Order updates, messages and eligible offers can appear on your phone, even when Cal-Eats is closed." } : { status: "pending", message: "Your phone is connected. Cal-Eats is finishing notification setup." });
     }
@@ -125,9 +124,8 @@ export function useCustomerPush(options: Options) {
       generation.current++; if (runRegistration.current === run) runRegistration.current = null; foreground.remove(); rolled.remove();
       void getInstallationId().then(id => binding.unbind(token, id)).catch(() => undefined);
     };
-  }, [options.token, options.userId, options.preferencesReady, binding]);
+  }, [options.token, options.userId, binding]);
 
-  useEffect(() => { if (options.preferencesReady) void runRegistration.current?.(false); }, [options.soundEnabled, options.preferencesReady]);
   useEffect(() => { if (native) void Notifications.setBadgeCountAsync(options.token ? options.unreadCount : 0).catch(() => undefined); }, [options.token, options.unreadCount]);
 
   async function requestPermission() {

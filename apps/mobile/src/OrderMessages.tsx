@@ -8,12 +8,13 @@ import type { ThreadCursor } from "./thread-refresh";
 import { useThreadScroll } from "./useThreadScroll";
 import { useForegroundRefresh } from "./useForegroundRefresh";
 type Conversation = { items: Array<{id:string; senderRole:string; message:string; createdAt:string}>; isOpen:boolean; restaurantPhone?:string|null; nextCursor?:ThreadCursor|null };
-export function OrderMessages({ token, orderId, phone, available=true }: { token:string; orderId:string; phone?:string|null; available?:boolean }) {
+export function OrderMessages({ token, orderId, phone, available=true,onOpenChange }: { token:string; orderId:string; phone?:string|null; available?:boolean;onOpenChange?:(open:boolean)=>void }) {
   const [open,setOpen]=useState(false), [data,setData]=useState<Conversation|null>(null), [message,setMessage]=useState(""), [error,setError]=useState(""), [busy,setBusy]=useState(false),[closed,setClosed]=useState(false),[sent,setSent]=useState(false);
   const retryKeys=useRef(new Map<string,string>()),sendingScope=useRef<object|null>(null),lastRead=useRef<string|null>(null),active=useRef({token,orderId});if(active.current.token!==token||active.current.orderId!==orderId)active.current={token,orderId};
   const threadScroll=useThreadScroll(active.current,open),refresh=useRef<ReturnType<typeof createThreadRefresh<Conversation>>|null>(null);
   const messageWindow=useRef<ReturnType<typeof createThreadWindow<Conversation["items"][number]>>|null>(null);
   const [cursor,setCursor]=useState<ThreadCursor|null|undefined>(),[loading,setLoading]=useState(false);
+  useEffect(()=>{onOpenChange?.(open);return()=>onOpenChange?.(false);},[open,onOpenChange]);
   useEffect(()=>{
     const scope=active.current;
     const window=createThreadWindow<Conversation["items"][number]>();messageWindow.current=window;

@@ -1,9 +1,10 @@
 import type {Address} from "./src/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { CustomerBrandBanner, CustomerIcon, CustomerTabIcon } from "./src/CustomerBrandBanner";
 import { useCustomerAlerts } from "./src/useCustomerAlerts";
+import { customerUnreadPromptVisible } from "./src/customer-unread-prompt";
 import { useCustomerPush } from "./src/useCustomerPush";
 import { useCustomerLiveActivity } from "./src/useCustomerLiveActivity";
 import type { CustomerPushTarget } from "./src/push-model";
@@ -39,6 +40,11 @@ export default function App() {
   const [authOpen,setAuthOpen]=useState(false);
   const pendingCheckout=useRef(false);
   const [notificationsOpen,setNotificationsOpen]=useState(false);
+  const [conversationOpen,setConversationOpen]=useState(false),[keyboardVisible,setKeyboardVisible]=useState(false);
+  useEffect(()=>{
+    const listeners=[Keyboard.addListener("keyboardWillShow",()=>setKeyboardVisible(true)),Keyboard.addListener("keyboardDidShow",()=>setKeyboardVisible(true)),Keyboard.addListener("keyboardWillHide",()=>setKeyboardVisible(false)),Keyboard.addListener("keyboardDidHide",()=>setKeyboardVisible(false))];
+    return()=>listeners.forEach(listener=>listener.remove());
+  },[]);
   const pendingNotifications=useRef(false);
   const [tab, setTab] = useState<Tab>("discover"); const [checkout, setCheckout] = useState(false); const [restaurant, setRestaurant] = useState<Restaurant | null>(null); const [cart, setCart] = useState<CartEntry[]>([]); const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery"); const [focusOrder, setFocusOrder] = useState<string | null>(null);
 
@@ -46,13 +52,13 @@ export default function App() {
   const [focusContact,setFocusContact]=useState<{id:string;title:string;support?:boolean}|null>(null);
   useEffect(resetHeader,[tab,basketOpen,checkout,inboxRoute,user?.id,resetHeader]);
   const tokenRef=useRef(token),unreadRequest=useRef(0);tokenRef.current=token;const customerAlerts=useCustomerAlerts(user?.id||null,notificationIds);
-  const customerPush=useCustomerPush({token,userId:user?.id||null,booting,blocked:checkout,preferencesReady:customerAlerts.ready,soundEnabled:customerAlerts.enabled,unreadCount:unread,onOpen:openPushTarget,onReceived:refreshUnread,onSignIn:requestPushSignIn});
+  const customerPush=useCustomerPush({token,userId:user?.id||null,booting,blocked:checkout,unreadCount:unread,onOpen:openPushTarget,onReceived:refreshUnread,onSignIn:requestPushSignIn});
   const customerLiveActivity=useCustomerLiveActivity({token,userId:user?.id||null,booting,sessionUncertain:Boolean(bootError&&!user),blocked:checkout,onOpenOrder:openOrder,onSignIn:requestPushSignIn});
   useEffect(()=>{if(!user)setNotificationsOpen(false);},[user?.id]);
   useEffect(()=>{if(notificationsOpen&&user&&customerAlerts.ready)customerAlerts.acknowledge();},[notificationsOpen,notificationIds.join("|"),user?.id,customerAlerts.ready]);
   async function refreshUnread() { if (token) { const requestedToken=token,revision=notificationRevision(),request=++unreadRequest.current;const result=await api<{unreadCount:number;items:Array<{id:string;readAt?:string|null}>}>("/api/notifications",{token});if(tokenRef.current!==requestedToken||notificationRevision()!==revision||unreadRequest.current!==request)return;setUnread(result.unreadCount);setNotificationIds(result.items.filter(item=>!item.readAt).map(item=>item.id)); } }
   useForegroundRefresh(refreshUnread, Boolean(token));
-  useEffect(() => { if (token) void refreshUnread().catch(() => undefined); else setUnread(0); }, [token]);
+  useEffect(() => { setUnread(0);setNotificationIds([]);if (token) void refreshUnread().catch(() => undefined); }, [token]);
   function useOffer(restaurantId: string, offerId: string, campaignType?:string|null) { const open = () => { if(campaignType==="free_delivery")setFulfillment("delivery"); setPreferredOffer({restaurantId,offerId}); setFocusRestaurantId(restaurantId); setTab("discover"); setCheckout(false); setBasketOpen(false); if (restaurant?.id !== restaurantId) { setRestaurant(null); setCart([]); } }; if (cart.length && restaurant?.id !== restaurantId) Alert.alert("Start a new basket?", "This offer is for another restaurant. Continuing replaces your current basket.", [{text:"Keep basket",style:"cancel"},{text:"Use offer",onPress:open}]); else open(); }
 
   async function restore() {
@@ -93,7 +99,8 @@ export default function App() {
   }
 
   const notificationPanel=token&&user?<Modal transparent visible={notificationsOpen} animationType="fade" onRequestClose={()=>setNotificationsOpen(false)}><SafeAreaView style={styles.dialogBackdrop}><View accessibilityViewIsModal style={styles.notificationDialog}><View style={styles.dialogToolbar}><Text style={styles.dialogTitle}>Notifications</Text><Pressable accessibilityRole="button" accessibilityLabel="Close notifications" onPress={()=>setNotificationsOpen(false)} style={styles.dialogClose}><CustomerIcon name="close" size={22} colour={colours.blueDark}/></Pressable></View><InboxScreen embedded key={`notifications:${user.id}`} initialTab="updates" token={token} onUnreadChange={setUnread} onOpenOrder={id=>{setNotificationsOpen(false);openOrder(id);}} onOpenOffers={()=>{setNotificationsOpen(false);openOffers();}} onUseOffer={(id,offerId,campaign)=>{setNotificationsOpen(false);useOffer(id,offerId,campaign);}} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)}/></View></SafeAreaView></Modal>:null;
-  const banner=<><CustomerBrandBanner compact={headerCompact} onHome={()=>selectTab("discover")} basketCount={basketCount} onBasket={openBasket} unreadCount={unread} onBell={openNotifications} reminderPending={customerAlerts.pending}/>{notificationPanel}</>;
+  const showUnreadPrompt=customerUnreadPromptVisible(customerAlerts.pending,customerAlerts.foreground,unread===0||booting||authOpen||checkout||notificationsOpen||conversationOpen||keyboardVisible);
+  const banner=<><View style={styles.bannerLayer}><CustomerBrandBanner compact={headerCompact} onHome={()=>selectTab("discover")} basketCount={basketCount} onBasket={openBasket} unreadCount={unread} onBell={openNotifications} reminderPending={customerAlerts.pending}/>{showUnreadPrompt?<View accessibilityLiveRegion="polite" style={styles.unreadPrompt}><View style={styles.unreadPromptHeading}><CustomerIcon name="bell" size={23} colour={colours.blue}/><Text style={styles.unreadPromptText}>You have unread notifications</Text></View><View style={styles.unreadPromptActions}><Pressable accessibilityRole="button" onPress={openNotifications} style={styles.unreadPromptView}><Text style={styles.unreadPromptViewText}>View notifications</Text></Pressable><Pressable accessibilityRole="button" onPress={customerAlerts.acknowledge} style={styles.unreadPromptDismiss}><Text style={styles.unreadPromptDismissText}>Dismiss</Text></Pressable></View></View>:null}</View>{notificationPanel}</>;
   const navigation=<View style={styles.nav}>{tabs.map(item=><Pressable accessibilityRole="tab" accessibilityLabel={item.label+(item.id==="inbox"&&unread>0?`, ${unread} unread notifications`:"")} accessibilityState={{selected:tab===item.id}} key={item.id} onPress={()=>selectTab(item.id)} style={[styles.navItem,tab===item.id&&styles.navSelected]}>{tab===item.id?<View style={styles.navIndicator}/>:null}<View style={[styles.navIconGlow,tab===item.id&&styles.navIconGlowSelected]}><CustomerTabIcon name={item.id} active={tab===item.id}/>{item.id==="inbox"&&unread>0?<View style={styles.navBadge}><Text style={styles.navBadgeText}>{unread>99?"99+":unread}</Text></View>:null}</View><Text style={[styles.navLabel,tab===item.id&&styles.navActive]}>{item.label}</Text></Pressable>)}</View>;
   if(booting)return <SafeAreaView style={styles.shell}><StatusBar style="dark"/>{banner}<View style={styles.center}><ActivityIndicator size="large" color={colours.blue}/><Text style={styles.muted}>Opening Cal-Eats…</Text></View></SafeAreaView>;
   if(bootError&&!user)return <SafeAreaView style={styles.shell}><StatusBar style="dark"/>{banner}<View style={styles.center}><ErrorBanner message={bootError}/><Button onPress={()=>void restore()}>Try again</Button><Button tone="quiet" onPress={()=>setBootError("")}>Browse restaurants</Button></View>{navigation}</SafeAreaView>;
@@ -103,16 +110,24 @@ export default function App() {
   if (checkout && restaurant && token && user) return <SafeAreaView style={styles.shell}><StatusBar style="dark"/>{banner}<KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}><CheckoutScreen initialPhone={user.phone||""} initialSchedule={scheduleDraft?.restaurantId===restaurant.id&&scheduleDraft?.fulfillment===fulfillment?scheduleDraft:null} onScheduleChange={choice=>setScheduleDraft({...choice,restaurantId:restaurant.id,fulfillment})} onScrollOffset={onScrollOffset} initialAddress={deliveryAddress} onAddress={setDeliveryAddress} onOfferResolved={offerId=>setPreferredOffer(offerId?{restaurantId:restaurant.id,offerId}:null)} token={token} restaurant={restaurant} cart={cart} fulfillment={fulfillment} onBack={() => {setCheckout(false);setBasketOpen(true);}} onCheckOrders={() => { setCart([]); setPreferredOffer(null); setCheckout(false); setTab("orders"); }} onOrdered={(order) => {void customerLiveActivity.refresh();setScheduleDraft(null); setCart([]); setPreferredOffer(null); setCheckout(false); openOrder(order.id); }}/></KeyboardAvoidingView>{navigation}</SafeAreaView>;
 
   return <SafeAreaView style={styles.shell}><StatusBar style="dark"/>{banner}<KeyboardAvoidingView style={styles.content} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-    <ErrorBanner message={customerAlerts.error}/>
     {tab === "discover" ? <DiscoverScreen onScrollOffset={onScrollOffset} userId={user?.id||"guest"} address={deliveryAddress} onAddress={setDeliveryAddress} onUseOffer={useOffer} focusRestaurantId={focusRestaurantId} onRestaurantFocused={() => setFocusRestaurantId(null)} token={token||""} fulfillment={fulfillment} onFulfillment={setFulfillment} restaurant={restaurant} cart={cart} onRestaurant={setRestaurant} onCart={setCart} onCheckout={() => setBasketOpen(true)}/> : null}
-    {tab === "orders" && token ? <OrdersScreen onScrollOffset={onScrollOffset} token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
-    {tab === "offers" && token ? <InboxScreen onScrollOffset={onScrollOffset} key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
-    {tab === "inbox" && token ? <InboxScreen onScrollOffset={onScrollOffset} key={`messages:${inboxRoute}`} initialTab={inboxRoute} focusContact={focusContact} onContactFocused={()=>setFocusContact(null)} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
-    {tab === "account" && token && user ? <AccountScreen onScrollOffset={onScrollOffset} token={token} user={user} onUser={bindCustomerProfileUpdate<User>(token,user.id,()=>tokenRef.current,setUser)} onLogout={logout} soundEnabled={customerAlerts.enabled} onSoundChange={customerAlerts.toggleSound} phoneNotifications={customerPush.state} onPhoneNotifications={customerPush.requestPermission}/> : null}
+    {tab === "orders" && token ? <OrdersScreen onConversationActiveChange={setConversationOpen} onScrollOffset={onScrollOffset} token={token} focusOrder={focusOrder} onFocused={() => setFocusOrder(null)}/> : null}
+    {tab === "offers" && token ? <InboxScreen onConversationActiveChange={setConversationOpen} onScrollOffset={onScrollOffset} key="offers" initialTab="offers" token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
+    {tab === "inbox" && token ? <InboxScreen onConversationActiveChange={setConversationOpen} onScrollOffset={onScrollOffset} key={`messages:${inboxRoute}`} initialTab={inboxRoute} focusContact={focusContact} onContactFocused={()=>setFocusContact(null)} token={token} onOpenOrder={openOrder} onUseOffer={useOffer} onOfferDismissed={id=>setPreferredOffer(current=>current?.offerId===id?null:current)} onUnreadChange={setUnread}/> : null}
+    {tab === "account" && token && user ? <AccountScreen onScrollOffset={onScrollOffset} token={token} user={user} onUser={bindCustomerProfileUpdate<User>(token,user.id,()=>tokenRef.current,setUser)} onLogout={logout} onConversationActiveChange={setConversationOpen} phoneNotifications={customerPush.state} onPhoneNotifications={customerPush.requestPermission}/> : null}
   </KeyboardAvoidingView>{navigation}</SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
+  bannerLayer:{flexShrink:0,zIndex:20},
+  unreadPrompt:{marginHorizontal:12,marginVertical:8,padding:15,gap:11,borderRadius:18,borderWidth:1,borderColor:"#AACDEF",backgroundColor:"#F5FAFF",shadowColor:"#1C4F7D",shadowOpacity:.17,shadowRadius:16,shadowOffset:{width:0,height:5},elevation:9},
+  unreadPromptHeading:{flexDirection:"row",alignItems:"center",gap:10},
+  unreadPromptText:{flex:1,color:colours.ink,fontSize:16,lineHeight:23,fontWeight:"800"},
+  unreadPromptActions:{flexDirection:"row",alignItems:"center",gap:10},
+  unreadPromptView:{minHeight:44,paddingHorizontal:15,borderRadius:12,justifyContent:"center",backgroundColor:colours.blue},
+  unreadPromptViewText:{color:colours.white,fontWeight:"800",fontSize:14},
+  unreadPromptDismiss:{minHeight:44,paddingHorizontal:14,justifyContent:"center"},
+  unreadPromptDismissText:{color:colours.blueDark,fontWeight:"700",fontSize:14},
   dialogBackdrop:{flex:1,justifyContent:"center",padding:16,backgroundColor:"rgba(37,78,117,.4)"},
   notificationDialog:{height:"82%",width:"100%",maxWidth:640,alignSelf:"center",backgroundColor:colours.panel,borderWidth:1,borderColor:colours.line,borderRadius:20,overflow:"hidden"},
   dialogToolbar:{minHeight:60,paddingHorizontal:16,flexDirection:"row",alignItems:"center",justifyContent:"space-between",borderBottomWidth:1,borderBottomColor:colours.line,backgroundColor:"#F2F8FF"},

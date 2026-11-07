@@ -58,7 +58,9 @@ function source(db,config,row,stamp){
   }else return {failure:'PUSH_UNSUPPORTED_NOTIFICATION'};
   const data={notificationId:n.id,recipientUserId:n.user_id,kind,...(kind==='order'&&order?{orderId:order.id}:{}),...(kind==='conversation'?{conversationId:n.conversation_id}:{}),...(kind==='support'?{supportCaseId:n.support_case_id}:{}),...(n.type==='offer'?{offerId:n.offer_id}:{})};
   const ttl=Math.min(900,Math.floor((Date.parse(expiresAt)-Date.parse(stamp))/1000));if(ttl<1)return {failure:'PUSH_SOURCE_EXPIRED'};
-  return {device,payload:{title,body,data,ttl,priority:'high',channelId:device.sound_enabled?'cal-eats-updates':'cal-eats-updates-quiet',...(device.sound_enabled?{sound:'default'}:{}),collapseId:n.id,tag:n.id},notification:n};
+  // Customer updates are always silent, including registrations from older apps
+  // and legacy stored preferences. Business/tablet alerts use a separate path.
+  return {device,payload:{title,body,data,ttl,priority:'high',channelId:'cal-eats-updates-quiet',collapseId:n.id,tag:n.id},notification:n};
 }
 
 async function run(db,config,{workerId=randomUUID(),limit=25,adapter,beforeDispatch}={}){

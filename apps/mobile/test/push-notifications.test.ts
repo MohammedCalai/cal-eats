@@ -71,13 +71,14 @@ test("a late old registration and logout cannot replace a newer customer's devic
   assert.equal(owner, "new");
 });
 
-test("a changed push token and silent preference are registered for the active session", async () => {
+test("customer push stays silent even with an old sound-on preference and after token rotation", async () => {
   const registrations: PushDeviceRegistration[] = [];
   const binding = createPushDeviceBinding(async (_session, value) => { registrations.push(value); return registered(value); }, async () => {});
   assert.equal(await binding.bind("guest", device), null);
   binding.activate("customer-session"); await binding.bind("customer-session", device);
   await binding.bind("customer-session", { ...device, expoPushToken: "ExponentPushToken[rolled-device]", soundEnabled: false });
   assert.equal(registrations.length, 2);
+  assert.equal(registrations[0]?.soundEnabled, false);
   assert.equal(registrations.at(-1)?.expoPushToken, "ExponentPushToken[rolled-device]");
   assert.equal(registrations.at(-1)?.soundEnabled, false);
 });

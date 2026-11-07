@@ -9,11 +9,10 @@
   <title>Cal-Eats · Local food, made easy</title>
   <link rel="icon" href="/assets/calai-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/landing.css">
-  <script src="/landing.js" defer></script>
+  <script type="module" src="/landing.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <div class="preview" role="status">Local preview <span aria-hidden="true">·</span> sample restaurants and orders</div>
   <header class="site-header">
     <a class="brand" href="/" aria-label="Cal-Eats home"><img class="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats"></a>
     <nav aria-label="Main navigation">
@@ -29,19 +28,16 @@
         <p class="eyebrow">Launching in Luton</p>
         <h1>Good food from around the corner.</h1>
         <p class="hero-lead">Discover local restaurants, choose delivery or collection, and order your favourites in a few simple steps.</p>
-        <form class="postcode" action="/order/" method="get">
-          <label for="postcode">Enter your Luton postcode</label>
-          <div class="postcode-row">
-            <input id="postcode" name="postcode" inputmode="text" autocomplete="postal-code" placeholder="For example, LU1 2AB" required maxlength="10">
-            <button type="submit">Find food</button>
-          </div>
-          <p>Preview discovery currently supports sample LU1 and LU2 areas.</p>
-        </form>
-        <a class="text-link" href="/order/">Browse the customer preview <span aria-hidden="true">→</span></a>
+        <div class="download-buttons" aria-label="Download Cal-Eats">
+          <button class="store-button" type="button" data-store="ios" disabled><span><strong>iPhone &amp; iPad</strong><small data-store-status>Available soon</small></span></button>
+          <button class="store-button" type="button" data-store="android" disabled><span><strong>Android</strong><small data-store-status>Available soon</small></span></button>
+        </div>
+        <p class="download-status" data-download-status>Cal-Eats is coming to the App Store and Google Play. Download links will open here when the apps are publicly available.</p>
+        <a class="text-link" href="/download/">Discover the Cal-Eats app <span aria-hidden="true">→</span></a>
       </div>
       <figure class="hero-visual">
         <img src="/assets/food-demo.png" alt="Illustrative chicken rice bowl and seasoned fries on a navy background">
-        <figcaption>Illustrative sample food photography</figcaption>
+        <figcaption>Illustrative food photography</figcaption>
       </figure>
     </section>
 
@@ -51,7 +47,7 @@
         <h2 id="steps-title">A simpler way to order locally</h2>
       </div>
       <ol>
-        <li><span>1</span><div><h3>Find nearby food</h3><p>Start with your postcode and explore participating sample restaurants.</p></div></li>
+        <li><span>1</span><div><h3>Find nearby food</h3><p>Save your address in the app and explore participating local restaurants.</p></div></li>
         <li><span>2</span><div><h3>Make it yours</h3><p>See clear prices, allergen information supplied by restaurants, and available choices.</p></div></li>
         <li><span>3</span><div><h3>Follow your order</h3><p>Choose delivery or collection and check progress from confirmation to completion.</p></div></li>
       </ol>
@@ -66,7 +62,7 @@
           <li><strong>Manage your menu</strong><span>Update dishes, choices, availability and opening hours.</span></li>
           <li><strong>Run orders from a tablet</strong><span>Receive, accept and progress delivery or collection orders.</span></li>
           <li><strong>Keep customer relationships useful</strong><span>See your customer directory and create optional in-app offers.</span></li>
-          <li><strong>See the numbers clearly</strong><span>Review simulated earnings, refunds and payout reporting in the local preview.</span></li>
+          <li><strong>See the numbers clearly</strong><span>Review order breakdowns, earnings and payout reporting.</span></li>
         </ul>
         <div class="button-row">
           <a class="button" href="/order/?view=register-restaurant">Register restaurant interest</a>
@@ -74,8 +70,8 @@
         </div>
         <p class="fine">Restaurant registration and commercial terms remain subject to review before launch.</p>
       </div>
-      <aside class="workspace-card" aria-label="Restaurant workspace preview">
-        <div class="workspace-top"><span>Restaurant workspace</span><span class="status">Local preview</span></div>
+      <aside class="workspace-card" aria-label="Restaurant workspace overview">
+        <div class="workspace-top"><span>Restaurant workspace</span><span class="status">Built for your team</span></div>
         <div class="workspace-order"><span>New collection order</span><strong>£17.50</strong></div>
         <div class="workspace-line"><span>2 items</span><span>Accept or reject</span></div>
         <div class="workspace-grid"><span>Orders</span><span>Menu</span><span>Customers</span><span>Earnings</span></div>
@@ -85,25 +81,25 @@
     <section class="faq" id="questions" aria-labelledby="faq-title">
       <div class="section-heading"><p class="eyebrow">Good to know</p><h2 id="faq-title">Questions before launch</h2></div>
       <div class="faq-grid">
-        <details><summary>Where will Cal-Eats be available?</summary><p>The marketplace is preparing to launch in Luton. The local preview uses fictional restaurants and sample LU1/LU2 delivery areas.</p></details>
+        <details><summary>Where will Cal-Eats be available?</summary><p>We’re preparing to launch in Luton. Restaurant availability and delivery areas will be shown in the app.</p></details>
         <details><summary>Who delivers the food?</summary><p>Participating restaurants use their own delivery drivers. Collection is also supported. Cal-Eats does not provide a courier fleet.</p></details>
-        <details><summary>Can I use the preview now?</summary><p>Yes. You can explore the local customer journey and sample orders. Payments, restaurant data and order activity in the preview are simulated.</p></details>
+        <details><summary>How will I get the app?</summary><p>The iPhone and Android download buttons will connect you to the official stores when Cal-Eats is publicly available. Existing invited users can continue using their invitation.</p></details>
         <details><summary>How do restaurants manage their menus and orders?</summary><p>Cal-Eats has one customer app and one business platform. Restaurants use the business platform on their tablet to upload photos, update items and prices, manage availability and handle orders.</p></details>
       </div>
     </section>
 
     <section class="closing">
       <p class="eyebrow">Hungry for something local?</p>
-      <h2>See what Cal-Eats is becoming.</h2>
-      <a class="button light" href="/order/">Explore the customer preview</a>
+      <h2>Your next local favourite is waiting.</h2>
+      <a class="button light" href="/download/">Get the Cal-Eats app</a>
     </section>
   </main>
 
   <footer>
     <a class="brand footer-brand" href="/" aria-label="Cal-Eats home"><img class="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats"></a>
     <p>Local food marketplace preparing to launch in Luton.</p>
-    <nav aria-label="Footer navigation"><a href="/order/?view=account">Customer account</a><a href="/business/login">Business sign in</a><a href="#questions">FAQ</a></nav>
-    <p class="fine">Local development preview. Sample restaurants, orders and payment activity are fictional.</p>
+    <nav aria-label="Footer navigation"><a href="/download/">Get the app</a><a href="/support/">Help &amp; support</a><a href="/business/login">Business sign in</a><a href="#questions">FAQ</a></nav>
+    <p class="fine">For help with your account or invitation, <a href="mailto:caleats-support@calai.info">contact Cal-Eats support</a>.</p>
   </footer>
 </body>
 </html>

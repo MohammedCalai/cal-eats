@@ -173,7 +173,7 @@ export function createApp({ db, config, logger = console }) {
         revokeSession(db, token, config.now());
         return sendJson(res, 200, { data: { loggedOut: true } }, { "Set-Cookie": clearCookie(config.secureCookies) });
       }
-      if (await serveStatic(req, res, url.pathname)) return;
+      if (await serveStatic(req, res, url.pathname, config)) return;
       for(const route of [routePaymentLaunch,routeRestaurantCommission,routeAdminRestaurantWorkspace,routeAdminWorkspace,routePlatformVouchers]){const result=await route({req,res,url,db,config,session,checkRate});if(result||res.writableEnded||res.headersSent)return;}
       const resolutionHandled=routeBusinessDirectResolution({req,res,url,db,config,session});
       if(resolutionHandled||res.writableEnded||res.headersSent)return;

@@ -17,7 +17,8 @@ export function createPushDeviceBinding(
     bind(session: string, device: PushDeviceRegistration) {
       return enqueue(async () => {
         if (activeSession !== session) return null;
-        const result = await register(session, device);
+        // Customer alerts are always silent, including devices with old sound-on preferences.
+        const result = await register(session, { ...device, soundEnabled: false });
         if (activeSession !== session) { await revoke(session, device.installationId); return null; }
         return result;
       });

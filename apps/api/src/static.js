@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { customerDownloadConfig, preserveCustomerWebFlow } from "./customer-downloads.js";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web");
 const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../portal/dist");
@@ -15,6 +16,12 @@ const assets = new Map([
   ["/", ["landing.html", "text/html; charset=utf-8"]],
   ["/order", ["index.html", "text/html; charset=utf-8"]],
   ["/order/", ["index.html", "text/html; charset=utf-8"]],
+  ["/account-access/", ["index.html", "text/html; charset=utf-8"]],
+  ["/download", ["download.html", "text/html; charset=utf-8"]],
+  ["/download/", ["download.html", "text/html; charset=utf-8"]],
+  ["/support", ["support.html", "text/html; charset=utf-8"]],
+  ["/support/", ["support.html", "text/html; charset=utf-8"]],
+  ["/download.js", ["download.js", "text/javascript; charset=utf-8"]],
   ["/landing.css", ["landing.css", "text/css; charset=utf-8"]],
   ["/landing.js", ["landing.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
@@ -58,14 +65,24 @@ const assets = new Map([
   ["/assets/calai-icon-maskable.svg", ["assets/calai-icon-maskable.svg", "image/svg+xml"]]
 ]);
 
-export async function serveStatic(req, res, pathname) {
+export async function serveStatic(req, res, pathname, config = {}) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
   if (pathname === "/business") { res.writeHead(308, { Location: "/business/" }); res.end(); return true; }
   if (pathname.startsWith("/business/")) return servePortal(req, res, pathname);
-  const asset = assets.get(pathname);
+  if (pathname === "/app-downloads.json") {
+    const body = Buffer.from(JSON.stringify(customerDownloadConfig(config.customerDownloadEnv ?? process.env)));
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Content-Length": body.length, "Cache-Control": "no-store" });
+    res.end(req.method === "HEAD" ? undefined : body);
+    return true;
+  }
+  const hosted = (config.runMode ?? process.env.CALAI_RUN_MODE) === "hosted-preview";
+  const entry = new URL(req.url, "http://localhost");
+  const gated = hosted && ["/order", "/order/"].includes(pathname) && !preserveCustomerWebFlow(entry.search);
+  const asset = gated ? ["download.html", "text/html; charset=utf-8"] : assets.get(pathname);
   if (!asset) return false;
   try {
-    const body = await readFile(path.join(webRoot, asset[0]));
+    let body = await readFile(path.join(webRoot, asset[0]));
+    if (hosted && asset[0] === "index.html") body = Buffer.from(body.toString("utf8").replace('<body class="customer-app">', '<body class="customer-app" data-app-first="true">'));
     res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     res.writeHead(200, { "Content-Type": asset[1], "Content-Length": body.length, "Cache-Control": "no-store" });
     res.end(req.method === "HEAD" ? undefined : body);

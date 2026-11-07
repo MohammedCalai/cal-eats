@@ -1,26 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import * as SecureStore from "expo-secure-store";
+import { createCustomerUnreadPrompt } from "./customer-unread-prompt";
 
-/** Foreground reminders only. The bell acknowledges attention, not message reads. */
+/** Silent attention reminders. The bell acknowledges attention, not message reads. */
 export function useCustomerAlerts(userId: string | null, unreadIds: string[]) {
-  const player=useAudioPlayer(require("../assets/sounds/notification.wav"));
-  const [enabled,setEnabled]=useState(true);
-  const [ready,setReady]=useState(false),[acknowledged,setAcknowledged]=useState<Set<string>>(new Set()),[foreground,setForeground]=useState(AppState.currentState==="active"),[error,setError]=useState("");
-  const scope=useRef(userId),currentIds=useRef(unreadIds);scope.current=userId;currentIds.current=unreadIds;
-  const signature=unreadIds.slice().sort().join("|"),pending=Boolean(userId&&ready&&unreadIds.some(id=>!acknowledged.has(id)));
-  useEffect(()=>{let active=true;setReady(false);setEnabled(true);setAcknowledged(new Set());setError("");if(!userId){player.pause();return;}void Promise.all([SecureStore.getItemAsync(`cal-eats-customer-alert-ack-${userId}`),SecureStore.getItemAsync(`cal-eats-customer-sound-${userId}`)]).then(([saved,sound])=>{if(!active)return;setEnabled(sound!=="off");try{const ids=JSON.parse(saved||"[]");setAcknowledged(new Set(Array.isArray(ids)?ids.filter((id):id is string=>typeof id==="string").slice(-400):[]));}catch{setAcknowledged(new Set());}setReady(true);}).catch(()=>{if(active){setReady(true);}});return()=>{active=false;player.pause();};},[userId,player]);
-  useEffect(()=>{const subscription=AppState.addEventListener("change",state=>{setForeground(state==="active");if(state!=="active")player.pause();});return()=>subscription.remove();},[player]);
-  useEffect(()=>{
-    player.loop=false;
-    if(!pending||!enabled||!foreground){player.pause();return;}
-    let stopped=false;const reminderScope=userId;
-    const ring=async()=>{try{await setAudioModeAsync({playsInSilentMode:false,shouldPlayInBackground:false,allowsRecording:false,interruptionMode:"mixWithOthers",shouldRouteThroughEarpiece:false});if(stopped||scope.current!==reminderScope||AppState.currentState!=="active")return;await player.seekTo(0);if(!stopped){player.play();setError("");}}catch{if(!stopped)setError("Sound could not play. Check your device volume; your updates are still available from the bell.");}};
-    void ring();const timer=setInterval(()=>void ring(),15_000);
-    return()=>{stopped=true;clearInterval(timer);player.pause();};
-  },[pending,enabled,foreground,userId,signature,player]);
-  function acknowledge(){player.pause();const ids=[...new Set([...acknowledged,...currentIds.current])].slice(-400);setAcknowledged(new Set(ids));if(userId)void SecureStore.setItemAsync(`cal-eats-customer-alert-ack-${userId}`,JSON.stringify(ids)).catch(()=>undefined);}
-  function toggleSound(value:boolean){setEnabled(value);if(!value)player.pause();if(userId)void SecureStore.setItemAsync(`cal-eats-customer-sound-${userId}`,value?"on":"off").catch(()=>undefined);}
-  return {enabled,pending,ready,error,acknowledge,toggleSound};
+  const model = useRef({ userId, prompt: createCustomerUnreadPrompt() });
+  const currentIds = useRef(unreadIds); currentIds.current = unreadIds;
+  const [readyFor, setReadyFor] = useState<string | null>(null), [, rerender] = useState(0);
+  const [foreground, setForeground] = useState(AppState.currentState === "active");
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  if (model.current.userId !== userId) model.current = { userId, prompt: createCustomerUnreadPrompt() };
+  model.current.prompt.observe(unreadIds);
+  const ready = Boolean(userId && readyFor === userId);
+  const pending = ready && model.current.prompt.pending();
+  useEffect(() => {
+    let active = true; setReadyFor(null);
+    if (!userId) return;
+    void writes.current.catch(() => undefined).then(() => SecureStore.getItemAsync(`cal-eats-customer-alert-ack-${userId}`)).then(saved => {
+      if (!active || model.current.userId !== userId) return;
+      let ids: string[] = [];
+      try { const parsed: unknown = JSON.parse(saved || "[]"); if (Array.isArray(parsed)) ids = parsed.filter((id): id is string => typeof id === "string"); } catch { /* Start with the current unread updates. */ }
+      model.current.prompt = createCustomerUnreadPrompt([...ids, ...model.current.prompt.acknowledgedIds()]);
+      model.current.prompt.observe(currentIds.current);
+      setReadyFor(userId);
+    }).catch(() => { if (active && model.current.userId === userId) setReadyFor(userId); });
+    return () => { active = false; };
+  }, [userId]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", state => setForeground(state === "active"));
+    return () => subscription.remove();
+  }, []);
+  function acknowledge() {
+    if (!userId || model.current.userId !== userId) return;
+    model.current.prompt.observe(currentIds.current);
+    const ids = model.current.prompt.acknowledge(); rerender(value => value + 1);
+    // Serialize saves so an older acknowledgement cannot replace a newer one.
+    writes.current = writes.current.catch(() => undefined).then(() => SecureStore.setItemAsync(`cal-eats-customer-alert-ack-${userId}`, JSON.stringify(ids)));
+    void writes.current.catch(() => undefined);
+  }
+  return { pending, ready, foreground, acknowledge };
 }
