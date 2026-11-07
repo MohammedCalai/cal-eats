@@ -6,6 +6,7 @@
   "privacyAndTermsApproved": false,
   "accountDeletionCompletedAndVerified": false,
   "backgroundNotificationsVerified": false,
+  "iosLiveActivityBackgroundAndTerminalVerified": false,
   "iosPhysicalDeviceVerified": false,
   "androidPhysicalDeviceVerified": false,
   "weakTestPasswordsReplaced": false,

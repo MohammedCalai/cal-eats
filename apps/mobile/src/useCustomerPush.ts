@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AppState, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
-import { randomUUID } from "expo-crypto";
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
+import { getInstallationId } from "./installation-id";
 import { api } from "./api";
 import { createPushDeviceBinding, type PushDeviceResult } from "./push-binding";
 import { createCustomerPushTapQueue, customerPushProject, parseCustomerPushTarget, type CustomerPushTarget } from "./push-model";
@@ -26,16 +25,6 @@ if (native) {
   try { lastResponse = Notifications.getLastNotificationResponse(); } catch { /* A browser preview has no native notification response. */ }
 }
 
-let installationPromise: Promise<string> | null = null;
-function getInstallationId(): Promise<string> {
-  if (!installationPromise) installationPromise = (async () => {
-    const key = "cal_eats_push_installation_v1", saved = await SecureStore.getItemAsync(key);
-    if (saved && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(saved)) return saved;
-    const value = randomUUID();
-    await SecureStore.setItemAsync(key, value, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK }); return value;
-  })().catch(error => { installationPromise = null; throw error; });
-  return installationPromise;
-}
 function clearResponse(key: string) {
   if (lastResponse?.notification.request.identifier !== key) return;
   lastResponse = null;

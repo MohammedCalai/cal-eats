@@ -3,6 +3,7 @@ import { createStripeAdapter } from "./payments/stripe-test.js";
 import { loadOrderAlertEmailConfig } from "./order-alert-email.js";
 import { loadLiveOnboardingConfig } from "./payments/live-onboarding.js";
 import { loadCustomerPushConfig } from "./customer-push.js";
+import { loadOrderLiveActivityConfig } from "./order-live-activities.js";
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -67,6 +68,7 @@ export function loadConfig(overrides = {}) {
     orderAlertEmail,
     businessStatements: { sendEnabled: statementSendEnabled },
     customerPush: overrides.customerPush ?? loadCustomerPushConfig(),
+    orderLiveActivities: overrides.orderLiveActivities ?? loadOrderLiveActivityConfig(),
     financialRemediesEnabled,
     sessionHours: overrides.sessionHours ?? 24,
     bodyLimit: overrides.bodyLimit ?? 16 * 1024,

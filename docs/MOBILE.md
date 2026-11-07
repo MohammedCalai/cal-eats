@@ -1,5 +1,23 @@
 # Cal-Eats native iOS and Android customer client
 
+## Current release and iPhone order tracking — 7 November 2026
+
+The older dated sections below describe earlier milestones, not current release evidence. The customer app is available for private testing as iOS 1.0.0 (10) and Android 1.0.0 (17), both using the independent Cal-Eats backend. No public store release or live-payment readiness is asserted. The separate business phone app remains on hold.
+
+Ordinary customer background notifications now use Expo with the dedicated Cal-Eats APNs/FCM connections. A real iPhone test confirmed a locked-screen support alert and that tapping it opened the correct conversation. The same user confirmed the keyboard-open chat-send fix on iOS build 10. Those checks do not establish physical-device evidence for every notification type or for Android.
+
+The next customer feature is an iOS Live Activity: status and confirmed ETA in the Dynamic Island and on the Lock Screen while the customer uses other apps. It uses `expo-widgets` and a dedicated widget extension rather than foreground polling or an ordinary notification. The required extension is `uk.co.calai.caleats.liveorderwidget`, with the private App Group `group.uk.co.calai.caleats.liveorders`; both main-app and extension signing must include that group. This is being prepared and must not be described as delivered or phone-verified until the signed build and device checks are recorded.
+
+Live Activity updates use a separate encrypted, customer/order/native-session-bound registration and direct APNs delivery. Reading or dismissing an ordinary notification must not stop order tracking. Delivery tracking continues through `out_for_delivery` until completion; collection uses its own customer-facing labels. Completed, rejected and cancelled orders end tracking. Never show an invented arrival time, the customer's address or payment details on the Lock Screen. Historical orders must not start activities, and future scheduled orders must respect Apple's activity-duration limit. Signing out or switching customer accounts must clear the old activity and its delivery binding.
+
+Server configuration is disabled by default: `CALAI_ORDER_LIVE_ACTIVITIES_ENABLED=false`. The private connection uses `CALAI_APNS_TEAM_ID`, `CALAI_APNS_KEY_ID` and `CALAI_APNS_PRIVATE_KEY`. Its production destination is fixed to Apple's APNs service and the topic `uk.co.calai.caleats.push-type.liveactivity`. These secrets belong only in approved private local/hosting settings, never mobile public environment variables, source control, logs or build archives. Do not broaden a notification key's permissions automatically if Apple rejects the topic.
+
+iOS controls availability, permissions, update budgets, dismissal and maximum activity duration. Physical checks must cover an initial active order, background status/ETA changes, terminal removal, tap navigation, sign-out, a user-dismissed activity and overdue/no-ETA handling. The existing customer push and messaging behavior must remain intact.
+
+Primary implementation references: [Expo SDK 57 Widgets](https://docs.expo.dev/versions/v57.0.0/sdk/widgets/) and [Apple ActivityKit push updates](https://developer.apple.com/documentation/ActivityKit/starting-and-updating-live-activities-with-activitykit-push-notifications).
+
+## Initial implementation baseline (historical)
+
 `apps/mobile` is an independent Expo/React Native customer app for the Cal-Eats API. It contains no original Calai host, token, device setting, analytics SDK, payment credential, EAS project, cloud update configuration or live-provider integration.
 
 ## What is implemented

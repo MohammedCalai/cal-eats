@@ -21,6 +21,7 @@ import { serveStatic } from "./static.js";
 import { routeProduct } from "./product.js";
 import { routeAccountAccess } from "./account-access.js";
 import {routeCustomerPush} from "./customer-push.js";
+import {routeOrderLiveActivities} from "./order-live-activities.js";
 import { isDemoEmail } from "./seed.js";
 import { routePolish } from "./polish.js";
 import { routeMarketplace } from "./marketplace.js";
@@ -114,6 +115,8 @@ export function createApp({ db, config, logger = console }) {
       if (nativeHandled || res.writableEnded || res.headersSent) return;
         const pushHandled=await routeCustomerPush({req,res,url,db,config,session,checkRate});
         if(pushHandled||res.writableEnded||res.headersSent)return;
+      const liveActivityHandled=await routeOrderLiveActivities({req,res,url,db,config,session,checkRate});
+      if(liveActivityHandled||res.writableEnded||res.headersSent)return;
       const passwordChanged=await routePasswordChange({req,res,url,db,config,session,checkRate});
       if(passwordChanged||res.writableEnded||res.headersSent)return;
 

@@ -25,6 +25,18 @@
       "buildNumber": "1"
     },
     "plugins": [
+      "./plugins/with-live-order-brand.cjs",
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "uk.co.calai.caleats.liveorderwidget",
+          "groupIdentifier": "group.uk.co.calai.caleats.liveorders",
+          "enablePushNotifications": true,
+          "enableAndroid": false,
+          "frequentUpdates": false,
+          "widgets": []
+        }
+      ],
       [
         "expo-notifications",
         {
