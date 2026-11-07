@@ -4,6 +4,7 @@ import { api, API_BASE_URL } from "../api";
 import { requestKey } from "../model";
 import { Button, Card, ErrorBanner, Field } from "../components";
 import { colours } from "../theme";
+import { CustomerLegalDocuments, CustomerLegalReview, useCustomerLegal } from "../CustomerLegalReview";
 import type { User } from "../types";
 
 type Mode = "login" | "register" | "apply" | "forgot";
@@ -15,6 +16,7 @@ const recoveryMessages: Record<RecoveryDelivery, { title: string; detail: string
 };
 export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenticated: (token: string, user: User) => Promise<void>; onContinueBrowsing?: () => void }) {
   const [mode, setMode] = useState<Mode>("login");
+  const legal = useCustomerLegal(null, mode === "register" || mode === "login");
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [restaurantName, setRestaurantName] = useState(""); const [address, setAddress] = useState(""); const [mobile, setMobile] = useState("");
   const [applicationReceived, setApplicationReceived] = useState(false); const applicationKey = useRef<string | null>(null);
@@ -48,7 +50,7 @@ export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenti
         await api("/api/native/business/auth/apply", { method: "POST", idempotencyKey: applicationKey.current, body: JSON.stringify({ name, email, password, restaurantName, address, mobile }) });
         if (current()) { setApplicationReceived(true); setPassword(""); } return;
       }
-      const body = mode === "register" ? { name, email, password } : { email, password };
+      const body = mode === "register" ? { name, email, password, legalAcceptance: legal.signupPayload() } : { email, password };
       const result = await api<{ user: User; token: string; expiresAt: string }>(`/api/native/auth/${mode}`, { method: "POST", body: JSON.stringify(body) });
       if (current()) await onAuthenticated(result.token, result.user);
     } catch (caught) { if (current()) setError((caught as Error).message); }
@@ -65,7 +67,8 @@ export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenti
         <Field editable={!busy} label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" maxLength={254}/>
         <Field editable={!busy} label={mode === "apply" ? "Set new password" : "Password"} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} textContentType={mode === "login" ? "password" : "newPassword"} autoComplete={mode === "login" ? "current-password" : "new-password"} maxLength={128} hint={mode === "apply" || mode === "register" ? "Use at least 12 characters." : undefined}/>
         <ErrorBanner message={error}/>
-        <Button busy={busy} onPress={submit}>{mode === "apply" ? "Submit application" : mode === "register" ? "Create account" : "Sign in"}</Button>
+        {mode === "register" ? <CustomerLegalReview review={legal}/> : mode === "login" ? <CustomerLegalDocuments review={legal}/> : null}
+        <Button busy={busy} disabled={mode === "register" && !legal.ready} onPress={submit}>{mode === "apply" ? "Submit application" : mode === "register" ? "Create account" : "Sign in"}</Button>
         {mode === "apply" ? <Text style={styles.sub}>The Calai team will contact you within 72 hours. Your restaurant stays private until reviewed and approved.</Text> : null}
         {mode === "login" ? <><Button disabled={busy} tone="quiet" onPress={() => { setMode("register"); setError(""); }}>New here? Create an account</Button><Button disabled={busy} tone="quiet" onPress={() => { setMode("forgot"); setRecoveryDelivery(null); setError(""); }}>Forgot password</Button><Button disabled={busy} tone="quiet" onPress={() => { applicationKey.current = null; setMode("apply"); setError(""); }}>List your restaurant</Button></> : <Button disabled={busy} tone="quiet" onPress={() => { setMode("login"); setError(""); }}>Back to sign in</Button>}
       </Card>}

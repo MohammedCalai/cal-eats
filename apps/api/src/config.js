@@ -4,6 +4,7 @@ import { loadOrderAlertEmailConfig } from "./order-alert-email.js";
 import { loadLiveOnboardingConfig } from "./payments/live-onboarding.js";
 import { loadCustomerPushConfig } from "./customer-push.js";
 import { loadOrderLiveActivityConfig } from "./order-live-activities.js";
+import { loadCustomerLegalConfig } from "./customer-legal.js";
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -54,6 +55,13 @@ export function loadConfig(overrides = {}) {
   if (typeof statementSendEnabled !== "boolean") throw new Error("Business statement send enablement must be a boolean");
   const financialRemediesEnabled = overrides.financialRemediesEnabled ?? false;
   if (typeof financialRemediesEnabled !== "boolean" || (financialRemediesEnabled && runMode !== "local")) throw new Error("Financial remedies are disabled for hosted Cal-Eats; legacy simulation requires an explicit local override");
+  const legalEnabled = process.env.CALAI_CUSTOMER_LEGAL_ENABLED === "true";
+  let legalInput = overrides.customerLegal;
+  if (legalInput === undefined && legalEnabled) {
+    try { legalInput = { ...JSON.parse(process.env.CALAI_CUSTOMER_LEGAL_MANIFEST_JSON || ""), enabled: true }; }
+    catch { throw new Error("Customer legal activation requires the separately approved manifest JSON"); }
+  }
+  const customerLegal = loadCustomerLegalConfig(legalInput, parsed.origin);
   return {
     hostname,
     runMode,
@@ -70,6 +78,7 @@ export function loadConfig(overrides = {}) {
     customerPush: overrides.customerPush ?? loadCustomerPushConfig(),
     orderLiveActivities: overrides.orderLiveActivities ?? loadOrderLiveActivityConfig(),
     financialRemediesEnabled,
+    customerLegal,
     sessionHours: overrides.sessionHours ?? 24,
     bodyLimit: overrides.bodyLimit ?? 16 * 1024,
     orderExpiryMinutes,

@@ -58,7 +58,7 @@ export async function routeProduct({ req, res, url, db, config, session }) {
   }
   if (req.method === "GET" && url.pathname === "/api/account/deletion-requests") { const user = requireUser(session); return sendJson(res, 200, { data: db.prepare("SELECT * FROM deletion_requests WHERE user_id=? ORDER BY created_at DESC").all(user.id).map(deletionDto) }); }
   if (req.method === "POST" && url.pathname === "/api/account/deletion-requests") {
-    const user = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, ["reason"]); const reason = clean(body.reason, 1, 1000, "Reason"); const now = config.now().toISOString(); const id = randomUUID();
+    const user = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, ["reason"]); if (body.reason !== undefined && typeof body.reason !== "string") throw new HttpError(400, "VALIDATION_ERROR", "Reason must be text"); const reason = clean(body.reason, 0, 1000, "Reason"); const now = config.now().toISOString(); const id = randomUUID();
     withTransaction(db, () => { db.prepare("INSERT INTO deletion_requests VALUES(?,?,?,?,?,?,?)").run(id, user.id, reason, "requested", "", now, now); db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), user.id, "deletion_request", id, "deletion_requested", JSON.stringify({ status: "requested" }), now); });
     return sendJson(res, 201, { data: deletionDto(db.prepare("SELECT * FROM deletion_requests WHERE id=?").get(id)) });
   }

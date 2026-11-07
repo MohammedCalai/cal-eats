@@ -1,3 +1,4 @@
+import { requireCurrentCustomerLegal } from "./customer-legal.js";
 import {quotePlatformVoucher,reservePlatformVoucher,customerPayableMinor,platformVoucherMinor,fullyVoucherFunded,voucherProviderBinding} from "./platform-vouchers.js";
 import {resolveRestaurantCommission} from "./restaurant-commission.js";
 import {includeArchivedRestaurants} from "./restaurant-catalogue.js";
@@ -336,6 +337,7 @@ async function createOrder({ req, res, db, config, session }) {
     if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request");
     return { replay: prior };
   }
+  requireCurrentCustomerLegal(db, config, user.id);
   const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);
   if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
   if (restaurant.suspended) throw new HttpError(409, "RESTAURANT_SUSPENDED", "Restaurant is suspended");

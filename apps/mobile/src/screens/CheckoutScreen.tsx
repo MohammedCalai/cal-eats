@@ -11,6 +11,7 @@ import { SchedulePicker, scheduledTimeLabel, type ScheduleChoice, type ScheduleM
 import { initialScheduleChoice } from "../schedule-choice";
 import type { Address, CartEntry, Fulfillment, Offer, Order, PaymentMethod, Restaurant } from "../types";
 import { createCheckoutAttempt } from "../../../web/checkout-attempt.js";
+import { CustomerLegalReview, useCustomerLegal } from "../CustomerLegalReview";
 
 type Quote = {
   scheduledFor:string|null; scheduleMinimumLeadMinutes:number; scheduleMaxDays:number;
@@ -47,6 +48,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
   const setScheduledFor=(value:string|null)=>changeSchedule({scheduledFor:value});
   const targetTime=scheduleMode==="scheduled"?scheduledFor:null;
   const recovering = Boolean(attempt.pending), locked = busy || recovering || claimingOffer;
+  const legal = useCustomerLegal(token, !recovering);
   const [paymentConfig,setPaymentConfig]=useState<PaymentConfig>({providerMode:"unknown",cardAvailable:false,stripeMode:null});
   const estimated = useMemo(() => cartTotals(cart, fulfillment, restaurant), [cart, fulfillment, restaurant]);
   const [quoteResult,setQuoteResult]=useState<{request:string;value:Quote}|null>(null),[quoting,setQuoting]=useState(false),[quoteError,setQuoteError]=useState(""),[quoteRevision,setQuoteRevision]=useState(0);
@@ -105,6 +107,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
         if(latest.current.quoteRequest!==quoteRequest)throw Error("Your order details changed. Wait for the updated total before placing your order.");
         setQuoteResult({request:quoteRequest,value:current});latest.current.onOfferResolved?.(current.offerId??undefined);
         if(quoteSignature(current)!==quoteSignature(quote!)){reviewChanged=true;throw Error("Your price or offer changed. Review the updated order, then place your order.");}
+        await legal.acceptForNewOrder();
         body = {
         restaurantId: restaurant.id,
         expectedTotalMinor: current.totalMinor,
@@ -138,6 +141,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
   }
 
   const timingHint = targetTime ? scheduledTimeLabel(targetTime) : scheduleMode === "scheduled" ? "Choose an available time above" : "As soon as possible";
+  const confirmLabel = totals.totalMinor === 0 ? `Place order · ${money(totals.totalMinor)}` : payment === "cash" ? `Place cash order · ${money(totals.totalMinor)}` : `Order and pay ${money(totals.totalMinor)}`;
   const waitingHint = !timingReady ? "Choose a day and available time. Your total will update automatically." : "Enter your full delivery address and postcode. Your total and eligible offers update automatically.";
   return <ScrollView scrollEventThrottle={32} onScroll={event=>onScrollOffset?.(event.nativeEvent.contentOffset.y)} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <View style={styles.back}><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} disabled={busy} onPress={recovering ? checkOrders : onBack} style={[styles.backControl,busy&&styles.disabled]}><CustomerIcon name="back" size={20}/><Text style={styles.backText}>{recovering ? "Check Orders before changing basket" : "Back to basket"}</Text></Pressable></View>
@@ -185,8 +189,9 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
       <Text accessibilityLiveRegion="polite" style={styles.finePrint}>{quoting?"Updating your price and checking eligible offers…":!quoteReady?waitingHint:"Prices, timing and eligible offers are checked again before your order is placed."}</Text>
       <ErrorBanner message={quoteError}/>
       <ErrorBanner message={error || (!recovering && !localCheck.ok && timingReady ? localCheck.reason : "")}/>
-      <Button accessibilityLabel={recovering?"Retry original order":`Place order for ${money(totals.totalMinor)}`} busy={busy} disabled={!recovering && (!localCheck.ok || !quoteReady || !quote || quoting || claimingOffer || paymentConfig.providerMode === "unknown")} onPress={() => void placeOrder()}>{recovering ? "Retry original order" : "Place order"} · {money(totals.totalMinor)}</Button>
-      <Text style={styles.finePrint}>{recovering?"Retrying keeps your original order details and checks the same order.":"Your restaurant will confirm your order after it is received."}</Text>
+      {!recovering ? <CustomerLegalReview review={legal}/> : null}
+      <Button accessibilityLabel={recovering?"Retry original order":confirmLabel} busy={busy} disabled={!recovering && (!legal.ready || !localCheck.ok || !quoteReady || !quote || quoting || claimingOffer || paymentConfig.providerMode === "unknown")} onPress={() => void placeOrder()}>{recovering ? `Retry original order · ${money(totals.totalMinor)}` : confirmLabel}</Button>
+      <Text style={styles.finePrint}>{recovering?"Retrying keeps your original order details and checks the same order.":payment === "cash" ? `Pay the restaurant on ${fulfillment === "delivery" ? "delivery" : "collection"}. Your restaurant will confirm your order after it is received.` : "Your restaurant will confirm your order after it is received."}</Text>
     </View>
   </ScrollView>;
 }

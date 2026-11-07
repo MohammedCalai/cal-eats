@@ -47,21 +47,27 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
   try {
     db = new DatabaseSync(sourcePath, { readOnly: true });
     await sqliteBackup(db, destinationPath);
-    // Temporary chats and phone-delivery registrations are excluded. Restoring
-    // a backup must not revive old device registrations or replay queued alerts.
-    // Formal order/dispute records retain their separate policies.
+    // Temporary chats, phone-delivery registrations and customer app sessions
+    // are excluded. A restored customer app must sign in and register again;
+    // old alert or Live Activity delivery must not resume from the snapshot.
+    // Formal order/dispute records and delivery revisions retain their policies.
     const copy = new DatabaseSync(destinationPath);
     try {
-      const temporaryTables = ["customer_push_outbox", "customer_push_devices", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
+      // Delete delivery dependants before registrations, and registrations before
+      // the native session they reference. This also works with older schemas.
+      const temporaryTables = ["order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
       const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
       if (present.length) {
-        copy.exec("PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");
+        copy.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");
         try { for (const table of present) copy.exec(`DELETE FROM ${table}`); copy.exec("COMMIT"); }
         catch (error) { copy.exec("ROLLBACK"); throw error; }
         // Keep thread metadata and sequence high-watermarks; removing bodies
         // must not make later messages reuse an earlier ingestion sequence.
         copy.exec("VACUUM;");
       }
+      if (copy.prepare("PRAGMA foreign_key_check").get()) throw new Error("Sanitized backup has a foreign key violation");
+      const integrity = copy.prepare("PRAGMA integrity_check").all();
+      if (integrity.length !== 1 || integrity[0].integrity_check !== "ok") throw new Error("Sanitized backup failed its integrity check");
     } finally { copy.close(); }
   } catch (error) {
     try {

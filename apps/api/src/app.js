@@ -40,6 +40,7 @@ import { routeFinanceDetails } from "./finance-details.js";
 import { routeServiceAreas } from "./service-areas.js";
 import { enforceCustomerOrderHistory } from "./customer-order-history.js";
 import { routeDashboardExports } from "./dashboard-exports.js";
+import { initializeCustomerLegal, recordCustomerLegalSubmission, routeCustomerLegal, validateCustomerLegalSubmission } from "./customer-legal.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -63,6 +64,7 @@ function clientKey(req, email = "") { return `${req.socket.remoteAddress ?? "unk
 
 export function createApp({ db, config, logger = console }) {
   if(isDatabaseReady(db))initializeCustomerEmailDelivery(db,config);
+  if(isDatabaseReady(db))initializeCustomerLegal(db,config);
   function incrementRateBucket(key, now) {
     const entry = db.prepare("SELECT * FROM auth_rate_limits WHERE bucket_key=?").get(key);
     if (!entry || now - entry.window_start_ms >= config.rateLimit.windowMs) db.prepare("INSERT INTO auth_rate_limits(bucket_key,window_start_ms,attempt_count) VALUES(?,?,1) ON CONFLICT(bucket_key) DO UPDATE SET window_start_ms=excluded.window_start_ms,attempt_count=1").run(key, now);
@@ -113,6 +115,8 @@ export function createApp({ db, config, logger = console }) {
       if (accountAccessHandled || res.writableEnded || res.headersSent) return;
       const nativeHandled = await routeNativeAuth({ req, res, url, db, config, session, checkRate });
       if (nativeHandled || res.writableEnded || res.headersSent) return;
+      const legalHandled = await routeCustomerLegal({ req, res, url, db, config, session });
+      if (legalHandled || res.writableEnded || res.headersSent) return;
         const pushHandled=await routeCustomerPush({req,res,url,db,config,session,checkRate});
         if(pushHandled||res.writableEnded||res.headersSent)return;
       const liveActivityHandled=await routeOrderLiveActivities({req,res,url,db,config,session,checkRate});
@@ -122,16 +126,18 @@ export function createApp({ db, config, logger = console }) {
 
       if (req.method === "POST" && url.pathname === "/api/auth/register") {
         const body = await readJson(req, config.bodyLimit);
-        exactObject(body, ["name", "email", "password"]);
+        exactObject(body, ["name", "email", "password", "legalAcceptance"]);
         const identity = validateIdentity(body);
         if (config.runMode === "hosted-preview" && isDemoEmail(identity.email)) throw new HttpError(400, "RESERVED_EMAIL", "Email is reserved");
         checkRate(req, identity.email);
+        validateCustomerLegalSubmission(db, config, null, body.legalAcceptance);
         const passwordHash = await hashPassword(identity.password);
         const user = { id: randomUUID(), name: identity.name, email: identity.email, role: "customer" };
         let created;
         try {
           created = withTransaction(db, () => {
             db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(user.id, user.name, user.email, passwordHash, user.role, config.now().toISOString());
+            recordCustomerLegalSubmission(db, config, user.id, body.legalAcceptance, "web", "signup");
             return createSession(db, user.id, config);
           });
         } catch (error) {
