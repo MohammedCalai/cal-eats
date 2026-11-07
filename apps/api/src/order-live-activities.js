@@ -32,7 +32,12 @@ export function liveOrderPayable(order) {
   return order && (order.payment_method === "cash" ? order.payment_status === "cash_due" : order.payment_method === "mock_card" ? ["mock_authorized", "mock_captured"].includes(order.payment_status) : order.payment_method === "card" ? ["stripe_authorized", "stripe_captured"].includes(order.payment_status) : order.payment_method === "voucher" && ["voucher_reserved", "voucher_redeemed"].includes(order.payment_status));
 }
 export function liveOrderActive(order) { return Boolean(order && activeStatuses.has(order.status) && order.merchant_visible_at && liveOrderPayable(order)); }
-export function liveOrderCanStart(order, now) { return liveOrderActive(order) && Date.parse(order.created_at) > +now - LIVE_ACTIVITY_MAX_MS && (!order.scheduled_for || Date.parse(order.scheduled_for) <= +now + 2 * 3600000); }
+export function liveOrderCanStart(order, now) {
+  if (!liveOrderActive(order) || typeof order.created_at !== "string") return false;
+  const created = Date.parse(order.created_at), scheduled = order.scheduled_for != null;
+  const anchor = scheduled && typeof order.scheduled_for === "string" ? Date.parse(order.scheduled_for) : scheduled ? NaN : created;
+  return Number.isFinite(created) && created <= +now + 60000 && Number.isFinite(anchor) && anchor > +now - LIVE_ACTIVITY_MAX_MS && (!scheduled || anchor <= +now + 2 * 3600000);
+}
 export function liveOrderContent(order, now, privacyEnd = false) {
   const terminal = !liveOrderActive(order), labels = { placed: "Waiting for confirmation", accepted: "Order confirmed", preparing: "Preparing your food", ready: order?.fulfillment === "delivery" ? "Preparing your food" : "Ready to collect", out_for_delivery: "Your food is on its way", completed: order?.fulfillment === "delivery" ? "Delivered" : "Collected", rejected: "Order cancelled" };
   const eta = !privacyEnd && !terminal && order.confirmed_at && order.estimated_ready_at ? Date.parse(order.estimated_ready_at) : NaN;
@@ -74,7 +79,7 @@ export async function routeOrderLiveActivities({ req, res, url, db, config, sess
   const granted = access(db, session, config); checkRate?.(req, `order-live-activities:${granted.user.id}`);
   const now = config.now(), stamp = now.toISOString(), settings = config.orderLiveActivities ?? {};
   if (req.method === "GET" && !match[1]) {
-    const candidates = db.prepare("SELECT o.*,r.revision FROM orders o JOIN order_live_activity_revisions r ON r.order_id=o.id WHERE o.customer_id=? AND o.status IN ('placed','accepted','preparing','ready','out_for_delivery') AND o.created_at>? AND (o.scheduled_for IS NULL OR o.scheduled_for<=?) ORDER BY o.created_at DESC,o.id DESC LIMIT 30").all(granted.user.id, new Date(+now - LIVE_ACTIVITY_MAX_MS).toISOString(), new Date(+now + 2 * 3600000).toISOString());
+    const candidates = db.prepare("SELECT o.*,r.revision FROM orders o JOIN order_live_activity_revisions r ON r.order_id=o.id WHERE o.customer_id=? AND o.status IN ('placed','accepted','preparing','ready','out_for_delivery') AND o.created_at<=? AND ((o.scheduled_for IS NULL AND o.created_at>?) OR (o.scheduled_for IS NOT NULL AND o.scheduled_for>? AND o.scheduled_for<=?)) ORDER BY o.created_at DESC,o.id DESC LIMIT 30").all(granted.user.id, new Date(+now + 60000).toISOString(), new Date(+now - LIVE_ACTIVITY_MAX_MS).toISOString(), new Date(+now - LIVE_ACTIVITY_MAX_MS).toISOString(), new Date(+now + 2 * 3600000).toISOString());
     return sendJson(res, 200, { data: { updatesEnabled: Boolean(settings.enabled), items: candidates.filter(order => liveOrderCanStart(order, now)).slice(0, 10).map(order => ({ orderId: order.id, createdAt: order.created_at, scheduledFor: order.scheduled_for, serverRevision: order.revision, content: liveOrderContent(order, now) })) } });
   }
   if (req.method === "DELETE" && match[1]) {

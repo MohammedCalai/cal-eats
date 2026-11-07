@@ -32,6 +32,20 @@ test("only recent scheduled-window candidates and explicit lock-screen fields/li
   for(const [paymentMethod,paymentStatus]of [["cash","cash_due"],["mock_card","mock_captured"],["card","stripe_authorized"],["voucher","voucher_redeemed"]])assert.equal(liveOrderPaymentEligible({paymentMethod:paymentMethod!,paymentStatus:paymentStatus!}),true);
   for(const [paymentMethod,paymentStatus]of [["cash","cancelled"],["mock_card","mock_failed"],["card","stripe_refunded"],["card","stripe_partially_refunded"],["voucher","voucher_released"]])assert.equal(liveOrderPaymentEligible({paymentMethod:paymentMethod!,paymentStatus:paymentStatus!}),false);
 });
+test("scheduled orders use fulfillment time instead of yesterday's creation time for the live window",()=>{
+  const oldCreated=new Date(now-24*3600000).toISOString(),scheduledFor=new Date(now+3600000).toISOString();
+  const order={...candidate(),createdAt:oldCreated,scheduledFor};
+  const eligible=eligibleLiveOrder(order,now);
+  assert.ok(eligible);assert.equal(eligible.createdAt,oldCreated);assert.equal(eligible.scheduledFor,scheduledFor);
+  assert.equal(eligibleLiveOrder({...order,scheduledFor:new Date(now-LIVE_ACTIVITY_LIFETIME_MS).toISOString()},now),null);
+  assert.equal(eligibleLiveOrder({...order,scheduledFor:new Date(now-LIVE_ACTIVITY_LIFETIME_MS-1).toISOString()},now),null);
+  assert.equal(eligibleLiveOrder({...order,scheduledFor:new Date(now+2*3600000+1).toISOString()},now),null);
+  assert.equal(eligibleLiveOrder({...order,scheduledFor:"invalid"},now),null);
+  assert.ok(eligibleLiveOrder({...order,createdAt:new Date(now+1_000).toISOString()},now));
+  assert.ok(eligibleLiveOrder({...order,createdAt:new Date(now+60_000).toISOString()},now));
+  assert.equal(eligibleLiveOrder({...order,createdAt:new Date(now+60_001).toISOString()},now),null);
+  assert.equal(eligibleLiveOrder({...order,scheduledFor:null},now),null);
+});
 test("multiple orders start once; unchanged polling and bound APNs updates never rewrite local state",async()=>{
   const f=fixture(),c=f.controller(),second="10000000-0000-4000-8000-000000000002";await c.activate(scope);
   const feed={updatesEnabled:true,items:[candidate(),candidate(second)]};await c.sync(scope,feed);await c.sync(scope,feed);

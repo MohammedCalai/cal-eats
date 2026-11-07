@@ -21,7 +21,10 @@ export function parseLiveOrderContent(value: unknown): LiveOrderContent | null {
 export function eligibleLiveOrder(value: unknown, now = Date.now()): LiveOrderCandidate | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>, content = parseLiveOrderContent(v.content), created = Date.parse(String(v.createdAt)), scheduled = v.scheduledFor == null ? null : Date.parse(String(v.scheduledFor));
-  if (!content || v.orderId !== content.orderId || !Number.isFinite(created) || created < now - LIVE_ACTIVITY_LIFETIME_MS || created > now + 60_000 || scheduled !== null && (!Number.isFinite(scheduled) || scheduled > now + 2 * 60 * 60 * 1000) || typeof v.serverRevision !== "number" || !Number.isSafeInteger(v.serverRevision) || v.serverRevision < 0) return null;
+  // A scheduled order may have been placed days earlier. Its fulfillment time
+  // governs the activity window, while its real creation time stays unchanged.
+  const ageAnchor = scheduled ?? created;
+  if (!content || v.orderId !== content.orderId || !Number.isFinite(created) || created > now + 60_000 || !Number.isFinite(ageAnchor) || ageAnchor <= now - LIVE_ACTIVITY_LIFETIME_MS || scheduled !== null && scheduled > now + 2 * 60 * 60 * 1000 || typeof v.serverRevision !== "number" || !Number.isSafeInteger(v.serverRevision) || v.serverRevision < 0) return null;
   return { orderId: content.orderId, createdAt: String(v.createdAt), scheduledFor: v.scheduledFor == null ? null : String(v.scheduledFor), serverRevision: v.serverRevision, content };
 }
 export function parseLiveActivityBindings(value: unknown, now = Date.now()): LiveActivityBinding[] {

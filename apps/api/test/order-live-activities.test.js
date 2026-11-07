@@ -115,13 +115,22 @@ test("logout, disabled accounts and natural expiry deliver only a final privacy-
   }
 });
 
-test("GET is bounded and excludes old, unpaid and distant scheduled orders; terminal registration ends safely", async () => {
+test("GET and POST accept yesterday's preorder near fulfillment, exclude stale/malformed/future orders and end terminal registration safely", async () => {
   const f = await fixture(); try {
     const visible = await f.place(), old = await f.place(), unpaid = await f.place(), scheduled = await f.place();
+    const nearPreorder = await f.place(), stalePreorder = await f.place(), malformedPreorder = await f.place(), futureCreation = await f.place();
     f.db.prepare("UPDATE orders SET created_at=? WHERE id=?").run(new Date(f.now() - 9 * 3600000).toISOString(), old.id);
     f.db.prepare("UPDATE orders SET payment_status='stripe_pending',payment_method='card',merchant_visible_at=NULL WHERE id=?").run(unpaid.id);
     f.db.prepare("UPDATE orders SET scheduled_for=? WHERE id=?").run(new Date(f.now() + 3 * 3600000).toISOString(), scheduled.id);
-    const list = await f.json("/api/native/live-activities", { headers: f.headers }); assert.equal(list.status, 200, list.text); assert.deepEqual(list.body.data.items.map(item => item.orderId), [visible.id]);
+    f.db.prepare("UPDATE orders SET created_at=?,scheduled_for=? WHERE id=?").run(new Date(f.now() - 24 * 3600000).toISOString(), new Date(f.now() + 3600000).toISOString(), nearPreorder.id);
+    f.db.prepare("UPDATE orders SET created_at=?,scheduled_for=? WHERE id=?").run(new Date(f.now() - 24 * 3600000).toISOString(), new Date(f.now() - 8 * 3600000).toISOString(), stalePreorder.id);
+    f.db.prepare("UPDATE orders SET scheduled_for='' WHERE id=?").run(malformedPreorder.id);
+    f.db.prepare("UPDATE orders SET created_at=?,scheduled_for=? WHERE id=?").run(new Date(f.now() + 61000).toISOString(), new Date(f.now() + 3600000).toISOString(), futureCreation.id);
+    const list = await f.json("/api/native/live-activities", { headers: f.headers }); assert.equal(list.status, 200, list.text); assert.deepEqual(list.body.data.items.map(item => item.orderId).sort(), [visible.id, nearPreorder.id].sort());
+    const acceptedPreorder = await f.register(f.body(nearPreorder.id)); assert.equal(acceptedPreorder.status, 200, acceptedPreorder.text); assert.equal(acceptedPreorder.body.data.registered, true); assert.equal(acceptedPreorder.body.data.action, "update");
+    for (const excluded of [old, scheduled, stalePreorder, malformedPreorder, futureCreation]) {
+      const rejected = await f.register(f.body(excluded.id)); assert.equal(rejected.status, 200, rejected.text); assert.equal(rejected.body.data.registered, false); assert.equal(rejected.body.data.action, "end");
+    }
     await f.transition(visible, "rejected"); const ended = await f.register(f.body(visible.id)); assert.equal(ended.body.data.action, "end"); assert.equal(ended.body.data.registered, false);
     const disabledConfig = { ...f.config, orderLiveActivities: { enabled: false } };
     const disabled = await runOrderLiveActivities(f.db, disabledConfig); assert.equal(disabled.disabled, true);
