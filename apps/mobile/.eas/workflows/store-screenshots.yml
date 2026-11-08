@@ -66,6 +66,19 @@ jobs:
           for (const key of ['RESTAURANT_NAME','DISH_NAME']) if (!(process.env[key] || '').trim() || process.env[key].length > 150) throw new Error('Invalid capture selector.');
           console.log('Approved binary source and separate capture-workflow revision recorded. Anonymous native screenshots only.');
           NODE
+      - name: Prepare the absolute artifact directory
+        id: capture_artifacts
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const {execFileSync}=require('node:child_process');
+          const out=path.resolve(process.cwd(),'store-screenshots');
+          fs.mkdirSync(out,{recursive:true});
+          fs.writeFileSync(path.join(out,'capture-attempt.json'),JSON.stringify({binarySourceCommit:process.env.VERIFIED_BINARY_SOURCE,captureWorkflowCommit:process.env.CAPTURE_WORKFLOW_SHA,simulatorBuildId:process.env.VERIFIED_BUILD_ID,startedAt:new Date().toISOString(),completed:false},null,2));
+          execFileSync('set-output',['artifact_dir',out],{stdio:'inherit'});
+          execFileSync('set-env',['SCREENSHOT_ARTIFACT_DIR',out],{stdio:'inherit'});
+          NODE
       - uses: eas/download_build
         id: app
         with:
@@ -89,9 +102,8 @@ jobs:
           const {spawnSync} = require('node:child_process');
           const cwd = process.cwd();
           const mobile = fs.existsSync(path.join(cwd,'.maestro/store-screenshots.yml')) ? cwd : path.join(cwd,'apps/mobile');
-          const out = path.join(cwd,'store-screenshots');
-          fs.mkdirSync(out,{recursive:true});
-          fs.writeFileSync(path.join(out,'capture-attempt.json'),JSON.stringify({binarySourceCommit:process.env.VERIFIED_BINARY_SOURCE,captureWorkflowCommit:process.env.CAPTURE_WORKFLOW_SHA,simulatorBuildId:process.env.VERIFIED_BUILD_ID,startedAt:new Date().toISOString(),completed:false},null,2));
+          const out = process.env.SCREENSHOT_ARTIFACT_DIR;
+          if(!out||!path.isAbsolute(out)||!fs.existsSync(out))throw new Error('The prepared artifact directory is missing.');
           const start=Date.now();
           let udid;
           function run(command,args,timeout=30000,inherit=false) {
@@ -143,4 +155,4 @@ jobs:
         with:
           type: other
           name: Genuine iPhone screenshots and provenance
-          path: ./store-screenshots
+          path: ${{ steps.capture_artifacts.outputs.artifact_dir }}

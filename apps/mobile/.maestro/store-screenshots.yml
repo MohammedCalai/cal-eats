@@ -19,7 +19,7 @@ appId: uk.co.calai.caleats
     text: ${RESTAURANT_NAME},.*
     index: 0
 - extendedWaitUntil:
-    visible: Restaurant information & allergens
+    visible: Back to restaurants
     timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
