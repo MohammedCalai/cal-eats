@@ -11,45 +11,51 @@ const choices = [
   ["inappropriate_message", "Inappropriate message"], ["harassment", "Harassment or unwanted contact"],
   ["misleading_menu", "Misleading menu or photo"], ["unsafe_content", "Unsafe or offensive content"], ["other", "Something else"]
 ] as const;
-type Props = { token: string; restaurantId?: string; orderId?: string; conversationId?: string; messageId?: string; menu?: boolean; reportOnly?: boolean; onBlockedChange?: (blocked: boolean) => void };
+type Props = { token: string; restaurantId?: string; orderId?: string; conversationId?: string; messageId?: string; menu?: boolean; reportOnly?: boolean; onBlockedChange?: (blocked: boolean) => void; onSignIn?: () => void };
 
-export function RestaurantSafetyControls({ token, restaurantId, orderId, conversationId, messageId, menu, reportOnly, onBlockedChange }: Props) {
+export function RestaurantSafetyControls({ token, restaurantId, orderId, conversationId, messageId, menu, reportOnly, onBlockedChange, onSignIn }: Props) {
   const [blocked, setBlocked] = useState(false), [open, setOpen] = useState(false), [reason, setReason] = useState<string>(menu ? "misleading_menu" : "inappropriate_message"), [details, setDetails] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState(""), [reference, setReference] = useState("");
-  const scope = useRef({ token, restaurantId }), request = useRef<{ body: string; key: string } | null>(null);
-  if (scope.current.token !== token || scope.current.restaurantId !== restaurantId) scope.current = { token, restaurantId };
+  const scope = useRef({ token, restaurantId, orderId, conversationId, messageId, menu, reportOnly }), request = useRef<{ body: string; key: string } | null>(null);
+  if (scope.current.token !== token || scope.current.restaurantId !== restaurantId || scope.current.orderId !== orderId || scope.current.conversationId !== conversationId || scope.current.messageId !== messageId || scope.current.menu !== menu || scope.current.reportOnly !== reportOnly) scope.current = { token, restaurantId, orderId, conversationId, messageId, menu, reportOnly };
+  const renderedScope = scope.current, activeScope = useRef<typeof renderedScope | null>(null), [stateScope, setStateScope] = useState(renderedScope);
+  const current = () => activeScope.current === renderedScope && scope.current === renderedScope;
   useEffect(() => {
-    const current = scope.current; let alive = true;
-    setBlocked(false); setOpen(false); setError(""); setDetails(""); setReference(""); setBusy(false); request.current = null;
+    activeScope.current = renderedScope;
+    setStateScope(renderedScope); setBlocked(false); setOpen(false); setError(""); setDetails(""); setReference(""); setBusy(false); setReason(menu ? "misleading_menu" : "inappropriate_message"); request.current = null;
     onBlockedChange?.(false);
-    if (restaurantId && !reportOnly) void api<{ blocked: boolean }>(`/api/customer-safety/restaurants/${encodeURIComponent(restaurantId)}`, { token }).then(value => {
-      if (alive && scope.current === current) { setBlocked(value.blocked); onBlockedChange?.(value.blocked); }
-    }).catch(cause => { if (alive && scope.current === current) setError((cause as Error).message); });
-    return () => { alive = false; };
-  }, [token, restaurantId, reportOnly]);
+    if (token && restaurantId && !reportOnly) void api<{ blocked: boolean }>(`/api/customer-safety/restaurants/${encodeURIComponent(restaurantId)}`, { token }).then(value => {
+      if (current()) { setBlocked(value.blocked); onBlockedChange?.(value.blocked); }
+    }).catch(cause => { if (current()) setError((cause as Error).message); });
+    return () => { if (activeScope.current === renderedScope) activeScope.current = null; };
+  }, [token, restaurantId, orderId, conversationId, messageId, menu, reportOnly]);
   if (!restaurantId) return null;
+  if (!token) return <View style={styles.container}>{onSignIn ? <Button tone="quiet" onPress={onSignIn}>{reportOnly ? "Sign in to report this message" : "Sign in to report or block"}</Button> : <Text style={styles.notice}>Sign in to use reporting and blocking.</Text>}</View>;
+  if (stateScope !== renderedScope) return null;
   async function toggle() {
-    const current = scope.current; setBusy(true); setError("");
+    if (!token || busy || !current()) return;
+    setBusy(true); setError("");
     try {
       const value = await api<{ blocked: boolean }>(`/api/customer-safety/restaurants/${encodeURIComponent(restaurantId!)}`, { token, method: "PUT", body: JSON.stringify({ blocked: !blocked }) });
-      if (scope.current === current) { setBlocked(value.blocked); onBlockedChange?.(value.blocked); }
-    } catch (cause) { if (scope.current === current) setError((cause as Error).message); }
-    finally { if (scope.current === current) setBusy(false); }
+      if (current()) { setBlocked(value.blocked); onBlockedChange?.(value.blocked); }
+    } catch (cause) { if (current()) setError((cause as Error).message); }
+    finally { if (current()) setBusy(false); }
   }
   function confirmBlock() {
+    if (!token || busy || !current()) return;
     Alert.alert(blocked ? "Unblock this restaurant?" : "Block this restaurant?", blocked ? "You can exchange messages and receive eligible offers again. Your marketing preferences still apply." : "Restaurant messages and personalised offers will stop. Your order status updates and Cal-Eats support remain available. Existing conversation history is kept.", [
       { text: "Cancel", style: "cancel" }, { text: blocked ? "Unblock" : "Block restaurant", style: blocked ? "default" : "destructive", onPress: () => void toggle() }
     ]);
   }
   async function sendReport() {
-    if (busy) return;
-    const current = scope.current, body = JSON.stringify({ restaurantId, ...(orderId ? { orderId } : {}), ...(conversationId ? { conversationId } : {}), ...(messageId ? { messageId } : {}), reason, details: details.trim() });
+    if (!token || busy || !current()) return;
+    const body = JSON.stringify({ restaurantId, ...(orderId ? { orderId } : {}), ...(conversationId ? { conversationId } : {}), ...(messageId ? { messageId } : {}), reason, details: details.trim() });
     if (request.current?.body !== body) request.current = { body, key: `safety-${Date.now()}-${Math.random().toString(36).slice(2)}` };
     setBusy(true); setError("");
     try {
       const result = await api<{ reference: string }>("/api/customer-safety/reports", { token, method: "POST", headers: { "Idempotency-Key": request.current.key }, body });
-      if (scope.current === current) { setReference(result.reference); request.current = null; }
-    } catch (cause) { if (scope.current === current) setError((cause as Error).message); }
-    finally { if (scope.current === current) setBusy(false); }
+      if (current()) { setReference(result.reference); request.current = null; }
+    } catch (cause) { if (current()) setError((cause as Error).message); }
+    finally { if (current()) setBusy(false); }
   }
   return <View style={styles.container}><View style={styles.actions}><Button tone="quiet" disabled={busy} onPress={() => { setOpen(true); setError(""); setReference(""); }}>{reportOnly ? "Report message" : menu ? "Report restaurant or menu" : "Report conversation"}</Button>{!reportOnly?<Button tone="quiet" disabled={busy} onPress={confirmBlock}>{blocked ? "Unblock restaurant" : "Block restaurant"}</Button>:null}</View>{blocked ? <Text style={styles.notice}>Restaurant contact is blocked. Order updates and Cal-Eats support remain available.</Text> : null}{!open ? <ErrorBanner message={error}/> : null}
     <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><SafeAreaView style={styles.backdrop}><View accessibilityViewIsModal style={styles.sheet}><View style={styles.heading}><Text accessibilityRole="header" style={styles.title}>Report to Cal-Eats</Text><Pressable accessibilityRole="button" accessibilityLabel="Close report" onPress={() => setOpen(false)} style={styles.close}><CustomerIcon name="close" size={22}/></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}><ErrorBanner message={error}/>{reference ? <><Text style={styles.title}>Your report was received</Text><Text style={styles.copy}>Cal-Eats support will review your report. The restaurant does not receive it. You can follow replies in Account → Help requests.</Text><Text style={styles.notice}>Reference {reference}</Text><Button onPress={() => { setOpen(false); setDetails(""); }}>Done</Button></> : <><Text style={styles.copy}>This goes privately to Cal-Eats support, rather than the restaurant.</Text><Text style={styles.label}>What would you like us to review?</Text>{choices.map(([value, label]) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: reason === value }} onPress={() => setReason(value)} style={[styles.choice, reason === value && styles.selected]}><Text style={styles.copy}>{reason === value ? "● " : "○ "}{label}</Text></Pressable>)}<Field label="Details" value={details} onChangeText={setDetails} multiline maxLength={1200}/><Text style={styles.notice}>Please include only information relevant to the report.</Text><Button busy={busy} onPress={() => void sendReport()}>Send report to Cal-Eats</Button></>}</ScrollView></View></SafeAreaView></Modal>

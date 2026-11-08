@@ -13,7 +13,7 @@ import type { Address, CartEntry, Fulfillment, MenuItem, Restaurant, Offer } fro
 
 interface Props {
   onScrollOffset?:(offset:number)=>void;userId:string;address:Address|null;onAddress:(address:Address)=>void;
-  token: string; onUseOffer?: (restaurantId:string,offerId:string)=>void; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
+  token: string; onSignIn: () => void; onUseOffer?: (restaurantId:string,offerId:string)=>void; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
   restaurant: Restaurant | null; cart: CartEntry[]; onRestaurant: (restaurant: Restaurant | null) => void;
   onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
@@ -103,7 +103,7 @@ export function DiscoverScreen(props: Props) {
     setNotice("Offer added. Eligible offers apply automatically at checkout.");
     if (latestCart.current.length) latest.current.onCheckout();
   }
-  if (props.restaurant && !browsing) return <RestaurantMenu token={props.token} onPromotionClaim={claimedPromotion} onScrollOffset={props.onScrollOffset} key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false);props.onScrollOffset?.(0); setBrowsing(true); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
+  if (props.restaurant && !browsing) return <RestaurantMenu token={props.token} onSignIn={props.onSignIn} onPromotionClaim={claimedPromotion} onScrollOffset={props.onScrollOffset} key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false);props.onScrollOffset?.(0); setBrowsing(true); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
 
   return <DiscoveryBrowse onScrollOffset={props.onScrollOffset} token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} hasMore={hasMoreRestaurants} loadingMore={loadingMoreRestaurants} onLoadMore={()=>void loadRestaurants(true)} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
 }

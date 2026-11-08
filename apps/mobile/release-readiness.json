@@ -1,10 +1,10 @@
 {
   "publicReleaseApproved": false,
-  "backendUpdateDeployedAndReviewed": false,
+  "backendUpdateDeployedAndReviewed": true,
   "livePaymentsAndRestaurantPayoutsVerified": false,
   "accountRecoveryEmailVerified": false,
-  "privacyAndTermsApproved": false,
-  "accountDeletionCompletedAndVerified": false,
+  "privacyAndTermsApproved": true,
+  "accountDeletionCompletedAndVerified": true,
   "backgroundNotificationsVerified": false,
   "iosLiveActivityBackgroundAndTerminalVerified": false,
   "iosPhysicalDeviceVerified": false,

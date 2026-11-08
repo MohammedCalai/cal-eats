@@ -15,7 +15,7 @@ import type { CartEntry, Fulfillment, MenuItem, Offer, Restaurant, Selections } 
 
 interface Props {
   onScrollOffset?:(offset:number)=>void;
-  token: string; onPromotionClaim: (offer: Offer) => void;
+  token: string; onSignIn: () => void; onPromotionClaim: (offer: Offer) => void;
   restaurant: Restaurant; menu: MenuItem[]; cart: CartEntry[]; fulfillment: Fulfillment;
   loading: boolean; error: string; notice: string; onRefresh: () => void; onBack: () => void;
   onFulfillment: (value: Fulfillment) => void; onQuantity: (item: MenuItem, delta: number) => void;
@@ -62,7 +62,7 @@ export function RestaurantMenu(props: Props) {
           <View style={s.row}>{chip("Delivery", "delivery", restaurant.delivery.enabled)}{chip(restaurant.delivery.enabled ? "Collection" : "Collection only", "collection", restaurant.profile.collectionEnabled)}</View>
           {!restaurant.acceptingOrders?<Text style={[s.small,{color:scheduledOnly?colours.blueDark:colours.amber,fontWeight:"700"}]}>{scheduledOnly?"Closed now · Scheduled orders available":restaurant.closedReason||"Not taking orders right now"}</Text>:null}
           <View style={s.information}><Pressable accessibilityRole="button" accessibilityState={{expanded:informationOpen}} onPress={() => setInformationOpen(value => !value)} style={s.informationToggle}><Text style={s.informationTitle}>Restaurant information &amp; allergens</Text><View style={informationOpen ? s.expandedIcon : undefined}><CustomerIcon name="down" active size={16} colourOverride={colours.muted}/></View></Pressable>{informationOpen ? <View style={s.informationCopy}><Text style={s.informationText}>{restaurant.profile.description || "Menu and prices supplied by the restaurant."}</Text><Text style={s.informationText}>Allergen details are restaurant supplied. Contact the restaurant if you need confirmation before ordering.</Text>{restaurant.delivery.enabled ? <Text style={s.informationText}>Delivery minimum: {money(restaurant.delivery.minDeliverySubtotalMinor)}. Delivery prices are set by the restaurant.</Text> : null}</View> : null}</View>
-          <RestaurantSafetyControls token={props.token} restaurantId={restaurant.id} menu/>
+          <RestaurantSafetyControls token={props.token} restaurantId={restaurant.id} onSignIn={props.onSignIn} menu/>
           <ErrorBanner message={props.error}/>{props.notice ? <Text style={s.small}>{props.notice}</Text> : null}
         </View>
       </View>

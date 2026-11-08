@@ -1,0 +1,930 @@
+{
+  "auditDate": "2026-11-08",
+  "sourceCommit": "ac1e6a2f3e8680931c5b23aa1a2376a074418ebb",
+  "scope": "Repository customer assets and current public restaurant image references; no authenticated accounts accessed or provider/settings writes",
+  "rightsCertification": false,
+  "families": [
+    {
+      "family": "Calai/Cal-Eats brand and derived header, launcher, widget, notification mark",
+      "originEvidence": [
+        "docs/ASSETS.md",
+        "artifacts/customer-brand-parity/transparent-header.private.json",
+        "artifacts/customer-brand-parity/launcher-smaller-symbol.private.json",
+        "apps/mobile/assets/app-icon.svg",
+        "apps/mobile/plugins/with-live-order-brand.cjs"
+      ],
+      "observedOrigin": "Owner supplied branding; header transparency/cropping and launcher composition are documented derived files",
+      "permissionStatus": "Existing session authorization: the user supplied the original Calai/Cal-Eats branding and repeatedly instructed its use in this app, app icons, TestFlight and app-store distribution. No repeat approval is required for that intended use. This records use authorization, not independent verification of legal title or any underlying designer/third-party copyright.",
+      "fontHandling": "Launcher SVG references Arial; PNG is rasterized. No custom font files were found in the reviewed repository customer asset folders."
+    },
+    {
+      "family": "Illustrative food fallback",
+      "files": [
+        "apps/web/assets/food-demo.png",
+        "apps/mobile/assets/food-demo.png"
+      ],
+      "originEvidence": [
+        "docs/ASSETS.md"
+      ],
+      "observedOrigin": "Recorded built-in image-generation prompt dated 2026-10-24; fictional food, no external stock-photo source asserted",
+      "sameBytesInWebAndNative": true,
+      "displayEvidence": [
+        "apps/mobile/src/screens/DiscoveryBrowse.tsx",
+        "apps/mobile/src/screens/RestaurantMenu.tsx",
+        "apps/web/discovery-ui.js",
+        "apps/web/app.js",
+        "apps/web/landing.html"
+      ],
+      "representation": "Customer fallback is labelled illustrative, not asserted to depict the selected restaurant dish"
+    },
+    {
+      "family": "Navigation and action icon artwork",
+      "originEvidence": [
+        "apps/web/customer-ui.js",
+        "artifacts/customer-brand-parity/build-brand-assets.private.mjs",
+        "artifacts/customer-brand-parity/build-shared-icons.private.mjs"
+      ],
+      "observedOrigin": "Repository-defined SVG paths rendered to PNG; no external icon font/library credit was found in these source records",
+      "permissionStatus": "Do not infer originality from inline SVG. If any paths originated from a third-party icon set, preserve its applicable notice before distribution."
+    },
+    {
+      "family": "Legacy notification WAV",
+      "files": [
+        "apps/mobile/assets/sounds/notification.wav"
+      ],
+      "observedOrigin": "Source file exists; current customer app source/config scan found no require/import or custom notification-sound setting that references it",
+      "permissionStatus": "Origin not established in reviewed records; do not claim licensed or included/excluded in a signed binary without bundle evidence. Customer notifications are configured quiet."
+    }
+  ],
+  "publicRestaurantSnapshot": {
+    "checkedAt": "2026-11-08T19:41:34Z",
+    "sources": [
+      "https://eats.calai.info/api/restaurants?fulfillment=collection",
+      "https://eats.calai.info/api/restaurants/027d8cb9-f2ee-4aab-b893-1b1e2997c367/menu"
+    ],
+    "restaurantCount": 1,
+    "restaurant": "Arndale Market Curry Centre",
+    "restaurantId": "027d8cb9-f2ee-4aab-b893-1b1e2997c367",
+    "coverImageUrl": null,
+    "availableItems": [
+      {
+        "id": "d9726583-8b4d-4993-95be-8c1f0ce472b6",
+        "name": "Chips",
+        "photoUrl": null
+      },
+      {
+        "id": "b509f082-a9f8-4f62-b729-abcb95125b48",
+        "name": "Nan",
+        "photoUrl": null
+      }
+    ],
+    "finding": "No active merchant photo is referenced by this current public listing/menu. Archived/private media and future uploads are not certified by this snapshot."
+  },
+  "merchantGrantEvidence": {
+    "reviewedDocument": "docs/legal/CAL_EATS_MERCHANT_COMMERCIAL_SCHEDULE_DRAFT.md",
+    "documentStatus": "UNAPPROVED DRAFT; explicitly incomplete",
+    "mediaRightsGrantPresent": false,
+    "finding": "Commercial commission/payout clauses do not grant or evidence restaurant menu/photo licensing. Do not treat this draft as a signed content-rights agreement."
+  },
+  "merchantMediaMetadata": {
+    "source": "apps/api/src/polish.js; media_assets/media_asset_objects schema",
+    "finding": "Stored MIME/dimensions/size/restaurant binding/object checksum are integrity/ownership-scope metadata, not photographer, license, permission or attribution evidence."
+  },
+  "directDependencyNotices": {
+    "file": "docs/store/THIRD_PARTY_NOTICES.txt",
+    "packages": [
+      {
+        "name": "@expo/ui",
+        "requested": "~57.0.26",
+        "installedVersion": "57.0.26",
+        "declaredLicense": "MIT",
+        "noticeCollected": true,
+        "noticeSource": "https://raw.githubusercontent.com/expo/expo/c5a313cb64de255fef39c54cc3c8d08537cf7133/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "sourceEvidence": "Installed package declares MIT and pins repository gitHead c5a313cb64de255fef39c54cc3c8d08537cf7133; npm package omits a license file, so the exact official repository license at that commit was collected."
+      },
+      {
+        "name": "expo",
+        "requested": "57.0.31",
+        "installedVersion": "57.0.31",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-audio",
+        "requested": "~57.0.5",
+        "installedVersion": "57.0.5",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-audio/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-build-properties",
+        "requested": "57.0.22",
+        "installedVersion": "57.0.22",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-build-properties/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-constants",
+        "requested": "~57.0.23",
+        "installedVersion": "57.0.23",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-constants/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-crypto",
+        "requested": "~57.0.4",
+        "installedVersion": "57.0.4",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-crypto/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-location",
+        "requested": "~57.0.22",
+        "installedVersion": "57.0.22",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-location/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-notifications",
+        "requested": "~57.0.25",
+        "installedVersion": "57.0.25",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-notifications/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-secure-store",
+        "requested": "57.0.4",
+        "installedVersion": "57.0.4",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-secure-store/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-status-bar",
+        "requested": "57.0.1",
+        "installedVersion": "57.0.1",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-status-bar/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "expo-widgets",
+        "requested": "~57.0.28",
+        "installedVersion": "57.0.28",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/expo-widgets/LICENSE",
+        "noticeSha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+        "noticeCollected": true
+      },
+      {
+        "name": "react",
+        "requested": "19.2.3",
+        "installedVersion": "19.2.6",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/react/LICENSE",
+        "noticeSha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+        "noticeCollected": true
+      },
+      {
+        "name": "react-native",
+        "requested": "0.86.2",
+        "installedVersion": "0.86.2",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/react-native/LICENSE",
+        "noticeSha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+        "noticeCollected": true
+      },
+      {
+        "name": "react-native-safe-area-context",
+        "requested": "~5.7.0",
+        "installedVersion": "5.7.0",
+        "declaredLicense": "MIT",
+        "noticeSource": "node_modules/react-native-safe-area-context/LICENSE",
+        "noticeSha256": "f5c7a4d527258e11fdfe3d84eb73cd14fe6d64224ef051e59f6ee21fe378800c",
+        "noticeCollected": true
+      }
+    ],
+    "completeTransitiveAudit": false,
+    "nativeBinaryInclusionVerified": false
+  },
+  "assets": [
+    {
+      "path": "apps/mobile/assets/app-icon.png",
+      "sha256": "d89e8f17e09656856a2fa853190fe18b51a8a23da8bf34e4c0ee88049fe455fb",
+      "bytes": 116277,
+      "format": "png",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "path": "apps/mobile/assets/app-icon.svg",
+      "sha256": "1711d425bda370519941a3daeaa83267219585c55261e202d64d0c6103e57211",
+      "bytes": 1066,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/cal-eats-header.png",
+      "sha256": "c0703347664422c8526cb7838f86be057b7c2c2de95ba052a9fc818a04a04ad9",
+      "bytes": 258971,
+      "format": "png",
+      "width": 2170,
+      "height": 725
+    },
+    {
+      "path": "apps/mobile/assets/cal-eats-header.svg",
+      "sha256": "a65e231be87a9c6f9211b1cc462180d31895cb422bea7533a38152494a7c668d",
+      "bytes": 919,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/cal-eats-logo.png",
+      "sha256": "7148cf1486336a2d976709f257e907a3fe7384f4b4bf9d166ca6d8a52a55c41c",
+      "bytes": 1177125,
+      "format": "png",
+      "width": 2170,
+      "height": 725
+    },
+    {
+      "path": "apps/mobile/assets/calai-original.png",
+      "sha256": "a438c4d057f5b01c6549b473a96d0e29b6421c405bed85f608c0b9ec7e312c2a",
+      "bytes": 1511332,
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    },
+    {
+      "path": "apps/mobile/assets/calai-symbol.png",
+      "sha256": "bb02d243bb8feee3518ecfc7a785a120a615e372ab28c1137f44e5eac4691629",
+      "bytes": 1208953,
+      "format": "png",
+      "width": 1254,
+      "height": 1254
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/account.png",
+      "sha256": "8a3e825c5378fee04f7052e59779ed9abb80cffa9eefa1e36992e24334a1f0c9",
+      "bytes": 1430,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/account.svg",
+      "sha256": "92eb76031ab76654bf3a7e5f7c823b999d2149727d1d5b8a8e855bcce4d03d7d",
+      "bytes": 462,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/back.png",
+      "sha256": "a093cae6593597f71301744498bd56522b181738cadf3df922685866ffb728aa",
+      "bytes": 577,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/back.svg",
+      "sha256": "5bebea84524745192ba338239aafe8aeb7ec3a818796ed452658295d77c4f781",
+      "bytes": 281,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/basket.png",
+      "sha256": "1ff2842c93dcb1e60b3ece30628caf0df33dbe56a7fec56fd32c7f84cc60aff3",
+      "bytes": 1167,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/basket.svg",
+      "sha256": "b4294a36e26e7ccf534b4065a2df79295ea66319ed4460299d055d86ef745da7",
+      "bytes": 298,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/bell.png",
+      "sha256": "c7d372b2f067b5a18ddd0607dac7d9c56cf25c12299a7273864709e48a8bb1fa",
+      "bytes": 1173,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/bell.svg",
+      "sha256": "a7af3a2ee4c907d3144ccad0c82e4e29bc5015e67e9e5e8c9921aef4b77a81ed",
+      "bytes": 315,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/check.png",
+      "sha256": "4906566033cc222c4a3b630b4ac2cc8f9c94df290efc3276c035b916443dbb85",
+      "bytes": 617,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/check.svg",
+      "sha256": "60d3792e6c7225b27a2847c98c153026cf2329213ed58e3a7c610b0421e494f7",
+      "bytes": 212,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/chevron.png",
+      "sha256": "29822f834a4a7947c00131bcbca7e85de55a0d7bb6e6c0fb38392b28f42eef8c",
+      "bytes": 602,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/chevron.svg",
+      "sha256": "868e4458a96b79ffdda01c9a167583735a703f5045748385c09680a23e679451",
+      "bytes": 272,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/clock.png",
+      "sha256": "6a35d10e027bc13ee8bdeb5b6d9baadd27762ed775784a1bebe19d4fbe9aa12b",
+      "bytes": 1604,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/clock.svg",
+      "sha256": "09f3cd01bb9319d036d6547468caed72aee00f120ab88c2a420538c6637e6591",
+      "bytes": 302,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/close.png",
+      "sha256": "d5cdc24c8ca93519c7e8cb04a465e6f411b976d413b3b5ff0380961ccbea24f9",
+      "bytes": 710,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/close.svg",
+      "sha256": "19bd2eab6f2d29970ec4435a6f4a8ab3c47f5829b5661b67804cafcbf0569782",
+      "bytes": 280,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/delivery.png",
+      "sha256": "ba68ed000bde8019122a016cb63ff500e6b3cd900cba2c74d8d3029872e6aced",
+      "bytes": 1085,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/delivery.svg",
+      "sha256": "5e70e49ea68a32e3c1f85502a8a68c13440377ed8cd15e4f7958cdb24a06fea8",
+      "bytes": 351,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/discover.png",
+      "sha256": "62a059ce593f1ef029a054bb6daf135640ff0d6ed73b27de678dbae41fb633b7",
+      "bytes": 1991,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/discover.svg",
+      "sha256": "2efc4df0805c1328020763bbda51497b5ee8440b59ac9e58ad005e7b67c79054",
+      "bytes": 428,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/down.png",
+      "sha256": "24cef6e4863350cf49d9a1fd3a6343cd4c2b3abb63fcc51946a908788aff8038",
+      "bytes": 600,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/down.svg",
+      "sha256": "2b1b97fc5f836c37da310a85463e0e54fa21364629127665ee2f24d98f9277b0",
+      "bytes": 272,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/edit.png",
+      "sha256": "153999d963525f25fa0088a5d31284409d0c2d813ed9c968b6123694128561c8",
+      "bytes": 1096,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/edit.svg",
+      "sha256": "edc621127b52ef0bd9884552fb05b4fa6fcc40cbee55349eef952c408949cce6",
+      "bytes": 303,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/forward.png",
+      "sha256": "2c8810f8f161b6368646d840aa28622f1986dfaf825b0e914974b09fb7228edd",
+      "bytes": 581,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/forward.svg",
+      "sha256": "340d66877203b222bbb5b0ae0b8e4ec1c0195c5e093ba3ed69bcad88b3c73eee",
+      "bytes": 281,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/gps.png",
+      "sha256": "5bdc1aab2f4b7dbc02f1859e0981edbccaa2947da76b0a63152ca9dc9dcbf1cd",
+      "bytes": 1556,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/gps.svg",
+      "sha256": "129b1d10fd1d55e5c295c37c91ef81ddc0cbbb9e623d48db8ce8e54f4a9b4145",
+      "bytes": 354,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/help.png",
+      "sha256": "e19da8b382b82b8b696b3d8e88ed8c3379f8abd40ab809417093a0f81ded44b1",
+      "bytes": 1765,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/help.svg",
+      "sha256": "6e371d97979dc50b53184724350b9e9d647e6aeb677deae0b083858e013c9cad",
+      "bytes": 343,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/location.png",
+      "sha256": "249e90000d40481b86f6e37482003a5b9578f014fc08d7de70a400f1d2ea18cb",
+      "bytes": 1733,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/location.svg",
+      "sha256": "5579d76dc37a9ee369e36a86a12d8aae85842920fa40e3282fe761ecbca79eed",
+      "bytes": 337,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/messages.png",
+      "sha256": "b2e8f4210845fc242a7fd234607c2603a2c8bec1db979f9b5efb9651f948f037",
+      "bytes": 1107,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/messages.svg",
+      "sha256": "76bdabf344e7eb40a5da8ca9d258571c7225818d137cdf75aeedf17d8ddbcb78",
+      "bytes": 480,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/minus.png",
+      "sha256": "30a89fcd4b507219da2c73a75d7f3f448e012d42d79de9257fd1470844e1ec20",
+      "bytes": 333,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/minus.svg",
+      "sha256": "e9d41bc62e8e67b24d65508c0eb2fcedb087489de4fac94e372b30a63519a03c",
+      "bytes": 268,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_bundle.png",
+      "sha256": "6e065f5ba1d0f92c11542c1ed9e5f3b2ced17d14df84fb77ec5c54e9a3890304",
+      "bytes": 1487,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_bundle.svg",
+      "sha256": "3a0363463e998b44e1ec2b5524cd8c1f0d12e1df74be42f12ac772f8d3398c69",
+      "bytes": 339,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_delivery.png",
+      "sha256": "e2f0f15be7aa7a68d88f60fd1930cb6ff5b0fa3f19a2a8553cfd4ddc9629021b",
+      "bytes": 1165,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_delivery.svg",
+      "sha256": "5183e593817d2f3818b95670fdfb61a5cfaede3fc51067ca8fb976424930d74e",
+      "bytes": 288,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_general.png",
+      "sha256": "5759c7d43b40082667299fb518cf4b3cd3492386c2dd98c56ada5bb08759def3",
+      "bytes": 1026,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_general.svg",
+      "sha256": "56c488a819cd92584e223eba962911587a2b1bf67ba512b84ebcb3bc58acdc1f",
+      "bytes": 250,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_gift.png",
+      "sha256": "fd46d17fa84552e57feba63d640328a978d32c6f183b43e8c18d038c29b907f5",
+      "bytes": 1376,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_gift.svg",
+      "sha256": "dd1a8b2df6b56ec407729b22c63a34e7cfa5c85f2b9c86c4b8f2819de7eb2a92",
+      "bytes": 330,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_hour.png",
+      "sha256": "93514a5946dd91207bbeeaf7e4ebde4d0e75ce2e9b838039e74bad820da74bda",
+      "bytes": 1572,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_hour.svg",
+      "sha256": "5212c651ce1db6cc91533474845ed1132ef8fe47598489a5f6ea021932873c84",
+      "bytes": 245,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_money.png",
+      "sha256": "cbd197e838cfe2dadc9e094ec053b87ba91cfe1bae5072e8e2c6ae55cd32b5c4",
+      "bytes": 1203,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_money.svg",
+      "sha256": "5e56399808e729faa8ae812fab46763a9dca8163a56183aa10b125b7805d51ff",
+      "bytes": 295,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_percent.png",
+      "sha256": "31c4357f070559e2a0a8f7a9d8528f53e3de858aa320dc23e50be063b8328d83",
+      "bytes": 1348,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offer_percent.svg",
+      "sha256": "59a0a10d33bcac7654387450c8ae7a8cef26c1ec875f6a6e489c7f20b512abb5",
+      "bytes": 268,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offers.png",
+      "sha256": "e75e931112bbed32e2c7e224de37f7d12195e273cf8f09c789c26e4fdf84eebd",
+      "bytes": 1731,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/offers.svg",
+      "sha256": "6703f1d083437053071eb8b1fbf2eebdf5cc0e2d569bb78a39a2d0bb82ef9247",
+      "bytes": 558,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/orders.png",
+      "sha256": "82ea0037c1c272c20f490d40d6d0ffeb20b4b2881a2817b90db13f06a5d0ac53",
+      "bytes": 1307,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/orders.svg",
+      "sha256": "a958cc7857c8442fb8e2da2234ab6cf6e6e975258dace88beb7fa3b43a902187",
+      "bytes": 433,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/phone.png",
+      "sha256": "f76bec22c9dbb68d1c0f4dc3ac040383ac95895e1dc5c8a9f49e4f551fd93ebf",
+      "bytes": 1520,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/phone.svg",
+      "sha256": "71152d42d6b7f8f8dd89d3d224978b2f9eb2661a28c977ab178ba1af058d1049",
+      "bytes": 340,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/plus.png",
+      "sha256": "c0a4eea54a1afa3d546c627034c140af01fbd609650883623ee72cc3388cb7d4",
+      "bytes": 494,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/plus.svg",
+      "sha256": "89c059e304d780ae17ab7fe4ecd1990fba7ce21b43f846ad69aa456eb41bb1e0",
+      "bytes": 276,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/search.png",
+      "sha256": "8d16088b6551c161d8d8fcd010c9e25b19acd9cc76fbd360eaa1974e7f29af6d",
+      "bytes": 1207,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/search.svg",
+      "sha256": "87693cfa0412e192994428dbcec24da5b743d0dd26b9125ea5b1e8c72a5e1143",
+      "bytes": 307,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/send.png",
+      "sha256": "1234a533caa47033f4acdf868469e1eb1362c4daa4360a34d8090b7ae4e3355e",
+      "bytes": 1197,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/send.svg",
+      "sha256": "e50b52ff370b98376b6ca575d610f724d100ce6a50276ba79fa9b1e80b577a75",
+      "bytes": 232,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/shield.png",
+      "sha256": "8e101d626b2b518b636df1b57a5cfe03ccd85565f03e973ef6812d60492f7ae7",
+      "bytes": 1705,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/shield.svg",
+      "sha256": "e1074a4ecb67963d9244ef3dc9027a27e00a7a67c69fcd0ba8291719de9e1874",
+      "bytes": 311,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/storefront.png",
+      "sha256": "1721d86c6c217b9b85751f67a83a5bfe57f0e95b1007da445842a31f80eb9088",
+      "bytes": 1332,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/storefront.svg",
+      "sha256": "f99713040e709ea23fa822cf081de8f866c3826d6eee7c511a358d35aac9a69d",
+      "bytes": 325,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/work.png",
+      "sha256": "6d713c5f1a83b355d8a955f53f243b202e7a133956f04ed8382eba33d878aecd",
+      "bytes": 988,
+      "format": "png",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "path": "apps/mobile/assets/customer-icons/work.svg",
+      "sha256": "757b1c606b9c7f29403c1a1eb5aec1975ad491bcf77ead54e04782ca3cf2b11f",
+      "bytes": 340,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/food-demo.png",
+      "sha256": "f737d87b06c9e26d64e122f7e36b7fce8497969654d4a0cd3abe737147dc6d36",
+      "bytes": 3092501,
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    },
+    {
+      "path": "apps/mobile/assets/notification-icon.png",
+      "sha256": "c0ae2488661fa0fab00ffebcab9e5e77613f66ae92b7b9c0842920839cb29199",
+      "bytes": 1377,
+      "format": "png",
+      "width": 96,
+      "height": 96
+    },
+    {
+      "path": "apps/mobile/assets/notification-icon.svg",
+      "sha256": "6d405cdf87f7d5d42a671ef83836e1dae83b3de75e4fbda313c47facc0727d06",
+      "bytes": 289,
+      "format": "svg"
+    },
+    {
+      "path": "apps/mobile/assets/sounds/notification.wav",
+      "sha256": "e3f780ecdbfe7b463908909549095039de5b1c8a0efee5898f85bb0352a6bdfc",
+      "bytes": 1672944,
+      "format": "wav"
+    },
+    {
+      "path": "apps/web/assets/cal-eats-logo.png",
+      "sha256": "7148cf1486336a2d976709f257e907a3fe7384f4b4bf9d166ca6d8a52a55c41c",
+      "bytes": 1177125,
+      "format": "png",
+      "width": 2170,
+      "height": 725
+    },
+    {
+      "path": "apps/web/assets/calai-icon-maskable.svg",
+      "sha256": "5c1f90ceb15ab0d205d0dce748628b005b6411c2be85e7cd092412c41a0cf502",
+      "bytes": 1612163,
+      "format": "svg"
+    },
+    {
+      "path": "apps/web/assets/calai-icon.svg",
+      "sha256": "5c1f90ceb15ab0d205d0dce748628b005b6411c2be85e7cd092412c41a0cf502",
+      "bytes": 1612163,
+      "format": "svg"
+    },
+    {
+      "path": "apps/web/assets/calai-original.png",
+      "sha256": "a438c4d057f5b01c6549b473a96d0e29b6421c405bed85f608c0b9ec7e312c2a",
+      "bytes": 1511332,
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    },
+    {
+      "path": "apps/web/assets/food-demo.png",
+      "sha256": "f737d87b06c9e26d64e122f7e36b7fce8497969654d4a0cd3abe737147dc6d36",
+      "bytes": 3092501,
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "requiredMerchantPermissionRecordFields": [
+    "restaurantId",
+    "mediaId or asset SHA-256",
+    "rights holder/original source",
+    "permission or licence evidence reference",
+    "permitted web/iOS/Android/store-marketing use",
+    "permitted cropping/resizing",
+    "required credit, if any",
+    "permission dates/limitations",
+    "authorised business confirmation"
+  ],
+  "additionalCollectedNotices": [
+    {
+      "component": "@expo/ui segmented-control vendor",
+      "parentPackageVersion": "57.0.26",
+      "source": "node_modules/@expo/ui/src/community/segmented-control/vendor/LICENSE",
+      "sha256": "22a28f29cff8f5ecf9f463301d9c03b8245a2952ebae0bcab633fd654c0792fb",
+      "licenseEvidence": "Exact vendored MIT notice, including Facebook copyright; use in a particular bundle not asserted"
+    }
+  ],
+  "nativeArchiveEvidence": [
+    {
+      "archive": "artifacts/ios/Cal-Eats-1.0.0-17.ipa",
+      "scope": "Filename/resource inspection only; not a complete binary/SBOM licence audit",
+      "namedNoticeResourceCount": 0,
+      "collectedResources": [],
+      "observedAndroidVersionResources": {}
+    },
+    {
+      "archive": "artifacts/android/Cal-Eats-1.0.0-21.aab",
+      "scope": "Filename/resource inspection only; not a complete binary/SBOM licence audit",
+      "namedNoticeResourceCount": 8,
+      "collectedResources": [
+        {
+          "archiveResource": "base/root/META-INF/androidx/annotation/annotation/LICENSE.txt",
+          "bytes": 10175,
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/META-INF/androidx/collection/collection-ktx/LICENSE.txt",
+          "bytes": 10175,
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/META-INF/androidx/collection/collection/LICENSE.txt",
+          "bytes": 10175,
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/META-INF/androidx/glance/glance-appwidget-external-protobuf/LICENSE.txt",
+          "bytes": 1434,
+          "sha256": "a01b712fbb30f80b86851468b6fa58e80eab68f69f325e88bbc7ddf47cf1b063",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/META-INF/androidx/glance/glance-appwidget-proto/LICENSE.txt",
+          "bytes": 10175,
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/META-INF/androidx/lifecycle/lifecycle-common-java8/LICENSE.txt",
+          "bytes": 10175,
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/META-INF/androidx/lifecycle/lifecycle-common/LICENSE.txt",
+          "bytes": 10175,
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "exactComponentVersion": "Not independently established for this resource"
+        },
+        {
+          "archiveResource": "base/root/okhttp3/internal/publicsuffix/NOTICE",
+          "bytes": 218,
+          "sha256": "8a9c58fbded5ea3474315e4a9824ca8b1486098a1a03e897e0b19419d5e1876a",
+          "exactComponentVersion": "Not independently established for this resource"
+        }
+      ],
+      "observedAndroidVersionResources": {
+        "base/root/META-INF/androidx.annotation_annotation-experimental.version": "1.4.1",
+        "base/root/META-INF/androidx.glance_glance-appwidget.version": "1.2.0-rc01",
+        "base/root/META-INF/androidx.glance_glance.version": "1.2.0-rc01",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-livedata-core-ktx.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-livedata-core.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-livedata.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-process.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-runtime-compose.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-runtime-ktx.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-runtime.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-service.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-viewmodel-ktx.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-viewmodel-savedstate.version": "2.10.0",
+        "base/root/META-INF/androidx.lifecycle_lifecycle-viewmodel.version": "2.10.0"
+      }
+    }
+  ],
+  "unresolvedNoticeCoverage": [
+    "Complete transitive JavaScript dependency closure has not been audited; the 14 declared mobile packages alone are not all bundled dependencies.",
+    "No acknowledgement/license/notice/third-party-named resource was found in the iOS17 IPA filename scan. This does not prove that no copyright text occurs in other binary resources.",
+    "Current resolved CocoaPods Podfile.lock and Pods/Manifest.lock are not present in the inspected local prebuild copies. Native third-party versions and complete notices need the actual build-resolved pod evidence.",
+    "React Native source podspecs reference additional components such as Boost, DoubleConversion, fast_float, fmt, glog and Folly. Their full built dependency/license set is not established by copying React Native MIT.",
+    "Hermes source podspec selects runtime variants using build properties. The actual runtime and its third-party notices must be checked against resolved native build evidence, not assumed from the React Native version.",
+    "Eight exact Android21 AAB notice resources were collected. They are evidence for those resources, not every Gradle dependency or the full Public Suffix List/MPL licence/source obligation.",
+    "No current public or in-app Open source/Third-party notices surface was found. This documentation is not automatically served, linked, or embedded in a native release."
+  ]
+}

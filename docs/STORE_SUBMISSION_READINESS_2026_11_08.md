@@ -7,7 +7,7 @@ Cal-Eats is available for internal testing. Neither public store release has bee
 | Surface | Verified result | Remaining preparation |
 | --- | --- | --- |
 | Apple TestFlight | Customer 1.0.0 (17), source 83a67be, is VALID and IN_BETA_TESTING in the existing internal group. | Check this exact build on an iPhone, including the full ordering journey and Live Activity completion. |
-| Apple public version | 1.0.0 remains Prepare for Submission; build 16 is still selected for public review. | Use the final checked binary, publish the prepared App Privacy responses after operator confirmation, and finish review details/content rights. |
+| Apple public version | 1.0.0 remains Prepare for Submission; build 17 is now saved as the selected review candidate. Manual release is selected. | Complete exact-build device checks, publish the prepared App Privacy responses after operator confirmation, and finish review details/content rights. |
 | Google Play | Android 1.0.0 (21), source edc261b, is available to internal testers. The public Dashboard shows 6 of 11 initial setup tasks complete. | Review access, target audience, content rating, final Data safety and listing completion. |
 | Hosting | Application code a774283 deployed successfully; database and migration readiness returned HTTP 200. | Keep the backend and restaurant service available during review; no payment activation is implied. |
 
@@ -25,7 +25,9 @@ Google's six completed setup tasks are privacy policy, ads, government apps, fin
 
 Google Data safety has all 16 selected data types and their handling entered and saved as a draft. It includes transmitted in-app searches, conservative non-ephemeral handling, precise GPS sharing for app functionality, encrypted transport and the actual deletion routes. Completing it requires Target audience, which requires working review access. It has not been submitted for review.
 
-The Google short/full descriptions, accepted 512px icon and 1024×500 feature artwork are saved as a listing draft. At least two genuine Android screenshots remain required. Console screenshots and iOS captures must not be relabelled as Android app screenshots.
+The Google short/full descriptions, accepted 512px icon and 1024×500 feature artwork are saved as a listing draft. A dedicated local Android 36 emulator now runs the unchanged Android 21 app bundle through a locally signed derived APK. Native 1080×1920 captures and byte/pixel provenance records exist. Final listing screenshots must match the fixed review candidate and be uploaded before this task is complete. Console screenshots and iOS captures must not be relabelled as Android app screenshots.
+
+Google's content-rating form has the consumer-app category and public rating contact prepared. It requires IARC Terms of Use acceptance before the questionnaire can proceed; the specific operator approval is pending. No rating or completed questionnaire is claimed.
 
 ## Application and operational checks completed
 
@@ -34,6 +36,9 @@ The Google short/full descriptions, accepted 512px icon and 1024×500 feature ar
 - Corrected delayed requests after account erasure to return a clear account-deleted conflict while preserving the database suppression. The release checker now rejects missing, unknown or malformed approval gates. Sixteen focused auth/privacy/readiness checks passed.
 - Verified normal signup/email verification and password recovery through the hosted API and delivery worker, including reset-token replay protection and revoked old access. Inbox receipt and physical-device reset-link use are separate evidence.
 - Prepared a separate, enabled, email-verified customer review account through the ordinary signup flow. Privileged endpoints deny that account. Credentials remain private and are not in either store, source, screenshots or these documents.
+- Native Android 21 guest interaction exposed an authenticated safety-state lookup on ordinary restaurant browsing. Source now skips that lookup for guests and routes the explicit reporting/blocking sign-in action through normal customer authentication, preserving the basket. Signed-in safety state is fenced to its current account/context. The mobile typecheck passed. The existing 21/17 binaries need the fix in a subsequent build; do not infer that deploying backend files updates a native binary.
+- Corrected the native singular restaurant-count labels; the web implementation already handled singular counts correctly.
+- Prepared [asset provenance](store/ASSET_PROVENANCE_INVENTORY_2026_11_08.json) and [collected dependency notices](store/THIRD_PARTY_NOTICES.txt). This is a bounded provenance/licence-text collection, not a complete transitive/native licensing certificate or an assertion that the notice collection is embedded in current binaries.
 
 Account deletion is implemented as password/identity-confirmed intake, staff review and actual erasure/login revocation with explained retention exceptions. The approved disposable customer was permanently erased on 8 November. Browser/native sessions and fresh logins reject access, recovery records are gone, and one normal completion email was sent; inbox receipt is unverified. The authorised maintenance workflow used the normal domain planner and transaction, with admin, policy, blocker and preview-hash checks. This is not an observed live admin HTTP/UI test. Other main/admin/business/reviewer profiles remained unchanged. A support-reviewed process does not require redesigning this as instant automatic deletion.
 
@@ -46,7 +51,7 @@ The public [deletion page](https://eats.calai.info/account-deletion/) provides i
 3. Confirm menu/photo permissions and make the truthful content-rights declaration. Complete the remaining content-rating/target-audience questions and final listing/privacy submission checks. Adults 18+ is the intended audience; it is not a substitute for answering actual content questions.
 4. Capture the required genuine Android screenshots and check the final native binaries on phones. Include checkout return, receipt, verification/deletion UI, messages, notification destinations and Live Activity background/terminal behavior. Previously successful web/API checks do not establish those device results.
 5. Review remaining test credentials and name the primary/backup people monitoring customer safety reports and support. The [content safety operations note](store/CONTENT_SAFETY_OPERATIONS.md) describes actual image-removal/report controls and filtering limits; it does not claim automatic image or all-language moderation.
-6. Reconcile the fixed release gates with evidence and explicit public-release approval. A passed build or privacy form must not turn every gate true. Existing internal testing remains separate from production release.
+6. Keep the fixed release gates matched to evidence and obtain explicit public-release approval. The deployed backend, approved active Terms/Privacy, and bounded hosted account-deletion completion now have recorded evidence in `apps/mobile/release-evidence.json`. The other nine gates remain false. A passed build or privacy form must not turn every gate true. Existing internal testing remains separate from production release.
 
 The [review access draft](store/REVIEW_ACCESS_DRAFT_2026_11_08.md) contains no credentials and must be finalised against the enabled service. UK-only pricing/availability does not pre-certify wider distribution or EU trader information.
 

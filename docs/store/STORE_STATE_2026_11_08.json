@@ -11,7 +11,7 @@
   "apple": {
     "appId": "6831180948",
     "version": "1.0.0",
-    "selectedBuild": 16,
+    "selectedBuild": 17,
     "newBuild": {
       "number": 17,
       "source": "83a67be",
@@ -56,7 +56,8 @@
       "publish": "Pending the operator's requested final publication confirmation. An enabled Publish button and saved preview do not establish publication."
     },
     "reviewAccess": "A dedicated customer reviewer account was created through the ordinary API and email-verified. Credentials remain in private storage, not in either store or this document. Full-feature access is not certified while paid ordering is paused; contact details/notes still need final store entry.",
-    "submission": "NOT_SUBMITTED"
+    "submission": "NOT_SUBMITTED",
+    "releaseMode": "MANUAL_SAVED_VERIFIED"
   },
   "googlePlay": {
     "applicationId": "4974049900851003157",
@@ -104,7 +105,7 @@
       ],
       "completion": "Still incomplete; final listing validation and other store prerequisites are separate."
     },
-    "contentRating": "No final completion or review status is established by this checkpoint.",
+    "contentRating": "Consumer-app category and support@calai.info rating contact prepared in browser; IARC Terms acceptance approval pending, questionnaire not completed or submitted.",
     "submission": "NOT_SUBMITTED_TO_PUBLIC_REVIEW",
     "publicSetup": {
       "completed": 6,
@@ -121,7 +122,9 @@
     }
   },
   "pendingUserDecisions": [
-    "Apple App Privacy Publish confirmation"
+    "Apple App Privacy Publish confirmation",
+    "IARC Terms acceptance",
+    "Private store-review contact name, telephone and email"
   ],
   "scope": "Saved store state, deployed source and bounded verification evidence. Store drafts are not public approval. No passwords, account tokens or private customer identities are included.",
   "localAndHostedVerification": {
@@ -148,7 +151,8 @@
     "reviewLogin": "Dedicated email-verified customer created and signed in through the normal API; privileged endpoints denied. Credentials remain private and were not entered in either store."
   },
   "pendingOperatorConfirmations": [
-    "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration"
+    "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration",
+    "Accept IARC Terms of Use to complete Cal-Eats content rating"
   ],
   "remainingPublicReleaseWork": [
     "Real provider/restaurant verification, bank onboarding and commercial acceptance",
@@ -157,5 +161,20 @@
     "Complete target audience/content-rating and final privacy/listing submissions",
     "At least two genuine Android listing screenshots and exact final native device verification",
     "Review remaining test credentials before public launch"
-  ]
+  ],
+  "releaseEvidence": {
+    "manifest": "apps/mobile/release-evidence.json",
+    "verifiedGateCount": 3,
+    "pendingGateCount": 9,
+    "publicReleaseApproved": false
+  },
+  "nativeGuestBrowsingFix": {
+    "status": "SOURCE_FIXED_AWAITING_NEW_BINARY",
+    "discoveredOn": "Android21 guest emulator",
+    "symptom": "Authenticated safety lookup displayed an authentication-required error during public menu browsing",
+    "behavior": "Guest skips private state request and can enter normal customer sign-in to report or block; existing API authorisation unchanged",
+    "mobileTypecheck": "PASSED",
+    "currentIOS17IncludesFix": false,
+    "currentAndroid21IncludesFix": false
+  }
 }
