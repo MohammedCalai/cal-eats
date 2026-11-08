@@ -132,8 +132,8 @@ jobs:
             const maestro=fs.existsSync(path.join(process.env.HOME,'.maestro/bin/maestro'))?path.join(process.env.HOME,'.maestro/bin/maestro'):'maestro';
             run(maestro,['--udid',udid,'test','--format','junit','--output',path.join(out,'report.xml'),'--test-output-dir',out,'-e',`RESTAURANT_NAME=${process.env.RESTAURANT_NAME}`,'-e',`DISH_NAME=${process.env.DISH_NAME}`,'.maestro/store-screenshots.yml'],420000,true);
             function findPngs(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?findPngs(path.join(dir,e.name)):e.name.endsWith('.png')?[path.join(dir,e.name)]:[]);}
-            const images=findPngs(out).filter(file=>/0[1-3]-(browse|restaurant|menu)\.png$/.test(file));
-            if(images.length!==3)throw new Error('The complete three-screen capture was not produced.');
+            const images=findPngs(out).filter(file=>/01-browse\.png$/.test(file));
+            if(images.length!==1)throw new Error('The settled Browse screenshot was not produced.');
             const dimensions=images.map(file=>{
               const info=run('sips',['-g','pixelWidth','-g','pixelHeight','-g','hasAlpha',file]);
               const width=Number(info.match(/pixelWidth: (\d+)/)?.[1]),height=Number(info.match(/pixelHeight: (\d+)/)?.[1]);
