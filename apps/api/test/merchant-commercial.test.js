@@ -3,19 +3,21 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { Readable } from "node:stream";
 import { merchantCommercialMigration } from "../src/merchant-commercial-migration.js";
+import { merchantCommercialTermMigration54 } from "../src/merchant-commercial-term-migration.js";
 import { legalContentSha256 } from "../src/customer-legal-archive.js";
-import { approvedMerchantCommission, initializeMerchantCommercial, loadMerchantCommercialConfig, merchantCommercialStatus, resolveMerchantCommercialTerms, routeMerchantCommercial } from "../src/merchant-commercial.js";
+import { approvedMerchantCommission, initializeMerchantCommercial, loadMerchantCommercialConfig, merchantCommercialStatus, merchantTermEndsAt, resolveMerchantCommercialTerms, routeMerchantCommercial } from "../src/merchant-commercial.js";
 import { journeyFixture } from "./helpers.js";
 import { paymentLaunchReport } from "../src/payment-launch.js";
 
 // Fictional approval used only in an in-memory test. It is never activated.
 export function merchantManifest(version="2026-01-01-v1",text="Fictional local commercial schedule. Normal commission is 7% after restaurant discounts plus charged delivery; platform pays processing costs; weekly Monday payouts depend on available funds.") {
-  return {enabled:true,document:{approved:true,version,text,sha256:legalContentSha256(text),approvedAt:"2025-12-01T00:00:00.000Z",effectiveAt:"2026-01-01T00:00:00.000Z",approvalReference:"Fictional in-memory unit approval only"},commission:{rateBasisPoints:700,base:"food_plus_delivery",processingFeesPaidBy:"platform"},payoutSchedule:{interval:"weekly",weeklyAnchor:"monday"}};
+  return {enabled:true,contractTermMonths:24,document:{approved:true,version,text,sha256:legalContentSha256(text),approvedAt:"2025-12-01T00:00:00.000Z",effectiveAt:"2026-01-01T00:00:00.000Z",approvalReference:"Fictional in-memory unit approval only"},commission:{rateBasisPoints:700,base:"food_plus_delivery",processingFeesPaidBy:"platform"},payoutSchedule:{interval:"weekly",weeklyAnchor:"monday"}};
 }
 function fixture(input=merchantManifest()) {
   const db=new DatabaseSync(":memory:");
   db.exec(`PRAGMA foreign_keys=ON;CREATE TABLE users(id TEXT PRIMARY KEY,role TEXT,account_enabled INTEGER);CREATE TABLE restaurants(id TEXT PRIMARY KEY,name TEXT);CREATE TABLE restaurant_memberships(restaurant_id TEXT,user_id TEXT,permission TEXT);CREATE TABLE orders(id TEXT PRIMARY KEY);CREATE TABLE audit_events(id TEXT,actor_user_id TEXT,entity_type TEXT,entity_id TEXT,action TEXT,details TEXT,created_at TEXT);INSERT INTO users VALUES('owner','restaurant',1),('staff','restaurant',1),('other','restaurant',1),('admin','admin',1),('customer','customer',1);INSERT INTO restaurants VALUES('a','Restaurant A'),('b','Restaurant B');INSERT INTO restaurant_memberships VALUES('a','owner','owner'),('a','staff','staff'),('b','other','owner');`);
   db.exec(merchantCommercialMigration.sql);
+  db.exec(merchantCommercialTermMigration54.sql);
   const config={merchantCommercial:loadMerchantCommercialConfig(input),bodyLimit:16384,now:()=>new Date("2026-01-02T12:00:00.000Z")};
   initializeMerchantCommercial(db,config);
   async function call({id="owner",role="restaurant",restaurant="a",method="GET",body,suffix=""}={}) {
@@ -57,11 +59,11 @@ test("only an active actual owner in this restaurant can view or accept the exac
   }finally{f.close();}
 });
 
-test("version changes require fresh acceptance; archives and evidence cannot be replaced",async()=>{
+test("new default documents preserve active locked contracts; archives and evidence cannot be replaced",async()=>{
   const f=fixture();try{
     await f.accept();const original=f.db.prepare("SELECT * FROM merchant_commercial_acceptances").get();
     f.config.merchantCommercial=loadMerchantCommercialConfig(merchantManifest("2026-01-01-v2","Fictional updated local commercial schedule with the same approved monetary facts."));initializeMerchantCommercial(f.db,f.config);
-    assert.equal(approvedMerchantCommission(f.db,f.config,"a"),null);
+    assert.equal(approvedMerchantCommission(f.db,f.config,"a").policyVersion,"2026-01-01-v1");
     await f.accept();assert.equal(f.db.prepare("SELECT COUNT(*) n FROM merchant_commercial_acceptances").get().n,2);
     assert.deepEqual(f.db.prepare("SELECT * FROM merchant_commercial_acceptances WHERE id=?").get(original.id),original);
     assert.throws(()=>f.db.exec("UPDATE merchant_commercial_documents SET text_content='replacement'"),/immutable/);
@@ -110,7 +112,31 @@ test("real owner acceptance feeds new-order snapshots and readiness while saved 
     assert.deepEqual(f.db.prepare("SELECT * FROM orders WHERE id=?").get(prior.body.data.id),beforeOrder);
     const quote=await f.json("/api/orders/quote",{method:"POST",cookie:customer,body});assert.equal(quote.status,200,quote.text);assert.equal(quote.body.data.commissionMinor,0);
     f.config.merchantCommercial=loadMerchantCommercialConfig(merchantManifest("2026-01-01-v2","Fictional successor commercial schedule for a fresh owner acceptance."));initializeMerchantCommercial(f.db,f.config);
-    assert.equal(paymentLaunchReport(f.db,f.config).restaurants.items.find(row=>row.id===restaurant.id).termsApproved,false);
+    assert.equal(paymentLaunchReport(f.db,f.config).restaurants.items.find(row=>row.id===restaurant.id).termsApproved,true);
+    assert.equal(approvedMerchantCommission(f.db,f.config,restaurant.id).policyVersion,d.version);
     assert.deepEqual(f.db.prepare("SELECT * FROM order_merchant_commercial_snapshots WHERE order_id=?").get(placed.body.data.id),snapshot);
   }finally{await f.close();}
+});
+
+test("24-month contract dates are immutable, clamp leap days and do not restart on document updates",async()=>{
+  assert.equal(merchantTermEndsAt("2024-02-29T15:12:10.123Z"),"2026-02-28T15:12:10.123Z");
+  assert.throws(()=>loadMerchantCommercialConfig({...merchantManifest(),contractTermMonths:12}));
+  const f=fixture();try{
+    assert.equal((await f.accept()).status,200);
+    const first=approvedMerchantCommission(f.db,f.config,"a");
+    assert.equal(first.startsAt,"2026-01-02T12:00:00.000Z");assert.equal(first.endsAt,"2028-01-02T12:00:00.000Z");
+    f.config.now=()=>new Date("2026-06-10T12:00:00.000Z");
+    f.config.merchantCommercial=loadMerchantCommercialConfig(merchantManifest("2026-06-10-v2","Fictional revised commercial wording with the same locked 24-month contract."));initializeMerchantCommercial(f.db,f.config);
+    assert.equal(approvedMerchantCommission(f.db,f.config,"a").acceptanceId,first.acceptanceId);
+    assert.equal((await f.accept()).status,200);
+    const next=approvedMerchantCommission(f.db,f.config,"a");assert.equal(next.startsAt,first.startsAt);assert.equal(next.endsAt,first.endsAt);
+    assert.throws(()=>f.db.exec("UPDATE merchant_commercial_terms SET ends_at='2030-01-01'"),/immutable/);
+    const current=f.config.merchantCommercial,nextManifest=merchantManifest("2030-01-01-v3","Fictional future commercial wording.");nextManifest.document.effectiveAt="2030-01-01T00:00:00.000Z";
+    f.config.merchantCommercial=loadMerchantCommercialConfig(nextManifest);initializeMerchantCommercial(f.db,f.config);
+    assert.equal(approvedMerchantCommission(f.db,f.config,"a").acceptanceId,next.acceptanceId);assert.equal(merchantCommercialStatus(f.db,f.config,"a","owner").canAccept,false);
+    f.config.merchantCommercial=current;
+    f.config.now=()=>new Date(first.endsAt);
+    assert.equal(approvedMerchantCommission(f.db,f.config,"a"),null);
+    assert.equal((await f.accept()).code,"MERCHANT_TERM_REVIEW_REQUIRED");
+  }finally{f.close();}
 });

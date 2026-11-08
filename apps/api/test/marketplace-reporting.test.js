@@ -18,9 +18,11 @@ function financeDb() {
   db.exec(`
     CREATE TABLE orders(id TEXT,restaurant_id TEXT,status TEXT,payment_method TEXT,total_minor INTEGER,commission_minor INTEGER,created_at TEXT);
     CREATE TABLE refunds(id TEXT,order_id TEXT,food_amount_minor INTEGER,delivery_amount_minor INTEGER,commission_reversal_minor INTEGER,created_at TEXT);
-    CREATE TABLE marketplace_operations(operation_key TEXT,restaurant_id TEXT,kind TEXT,status TEXT,amount_minor INTEGER,currency TEXT,provider_mode TEXT,created_at TEXT,order_id TEXT);
-    CREATE TABLE payout_batches(restaurant_id TEXT,status TEXT,amount_minor INTEGER,scheduled_for TEXT);
-    CREATE TABLE cash_collections(restaurant_id TEXT,status TEXT,amount_minor INTEGER,created_at TEXT);
+    CREATE TABLE order_financial_environments(order_id TEXT PRIMARY KEY,environment TEXT);
+    CREATE TABLE payout_items(payout_id TEXT,operation_id TEXT);
+    CREATE TABLE marketplace_operations(id TEXT,operation_key TEXT,restaurant_id TEXT,kind TEXT,status TEXT,amount_minor INTEGER,currency TEXT,provider_mode TEXT,created_at TEXT,order_id TEXT);
+    CREATE TABLE payout_batches(id TEXT,restaurant_id TEXT,status TEXT,amount_minor INTEGER,scheduled_for TEXT,provider_mode TEXT DEFAULT 'local_simulator');
+    CREATE TABLE cash_collections(restaurant_id TEXT,status TEXT,amount_minor INTEGER,created_at TEXT,operation_key TEXT,provider_mode TEXT DEFAULT 'local_simulator');
   `);
   return db;
 }
@@ -30,18 +32,18 @@ test("finance flows respect the London range while balances remain point-in-time
   db.prepare("INSERT INTO orders VALUES(?,?,?,?,?,?,?)").run("old","r","completed","mock_card",1000,100,"2026-03-29T10:00:00.000Z");
   db.prepare("INSERT INTO orders VALUES(?,?,?,?,?,?,?)").run("day","r","completed","mock_card",2000,200,"2026-03-29T12:00:00.000Z");
   db.prepare("INSERT INTO orders VALUES(?,?,?,?,?,?,?)").run("held-card","r","completed","mock_card",500,50,"2026-03-29T13:00:00.000Z");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("commission-day","r","commission","confirmed",200,"GBP","local_simulator","2026-03-29T12:01:00.000Z","day");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("capture-day","r","payment_capture","confirmed",2000,"GBP","local_simulator","2026-03-29T12:00:00.000Z","day");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("cash-accepted","r","cash_order_accepted","confirmed",1200,"GBP","local_simulator","2026-03-29T12:00:15.000Z","cash");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("cash-day","r","cash_sale_recorded","held",1200,"GBP","local_simulator","2026-03-29T12:00:30.000Z","cash");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("cost-day","r","provider_cost","confirmed",50,"GBP","local_simulator","2026-03-29T12:01:00.000Z","day");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("order:day:settlement-eligible","r","settlement_eligibility","confirmed",1800,"GBP","local_simulator","2026-03-29T12:02:00.000Z","day");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("capture-held","r","payment_capture","confirmed",500,"GBP","local_simulator","2026-03-29T13:00:00.000Z","held-card");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("commission-held","r","commission","confirmed",50,"GBP","local_simulator","2026-03-29T13:00:01.000Z","held-card");
-  db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,?,?,?,?,?)").run("order:held-card:settlement-eligible","r","settlement_eligibility","held",450,"GBP","local_simulator","2026-03-29T13:00:02.000Z","held-card");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("commission-day","r","commission","confirmed",200,"GBP","local_simulator","2026-03-29T12:01:00.000Z","day");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("capture-day","r","payment_capture","confirmed",2000,"GBP","local_simulator","2026-03-29T12:00:00.000Z","day");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("cash-accepted","r","cash_order_accepted","confirmed",1200,"GBP","local_simulator","2026-03-29T12:00:15.000Z","cash");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("cash-day","r","cash_sale_recorded","held",1200,"GBP","local_simulator","2026-03-29T12:00:30.000Z","cash");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("cost-day","r","provider_cost","confirmed",50,"GBP","local_simulator","2026-03-29T12:01:00.000Z","day");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("order:day:settlement-eligible","r","settlement_eligibility","confirmed",1800,"GBP","local_simulator","2026-03-29T12:02:00.000Z","day");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("capture-held","r","payment_capture","confirmed",500,"GBP","local_simulator","2026-03-29T13:00:00.000Z","held-card");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("commission-held","r","commission","confirmed",50,"GBP","local_simulator","2026-03-29T13:00:01.000Z","held-card");
+  db.prepare("INSERT INTO marketplace_operations(operation_key,restaurant_id,kind,status,amount_minor,currency,provider_mode,created_at,order_id) VALUES(?,?,?,?,?,?,?,?,?)").run("order:held-card:settlement-eligible","r","settlement_eligibility","held",450,"GBP","local_simulator","2026-03-29T13:00:02.000Z","held-card");
   db.prepare("INSERT INTO refunds VALUES(?,?,?,?,?,?)").run("refund","day",100,0,10,"2026-03-30T10:00:00.000Z");
-  db.prepare("INSERT INTO payout_batches VALUES(?,?,?,?)").run("r","paid",500,"2026-03-30T00:00:00.000Z");
-  db.prepare("INSERT INTO payout_batches VALUES(?,?,?,?)").run("r","in_transit",300,"2026-03-30T00:00:00.000Z");
+  db.prepare("INSERT INTO payout_batches(restaurant_id,status,amount_minor,scheduled_for) VALUES(?,?,?,?)").run("r","paid",500,"2026-03-30T00:00:00.000Z");
+  db.prepare("INSERT INTO payout_batches(restaurant_id,status,amount_minor,scheduled_for) VALUES(?,?,?,?)").run("r","in_transit",300,"2026-03-30T00:00:00.000Z");
   const summary = buildFinanceSummary(db,"r",new URL("http://local/?from=2026-03-29&to=2026-03-29"));
   assert.equal(summary.grossSalesMinor,4700);
   assert.equal(summary.cashCollectedMinor,1200);

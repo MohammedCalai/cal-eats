@@ -1,4 +1,7 @@
 # Real native screens, anonymous browsing only. Never submits an order or signs in.
+# The current Simulator/XCTest driver reports a +60pt text-target Y offset.
+# These two points are grounded in the preserved 1206x2622 native captures;
+# selection/focus assertions verify the resulting UI instead of assuming success.
 appId: uk.co.calai.caleats
 ---
 - launchApp:
@@ -6,9 +9,19 @@ appId: uk.co.calai.caleats
 - extendedWaitUntil:
     visible: Search food, restaurants or cuisines
     timeout: 60000
+- takeScreenshot: 00-before-coordinate-taps
 - tapOn:
+    point: 84.5%,17.4%
+- takeScreenshot: 00-after-collection-tap
+- assertVisible:
     text: Collection
-    index: 0
+    selected: true
+- assertNotVisible:
+    text: Search food, restaurants or cuisines
+    focused: true
+- extendedWaitUntil:
+    visible: .*Collect from the restaurant
+    timeout: 10000
 - extendedWaitUntil:
     visible: ${RESTAURANT_NAME},.*
     timeout: 30000
@@ -16,8 +29,8 @@ appId: uk.co.calai.caleats
     timeout: 3000
 - takeScreenshot: 01-browse
 - tapOn:
-    text: ${RESTAURANT_NAME},.*
-    index: 0
+    point: 25%,60%
+- takeScreenshot: 00-after-restaurant-tap
 - extendedWaitUntil:
     visible: Back to restaurants
     timeout: 30000
@@ -33,22 +46,3 @@ appId: uk.co.calai.caleats
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 03-menu
-- tapOn:
-    text: View ${DISH_NAME},.*
-- extendedWaitUntil:
-    visible: Close item details
-    timeout: 10000
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 04-item-details
-- tapOn:
-    text: Close item details
-    index: 0
-- tapOn: Add one ${DISH_NAME}
-- tapOn: Open basket, 1 item
-- extendedWaitUntil:
-    visible: Your basket
-    timeout: 10000
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 05-basket

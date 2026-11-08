@@ -5,6 +5,7 @@ import { orderCustomerLegalSnapshot, snapshotOrderCustomerLegal } from "./custom
 import {quotePlatformVoucher,reservePlatformVoucher,customerPayableMinor,platformVoucherMinor,fullyVoucherFunded,voucherProviderBinding} from "./platform-vouchers.js";
 import {resolveRestaurantCommission} from "./restaurant-commission.js";
 import {approvedMerchantCommission,resolveMerchantCommercialTerms,snapshotOrderMerchantCommercial} from "./merchant-commercial.js";
+import {recordOrderFinancialEnvironment,requireOrderFinancialEnvironment} from "./financial-environment.js";
 import {includeArchivedRestaurants} from "./restaurant-catalogue.js";
 import { parseLondonDateRange } from "./marketplace-reporting.js";
 import { menuDetails } from "./menu-details.js";
@@ -425,6 +426,7 @@ async function createOrder({ req, res, db, config, session }) {
       if ((grant.offer_type ?? "free_item") === "free_item") { gift = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(grant.menu_item_id, restaurant.id); if (!gift || JSON.parse(gift.modifier_groups ?? "[]").some((group) => group.minSelections > 0)) throw new HttpError(409, "OFFER_ITEM_UNAVAILABLE", "Offer item is unavailable"); gift.offerName = grant.item_name; gift.offerValue = grant.item_value_minor; }
     }
     db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,contract_rate_bps,contract_policy_version,contract_demo_only,customer_name,customer_email,customer_phone,delivery_instructions,allergy_notes,offer_grant_id,offer_snapshot,commission_base,gross_food_minor,restaurant_discount_minor,promotion_snapshot,scheduled_for,schedule_minimum_lead_minutes,customer_payable_minor,platform_voucher_minor,platform_voucher_snapshot,commission_control_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(order));
+    recordOrderFinancialEnvironment(db,order,config);
     snapshotOrderCustomerLegal(db,config,order);
     snapshotOrderMerchantCommercial(db,order,commercialTerms);
     recordOrderHealthConsent(db, config, { orderId: order.id, userId: user.id, allergyNotes, consent: allergyConsent, source: session.native ? "native" : "web", now });
@@ -448,6 +450,7 @@ async function updateStatus({ req, res, db, config, session, id }) {
   if(!initial||!initialMembership)throw new HttpError(404,"NOT_FOUND","Resource not found");
   if(body.estimatedReadyAt!==undefined&&body.status!=="accepted")throw new HttpError(400,"VALIDATION_ERROR","Use the preparation endpoint to update an existing customer ETA");
   if(body.status===initial.status)return sendJson(res,200,{data:orderDto(db,initial,initialMembership.permission==="owner",initialMembership.permission==="owner",config)});
+  requireOrderFinancialEnvironment(db,initial,config);
   const paths = initial.fulfillment === "delivery" ? { placed: ["accepted", "rejected"], accepted: ["preparing"], preparing: ["ready"], ready: ["out_for_delivery"], out_for_delivery: ["completed"] } : { placed: ["accepted", "rejected"], accepted: ["preparing"], preparing: ["ready"], ready: ["completed"] };
   if(!paths[initial.status]?.includes(body.status))throw new HttpError(409,"INVALID_TRANSITION","Order status transition is not allowed");
   // Reject malformed promises before a Stripe capture/cancellation can start. Nothing is promised on an unknown provider result.
@@ -463,6 +466,7 @@ async function updateStatus({ req, res, db, config, session, id }) {
     const membership = order && db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(order.restaurant_id, user.id);
     if (!order || !membership) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     if (body.status === order.status) return { order, permission: membership.permission };
+    requireOrderFinancialEnvironment(db,order,config);
     if(order.payment_method==="card"&&["accepted","rejected"].includes(body.status)&&!db.prepare("SELECT 1 FROM stripe_order_decisions WHERE order_id=? AND desired_status=? AND state='confirmed'").get(order.id,body.status))throw new HttpError(409,"ORDER_DECISION_NOT_CONFIRMED","Card payment decision is not confirmed");
     const totals = db.prepare("SELECT COUNT(*) count,COALESCE(SUM(food_amount_minor),0) AS food,COALESCE(SUM(delivery_amount_minor),0) AS delivery FROM refunds WHERE order_id=?").get(order.id);
     if (totals.count > 0 && totals.food === order.subtotal_minor && totals.delivery === order.delivery_fee_minor) throw new HttpError(409, "ORDER_FULLY_REFUNDED", "Fully refunded orders cannot advance");

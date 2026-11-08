@@ -20,6 +20,14 @@ The saved order breakdown shows the applicable rate, discounts, delivery charge,
 
 Cal-Eats may schedule commission-free periods for an individual restaurant. A period's start and end are recorded for that restaurant. New orders placed during that period use the scheduled commission rate. Previously placed orders retain their saved rate.
 
+## Contract period and fees
+
+The restaurant contract lasts **24 months from the owner's recorded acceptance**, with its normal 7% commission fixed for that period. Scheduled commission-free periods are temporary waivers of that normal commission. They do not extend the contract period.
+
+Cal-Eats charges no additional setup, monthly subscription, administration or per-order platform fee under this arrangement. No customer platform service fee applies for the initial release. The restaurant uses its own delivery drivers; Cal-Eats does not supply delivery drivers.
+
+A later default agreement or change of restaurant owner login does not automatically restart an existing contract period. A new contract period requires a reviewed renewal agreement and a new affirmative owner acceptance.
+
 ## Card processing and payment flow
 
 Cal-Eats bears normal card-processing costs. They are not an additional deduction from the restaurant's earnings under the commission arrangement above, including during a commission-free period.
@@ -34,6 +42,6 @@ The planned payout schedule is weekly on Monday. Payouts depend on completed bus
 
 ## Review still required before this draft can become an agreement
 
-The final merchant agreement, its effective date and any contract duration remain to be agreed. This draft intentionally adds no unapproved fixed term, cancellation charge, liability allocation or other contractual fee. The development system's example 24-month term is not an approved commercial commitment.
+The final merchant agreement and its effective date remain to be reviewed. The 24-month period above follows the original build brief; this draft adds no cancellation charge, liability allocation or other contractual fee.
 
 The final exact document must be approved separately. Its version and SHA-256 will then be archived, and an authorised restaurant owner must affirmatively accept that exact version. Neither this file nor preparing its acceptance screen activates an agreement or live payments.

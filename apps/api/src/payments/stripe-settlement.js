@@ -14,6 +14,7 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
         a.provider_reference AS destination_account_id, a.capabilities
       FROM orders o
       JOIN stripe_order_payments p ON p.order_id=o.id AND p.status='captured' AND p.provider_mode=?
+      JOIN order_financial_environments fe ON fe.order_id=o.id AND fe.environment=p.provider_mode
       JOIN provider_accounts a ON a.restaurant_id=o.restaurant_id AND a.status='enabled' AND a.provider_mode=p.provider_mode
       JOIN stripe_account_readiness ready ON ready.restaurant_id=a.restaurant_id AND ready.provider_mode=a.provider_mode
         AND ready.provider_account_id=a.provider_reference AND ready.charges_enabled=1 AND ready.payouts_enabled=1
@@ -28,6 +29,7 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
     // Their verified voucher redemption is the independent entitlement to payout.
     const funded=db.prepare(`SELECT o.*,NULL payment_intent_id,NULL latest_charge_id,a.provider_reference destination_account_id,a.capabilities FROM orders o
       JOIN provider_accounts a ON a.restaurant_id=o.restaurant_id AND a.provider_mode=? AND a.status='enabled'
+      JOIN order_financial_environments fe ON fe.order_id=o.id AND fe.environment=a.provider_mode
       JOIN stripe_account_readiness ready ON ready.restaurant_id=a.restaurant_id AND ready.provider_mode=a.provider_mode AND ready.provider_account_id=a.provider_reference AND ready.charges_enabled=1 AND ready.payouts_enabled=1
       JOIN marketplace_operations eligible ON eligible.order_id=o.id AND eligible.operation_key='order:'||o.id||':settlement-eligible' AND eligible.status='confirmed' AND eligible.provider_mode=a.provider_mode
       WHERE o.payment_method='voucher' AND o.payment_status='voucher_redeemed' AND o.status='completed'

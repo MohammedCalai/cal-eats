@@ -1,3 +1,5 @@
+import { resolveFinanceScope, operationFinancePredicate } from "./marketplace-reporting.js";
+import { orderEnvironmentPredicate, orderFinancialEnvironment } from "./financial-environment.js";
 import {customerPayableMinor,platformVoucherMinor} from "./platform-vouchers.js";
 import { requireRestaurantOwner } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
@@ -26,7 +28,8 @@ export function buildOrderFinancialBreakdown(db, order) {
     freeItemRetailValueMinor: freeItems.reduce((sum, item) => sum + item.retailValueMinor, 0), freeItems,
     allocations: (Array.isArray(storedPromotion?.allocations) ? storedPromotion.allocations : []).map(row => ({ menuItemId: string(row.menuItemId, 100), name: string(row.name), grossMinor: amount(row.grossMinor), discountMinor: amount(row.discountMinor), netMinor: amount(row.netMinor) }))
   } : null;
-  const transfers = db.prepare("SELECT kind,status,amount_minor FROM marketplace_operations WHERE restaurant_id=? AND order_id=? AND kind IN ('merchant_transfer','transfer_reversal')").all(order.restaurant_id, order.id);
+  const environment=orderFinancialEnvironment(db,order.id),scope=environment==="stripe_live"?"live":"testing";
+  const transfers = db.prepare(`SELECT m.kind,m.status,m.amount_minor FROM marketplace_operations m WHERE m.restaurant_id=? AND m.order_id=? AND m.kind IN ('merchant_transfer','transfer_reversal') AND ${operationFinancePredicate("m",scope)}`).all(order.restaurant_id, order.id);
   const transferredMinor = transfers.filter(row => row.kind === "merchant_transfer" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0), reversedTransferMinor = transfers.filter(row => row.kind === "transfer_reversal" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
   let state = "not_confirmed", label = "No earnings confirmed";
   if (confirmed) {
@@ -41,7 +44,7 @@ export function buildOrderFinancialBreakdown(db, order) {
   }
   const base = order.commission_base === "food_plus_delivery" ? "food_plus_delivery" : "food";
   return {
-    orderId: order.id, restaurantId: order.restaurant_id, currency: order.currency, status: order.status, createdAt: order.created_at, paymentMethod: order.payment_method, paymentStatus: order.payment_status, providerMode: payment?.provider_mode || parse(order.platform_voucher_snapshot)?.providerMode || "local_simulator", items,
+    orderId: order.id, restaurantId: order.restaurant_id, currency: order.currency, status: order.status, createdAt: order.created_at, paymentMethod: order.payment_method, paymentStatus: order.payment_status, providerMode: environment,scope,historyLabel:scope==="live"?"Live financial activity":"Testing and unclassified history",simulation:scope!=="live", items,
     totals: { grossFoodMinor: Math.max(amount(order.gross_food_minor), order.subtotal_minor + discount), restaurantDiscountMinor: discount, foodChargedMinor: order.subtotal_minor, grossDeliveryFeeMinor: order.delivery_fee_minor + deliveryDiscountMinor, deliveryDiscountMinor, deliveryFeeMinor: order.delivery_fee_minor, orderValueMinor:order.total_minor,platformVoucherMinor:platformVoucherMinor(order),customerPayableMinor:customerPayableMinor(order),customerChargedMinor: order.total_minor, refundedFoodMinor, refundedDeliveryMinor, refundedTotalMinor, retainedCustomerPaymentMinor: Math.max(0, order.total_minor - refundedTotalMinor) },
     commission: { rateBasisPoints: order.contract_rate_bps, base, commissionableMinor: order.subtotal_minor + (base === "food_plus_delivery" ? order.delivery_fee_minor : 0), originalMinor: originalCommission, reversedMinor, retainedMinor: retainedCommission, policyVersion: order.contract_policy_version, developmentAssumption: Boolean(order.contract_demo_only), recognised: confirmed }, promotion,
     earnings: { originalMinor: originalEarnings, refundImpactMinor: originalEarnings - currentEarnings, currentMinor: currentEarnings, providerFeeChargedToRestaurantMinor: 0, providerFeeBorneBy: "platform", confirmed },
@@ -50,11 +53,11 @@ export function buildOrderFinancialBreakdown(db, order) {
   };
 }
 
-export async function routeFinanceDetails({ req, res, url, db, session }) {
+export async function routeFinanceDetails({ req, res, url, db, session,config }) {
   const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/orders\/([^/]+)\/breakdown$/);
   if (req.method !== "GET" || !match) return false;
   requireRestaurantOwner(db, session, match[1]);
-  const order = db.prepare("SELECT * FROM orders WHERE id=? AND restaurant_id=?").get(match[2], match[1]);
+  const scope=resolveFinanceScope(config,url),order = db.prepare(`SELECT o.* FROM orders o WHERE o.id=? AND o.restaurant_id=? AND ${orderEnvironmentPredicate("o",scope)}`).get(match[2], match[1]);
   if (!order) throw new HttpError(404, "NOT_FOUND", "Resource not found");
   return sendJson(res, 200, { data: buildOrderFinancialBreakdown(db, order) });
 }

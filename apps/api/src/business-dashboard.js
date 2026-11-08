@@ -1,6 +1,7 @@
 import { requireRestaurantMembership } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
-import { buildFinanceSummary, parseLondonDateRange } from "./marketplace-reporting.js";
+import { buildFinanceSummary, parseLondonDateRange, resolveFinanceScope, operationFinancePredicate } from "./marketplace-reporting.js";
+import { orderEnvironmentPredicate } from "./financial-environment.js";
 import { PAYABLE_ORDER_SQL } from "./order-confirmation.js";
 import { orderMessageWindow } from "./order-messaging.js";
 import { restaurantMessageArrivalRevision } from "./business-message-attention.js";
@@ -33,11 +34,11 @@ export function comparisonRange(range) {
   return { fromDate, toDate, ...parseLondonDateRange(new URL(`http://dashboard.local/?from=${fromDate}&to=${toDate}`)) };
 }
 function growth(current, previous) { return previous ? Math.round((current - previous) / previous * 1000) / 10 : current ? null : 0; }
-function dashboardInsights(db, restaurantId, range, now) {
-  const previous = comparisonRange(range), previousFinance = periodFinance(db, restaurantId, previous), currentFinance = periodFinance(db, restaurantId, range);
-  const previousOrders = db.prepare("SELECT COUNT(*) n FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<?").get(restaurantId, previous.from, previous.toExclusive).n;
-  const currentOrders = db.prepare("SELECT COUNT(*) n FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<?").get(restaurantId, range.from, range.toExclusive).n;
-  const marketing = db.prepare(`SELECT COUNT(*) AS offerOrders,COALESCE(SUM(o.total_minor),0) AS offerSalesMinor,COALESCE(SUM(o.restaurant_discount_minor),0) AS discountMinor FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()} AND (o.offer_grant_id IS NOT NULL OR o.promotion_snapshot IS NOT NULL)`).get(restaurantId, range.from, range.toExclusive);
+function dashboardInsights(db, restaurantId, range, now,scope) {
+  const previous = comparisonRange(range), previousFinance = periodFinance(db, restaurantId, previous,scope), currentFinance = periodFinance(db, restaurantId, range,scope);
+  const previousOrders = db.prepare(`SELECT COUNT(*) n FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${orderEnvironmentPredicate("o",scope)}`).get(restaurantId, previous.from, previous.toExclusive).n;
+  const currentOrders = db.prepare(`SELECT COUNT(*) n FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${orderEnvironmentPredicate("o",scope)}`).get(restaurantId, range.from, range.toExclusive).n;
+  const marketing = db.prepare(`SELECT COUNT(*) AS offerOrders,COALESCE(SUM(o.total_minor),0) AS offerSalesMinor,COALESCE(SUM(o.restaurant_discount_minor),0) AS discountMinor FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()} AND ${orderEnvironmentPredicate("o",scope)} AND (o.offer_grant_id IS NOT NULL OR o.promotion_snapshot IS NOT NULL)`).get(restaurantId, range.from, range.toExclusive);
   const activeOffers = db.prepare("SELECT COUNT(*) n FROM offer_campaigns WHERE restaurant_id=? AND expires_at>?").get(restaurantId, now).n;
   return { comparison: { fromDate: previous.fromDate, toDate: previous.toDate, salesChangePercent: growth(currentFinance.grossSalesMinor, previousFinance.grossSalesMinor), ordersChangePercent: growth(currentOrders, previousOrders), previousOrders, previousSalesMinor: previousFinance.grossSalesMinor }, marketing: { ...marketing, activeOffers, basis: "confirmed_orders_before_refunds" } };
 }
@@ -70,12 +71,12 @@ function operationalCounts(db, restaurantId, userId, owner, now) {
   };
 }
 
-function periodFinance(db, restaurantId, range) {
+function periodFinance(db, restaurantId, range,scope) {
   const row = db.prepare(`WITH scoped AS (
     SELECT o.*,
       COALESCE((SELECT SUM(food_amount_minor+delivery_amount_minor) FROM refunds WHERE order_id=o.id),0) AS refund_minor,
       COALESCE((SELECT SUM(commission_reversal_minor) FROM refunds WHERE order_id=o.id),0) AS reversal_minor
-    FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()}
+    FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()} AND ${orderEnvironmentPredicate("o",scope)}
   ) SELECT COUNT(*) AS count,COALESCE(SUM(total_minor),0) AS gross,COALESCE(SUM(refund_minor),0) AS refunds,
     COALESCE(SUM(MAX(0,commission_minor-reversal_minor)),0) AS commission,
     COALESCE(SUM(MAX(0,total_minor-refund_minor-MAX(0,commission_minor-reversal_minor))),0) AS net,
@@ -85,13 +86,13 @@ function periodFinance(db, restaurantId, range) {
   return { grossSalesMinor: row.gross, refundsMinor: row.refunds, commissionMinor: row.commission, netEarningsMinor: row.net, cashSalesMinor: row.cash, cashCollectedMinor: row.collected, cardSalesMinor: row.card, averageOrderMinor: row.count ? Math.round(row.gross / row.count) : 0 };
 }
 
-function payoutState(db, order, net, providerMode) {
+function payoutState(db, order, net, providerMode,scope) {
   if (!["accepted", "preparing", "ready", "out_for_delivery", "completed"].includes(order.status) || (order.payment_method === "card" && !["stripe_captured", "stripe_partially_refunded", "stripe_refunded"].includes(order.payment_status))) return { payoutState: "not_confirmed", payoutLabel: "No earnings confirmed" };
   if (net === 0) return { payoutState: "no_net_earnings", payoutLabel: "No net earnings remaining" };
   if (order.payment_method === "cash") return order.payment_status === "cash_collected" ? { payoutState: "cash_direct", payoutLabel: "Cash received by restaurant" } : { payoutState: "cash_due", payoutLabel: "Cash due to restaurant" };
   if (order.payment_method === "mock_card") return { payoutState: "simulated", payoutLabel: "Test payment · no bank payout" };
   const prefix = providerMode === "stripe_live" ? "" : "Test · ";
-  const transfers = db.prepare("SELECT kind,status,amount_minor FROM marketplace_operations WHERE restaurant_id=? AND order_id=? AND kind IN ('merchant_transfer','transfer_reversal')").all(order.restaurant_id, order.id);
+  const transfers = db.prepare(`SELECT m.kind,m.status,m.amount_minor FROM marketplace_operations m WHERE m.restaurant_id=? AND m.order_id=? AND m.kind IN ('merchant_transfer','transfer_reversal') AND ${operationFinancePredicate("m",scope)}`).all(order.restaurant_id, order.id);
   const transferred = transfers.filter(row => row.kind === "merchant_transfer" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0) - transfers.filter(row => row.kind === "transfer_reversal" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
   if (transfers.some(row => ["unknown","failed"].includes(row.status))) return { payoutState: "needs_review", payoutLabel: `${prefix}transfer needs review` };
   if (transferred > 0) return { payoutState: "transferred_to_balance", payoutLabel: `${prefix}transferred to Stripe balance` };
@@ -100,13 +101,14 @@ function payoutState(db, order, net, providerMode) {
   return order.status === "completed" ? { payoutState: "pending_transfer", payoutLabel: `${prefix}awaiting transfer` } : { payoutState: "awaiting_completion", payoutLabel: `${prefix}awaiting order completion` };
 }
 
-function orderRows(db, restaurantId, range, owner, page, pageSize) {
-  const total = db.prepare("SELECT COUNT(*) AS count FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<?").get(restaurantId, range.from, range.toExclusive).count;
+function orderRows(db, restaurantId, range, owner, page, pageSize,scope) {
+  const environmentSql=owner?` AND ${orderEnvironmentPredicate("o",scope)}`:"";
+  const total = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?${environmentSql}`).get(restaurantId, range.from, range.toExclusive).count;
   const rows = db.prepare(`SELECT o.*,
     COALESCE((SELECT SUM(food_amount_minor+delivery_amount_minor) FROM refunds WHERE order_id=o.id),0) AS refund_minor,
     COALESCE((SELECT SUM(commission_reversal_minor) FROM refunds WHERE order_id=o.id),0) AS reversal_minor,
-    COALESCE((SELECT provider_mode FROM stripe_order_payments WHERE order_id=o.id),json_extract(o.platform_voucher_snapshot,'$.providerMode')) AS provider_mode
-    FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`).all(restaurantId, range.from, range.toExclusive, pageSize, (page - 1) * pageSize);
+    COALESCE((SELECT environment FROM order_financial_environments fe WHERE fe.order_id=o.id),'unknown') AS provider_mode
+    FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?${environmentSql} ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`).all(restaurantId, range.from, range.toExclusive, pageSize, (page - 1) * pageSize);
   const items = rows.map(order => {
     const base = { id: order.id, createdAt: order.created_at, customerName: order.customer_name, status: order.status, fulfillment: order.fulfillment, scheduledFor: order.scheduled_for ?? null };
     if (!owner) return base;
@@ -115,7 +117,7 @@ function orderRows(db, restaurantId, range, owner, page, pageSize) {
     const providerMode = order.provider_mode ?? "local_simulator";
     let deliveryDiscountMinor=0;
     try { const saved=JSON.parse(order.promotion_snapshot||order.offer_snapshot||"null");if(Number.isSafeInteger(saved?.deliveryDiscountMinor)&&saved.deliveryDiscountMinor>=0)deliveryDiscountMinor=saved.deliveryDiscountMinor; } catch { /* Historical orders without a promotion have no waived fee. */ }
-    return { ...base, deliveryFeeMinor:order.delivery_fee_minor,deliveryBeforeOfferMinor:order.delivery_fee_minor+deliveryDiscountMinor,deliveryDiscountMinor,totalMinor: order.total_minor,customerPayableMinor:order.customer_payable_minor??order.total_minor,platformVoucherMinor:order.platform_voucher_minor??0, refundsMinor: order.refund_minor, commissionMinor: commission, netEarningsMinor: net, paymentMethod: order.payment_method, paymentState: order.payment_status, providerMode, ...payoutState(db, order, net, providerMode) };
+    return { ...base, deliveryFeeMinor:order.delivery_fee_minor,deliveryBeforeOfferMinor:order.delivery_fee_minor+deliveryDiscountMinor,deliveryDiscountMinor,totalMinor: order.total_minor,customerPayableMinor:order.customer_payable_minor??order.total_minor,platformVoucherMinor:order.platform_voucher_minor??0, refundsMinor: order.refund_minor, commissionMinor: commission, netEarningsMinor: net, paymentMethod: order.payment_method, paymentState: order.payment_status, providerMode, ...payoutState(db, order, net, providerMode,scope) };
   });
   return { items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
 }
@@ -132,14 +134,14 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
   }
   const view = url.searchParams.get("view") ?? "full";
   if (!["full", "operations"].includes(view)) throw new HttpError(400, "VALIDATION_ERROR", "Dashboard view is invalid");
-  const includeFinance = owner && view === "full";
+  const includeFinance = owner && view === "full",scope=resolveFinanceScope(config,url),environmentSql=includeFinance?` AND ${orderEnvironmentPredicate("o",scope)}`:"";
   const now = config.now(), range = dashboardRange(url.searchParams.get("period") ?? "today", now), page = pageValue(url.searchParams.get("page"), 1, 1000000), pageSize = pageValue(url.searchParams.get("pageSize"), 20, 100);
-  const summary = db.prepare(`SELECT COUNT(*) AS ordersPlaced,COALESCE(SUM(CASE WHEN ${recognized()} THEN 1 ELSE 0 END),0) AS confirmedOrders,COALESCE(SUM(CASE WHEN o.status='completed' THEN 1 ELSE 0 END),0) AS completedOrders,COALESCE(SUM(CASE WHEN o.status IN ('rejected','cancelled','expired') THEN 1 ELSE 0 END),0) AS cancelledOrders FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?`).get(restaurantId, range.from, range.toExclusive);
-  const topItems = db.prepare(`SELECT i.name,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()} GROUP BY i.name ORDER BY quantity DESC,i.name LIMIT 5`).all(restaurantId, range.from, range.toExclusive);
+  const summary = db.prepare(`SELECT COUNT(*) AS ordersPlaced,COALESCE(SUM(CASE WHEN ${recognized()} THEN 1 ELSE 0 END),0) AS confirmedOrders,COALESCE(SUM(CASE WHEN o.status='completed' THEN 1 ELSE 0 END),0) AS completedOrders,COALESCE(SUM(CASE WHEN o.status IN ('rejected','cancelled','expired') THEN 1 ELSE 0 END),0) AS cancelledOrders FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?${environmentSql}`).get(restaurantId, range.from, range.toExclusive);
+  const topItems = db.prepare(`SELECT i.name,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()}${environmentSql} GROUP BY i.name ORDER BY quantity DESC,i.name LIMIT 5`).all(restaurantId, range.from, range.toExclusive);
   let finance = null;
   if (includeFinance) {
-    const balance = buildFinanceSummary(db, restaurantId);
-    finance = { period: periodFinance(db, restaurantId, range), balance: { basis: "all_time", availableMinor: balance.availableMinor, pendingMinor: balance.pendingMinor, heldMinor: balance.heldMinor, bankPaidMinor: balance.bankPaidMinor, bankPendingMinor: balance.bankPendingMinor, nextPayout: balance.nextPayout, providerMode: balance.providerMode, cashCommissionOutstandingMinor: balance.cashCommissionOutstandingMinor } };
+    const balance = buildFinanceSummary(db, restaurantId,url,config);
+    finance = { scope,historyLabel:balance.historyLabel,simulation:scope!=="live", period: periodFinance(db, restaurantId, range,scope), balance: { basis: "all_time", availableMinor: balance.availableMinor, pendingMinor: balance.pendingMinor, heldMinor: balance.heldMinor, bankPaidMinor: balance.bankPaidMinor, bankPendingMinor: balance.bankPendingMinor, nextPayout: balance.nextPayout, providerMode: balance.providerMode, cashCommissionOutstandingMinor: balance.cashCommissionOutstandingMinor } };
   }
-  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString()), finance, ...(includeFinance ? dashboardInsights(db,restaurantId,range,now.toISOString()) : {}), topItems, orders: orderRows(db, restaurantId, range, includeFinance, page, pageSize) } });
+  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString()), finance, ...(includeFinance ? dashboardInsights(db,restaurantId,range,now.toISOString(),scope) : {}), topItems, orders: orderRows(db, restaurantId, range, includeFinance, page, pageSize,scope) } });
 }

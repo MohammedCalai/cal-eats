@@ -9,6 +9,7 @@ import { retrieveAuthoritativeProviderState } from "./provider-events.js";
 import { queueEligibleStripeTransfers } from "./stripe-settlement.js";
 import { restaurantBankingConfig,bankingPaymentScope } from "./live-onboarding.js";
 import { hasLiveBankingCredential,requireLiveBankingCredential } from "../auth/password-change.js";
+import {orderFinancialEnvironment,requireOrderFinancialEnvironment} from "../financial-environment.js";
 
 const stripeMode = config => ["stripe_test", "stripe_live"].includes(config.paymentProviderMode) ? config.paymentProviderMode : null;
 const provider = config => config.stripeProvider ?? config.paymentProvider;
@@ -69,6 +70,7 @@ function saveAccount(db, config, restaurantId, result) {
 function ownedCardOrder(db, session, orderId, config) {
   const customer = requireRole(session,"customer"), order = db.prepare("SELECT * FROM orders WHERE id=? AND customer_id=? AND payment_method='card'").get(orderId,customer.id);
   if (!order) throw new HttpError(404,"NOT_FOUND","Resource not found");
+  requireOrderFinancialEnvironment(db,order,config);
   const payment = db.prepare("SELECT * FROM stripe_order_payments WHERE order_id=?").get(order.id);
   if (payment && payment.provider_mode !== stripeMode(config)) throw new HttpError(409,"STRIPE_MODE_MISMATCH","Order belongs to another payment mode");
   return { order, payment };
@@ -306,6 +308,7 @@ function movementBinding(db,config,job,payload) {
   const order = db.prepare("SELECT * FROM orders WHERE id=? AND payment_method IN ('card','voucher')").get(payload.orderId ?? dispute?.order_id ?? "");
   const payment = order && (fullyVoucherFunded(order)&&assertVoucherFunding(db,order)?{status:"captured",provider_mode:config.paymentProviderMode,payment_intent_id:null,latest_charge_id:null}:db.prepare("SELECT * FROM stripe_order_payments WHERE order_id=?").get(order.id));
   if (!order || !payment || payment.provider_mode !== config.paymentProviderMode || (payload.providerMode && payload.providerMode !== payment.provider_mode)) throw Object.assign(Error("Payment mode binding failed"),{code:"STRIPE_MODE_MISMATCH"});
+  if(orderFinancialEnvironment(db,order.id)!==payment.provider_mode)throw Object.assign(Error("Saved order payment environment does not match this operation"),{code:"STRIPE_MODE_MISMATCH"});
   if (!Number.isSafeInteger(payload.amountMinor) || payload.amountMinor < 1 || payload.amountMinor > order.total_minor) throw Object.assign(Error("Amount binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
   const account = accountForMode(db,order.restaurant_id,config);
   if (job.kind === "stripe_transfer" && (!account || payload.accountId !== account.provider_reference || payload.platformAccountId !== config.stripePlatformAccountId || (payload.sourceCharge??null) !== (platformVoucherMinor(order)?null:payment.latest_charge_id) || (payload.paymentIntentId??null) !== (payment.payment_intent_id??null))) throw Object.assign(Error("Transfer binding failed"),{code:"STRIPE_RESULT_MISMATCH"});

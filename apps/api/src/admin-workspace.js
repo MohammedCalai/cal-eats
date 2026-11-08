@@ -1,7 +1,8 @@
 import { requireRole } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { orderConfirmationDto, PAYABLE_ORDER_SQL } from "./order-confirmation.js";
-import { parseLondonDateRange } from "./marketplace-reporting.js";
+import { parseLondonDateRange, resolveFinanceScope } from "./marketplace-reporting.js";
+import { orderEnvironmentPredicate } from "./financial-environment.js";
 import { routeAdminFinanceWorkspace } from "./admin-finance-workspace.js";
 import { orderDto } from "./journey.js";
 import { buildOrderFinancialBreakdown } from "./finance-details.js";
@@ -44,12 +45,12 @@ export function adminUserDirectory(db,url) {
   return result(rows.map((row,index)=>({id:row.id,number:paging.offset+index+1,name:row.name,email:row.email,role:row.role,phone:row.phone,emailVerified:Boolean(row.email_verified_at),enabled:Boolean(row.account_enabled),createdAt:row.created_at})),total,paging);
 }
 
-function dashboard(db,url,now) {
-  const range=parseLondonDateRange(url),where=["o.status IN ('accepted','preparing','ready','out_for_delivery','completed')","(o.payment_method!='card' OR o.payment_status IN ('stripe_captured','stripe_partially_refunded','stripe_refunded'))"],args=[];
+function dashboard(db,url,now,config) {
+  const scope=resolveFinanceScope(config,url),range=parseLondonDateRange(url),where=["o.status IN ('accepted','preparing','ready','out_for_delivery','completed')","(o.payment_method!='card' OR o.payment_status IN ('stripe_captured','stripe_partially_refunded','stripe_refunded'))",orderEnvironmentPredicate("o",scope)],args=[];
   if(range.from){where.push("o.created_at>=?");args.push(range.from);}if(range.toExclusive){where.push("o.created_at<?");args.push(range.toExclusive);}
   const orders=db.prepare(`SELECT COUNT(*) order_count,COALESCE(SUM(o.total_minor),0) order_value,COALESCE(SUM(o.commission_minor),0) order_commission FROM orders o WHERE ${where.join(" AND ")}`).get(...args);
   const restaurants=db.prepare("SELECT COUNT(*) total,COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) pending FROM restaurants WHERE archived_at IS NULL").get();
-  return {restaurants:{total:restaurants.total,pending:restaurants.pending},customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,orders:{count:orders.order_count,valueMinor:orders.order_value,commissionMinor:orders.order_commission},liveOrders:db.prepare("SELECT COUNT(*) n FROM orders WHERE status IN ('placed','accepted','preparing','ready') AND EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=orders.restaurant_id AND ar.archived_at IS NULL)").get().n,checkedAt:now.toISOString()};
+  return {financialScope:scope,financialScopeLabel:scope==="live"?"Live payments":"Test/unclassified history",restaurants:{total:restaurants.total,pending:restaurants.pending},customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,orders:{count:orders.order_count,valueMinor:orders.order_value,commissionMinor:orders.order_commission},liveOrders:db.prepare("SELECT COUNT(*) n FROM orders WHERE status IN ('placed','accepted','preparing','ready') AND EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=orders.restaurant_id AND ar.archived_at IS NULL)").get().n,checkedAt:now.toISOString()};
 }
 
 function operations(db,url) {
@@ -80,7 +81,7 @@ export async function routeAdminWorkspace({req,res,url,db,config,session}) {
   if(req.method!=="GET")return false;
   if(url.pathname.startsWith("/api/admin/workspace/finance/"))return routeAdminFinanceWorkspace({req,res,url,db,config,session});
   let data;
-  if(url.pathname==="/api/admin/workspace/dashboard")data=dashboard(db,url,config.now());
+  if(url.pathname==="/api/admin/workspace/dashboard")data=dashboard(db,url,config.now(),config);
   else if(url.pathname==="/api/admin/workspace/unconfirmed-orders")data=adminUnconfirmedOrders(db,url,config.now());
   else if(url.pathname==="/api/admin/workspace/users")data=adminUserDirectory(db,url);
   else if(url.pathname==="/api/admin/workspace/operations")data=operations(db,url);

@@ -8,6 +8,12 @@ export default function MerchantAgreement({ restaurantId }) {
   return <MerchantAgreementReview key={restaurantId} restaurantId={restaurantId}/>;
 }
 
+function ContractPeriod({value}) {
+  if(!value?.enabled)return null;
+  const term=value.activeAgreement,date=stamp=>new Date(stamp).toLocaleDateString("en-GB",{timeZone:"Europe/London"});
+  return <section className="panel"><h2>Your contract period</h2>{term?<p>Your normal commission is fixed for the 24-month period from {date(term.startsAt)} to {date(term.endsAt)}. Accepting updated wording does not automatically extend this period. Scheduled commission-free periods still apply.</p>:<p>Your 24-month contract period starts when your owner acceptance is recorded. Your normal commission is fixed during that period; scheduled commission-free periods still apply.</p>}{value.acceptanceNeedsReview&&<p role="alert">Cal-Eats must provide a reviewed renewal agreement before a new contract period can start.</p>}</section>;
+}
+
 function MerchantAgreementReview({ restaurantId }) {
   const root = `/api/restaurant/restaurants/${restaurantId}/merchant-agreement`;
   const result = useFinanceResource(root), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -29,6 +35,7 @@ function MerchantAgreementReview({ restaurantId }) {
     <NavLink className="button-link merchant-agreement-back" to="/owner/earnings?view=payouts">← Bank & payouts</NavLink>
     <header><p className="eyebrow">Your restaurant agreement</p><h1 id="merchant-agreement-title">Review merchant agreement</h1><p>Read the exact commercial agreement for your restaurant before confirming acceptance.</p></header>
     {(result.error||error)&&<p className="alert" role="alert">{result.error||error}</p>}
+    <ContractPeriod value={value}/>
     {!value ? <section className="panel"><p role="status">{result.loading?"Loading the approved agreement…":"The agreement is unavailable. Please refresh and try again."}</p><button type="button" className="quiet" disabled={result.loading} onClick={()=>void result.reload()}>Refresh agreement</button></section> : !value.enabled ? <section className="panel"><h2>No agreement available for acceptance</h2><p>Cal-Eats has not activated a reviewed merchant agreement. No draft or development agreement can be accepted here.</p></section> : <>
       <section className="panel merchant-agreement-document"><div className="merchant-agreement-document-heading"><div><h2>{value.restaurantName}</h2><p>Version {document.version} · Effective {new Date(document.effectiveAt).toLocaleDateString("en-GB",{timeZone:"Europe/London"})}</p></div><span className="pill">{value.acceptedAt?"Accepted":"Review required"}</span></div><pre tabIndex={0} aria-label="Approved merchant agreement text">{document.text}</pre><p className="fine merchant-agreement-fingerprint">Document SHA-256: {document.sha256}</p></section>
       {value.acceptedAt&&<section className="panel merchant-agreement-confirmation" role="status"><h2>Agreement accepted for this restaurant</h2><p>Accepted {new Date(value.acceptedAt).toLocaleString("en-GB",{timeZone:"Europe/London"})}. This exact version is retained with its acceptance record.</p><p>Agreement acceptance does not activate card payments or change an existing order.</p></section>}

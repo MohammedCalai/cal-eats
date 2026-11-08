@@ -5,6 +5,7 @@ import {journeyFixture} from "./helpers.js";
 import {adminUnconfirmedOrders,adminUserDirectory,adminOrderDirectory,routeAdminWorkspace} from "../src/admin-workspace.js";
 import {adminFinanceSummary,adminFinanceRecords} from "../src/admin-finance-workspace.js";
 import {buildFinanceSummary} from "../src/marketplace-reporting.js";
+import {recordOrderFinancialEnvironment} from "../src/financial-environment.js";
 
 const url = path => new URL(path,"http://127.0.0.1:4310");
 async function setup(){
@@ -75,5 +76,30 @@ test("paged finance totals agree with saved finance records and platform voucher
     const after=adminFinanceSummary(f.db,url("/api/admin/workspace/finance/summary?from=2026-01-01&to=2026-01-01"));assert.equal(after.totals.grossSalesMinor,before.totals.grossSalesMinor);assert.equal(after.totals.commissionMinor,before.totals.commissionMinor);assert.equal(after.totals.platformVoucherCostMinor,200);assert.equal(after.totals.marginMinor,before.totals.marginMinor-200);
     assert.equal(adminFinanceSummary(f.db,url("/api/admin/workspace/finance/summary?q=Second")).totals.grossSalesMinor,0);assert.equal(adminFinanceSummary(f.db,url("/api/admin/workspace/finance/summary?from=2026-01-02")).totals.grossSalesMinor,0);
     for(const kind of["exceptions","contracts","statements"]){const records=adminFinanceRecords(f.db,url("/api/admin/workspace/finance/records?pageSize=1"),kind);assert.ok(records.items.length<=1);assert.equal(records.pagination.pageSize,1);}
+  }finally{await f.close();}
+});
+
+test("live admin totals and statements exclude fictional history while operational watches remain independent",async()=>{
+  const f=await setup();try{
+    const admin=await f.login("admin@calai.local","LocalAdmin!4310");
+    assert.equal((await f.json(`/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}})).status,200);
+    const old=f.db.prepare("SELECT * FROM orders WHERE id=?").get(f.order.id),columns=Object.keys(old),insert=f.db.prepare(`INSERT INTO orders(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`);
+    const live={...old,id:randomUUID(),idempotency_key:"admin-live-proof",status:"completed",subtotal_minor:5000,total_minor:5000,customer_payable_minor:5000,commission_minor:350,contract_demo_only:0,payment_status:"cash_collected"};insert.run(...columns.map(c=>live[c]));recordOrderFinancialEnvironment(f.db,live,{paymentProviderMode:"stripe_live"});
+    const waiting={...old,id:randomUUID(),idempotency_key:"admin-unproven-waiting",status:"placed",confirmed_at:null};insert.run(...columns.map(c=>waiting[c]));
+    const stamp=f.config.now().toISOString(),op=f.db.prepare("INSERT INTO marketplace_operations(id,operation_key,restaurant_id,order_id,kind,status,amount_minor,currency,provider_mode,metadata,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'GBP',?,'{}',?,?)");
+    for(const[kind,amount]of[["cash_order_accepted",5000],["cash_commission_receivable",350]])op.run(randomUUID(),`admin-live:${kind}`,f.restaurant.id,live.id,kind,"confirmed",amount,"stripe_live",stamp,stamp);
+    op.run("live-review","admin-live:review",f.restaurant.id,live.id,"financial_review","held",100,"stripe_live",stamp,stamp);op.run("test-review","admin-test:review",f.restaurant.id,old.id,"financial_review","held",100,"local_simulator",stamp,stamp);
+    f.db.prepare("INSERT INTO ledger_entries VALUES(?,?,?,?,?,'GBP','order',?,?)").run(randomUUID(),live.id,f.restaurant.id,"commission_cash_receivable",350,live.id,stamp);
+    f.db.prepare("INSERT INTO ledger_entries VALUES(?,NULL,?,'cash_settlement',999,'GBP','cash_settlement','unproven-history',?)").run(randomUUID(),f.restaurant.id,stamp);
+    const before=JSON.stringify({orders:f.db.prepare("SELECT * FROM orders ORDER BY id").all(),ledger:f.db.prepare("SELECT * FROM ledger_entries ORDER BY id").all(),operations:f.db.prepare("SELECT * FROM marketplace_operations ORDER BY id").all()});
+    f.config.paymentProviderMode="stripe_live";
+    const summary=adminFinanceSummary(f.db,url("/api/admin/workspace/finance/summary"),f.config);assert.equal(summary.totals.grossSalesMinor,5000);assert.equal(summary.totals.commissionMinor,350);assert.equal(summary.financialScope,"live");
+    const statements=adminFinanceRecords(f.db,url("/api/admin/workspace/finance/statements"),"statements",f.config).items.find(row=>row.restaurantId===f.restaurant.id);assert.equal(statements.cashReceivableMinor,350);assert.equal(statements.cashSettledMinor,0);assert.equal(statements.cashOutstandingMinor,350);
+    assert.deepEqual(adminFinanceRecords(f.db,url("/api/admin/workspace/finance/exceptions"),"exceptions",f.config).items.map(row=>row.id),["live-review"]);
+    const historical=adminFinanceSummary(f.db,url("/api/admin/workspace/finance/summary?scope=testing"),f.config);assert.equal(historical.totals.grossSalesMinor,old.total_minor);assert.equal(historical.totals.commissionMinor,old.commission_minor);assert.equal(historical.financialScopeLabel,"Test/unclassified history");
+    const dashboard=(await f.json("/api/admin/workspace/dashboard",{cookie:admin})).body.data;assert.deepEqual(dashboard.orders,{count:1,valueMinor:5000,commissionMinor:350});assert.equal(dashboard.financialScope,"live");assert.ok(dashboard.liveOrders>=2,"Operational watch still includes old and unproven active orders");
+    const historyDashboard=(await f.json("/api/admin/workspace/dashboard?scope=testing",{cookie:admin})).body.data;assert.equal(historyDashboard.orders.valueMinor,old.total_minor);assert.equal(historyDashboard.financialScopeLabel,"Test/unclassified history");
+    const route=(await f.json("/api/admin/workspace/finance/summary",{cookie:admin})).body.data;assert.equal(route.totals.grossSalesMinor,5000);assert.equal(route.financialScope,"live");
+    assert.equal(JSON.stringify({orders:f.db.prepare("SELECT * FROM orders ORDER BY id").all(),ledger:f.db.prepare("SELECT * FROM ledger_entries ORDER BY id").all(),operations:f.db.prepare("SELECT * FROM marketplace_operations ORDER BY id").all()}),before);
   }finally{await f.close();}
 });

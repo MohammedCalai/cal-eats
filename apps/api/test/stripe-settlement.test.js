@@ -4,16 +4,20 @@ import { openDatabase, migrateDatabase } from "../src/db/index.js";
 import { queueEligibleStripeTransfers } from "../src/payments/stripe-settlement.js";
 import { queueStripeTransferReversal } from "../src/marketplace.js";
 import { buildFinanceSummary } from "../src/marketplace-reporting.js";
+import { recordOrderFinancialEnvironment } from "../src/financial-environment.js";
+import { runStripeConnectWorker } from "../src/payments/stripe-connect.js";
 
 const stamp = "2026-10-27T12:00:00.000Z";
 const config = { paymentProviderMode: "stripe_test", stripePlatformAccountId: "acct_platform", now: () => new Date(stamp) };
-function fixture() {
+function fixture(environment = "stripe_test") {
   const db = openDatabase(":memory:"); migrateDatabase(db);
   db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES('customer','Fixture','fixture@example.invalid','unused','customer',?)").run(stamp);
   db.prepare("INSERT INTO restaurants(id,name,status,created_at) VALUES('restaurant','Fixture kitchen','approved',?)").run(stamp);
   db.prepare(`INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,delivery_fee_minor,total_minor,
     commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at)
     VALUES('order','restaurant','Fixture kitchen','customer','accepted',2000,0,2000,140,'card','stripe_captured','collection','fixture','fixture',?,?)`).run(stamp, stamp);
+  if (environment === "unknown") db.prepare("INSERT INTO order_financial_environments VALUES('order','unknown','legacy_unproven',NULL,?)").run(stamp);
+  else if (environment !== null) recordOrderFinancialEnvironment(db, { id: "order", created_at: stamp }, { paymentProviderMode: environment });
   db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,payment_intent_id,latest_charge_id,status,created_at,updated_at) VALUES('order','stripe_test','pi_fixture','ch_fixture','captured',?,?)").run(stamp, stamp);
   db.prepare("INSERT INTO provider_accounts VALUES('account','restaurant','stripe_test','enabled',?, '[]','acct_restaurant',?,?)").run(JSON.stringify(["transfers", "card_payments"]), stamp, stamp);
   db.prepare("INSERT INTO stripe_account_readiness VALUES('restaurant','stripe_test','acct_restaurant',1,1,?)").run(stamp);
@@ -40,6 +44,38 @@ test("Stripe settlement queues once only after persisted completion and captured
     assert.equal(db.prepare("SELECT COUNT(*) n FROM journal_postings").get().n, 0);
     assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
   } finally { db.close(); }
+});
+
+test("missing, unknown or mismatched order provenance cannot queue or execute a provider transfer", async () => {
+  for (const environment of [null, "unknown", "local_simulator", "stripe_live"]) {
+    const db = fixture(environment);
+    try {
+      db.exec("UPDATE orders SET status='completed'; UPDATE stripe_order_payments SET provider_cost_minor=0");
+      const before = db.prepare("SELECT COUNT(*) n FROM marketplace_operations").get().n;
+      assert.equal(queueEligibleStripeTransfers(db, config).queued, 0, String(environment));
+      assert.equal(db.prepare("SELECT COUNT(*) n FROM marketplace_operations").get().n, before);
+      assert.equal(db.prepare("SELECT COUNT(*) n FROM marketplace_worker_jobs").get().n, 0);
+      // A stale or forged queued job must independently fail the worker's
+      // saved-environment guard before any provider money operation.
+      const operationKey = "stripe-transfer:stripe_test:order";
+      const payload = { orderId: "order", restaurantId: "restaurant", amountMinor: 1860, totalMinor: 2000, refundsMinor: 0, commissionMinor: 140, accountId: "acct_restaurant", platformAccountId: "acct_platform", providerMode: "stripe_test", sourceCharge: "ch_fixture", paymentIntentId: "pi_fixture", fundingSource: "source_charge", customerPayableMinor: 2000, platformVoucherMinor: 0, refundIds: [] };
+      db.prepare("INSERT INTO marketplace_operations VALUES('blocked-transfer',?,'restaurant','order','merchant_transfer','pending',1860,'GBP','stripe_test',NULL,NULL,?,?,?)").run(operationKey, JSON.stringify(payload), stamp, stamp);
+      db.prepare("INSERT INTO marketplace_worker_jobs(id,kind,entity_id,operation_key,status,attempts,payload,available_at,created_at,updated_at) VALUES('blocked-job','stripe_transfer','order',?,'queued',0,?,?,?,?)").run(operationKey, JSON.stringify(payload), stamp, stamp, stamp);
+      let moneyWrites = 0, bankReads = 0;
+      const provider = {
+        mode: "stripe_test",
+        retrievePlatformAccount: async () => ({ ok: true, status: "confirmed", providerReference: "acct_platform" }),
+        refreshConnectedAccount: async () => { bankReads++; return { ok: true, status: "confirmed", providerReference: "acct_restaurant", chargesEnabled: true, payoutsEnabled: true, capabilities: ["card_payments", "transfers"] }; },
+        createTransfer: async () => { moneyWrites++; throw new Error("A blocked financial environment reached the provider"); }
+      };
+      const result = await runStripeConnectWorker(db, { ...config, orderExpiryMinutes: 15, paymentProvider: provider, paymentProviderWebhookSecret: "whsec_fixture_platform", paymentProviderConnectWebhookSecret: "whsec_fixture_connect" }, { limit: 1 });
+      assert.equal(result.claimed, 1);
+      assert.equal(moneyWrites, 0, String(environment));assert.equal(bankReads, 0, String(environment));
+      assert.equal(db.prepare("SELECT status FROM marketplace_operations WHERE id='blocked-transfer'").get().status, "held");
+      assert.equal(db.prepare("SELECT error FROM marketplace_worker_jobs WHERE id='blocked-job'").get().error, "STRIPE_MODE_MISMATCH");
+      assert.equal(db.prepare("SELECT COUNT(*) n FROM journal_postings").get().n, 0);
+    } finally { db.close(); }
+  }
 });
 
 test("settlement holds cross-mode accounts and open disputes, then uses net refunds and reversed commission", () => {
