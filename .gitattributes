@@ -4,6 +4,7 @@
 *.md text eol=lf
 *.css text eol=lf
 *.html text eol=lf
+apps/api/legal-documents/*.txt text eol=lf
 *.png binary
 *.jpg binary
 *.jpeg binary
