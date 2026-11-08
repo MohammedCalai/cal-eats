@@ -6,6 +6,29 @@ const columns = (db, name) => new Set(db.prepare(`PRAGMA table_info(${name})`).a
 const canonicalDate = value => typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const identifier = value => typeof value === "string" && value.length > 0 && value.length <= 200;
 
+function erasureRelatedScopes(db) {
+  const available = table => present(db, table) ? columns(db, table) : new Set();
+  const orderColumns = available("orders"), threadColumns = available("restaurant_customer_threads"), caseColumns = available("support_cases"), notificationColumns = available("user_notifications");
+  const orders = orderColumns.has("id") && orderColumns.has("customer_id") ? "SELECT id FROM orders WHERE customer_id=?" : null;
+  const threads = threadColumns.has("id") && threadColumns.has("customer_id") ? "SELECT id FROM restaurant_customer_threads WHERE customer_id=?" : null;
+  const casesWhere = [caseColumns.has("user_id") && "user_id=?", orders && caseColumns.has("order_id") && `order_id IN (${orders})`].filter(Boolean).join(" OR ");
+  const cases = casesWhere && caseColumns.has("id") ? `SELECT id FROM support_cases WHERE ${casesWhere}` : null;
+  const notificationsWhere = [notificationColumns.has("user_id") && "user_id=?", notificationColumns.has("customer_id") && "customer_id=?", orders && notificationColumns.has("order_id") && `order_id IN (${orders})`, threads && notificationColumns.has("conversation_id") && `conversation_id IN (${threads})`, cases && notificationColumns.has("support_case_id") && `support_case_id IN (${cases})`].filter(Boolean).join(" OR ");
+  const notifications = notificationsWhere && notificationColumns.has("id") ? `SELECT id FROM user_notifications WHERE ${notificationsWhere}` : null;
+  return { orders, cases, casesWhere, notifications };
+}
+
+// The exact erasure scopes repeat the same pseudonymous user parameter in
+// related order/case/notification subqueries. Only fixed internal SQL is used.
+const userParameters = (sql, userId) => Array.from({ length: (sql.match(/\?/g) ?? []).length }, () => userId);
+function relatedCopies(db, table, directKeys, related, userId) {
+  if (!present(db, table)) return 0;
+  const found = columns(db, table), clauses = [...directKeys.filter(key => found.has(key)).map(key => `${key}=?`), ...related.filter(([key, query]) => found.has(key) && query).map(([key, query]) => `${key} IN (${query})`)];
+  if (!clauses.length) return 0;
+  const where = clauses.join(" OR ");
+  return db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE ${where}`).get(...userParameters(where, userId)).n;
+}
+
 // Export from the CURRENT authoritative environment, not from the backup being
 // restored. Keep this minimal ledger separate from old provider/managed backups.
 // No names, emails, addresses, messages, access tokens or allergy notes belong here.
@@ -46,7 +69,7 @@ export function loadPinnedPrivacySuppressionLedger(filename, expectedSha256) {
 export function assertPrivacySuppressionSafe(db, input, { now = new Date(), maxLedgerAgeHours = 24 } = {}) {
   const ledger = validatePrivacySuppressionLedger(input);
   if (!Number.isFinite(maxLedgerAgeHours) || maxLedgerAgeHours <= 0 || Date.parse(ledger.generatedAt) > now.getTime() || now.getTime() - Date.parse(ledger.generatedAt) > maxLedgerAgeHours * 3600000) throw new Error("A current independently verified privacy suppression ledger is required");
-  const findings = new Map(), add = (kind, amount = 1) => { if (amount) findings.set(kind, (findings.get(kind) ?? 0) + amount); };
+  const findings = new Map(), add = (kind, amount = 1) => { if (amount) findings.set(kind, (findings.get(kind) ?? 0) + amount); }, scopes = erasureRelatedScopes(db);
   for (const item of ledger.tombstones) {
     const user = db.prepare("SELECT * FROM users WHERE id=?").get(item.userId);
     if (user && (user.role !== "customer" || user.account_enabled !== 0 || user.name !== "Deleted customer" || user.email !== `deleted-${item.userId}@account.invalid` || user.password_hash !== "!deleted" || user.phone || user.email_verified_at || user.merchant_offers)) add("account_identifiers");
@@ -54,10 +77,12 @@ export function assertPrivacySuppressionSafe(db, input, { now = new Date(), maxL
     if (user && (!tombstone || tombstone.request_id !== item.requestId || tombstone.completed_at !== item.completedAt || tombstone.policy_version !== item.policyVersion)) add("suppression_tombstones_missing");
     if (present(db, "orders")) add("order_contact_or_allergy_copies", db.prepare("SELECT count(*) AS n FROM orders WHERE customer_id=? AND (customer_name<>'' OR customer_email<>'' OR customer_phone<>'' OR delivery_instructions<>'' OR allergy_notes<>'' OR COALESCE(delivery_address,'')<>'')").get(item.userId).n);
     if (present(db, "support_cases")) {
-      add("support_original_bodies", db.prepare("SELECT count(*) AS n FROM support_cases WHERE user_id=? AND (subject<>'Account data removed' OR message<>'')").get(item.userId).n);
-      if (present(db, "support_case_messages")) add("support_reply_bodies", db.prepare("SELECT count(*) AS n FROM support_case_messages WHERE case_id IN (SELECT id FROM support_cases WHERE user_id=?)").get(item.userId).n);
+      if (scopes.casesWhere) add("support_original_bodies", db.prepare(`SELECT count(*) AS n FROM support_cases WHERE (${scopes.casesWhere}) AND (subject<>'Account data removed' OR message<>'')`).get(...userParameters(scopes.casesWhere, item.userId)).n);
     }
-    for (const [table, key] of [["customer_restaurant_safety","customer_id"],["customer_safety_reports","customer_id"],["sessions","user_id"],["native_sessions","user_id"],["customer_push_devices","user_id"],["customer_push_outbox","user_id"],["account_addresses","user_id"],["customer_addresses","user_id"],["saved_addresses","user_id"],["marketing_preferences","user_id"],["user_notifications","user_id"],["customer_transactional_email_outbox","customer_id"],["restaurant_customer_messages","sender_user_id"],["order_messages","sender_user_id"]]) {
+    add("support_reply_bodies", relatedCopies(db, "support_case_messages", ["sender_user_id"], [["case_id", scopes.cases]], item.userId));
+    add("restored_customer_transactional_email_outbox", relatedCopies(db, "customer_transactional_email_outbox", ["customer_id"], [["notification_id", scopes.notifications], ["order_id", scopes.orders], ["support_case_id", scopes.cases]], item.userId));
+    add("restored_order_confirmation_email_outbox", relatedCopies(db, "order_confirmation_email_outbox", [], [["order_id", scopes.orders]], item.userId));
+    for (const [table, key] of [["customer_restaurant_safety","customer_id"],["customer_safety_reports","customer_id"],["sessions","user_id"],["native_sessions","user_id"],["native_business_sessions","user_id"],["account_access_tokens","user_id"],["account_access_email_outbox","user_id"],["local_mail_sink","user_id"],["customer_push_devices","user_id"],["customer_push_outbox","user_id"],["account_addresses","user_id"],["customer_addresses","user_id"],["saved_addresses","user_id"],["marketing_preferences","user_id"],["user_notifications","user_id"],["restaurant_customer_messages","sender_user_id"],["order_messages","sender_user_id"]]) {
       if (present(db, table) && columns(db, table).has(key)) add(`restored_${table}`, db.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${key}=?`).get(item.userId).n);
     }
     if (present(db, "order_messages")) add("restored_order_thread_bodies", db.prepare("SELECT count(*) AS n FROM order_messages WHERE order_id IN (SELECT id FROM orders WHERE customer_id=?)").get(item.userId).n);
