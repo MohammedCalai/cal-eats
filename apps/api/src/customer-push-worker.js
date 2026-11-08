@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {withTransaction} from "./db/index.js";
 import {notificationRecipientAllowed} from "./notification-stream.js";
 import {supportEmailSource} from "./support-email-source.js";
-import {decryptCustomerPushToken,revokeCustomerPushDevice} from "./customer-push.js";
+import {customerAndroidPushChannel,decryptCustomerPushToken,LEGACY_CUSTOMER_ANDROID_CHANNEL,revokeCustomerPushDevice} from "./customer-push.js";
 import {createExpoPushAdapter} from "./expo-push-adapter.js";
 
 const workers=new WeakMap(),adapters=new WeakMap(),LEASE_MS=30000,MAX_ATTEMPTS=5;
@@ -60,7 +60,7 @@ function source(db,config,row,stamp){
   const ttl=Math.min(900,Math.floor((Date.parse(expiresAt)-Date.parse(stamp))/1000));if(ttl<1)return {failure:'PUSH_SOURCE_EXPIRED'};
   // Customer updates are always silent, including registrations from older apps
   // and legacy stored preferences. Business/tablet alerts use a separate path.
-  return {device,payload:{title,body,data,ttl,priority:'high',channelId:'cal-eats-updates-quiet',collapseId:n.id,tag:n.id},notification:n};
+  return {device,payload:{title,body,data,ttl,priority:'high',channelId:customerAndroidPushChannel(device)??LEGACY_CUSTOMER_ANDROID_CHANNEL,collapseId:n.id,tag:n.id},notification:n};
 }
 
 async function run(db,config,{workerId=randomUUID(),limit=25,adapter,beforeDispatch}={}){

@@ -7,8 +7,13 @@ import {messageEncryptionKey} from "./message-encryption.js";
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const expoToken=/^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]{10,200}\]$/;
 const hash=value=>createHash("sha256").update(value).digest("hex");
+export const LEGACY_CUSTOMER_ANDROID_CHANNEL="cal-eats-updates-quiet";
+const androidChannels=new Set([LEGACY_CUSTOMER_ANDROID_CHANNEL,"cal-eats-updates-quiet-v2"]);
+export const customerAndroidPushChannel=row=>row.platform==="android"?(row.android_channel_id??LEGACY_CUSTOMER_ANDROID_CHANNEL):null;
 const tokenKey=config=>{const {key,version}=messageEncryptionKey(config);return {key:createHmac("sha256",key).update("cal-eats:customer-push:v1").digest(),version};};
-const aad=row=>Buffer.from(["cal-eats-customer-push-v1",row.id,row.installation_id,row.user_id,row.session_id,row.token_hash,row.platform,row.project_id,row.generation,row.key_version].join("|"));
+// Nullable legacy rows keep their original encryption binding. New Android
+// registrations bind the negotiated allowlisted channel as well as generation.
+const aad=row=>Buffer.from(["cal-eats-customer-push-v1",row.id,row.installation_id,row.user_id,row.session_id,row.token_hash,row.platform,row.project_id,row.generation,row.key_version,...(row.android_channel_id?[row.android_channel_id]:[])].join("|"));
 
 export function loadCustomerPushConfig(env=process.env){
   const enabled=env.CALAI_CUSTOMER_PUSH_ENABLED==="true";
@@ -42,8 +47,11 @@ export async function routeCustomerPush({req,res,url,db,config,session,checkRate
     return sendJson(res,200,{data:{registered:false,installationId:match[1].toLowerCase()}});
   }
   if(req.method!=="POST"||match[1])throw new HttpError(405,"METHOD_NOT_ALLOWED","Use POST to register or DELETE to remove phone notifications");
-  const body=await readJson(req,config.bodyLimit);exactObject(body,["installationId","expoPushToken","platform","projectId","soundEnabled"]);
+  const body=await readJson(req,config.bodyLimit);exactObject(body,["installationId","expoPushToken","platform","projectId","soundEnabled","androidChannelId"]);
   if(!["installationId","expoPushToken","platform","projectId"].every(field=>typeof body[field]==="string")||!uuid.test(body.installationId)||!expoToken.test(body.expoPushToken)||!["ios","android"].includes(body.platform)||!uuid.test(body.projectId)||body.soundEnabled!==undefined&&typeof body.soundEnabled!=="boolean")throw new HttpError(400,"VALIDATION_ERROR","Phone notification registration is invalid");
+  if(body.androidChannelId!==undefined&&(body.platform!=="android"||!androidChannels.has(body.androidChannelId)))throw new HttpError(400,"VALIDATION_ERROR","Phone notification channel is invalid");
+  const androidChannelId=body.platform==="android"?(body.androidChannelId??LEGACY_CUSTOMER_ANDROID_CHANNEL):null;
+  const storedAndroidChannelId=body.platform==="android"?(body.androidChannelId??null):null;
   const settings=config.customerPush??{},allowed=body.platform==="ios"?settings.iosProjectIds:settings.androidProjectIds,projectId=body.projectId.toLowerCase(),installationId=body.installationId.toLowerCase();
   if(!allowed?.includes(projectId))throw new HttpError(403,"PUSH_PROJECT_NOT_ALLOWED","This app version is not enabled for phone notifications");
   let secret;try{secret=tokenKey(config);}catch{throw new HttpError(503,"PUSH_UNAVAILABLE","Phone notifications are temporarily unavailable");}
@@ -51,14 +59,14 @@ export async function routeCustomerPush({req,res,url,db,config,session,checkRate
     access(db,session,config);
     const tokenHash=hash(body.expoPushToken),installation=db.prepare("SELECT * FROM customer_push_devices WHERE installation_id=?").get(installationId),tokenOwner=db.prepare("SELECT * FROM customer_push_devices WHERE token_hash=?").get(tokenHash),existing=tokenOwner??installation;
     if(installation&&tokenOwner&&installation.id!==tokenOwner.id){revokeCustomerPushDevice(db,installation.id,stamp);db.prepare("UPDATE customer_push_devices SET installation_id=NULL WHERE id=?").run(installation.id);}
-    const unchanged=existing&&!existing.revoked_at&&existing.user_id===user.id&&existing.session_id===session.sessionId&&existing.token_hash===tokenHash&&existing.installation_id===installationId&&existing.platform===body.platform&&existing.project_id===projectId;
+    const unchanged=existing&&!existing.revoked_at&&existing.user_id===user.id&&existing.session_id===session.sessionId&&existing.token_hash===tokenHash&&existing.installation_id===installationId&&existing.platform===body.platform&&existing.project_id===projectId&&customerAndroidPushChannel(existing)===androidChannelId;
     const newActiveDevice=!existing||existing.revoked_at||existing.expires_at<=stamp||existing.user_id!==user.id;
     if(!unchanged&&newActiveDevice&&db.prepare("SELECT COUNT(*) n FROM customer_push_devices WHERE user_id=? AND revoked_at IS NULL AND expires_at>?").get(user.id,stamp).n>=10)throw new HttpError(429,"PUSH_DEVICE_LIMIT","Remove an old app session before adding another phone");
-    const row={id:existing?.id??randomUUID(),installation_id:installationId,user_id:user.id,session_id:session.sessionId,token_hash:tokenHash,platform:body.platform,project_id:projectId,generation:unchanged?existing.generation:(existing?.generation??0)+1,key_version:secret.version};
+    const row={id:existing?.id??randomUUID(),installation_id:installationId,user_id:user.id,session_id:session.sessionId,token_hash:tokenHash,platform:body.platform,project_id:projectId,android_channel_id:storedAndroidChannelId,generation:unchanged?existing.generation:(existing?.generation??0)+1,key_version:secret.version};
     const nonce=randomBytes(12),cipher=createCipheriv("aes-256-gcm",secret.key,nonce);cipher.setAAD(aad(row));const ciphertext=Buffer.concat([cipher.update(body.expoPushToken,"utf8"),cipher.final()]);
     // Accept older clients' soundEnabled field for compatibility, but customer
     // alerts are always silent. Business device alerts have their own settings.
-    db.prepare("INSERT INTO customer_push_devices(id,installation_id,user_id,session_id,token_hash,ciphertext,nonce,auth_tag,key_version,platform,project_id,generation,sound_enabled,expires_at,revoked_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?) ON CONFLICT(id) DO UPDATE SET installation_id=excluded.installation_id,user_id=excluded.user_id,session_id=excluded.session_id,token_hash=excluded.token_hash,ciphertext=excluded.ciphertext,nonce=excluded.nonce,auth_tag=excluded.auth_tag,key_version=excluded.key_version,platform=excluded.platform,project_id=excluded.project_id,generation=excluded.generation,sound_enabled=excluded.sound_enabled,expires_at=excluded.expires_at,revoked_at=NULL,updated_at=excluded.updated_at").run(row.id,installationId,user.id,session.sessionId,tokenHash,ciphertext.toString("base64"),nonce.toString("base64"),cipher.getAuthTag().toString("base64"),secret.version,body.platform,projectId,row.generation,0,expiresAt,stamp,stamp);
+    db.prepare("INSERT INTO customer_push_devices(id,installation_id,user_id,session_id,token_hash,ciphertext,nonce,auth_tag,key_version,platform,project_id,generation,sound_enabled,expires_at,revoked_at,created_at,updated_at,android_channel_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?) ON CONFLICT(id) DO UPDATE SET installation_id=excluded.installation_id,user_id=excluded.user_id,session_id=excluded.session_id,token_hash=excluded.token_hash,ciphertext=excluded.ciphertext,nonce=excluded.nonce,auth_tag=excluded.auth_tag,key_version=excluded.key_version,platform=excluded.platform,project_id=excluded.project_id,android_channel_id=excluded.android_channel_id,generation=excluded.generation,sound_enabled=excluded.sound_enabled,expires_at=excluded.expires_at,revoked_at=NULL,updated_at=excluded.updated_at").run(row.id,installationId,user.id,session.sessionId,tokenHash,ciphertext.toString("base64"),nonce.toString("base64"),cipher.getAuthTag().toString("base64"),secret.version,body.platform,projectId,row.generation,0,expiresAt,stamp,stamp,storedAndroidChannelId);
   });
   return sendJson(res,200,{data:{registered:true,installationId,expiresAt,pushEnabled:Boolean(settings.enabled)}});
 }

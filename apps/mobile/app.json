@@ -45,7 +45,7 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "cal-eats-updates-quiet",
+          "defaultChannel": "cal-eats-updates-quiet-v2",
           "icon": "./assets/notification-icon.png",
           "color": "#2865E9",
           "enableBackgroundRemoteNotifications": false

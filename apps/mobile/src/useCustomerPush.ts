@@ -6,9 +6,9 @@ import { getInstallationId } from "./installation-id";
 import { api } from "./api";
 import { createPushDeviceBinding, type PushDeviceResult } from "./push-binding";
 import { createCustomerPushTapQueue, customerPushProject, parseCustomerPushTarget, type CustomerPushTarget } from "./push-model";
-import { CUSTOMER_QUIET_PUSH_CHANNEL, customerQuietPushChannelSettings, customerPushChannelAttention, customerPushChannelId, customerForegroundPushBehavior } from "./push-presentation";
+import { CUSTOMER_QUIET_PUSH_CHANNEL, LEGACY_CUSTOMER_QUIET_PUSH_CHANNEL, customerQuietPushChannelSettings, customerPushChannelAttention, customerPushChannelPlan, customerPushChannelId, isCustomerQuietPushChannel, customerForegroundPushBehavior } from "./push-presentation";
 
-export type CustomerPushState = { status: "checking" | "enabled" | "pending" | "permission_needed" | "blocked" | "unavailable" | "error"; message: string };
+export type CustomerPushState = { status: "checking" | "enabled" | "pending" | "permission_needed" | "blocked" | "unavailable" | "error"; message: string; needsBannerSetup?: boolean };
 type Options = { token: string | null; userId: string | null; booting: boolean; blocked: boolean; unreadCount: number; onOpen: (target: CustomerPushTarget) => void; onReceived: () => Promise<unknown>; onSignIn: () => void };
 const native = Platform.OS === "ios" || Platform.OS === "android";
 let foregroundCustomer: string | null = null;
@@ -20,7 +20,7 @@ if (native) {
   Notifications.setNotificationHandler({ handleNotification: async notification => {
     const data = notification.request.content.data, channelId = customerPushChannelId(notification.request.trigger);
     let channel: Notifications.NotificationChannel | null = null;
-    if (Platform.OS === "android" && Number(Platform.Version) >= 26 && channelId === CUSTOMER_QUIET_PUSH_CHANNEL) {
+    if (Platform.OS === "android" && Number(Platform.Version) >= 26 && isCustomerQuietPushChannel(channelId)) {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         channel = await Promise.race([
@@ -30,7 +30,7 @@ if (native) {
       } catch { /* An unknown channel must never enable the Android visual/audio flag. */ }
       finally { clearTimeout(timeout); }
     }
-    return customerForegroundPushBehavior(data, foregroundCustomer, Platform.OS, Platform.Version, channelId, channel);
+    return customerForegroundPushBehavior(data, foregroundCustomer, Platform.OS, Platform.Version, channelId, channel, Notifications.AndroidImportance);
   } });
   Notifications.addNotificationResponseReceivedListener(response => { lastResponse = response; responseListeners.forEach(listener => listener(response)); });
   try { lastResponse = Notifications.getLastNotificationResponse(); } catch { /* A browser preview has no native notification response. */ }
@@ -46,6 +46,7 @@ function clearResponse(key: string) {
 export function useCustomerPush(options: Options) {
   const latest = useRef(options); latest.current = options;
   const generation = useRef(0), disabledSession = useRef<string | null>(null), runRegistration = useRef<((ask: boolean) => Promise<void>) | null>(null);
+  const selectedAndroidChannel = useRef(CUSTOMER_QUIET_PUSH_CHANNEL), settingsNeeded = useRef(false);
   const [state, setState] = useState<CustomerPushState>(native ? { status: "checking", message: "Checking phone notifications…" } : { status: "unavailable", message: "Phone notifications are available in the installed Cal-Eats app." });
   const [responseVersion, setResponseVersion] = useState(0), [queue] = useState(createCustomerPushTapQueue);
   const authPromptKey = useRef<string | null>(null);
@@ -97,21 +98,39 @@ export function useCustomerPush(options: Options) {
       const projectId = customerPushProject(Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId, Platform.OS);
       if (!projectId) { if (current()) setState({ status: "unavailable", message: "Phone notifications are not configured in this build yet." }); return; }
       if (current()) setState({ status: "checking", message: "Connecting phone notifications…" });
-      const channel = Platform.OS === "android" ? await Notifications.setNotificationChannelAsync(CUSTOMER_QUIET_PUSH_CHANNEL, customerQuietPushChannelSettings) : null;
+      const androidChannels = Platform.OS === "android" && Number(Platform.Version) >= 26;
+      const [modern, legacy] = androidChannels ? await Promise.all([Notifications.getNotificationChannelAsync(CUSTOMER_QUIET_PUSH_CHANNEL), Notifications.getNotificationChannelAsync(LEGACY_CUSTOMER_QUIET_PUSH_CHANNEL)]) : [null, null];
+      if (!current()) return;
+      const plan = customerPushChannelPlan(modern, legacy, ask, Notifications.AndroidImportance);
+      let channel = plan.channel, needsBannerSetup = false;
+      settingsNeeded.current = false; selectedAndroidChannel.current = plan.channelId;
+      const createChannel = async () => {
+        if (androidChannels && plan.create && !channel) channel = await Notifications.setNotificationChannelAsync(plan.channelId, customerQuietPushChannelSettings(Notifications.AndroidImportance));
+      };
       if (!current()) return;
       let permission = await Notifications.getPermissionsAsync();
-      if (current() && permission.canAskAgain && (permission.status === "undetermined" || ask && permission.status !== "granted")) permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: false } });
+      // The app's education prompt owns the affirmative action. Never raise an
+      // unexpected OS permission prompt merely because an account was opened.
+      if (current() && ask && permission.canAskAgain && permission.status !== "granted" && permission.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) {
+        await createChannel(); if (!current()) return;
+        permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: false } });
+      }
       if (!current()) return;
       if (!permission.granted && permission.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) {
         await getInstallationId().then(id => binding.unbind(token, id)).catch(() => undefined); if (!current()) return;
-        setState({ status: permission.canAskAgain ? "permission_needed" : "blocked", message: "Allow Cal-Eats notifications in your phone settings to receive order updates, messages and offers when the app is closed." }); return;
+        settingsNeeded.current = !permission.canAskAgain;
+        setState({ status: permission.canAskAgain ? "permission_needed" : "blocked", needsBannerSetup: true, message: permission.canAskAgain ? "Allow quiet phone notifications for order updates, messages and eligible offers, even when Cal-Eats is closed." : "Allow Cal-Eats notifications in your phone settings to receive order updates, messages and offers when the app is closed." }); return;
       }
-      if (Platform.OS === "android" && Number(Platform.Version) >= 26) {
-        const attention = customerPushChannelAttention(channel);
+      await createChannel(); if (!current()) return;
+      if (androidChannels) {
+        const attention = customerPushChannelAttention(channel, Notifications.AndroidImportance);
         if (attention) {
           await getInstallationId().then(id => binding.unbind(token, id)).catch(() => undefined); if (!current()) return;
-          setState(attention === "missing" ? { status: "error", message: "Cal-Eats could not create its silent notification channel. Try connecting phone notifications again." } : { status: "blocked", message: attention === "disabled" ? "Cal-Eats updates are switched off in your phone settings. Allow the Cal-Eats updates (silent) channel to receive order updates and messages." : "Set the Cal-Eats updates (silent) channel to no sound and no vibration in your phone settings, then return to Cal-Eats to connect quiet updates." }); return;
+          settingsNeeded.current = attention !== "missing" || !plan.create;
+          setState(attention === "missing" ? { status: "error", needsBannerSetup: true, message: "Cal-Eats could not verify its quiet notification channel. Check phone notification settings or try connecting again." } : { status: "blocked", needsBannerSetup: true, message: attention === "disabled" ? "Cal-Eats updates are switched off in this phone's notification category. Enable it in phone settings to receive quiet updates." : "Set the Cal-Eats notification category to no sound and no vibration in your phone settings, then return to connect quiet updates." }); return;
         }
+        needsBannerSetup = Boolean(channel && channel.importance < Notifications.AndroidImportance.HIGH);
+        settingsNeeded.current = needsBannerSetup && !plan.canMigrate;
       }
       const installationId = await getInstallationId();
       let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -121,9 +140,9 @@ export function useCustomerPush(options: Options) {
       ]).finally(() => clearTimeout(timeout));
       if (!current()) return;
       binding.activate(token);
-      const result = await binding.bind(token, { installationId, expoPushToken: pushToken.data, platform: Platform.OS as "ios" | "android", projectId, soundEnabled: false });
+      const result = await binding.bind(token, { installationId, expoPushToken: pushToken.data, platform: Platform.OS as "ios" | "android", projectId, soundEnabled: false, ...(androidChannels ? { androidChannelId: plan.channelId } : {}) });
       if (!current() || !result) return;
-      setState(result.pushEnabled ? { status: "enabled", message: "Order updates, messages and eligible offers can appear on your phone, even when Cal-Eats is closed." } : { status: "pending", message: "Your phone is connected. Cal-Eats is finishing notification setup." });
+      setState(result.pushEnabled ? needsBannerSetup ? { status: "permission_needed", needsBannerSetup: true, message: plan.canMigrate ? "Quiet updates are connected to the notification list. Enable quiet pop-up alerts to make order updates and messages easier to notice." : "Quiet updates are connected, but this phone's category is set to show them without pop-ups. Open phone settings to allow pop-up and lock-screen notifications." } : { status: "enabled", message: "Quiet order updates, messages and eligible offers are connected. Pop-ups and lock-screen display follow your phone settings." } : { status: "pending", message: "Your phone is connected. Cal-Eats is finishing notification setup." });
     }
     function run(ask: boolean): Promise<void> {
       if (!current()) return Promise.resolve();
@@ -145,8 +164,14 @@ export function useCustomerPush(options: Options) {
   useEffect(() => { if (native) void Notifications.setBadgeCountAsync(options.token ? options.unreadCount : 0).catch(() => undefined); }, [options.token, options.unreadCount]);
 
   async function requestPermission() {
-    if (state.status === "blocked" || state.status === "enabled") {
-      try { await Linking.openSettings(); } catch { setState({ status: "error", message: "Phone settings could not be opened. Open Settings on your phone and choose Cal-Eats." }); }
+    if (settingsNeeded.current || state.status === "blocked" || state.status === "enabled") {
+      try {
+        if (Platform.OS === "android" && Number(Platform.Version) >= 26) {
+          try { await Linking.sendIntent("android.settings.CHANNEL_NOTIFICATION_SETTINGS", [{ key: "android.provider.extra.APP_PACKAGE", value: "uk.co.calai.caleats" }, { key: "android.provider.extra.CHANNEL_ID", value: selectedAndroidChannel.current }]); return; }
+          catch { /* Some phone vendors expose only application-level settings. */ }
+        }
+        await Linking.openSettings();
+      } catch { setState({ status: "error", needsBannerSetup: true, message: "Phone settings could not be opened. Open Settings on your phone and choose Cal-Eats." }); }
     } else await runRegistration.current?.(true);
   }
   async function unregister() {

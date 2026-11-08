@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {journeyFixture} from './helpers.js';
 import {addNotification} from '../src/offers.js';
-import {loadCustomerPushConfig,runCustomerPush} from '../src/customer-push.js';
+import {decryptCustomerPushToken,loadCustomerPushConfig,runCustomerPush} from '../src/customer-push.js';
 import {createExpoPushAdapter} from '../src/expo-push-adapter.js';
 
 const primary='5bf59184-c670-44f4-be78-5229cbd02300',alternate='f76a2adf-34ca-438a-9208-bdb5d4e65ded';
@@ -19,6 +19,63 @@ async function setup(){
  return {f,headers,customerId,owner,ownerId,restaurant,item,registration,register,notice,voucher,offer,advance:ms=>{clock+=ms;},now:()=>new Date(clock).toISOString()};
 }
 const fakeTransport=calls=>({send:async(payload,{beforeSend})=>{if(!beforeSend())return {status:'cancelled'};calls.push(payload);return {status:'accepted',ticketId:randomUUID()};},receipt:async()=>({status:'receipt_confirmed'})});
+
+test('Android channel negotiation preserves legacy devices and moves only the upgraded device generation to quiet v2',async()=>{
+ const s=await setup(),calls=[];try{
+  const legacy={...s.registration,platform:'android'};
+  assert.equal((await s.register(legacy)).status,200);
+  const original=s.f.db.prepare('SELECT * FROM customer_push_devices').get();
+  assert.equal(original.android_channel_id,null,'Omitted legacy channel keeps the old nullable encryption format');
+  assert.equal(decryptCustomerPushToken(s.f.config,original),legacy.expoPushToken);
+  s.voucher();
+  const oldJob=s.f.db.prepare('SELECT id FROM customer_push_outbox').get();
+  const upgraded={...legacy,androidChannelId:'cal-eats-updates-quiet-v2'};
+  assert.equal((await s.register(upgraded)).status,200);
+  const next=s.f.db.prepare('SELECT * FROM customer_push_devices').get();
+  assert.equal(next.android_channel_id,upgraded.androidChannelId);assert.equal(next.generation,original.generation+1);
+  assert.equal(decryptCustomerPushToken(s.f.config,next),upgraded.expoPushToken);
+  assert.equal(s.f.db.prepare('SELECT status FROM customer_push_outbox WHERE id=?').get(oldJob.id).status,'cancelled');
+  await s.register(upgraded);assert.equal(s.f.db.prepare('SELECT generation FROM customer_push_devices').get().generation,next.generation);
+  const otherDevice={...legacy,installationId:randomUUID(),expoPushToken:'ExpoPushToken[unit_legacy_android_other_device]'};
+  assert.equal((await s.register(otherDevice)).status,200);
+  s.voucher();await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls)});
+  assert.equal(calls.length,2);assert.equal(calls.find(row=>row.to===upgraded.expoPushToken).channelId,upgraded.androidChannelId);
+  assert.equal(calls.find(row=>row.to===otherDevice.expoPushToken).channelId,'cal-eats-updates-quiet');
+  assert.ok(calls.every(row=>row.sound===undefined&&row.vibrate===undefined&&row.priority==='high'));
+ }finally{await s.f.close();}
+});
+
+test('Android quiet channels reject arbitrary values and platform mismatch before changing any binding',async()=>{
+ const s=await setup();try{
+  for(const value of ['default','cal-eats-updates','',null,42,['cal-eats-updates-quiet-v2']]){
+   assert.equal((await s.register({...s.registration,platform:'android',androidChannelId:value})).status,400);
+  }
+  assert.equal((await s.register({...s.registration,androidChannelId:'cal-eats-updates-quiet-v2'})).status,400,'iOS must not negotiate an Android channel');
+  assert.equal(s.f.db.prepare('SELECT COUNT(*) n FROM customer_push_devices').get().n,0);
+  const legacy={...s.registration,platform:'android',androidChannelId:'cal-eats-updates-quiet'};
+  assert.equal((await s.register(legacy)).status,200);
+  const before=s.f.db.prepare('SELECT generation FROM customer_push_devices').get().generation;
+  assert.equal((await s.register({...s.registration,platform:'android'})).status,200);
+  assert.equal(s.f.db.prepare('SELECT generation FROM customer_push_devices').get().generation,before,'Explicit and omitted legacy channels have identical effective delivery');
+ }finally{await s.f.close();}
+});
+
+test('a channel upgrade cancels a claimed old delivery and account rebinding cannot deliver the former customer notification',async()=>{
+ const s=await setup(),calls=[];try{
+  const legacy={...s.registration,platform:'android'},upgraded={...legacy,androidChannelId:'cal-eats-updates-quiet-v2'};
+  await s.register(legacy);s.voucher();
+  await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls),beforeDispatch:async()=>{assert.equal((await s.register(upgraded)).status,200);}});
+  assert.equal(calls.length,0);assert.equal(s.f.db.prepare('SELECT status FROM customer_push_outbox').get().status,'cancelled');
+  s.voucher();
+  const other=await s.f.json('/api/native/auth/register',{method:'POST',body:{name:'Other quiet customer',email:'push-channel-other@example.test',password:'OtherPushChannelFixture2026!'}});
+  assert.equal(other.status,201);const otherHeaders={authorization:`Bearer ${other.body.data.token}`};
+  assert.equal((await s.register(upgraded,{headers:otherHeaders})).status,200);
+  await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls)});assert.equal(calls.length,0);
+  const rebound=s.f.db.prepare('SELECT * FROM customer_push_devices').get();assert.equal(rebound.user_id,other.body.data.user.id);assert.equal(rebound.android_channel_id,upgraded.androidChannelId);
+  await s.f.json(`/api/native/push/devices/${legacy.installationId}`,{method:'DELETE',headers:s.headers});
+  assert.equal(s.f.db.prepare('SELECT revoked_at FROM customer_push_devices').get().revoked_at,null,'Old account cannot remove the newer channel binding');
+ }finally{await s.f.close();}
+});
 
 test('restaurant contact block cancels queued promotional push and is rechecked immediately before dispatch',async()=>{
  const s=await setup(),calls=[];try{

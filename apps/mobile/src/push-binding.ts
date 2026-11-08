@@ -1,4 +1,4 @@
-export type PushDeviceRegistration = { installationId: string; expoPushToken: string; platform: "ios" | "android"; projectId: string; soundEnabled: boolean };
+export type PushDeviceRegistration = { installationId: string; expoPushToken: string; platform: "ios" | "android"; projectId: string; soundEnabled: boolean; androidChannelId?: string };
 export type PushDeviceResult = { registered: true; installationId: string; expiresAt: string; pushEnabled: boolean };
 
 // Serialize registration and revocation so signing out cannot be followed by a
