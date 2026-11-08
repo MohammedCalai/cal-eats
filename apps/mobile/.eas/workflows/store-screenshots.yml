@@ -71,9 +71,17 @@ jobs:
         with:
           build_id: ${{ inputs.build_id }}
           extensions: [app]
+      - name: Pass the downloaded app path to subsequent steps
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const {execFileSync}=require('node:child_process');
+          const appPath=${{ toJSON(steps.app.outputs.artifact_path) }};
+          if(typeof appPath!=='string'||!path.isAbsolute(appPath)||!appPath.endsWith('.app')||!fs.existsSync(appPath))throw new Error('The downloaded simulator .app is missing.');
+          execFileSync('set-env',['SCREENSHOT_APP_PATH',appPath],{stdio:'inherit'});
+          NODE
       - name: Boot an iPhone, capture real screens and verify image sizes
-        env:
-          SCREENSHOT_APP_PATH: ${{ steps.app.outputs.artifact_path }}
         run: |
           node <<'NODE'
           const fs = require('node:fs');
@@ -81,8 +89,9 @@ jobs:
           const {spawnSync} = require('node:child_process');
           const cwd = process.cwd();
           const mobile = fs.existsSync(path.join(cwd,'.maestro/store-screenshots.yml')) ? cwd : path.join(cwd,'apps/mobile');
-          const out = path.join(mobile,'store-screenshots');
+          const out = path.join(cwd,'store-screenshots');
           fs.mkdirSync(out,{recursive:true});
+          fs.writeFileSync(path.join(out,'capture-attempt.json'),JSON.stringify({binarySourceCommit:process.env.VERIFIED_BINARY_SOURCE,captureWorkflowCommit:process.env.CAPTURE_WORKFLOW_SHA,simulatorBuildId:process.env.VERIFIED_BUILD_ID,startedAt:new Date().toISOString(),completed:false},null,2));
           const start=Date.now();
           let udid;
           function run(command,args,timeout=30000,inherit=false) {
@@ -121,6 +130,10 @@ jobs:
               return {file:path.relative(out,file),width,height};
             });
             fs.writeFileSync(path.join(out,'capture-manifest.json'),JSON.stringify({createdAt:new Date().toISOString(),binarySourceCommit:process.env.VERIFIED_BINARY_SOURCE,captureWorkflowCommit:process.env.CAPTURE_WORKFLOW_SHA,captureWorkflowSource:'Clean local checkout archive; revision verified by the dispatching release owner',simulatorBuildId:process.env.VERIFIED_BUILD_ID,expoAccount:process.env.VERIFIED_ACCOUNT,expoProjectId:process.env.VERIFIED_PROJECT_ID,profile:process.env.VERIFIED_PROFILE,device:device.name,bundleIdentifier:identifier,anonymous:true,retouched:false,images:dimensions},null,2));
+            fs.writeFileSync(path.join(out,'capture-attempt.json'),JSON.stringify({binarySourceCommit:process.env.VERIFIED_BINARY_SOURCE,captureWorkflowCommit:process.env.CAPTURE_WORKFLOW_SHA,simulatorBuildId:process.env.VERIFIED_BUILD_ID,completedAt:new Date().toISOString(),completed:true},null,2));
+          } catch(error) {
+            fs.writeFileSync(path.join(out,'capture-failure.json'),JSON.stringify({failedAt:new Date().toISOString(),message:error.message},null,2));
+            throw error;
           } finally {
             if(udid)spawnSync('xcrun',['simctl','shutdown',udid],{timeout:15000,stdio:'ignore'});
           }
@@ -130,6 +143,4 @@ jobs:
         with:
           type: other
           name: Genuine iPhone screenshots and provenance
-          path: |
-            ./store-screenshots/**/*
-            ./apps/mobile/store-screenshots/**/*
+          path: ./store-screenshots
