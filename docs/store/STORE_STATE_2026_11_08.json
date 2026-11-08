@@ -1,0 +1,47 @@
+{
+  "status": "PREPARATION_CHECKPOINT_NOT_PUBLIC_APPROVAL",
+  "date": "2026-11-08",
+  "apple": {
+    "appId": "6831180948",
+    "version": "1.0.0",
+    "selectedBuild": 16,
+    "versionState": "PREPARE_FOR_SUBMISSION",
+    "privacy": {
+      "state": "DRAFT_SAVED_UNPUBLISHED",
+      "typeCount": 17,
+      "allTypesLinked": true,
+      "purposeGroupsMatchDeclarationDraft": true,
+      "comparison": "All 17 saved type/purpose groups match PRIVACY_DATA_SAFETY_2026_11_08.json. Purchase History is represented by the Purchases heading in the saved UI summary.",
+      "trackingAnswerReportedByOperator": false,
+      "trackingEvidenceLimit": "The coordinator reports individual not-tracking answers saved; the summary readback proves type/purpose/linkage state, not those individual checkbox screens.",
+      "evidence": "artifacts/store-preparation-20261108/apple-privacy-draft-readback.private.txt",
+      "publish": "Pending the operator's requested final publication confirmation. An enabled Publish button and saved preview do not establish publication."
+    },
+    "reviewAccess": "Dedicated pre-verified customer review credentials/contact details are still being prepared; no password is stored here.",
+    "submission": "NOT_SUBMITTED"
+  },
+  "googlePlay": {
+    "applicationId": "4974049900851003157",
+    "package": "uk.co.calai.caleats",
+    "internalVersionCode": 21,
+    "internalRelease": 9,
+    "publicState": "DRAFT",
+    "baselinePublicSetupCount": "0/11 at the earlier authenticated audit, superseded as a current count by the subsequent individual saves below; no new total is inferred.",
+    "savedReportedByOperator": {
+      "privacyPolicy": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
+      "governmentApp": false,
+      "healthAppFeatures": false,
+      "containsAds": false,
+      "financialFeatures": ["Rewards, points, frequent flier miles, and other incentives"],
+      "category": "Food & Drink",
+      "contactEmail": "support@calai.info",
+      "website": "https://eats.calai.info"
+    },
+    "dataSafety": "BEING_EDITED_NOT_CONFIRMED_SAVED_OR_SUBMITTED",
+    "targetAudience": "Waiting for reviewer-access prerequisite; intended audience is adults18+.",
+    "reviewAccess": "Customer reviewer account preparation in progress; credentials omitted.",
+    "contentRatingAndStoreListing": "No final completion or review status is established by this checkpoint.",
+    "submission": "NOT_SUBMITTED_TO_PUBLIC_REVIEW"
+  },
+  "scope": "Records saved-state evidence and the coordinator's live UI report. This agent made documentation-only changes; no forms, publication, legal acceptance or submission were executed by this agent. No passwords or account tokens are included."
+}

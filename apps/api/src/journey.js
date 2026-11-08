@@ -31,6 +31,7 @@ import { prepareStripeOrderTransition } from "./payments/stripe-transitions.js";
 import { cancelUnsentOrderConfirmationAlert, defaultCustomerEtaMinutes, orderConfirmationDto, PAYABLE_ORDER_SQL, resolveConfirmationEta } from "./order-confirmation.js";
 import { normalizeScheduledFor, validateOrderSchedule } from "./scheduled-orders.js";
 import { orderShopRating, restaurantRatingSummary } from "./shop-ratings.js";
+import { assertCustomerContentAllowed } from "./content-moderation.js";
 
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
@@ -161,6 +162,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     const user = requireRole(session, "restaurant");
     if (db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=? AND permission='staff'").get(user.id)) throw new HttpError(403, "OWNER_REQUIRED", "Staff cannot create restaurants");
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["name"]);
+    assertCustomerContentAllowed(body.name, "listing");
     const now = config.now().toISOString();
     const restaurant = { id: randomUUID(), name: text(body.name, 1, VALIDATION.restaurantNameMax, "Restaurant name"), status: "pending", created_at: now, delivery_enabled: 0, delivery_outcodes: "[]", delivery_fee_minor: 0, min_delivery_subtotal_minor: 0 };
     withTransaction(db, () => {
@@ -212,6 +214,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (match && req.method === "PATCH") {
     requireRestaurantOwner(db, session, match[1]);
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["name", "description", "cuisine", "phone", "address", "collectionEnabled", "cashEnabled", "paused", "busyMinutes", "estimatedDeliveryMinutes", "estimatedCollectionMinutes", "openingHours", "holidayDates", "alwaysOpen"]);
+    for (const field of ["name", "description", "cuisine", "address"]) assertCustomerContentAllowed(body[field], "listing");
     const row = db.prepare("SELECT * FROM restaurants WHERE id=?").get(match[1]); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     const next = { name: body.name === undefined ? row.name : text(body.name, 1, VALIDATION.restaurantNameMax, "Restaurant name"), description: body.description === undefined ? row.description : text(body.description, 0, 500, "Description"), cuisine: body.cuisine === undefined ? row.cuisine : text(body.cuisine, 0, 80, "Cuisine"), phone: body.phone === undefined ? row.phone : text(body.phone, 0, 30, "Phone"), address: body.address === undefined ? row.address : text(body.address, 0, 250, "Address"), collection: body.collectionEnabled === undefined ? row.collection_enabled : Number(bool(body.collectionEnabled, "Collection enabled")), cash: body.cashEnabled === undefined ? row.cash_enabled : Number(bool(body.cashEnabled, "Cash enabled")), paused: body.paused === undefined ? row.paused : Number(bool(body.paused, "Paused")), busy: body.busyMinutes === undefined ? row.busy_minutes : integer(body.busyMinutes, 0, 240, "Busy minutes"), deliveryEstimate: body.estimatedDeliveryMinutes === undefined ? row.estimated_delivery_minutes : integer(body.estimatedDeliveryMinutes, 1, 240, "Delivery estimate"), collectionEstimate: body.estimatedCollectionMinutes === undefined ? row.estimated_collection_minutes : integer(body.estimatedCollectionMinutes, 1, 240, "Collection estimate"), hours: body.openingHours === undefined ? row.opening_hours : JSON.stringify(openingHours(body.openingHours)), holidays: body.holidayDates === undefined ? row.holiday_dates : JSON.stringify(dateList(body.holidayDates)), always: body.alwaysOpen === undefined ? row.always_open : Number(bool(body.alwaysOpen, "Always open")) };
     db.prepare("UPDATE restaurants SET name=?,description=?,cuisine=?,phone=?,address=?,collection_enabled=?,cash_enabled=?,paused=?,busy_minutes=?,estimated_delivery_minutes=?,estimated_collection_minutes=?,opening_hours=?,holiday_dates=?,always_open=? WHERE id=?").run(next.name, next.description, next.cuisine, next.phone, next.address, next.collection, next.cash, next.paused, next.busy, next.deliveryEstimate, next.collectionEstimate, next.hours, next.holidays, next.always, row.id);

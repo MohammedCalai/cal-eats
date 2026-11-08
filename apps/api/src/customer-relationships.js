@@ -4,6 +4,7 @@ import { requireRestaurantOwner, requireRole } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { decryptMessage, encryptMessage, messageFingerprint } from "./message-encryption.js";
+import { assertCustomerContentAllowed } from "./content-moderation.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
 import { restaurantMessageArrivalRevision } from "./business-message-attention.js";
 
@@ -178,6 +179,7 @@ async function sendMessage({ req, res, db, config, user, role, restaurantId, cus
     if (prior.expires_at <= now) throw new HttpError(410, "MESSAGE_EXPIRED", "This message has expired");
     return sendJson(res, 200, { data: await messageDto(config, prior) });
   }
+  assertCustomerContentAllowed(message);
   const id = randomUUID(), expiresAt = new Date(Date.parse(now) + RETENTION_MS).toISOString();
   const encrypted = await encryptMessage(config, message, { id, orderId: `customer-thread:${threadId}`, senderUserId: user.id, createdAt: now, expiresAt });
   const created = withTransaction(db, () => {

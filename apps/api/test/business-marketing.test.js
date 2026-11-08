@@ -26,6 +26,9 @@ async function setup() {
   async function newCustomer(email) {
     const response = await f.json("/api/auth/register", { method: "POST", body: { name: "Fictional second customer", email, password: "MarketingFixture!4310" } });
     assert.equal(response.status, 201, response.text);
+    const mail=f.db.prepare("SELECT body FROM local_mail_sink WHERE user_id=? AND kind='email_verification' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(response.body.data.user.id);
+    const token=mail?.body.match(/verify-email=([^\s]+)/)?.[1]; assert.ok(token,"New marketing fixtures must verify their signup email before ordering");
+    const verified=await f.json("/api/auth/email-verification/confirm",{method:"POST",body:{token:decodeURIComponent(token)}});assert.equal(verified.status,200,verified.text);
     const cookie = response.headers.get("set-cookie").split(";", 1)[0]; await consent(cookie);
     return { cookie, id: response.body.data.user.id };
   }

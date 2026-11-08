@@ -1,6 +1,7 @@
 import { restaurantContactBlocked, assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import {releasePlatformVoucher} from "./platform-vouchers.js";
 import { createHash, randomUUID } from "node:crypto";
+import { assertCustomerContentAllowed } from "./content-moderation.js";
 import { requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
@@ -152,6 +153,7 @@ async function createCampaign({ req, res, db, config, session, restaurantId }) {
   const normalized = { customerIds: [...body.customerIds].sort(), title: clean(body.title, 1, 80, "Title"), message: clean(body.message, 1, 500, "Message"), menuItemId: clean(body.menuItemId, 1, 100, "Menu item"), minSubtotalMinor: body.minSubtotalMinor, expiresInDays: body.expiresInDays };
   const hash = fingerprint({ restaurantId, ...normalized }); const prior = db.prepare("SELECT * FROM offer_campaigns WHERE created_by_user_id=? AND idempotency_key=?").get(user.id, key);
   if (prior) { if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request"); return sendJson(res, 200, { data: campaignDto(db, prior) }); }
+  assertCustomerContentAllowed(normalized.title, "listing"); assertCustomerContentAllowed(normalized.message, "listing");
   const created = withTransaction(db, () => {
     const existing = db.prepare("SELECT * FROM offer_campaigns WHERE created_by_user_id=? AND idempotency_key=?").get(user.id, key);
     if (existing) { if (existing.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request"); return { row: existing, replay: true }; }

@@ -1,0 +1,128 @@
+{
+  "status": "EVIDENCE_BASED_DRAFT_NOT_A_STORE_SUBMISSION",
+  "preparedAt": "2026-11-08",
+  "app": {
+    "name": "Cal-Eats",
+    "operator": "CALAI LTD",
+    "companyNumber": "16995419",
+    "privacyContact": "support@calai.info",
+    "package": "uk.co.calai.caleats",
+    "appleAppId": "6831180948",
+    "playApplicationId": "4974049900851003157",
+    "android": { "version": "1.0.0", "build": 21, "source": "edc261b87e5550470317c35fa5f2689cb320e5ed", "distribution": "INTERNAL_TESTING" },
+    "appleSelected": { "version": "1.0.0", "build": 16, "source": "b0a2e10c76456fa2d915ac846d753db299695f42", "state": "PREPARE_FOR_SUBMISSION" },
+    "privacyUrl": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
+    "termsUrl": "https://eats.calai.info/legal/terms/2026-11-08-v1",
+    "accountDeletionUrl": "https://eats.calai.info/account-deletion/"
+  },
+  "scope": [
+    "The customer app, not the separate restaurant tablet/admin platform.",
+    "Current customer source and the shared backend, compared with the approved published Privacy Notice.",
+    "Payments/payouts exist in the product but real customer payments are paused. Pausing payments does not erase stored transaction information or justify declaring no collection.",
+    "No credentials, personal review-account data, live form writes or submission certification are included. Reconcile final answers against the exact selected binary and live configuration."
+  ],
+  "apple": {
+    "collectsData": true,
+    "tracking": {
+      "recommendedAnswer": false,
+      "basis": "No implemented cross-app/site advertising matching, advertising identifier, advertising-network SDK, data-broker handoff or external-CRM matching was found. Restaurant campaigns use the customer's own Cal-Eats relationship and orders with that restaurant. This is a finding about actual reviewed flows, not a guarantee about every possible future independent use.",
+      "recheckIf": ["External customer-list matching or advertising attribution is introduced", "A payment, geocoding or other integration changes to supply app data for cross-property advertising", "A merchant integration starts combining external customer records for targeted advertising"]
+    },
+    "purposeGroups": {
+      "function": ["App Functionality"],
+      "location": ["App Functionality", "Product Personalization"],
+      "campaignAndOrders": ["App Functionality", "Analytics", "Product Personalization", "Developer’s Advertising or Marketing", "Third-Party Advertising"],
+      "deliveryTokens": ["App Functionality", "Developer’s Advertising or Marketing", "Third-Party Advertising"],
+      "campaignMeasurement": ["Analytics", "Developer’s Advertising or Marketing", "Third-Party Advertising"],
+      "diagnostics": ["App Functionality", "Analytics"]
+    },
+    "dataTypes": [
+      { "type": "Contact Info / Name", "collected": true, "linked": true, "purposes": "function", "evidence": "Account and order customer name; restaurant fulfilment and support. No SMS or direct marketing purpose is inferred from the customer directory alone." },
+      { "type": "Contact Info / Email Address", "collected": true, "linked": true, "purposes": "function", "evidence": "Sign-in, welcome/verification, account recovery and transactional order/support email. Promotional email is not inferred from service email." },
+      { "type": "Contact Info / Phone Number", "collected": true, "linked": true, "purposes": "function", "evidence": "Checkout contact number and restaurant call-customer function." },
+      { "type": "Contact Info / Physical Address", "collected": true, "linked": true, "purposes": "function", "evidence": "Saved delivery addresses and delivery order/contact records." },
+      { "type": "Location / Coarse Location", "collected": true, "linked": true, "purposes": "location", "evidence": "Retained postcode/area and service coverage determine nearby restaurant availability." },
+      { "type": "Location / Precise Location", "collected": true, "linked": true, "purposes": "function", "evidence": "Optional foreground GPS latitude/longitude passes through Cal-Eats to Postcodes.io. The app does not intentionally persist raw coordinates, but provider retention is not established as purely real-time. Include conservatively instead of claiming a collection exemption.", "qualification": "Linked is the conservative label because the first-party request can carry the signed-in session and precise location can identify a person. No precise-location marketing purpose is implemented. Reassess if verified processing and logging evidence supports a narrower label." },
+      { "type": "Identifiers / User ID", "collected": true, "linked": true, "purposes": "campaignAndOrders", "evidence": "Account ID joins orders, consent, messages and restaurant relationship/campaign segments." },
+      { "type": "Identifiers / Device ID", "collected": true, "linked": true, "purposes": "deliveryTokens", "evidence": "Installation identifier, Expo/native notification token, session/device binding, and iPhone Live Activity tokens. Consented merchant-offer push uses those delivery tokens; service notifications do not require marketing consent." },
+      { "type": "Purchases / Purchase History", "collected": true, "linked": true, "purposes": "campaignAndOrders", "evidence": "Items, totals, discounts, vouchers, payment/order status, order counts/recency, redemption and restaurant reporting." },
+      { "type": "Financial Info / Payment Info", "collected": true, "linked": true, "purposes": "function", "evidence": "Cal-Eats retains the form of payment, amount/status and provider references. The native customer app does not collect PAN/CVC or restaurant bank details. External hosted card entry does not exempt the form of payment actually retained by Cal-Eats." },
+      { "type": "User Content / Emails or Text Messages", "collected": true, "linked": true, "purposes": "function", "evidence": "Private order, restaurant/customer and platform-support correspondence, sender/recipient and read/delivery records. Encryption is not end-to-end." },
+      { "type": "User Content / Customer Support", "collected": true, "linked": true, "purposes": "function", "evidence": "Support subjects, requested help, replies, safety reports and the specifically reported evidence." },
+      { "type": "User Content / Other User Content", "collected": true, "linked": true, "purposes": "function", "evidence": "Order/delivery instructions, optional free-form reasons and star-only store ratings." },
+      { "type": "Usage Data / Product Interaction", "collected": true, "linked": true, "purposes": "campaignAndOrders", "evidence": "Offer viewed/dismissed/redeemed state and notification/message read state. Apply advertising/personalisation purposes to actual campaign interactions, not every private-message body." },
+      { "type": "Usage Data / Advertising Data", "collected": true, "linked": true, "purposes": "campaignMeasurement", "evidence": "Merchant offer opened/viewed and redeemed state, plus campaign recipient/opened/redemption counts. These actual promotional exposure/response records are more specific than general Product Interaction; no advertising SDK is required for the category." },
+      { "type": "Diagnostics / Other Diagnostic Data", "collected": true, "linked": true, "purposes": "diagnostics", "evidence": "Retained request/error identifiers, method/status/error code and hosted HTTP operational metadata. No verified anonymisation basis, so linked conservatively." },
+      { "type": "Diagnostics / Performance Data", "collected": true, "linked": true, "purposes": "diagnostics", "evidence": "Server request duration and service reliability measurements. This does not claim native CPU, frame-rate or energy telemetry." }
+    ],
+    "notSelectedForReviewedCustomerApp": [
+      { "type": "Health / Fitness", "reason": "Intentional allergy-note collection is disabled and new non-empty allergy data is rejected. No health/fitness product is implemented. Incidental free text remains user content; reassess if deliberate allergy collection is activated." },
+      { "type": "Photos or Videos", "reason": "Customer app displays restaurant images but has no customer photo/library upload. Merchant uploads are owner-only flows on the separate business platform." },
+      { "type": "Audio Data / Contacts / Browsing History / Sensitive Info", "reason": "No corresponding customer collection feature found. Do not generalise this to independent app-store/browser activity." },
+      { "type": "Credit Info / Other Financial Info", "reason": "No credit score, income, debt, consumer-bank-account or investment feature. Transaction records are described by Payment Info and Purchase History." },
+      { "type": "Crash Data", "reason": "No developer-run native crash-report SDK or direct crash upload was identified. Do not invent collection from a generic diagnostics dependency or confuse Apple's own system services with an implemented app telemetry pipeline." }
+    ]
+  },
+  "googlePlay": {
+    "collectsData": true,
+    "encryptedInTransit": { "recommendedAnswer": true, "basis": "Production app API and the implemented service-provider requests use HTTPS. Native client rejects remote cleartext API origins. This is not an end-to-end-encryption or all-storage-encryption claim." },
+    "deletion": { "recommendedAnswer": true, "webUrl": "https://eats.calai.info/account-deletion/", "inApp": "Account > Security & privacy > Delete your account", "process": "Password/identity-confirmed intake, internal staff review and actual personal-data erasure/login revocation; necessary financial/legal evidence retained as explained in the notice. Not merely account disabling." },
+    "independentSecurityReview": false,
+    "familiesCommitment": false,
+    "dataTypes": [
+      { "type": "Personal info / Name", "collected": true, "ephemeral": false, "userChoice": "Required for primary ordering/account functionality", "purposes": ["App functionality", "Account management"], "sharing": "Restaurant fulfilment is a specific user-initiated order; ordinary processors act on the service's behalf. Apply those exceptions only to their actual permitted scope." },
+      { "type": "Personal info / Email address", "collected": true, "ephemeral": false, "userChoice": "Required for ordering/account verification", "purposes": ["App functionality", "Account management", "Fraud prevention, security, and compliance"], "sharing": "Transactional email/hosting processing; no marketing-email use inferred." },
+      { "type": "Personal info / User IDs", "collected": true, "ephemeral": false, "userChoice": "Required for ordering/account functionality", "purposes": ["App functionality", "Account management", "Analytics", "Personalization", "Advertising or marketing", "Fraud prevention, security, and compliance"], "sharing": "Customer relationship and merchant offers require their specific user-action/consent assessment; no external-list matching found." },
+      { "type": "Personal info / Address", "collected": true, "ephemeral": false, "userChoice": "Optional overall; required for delivery, not collection", "purposes": ["App functionality"], "sharing": "User-initiated delivery fulfiller; not an advertising-address handoff." },
+      { "type": "Personal info / Phone number", "collected": true, "ephemeral": false, "userChoice": "Required at checkout", "purposes": ["App functionality"], "sharing": "User-initiated order contact to the supplying restaurant; no SMS advertising feature." },
+      { "type": "Location / Approximate location", "collected": true, "ephemeral": false, "userChoice": "Optional location entry/device permission; postcode/area can be retained", "purposes": ["App functionality", "Personalization"], "sharing": "GPS lookup is expressly user-requested; manual/saved location used for coverage." },
+      { "type": "Location / Precise location", "collected": true, "ephemeral": false, "userChoice": "Optional Use my location + foreground device permission", "purposes": ["App functionality"], "sharing": "Postcodes.io receives coordinates through the server, without customer name/email/device ID. No verified processor-only, no-retention guarantee; conservative draft declares sharing for this third-party lookup.", "qualification": "The Cal-Eats code uses raw coordinates in memory for a real-time lookup; supplier query retention is not proven ephemeral. Do not claim ephemeral processing solely because Cal-Eats has no coordinate database column." },
+      { "type": "Financial info / Purchase history", "collected": true, "ephemeral": false, "userChoice": "Required when placing orders", "purposes": ["App functionality", "Analytics", "Personalization", "Advertising or marketing", "Fraud prevention, security, and compliance"], "sharing": "Order fulfilment and merchant's own Cal-Eats relationship/campaign records; same user-action/consent scope assessment." },
+      { "type": "Financial info / User payment info", "collected": true, "ephemeral": false, "userChoice": "Required payment form/status when placing an order; external card entry separate", "purposes": ["App functionality", "Fraud prevention, security, and compliance"], "sharing": "Draft covers the payment form/status/reference retained by Cal-Eats, not PAN/CVC collected independently by external Stripe Checkout under Stripe's terms." },
+      { "type": "Messages / Other in-app messages", "collected": true, "ephemeral": false, "userChoice": "Optional messaging/support features", "purposes": ["App functionality"], "sharing": "User deliberately addresses a restaurant or platform support. Protected server messages are readable to authorised recipients; do not claim Google's end-to-end-encryption exception." },
+      { "type": "App activity / Other user-generated content", "collected": true, "ephemeral": false, "userChoice": "Optional instructions, ratings and support/report content", "purposes": ["App functionality"], "sharing": "Only intended restaurant/support recipients or specifically reported evidence; no public customer comments or customer photo upload." },
+      { "type": "App activity / App interactions", "collected": true, "ephemeral": false, "userChoice": "Some interactions required for orders/service reads; marketing optional", "purposes": ["App functionality", "Analytics", "Personalization", "Advertising or marketing"], "sharing": "Offer/message/notification interaction state. Do not claim whole-type optional merely because marketing consent is optional." },
+      { "type": "App activity / In-app search history", "collected": true, "ephemeral": false, "userChoice": "Optional restaurant/conversation search", "purposes": ["App functionality"], "sharing": "Search terms are sent as q to Cal-Eats restaurant and conversation filtering endpoints. No advertising/search-list handoff was found; hosting processing remains within the ordinary service-provider scope.", "qualification": "No application database search-history retention or query logging was found. The application error logger explicitly omits URL/query/body. Retained hosting HTTP path metadata exists, but exclusion of querystrings is not verified for this deployment; non-ephemeral is a conservative form answer, not a finding that a separate search-history database exists. If actual hosting evidence establishes memory-only processing and no query retention, change ephemeral to true rather than omitting this transmitted type from Google's form." },
+      { "type": "App info and performance / Diagnostics", "collected": true, "ephemeral": false, "userChoice": "Required operational records", "purposes": ["App functionality", "Analytics", "Fraud prevention, security, and compliance"], "sharing": "Retained hosted error/request records; processor exception depends on the hosting processing scope." },
+      { "type": "App info and performance / Other app performance data", "collected": true, "ephemeral": false, "userChoice": "Required operational measurements", "purposes": ["App functionality", "Analytics"], "sharing": "Request latency/reliability, not native profiling." },
+      { "type": "Device or other IDs", "collected": true, "ephemeral": false, "userChoice": "Notification permission/token is optional; installation/session identifiers also support device-binding/revocation. Do not call the entire type optional without checking all paths.", "purposes": ["App functionality", "Account management", "Advertising or marketing", "Fraud prevention, security, and compliance"], "sharing": "Expo/FCM processes push installation/routing tokens, including opted-in merchant offers." }
+    ],
+    "routineAppContentRecommendations": {
+      "privacyPolicy": "Use the immutable approved URL above.",
+      "appAccess": "Some features require login; supply a dedicated pre-verified CUSTOMER account privately in Console and working location/restaurant instructions.",
+      "targetAudience": "18 and over, consistent with approved Terms; no child-directed design claim.",
+      "governmentApp": false,
+      "healthAppFeatures": false,
+      "containsAds": { "recommendedAnswer": false, "basis": "No ad network, paid/sponsored native ad product or house-app-ad placement was found. Current restaurant discounts/offers are marketplace commercial content; do not assume a missing ad SDK alone settles this, or infer this answer from Apple's different data-purpose categories.", "recheckIf": "Sponsored/purchased restaurant placements or advertising slots are actually introduced." },
+      "financialFeatures": { "recommendedSelections": ["Rewards, points, frequent flier miles, and other incentives"], "basis": "Admin-issued Cal-Eats vouchers and restaurant promotional incentives exist. Ordinary hosted card payment for physical food is not a consumer bank/digital-wallet/remittance service. No loans, BNPL, investments, crypto or money-transfer feature.", "qualification": "Confirm the current form's exact incentives wording before saving; do not choose no financial features merely because live charging is paused." },
+      "contentRating": "Answer private messaging and merchant-generated content truthfully. Star-only customer ratings have no public comments. No gambling, contests, mature editorial material or age-assurance implementation found; do not fabricate content to reach the desired audience age.",
+      "category": "Food & Drink",
+      "contactEmail": "support@calai.info"
+    }
+  },
+  "specificFinalChecks": [
+    "Google Required/Optional is a whole-type answer. Primary ordering needs account/contact/transaction information; guest browsing does not change requirements for ordering. Apply Optional only where all users can decline that type, such as GPS and private chat.",
+    "For Google's sharing column, cloud service providers acting solely on Cal-Eats' behalf and clearly user-initiated fulfilment/messages may qualify for exceptions. Do not apply that label to independent analytics/advertising reuse. This draft explicitly discloses the location lookup conservatively.",
+    "No material implemented cross-property advertising flow was identified. Recheck any actual changed third-party settings/integrations; hypothetical future merchant misuse alone is not a finding that tracking is implemented.",
+    "Postcodes.io's public operator policy is not a specific promise about raw reverse-geocoding coordinate retention. A verified narrower guarantee can justify revisiting precise-location retention and sharing answers; present draft does not rely on that guarantee.",
+    "Merchant photo rights/content-rights declaration, review contact details, secure review credentials, pricing/territories and applicable agreements remain operator facts, not privacy code facts.",
+    "A working ordering/payment/restaurant journey is still required before public submission. Do not describe disabled checkout or unavailable restaurant service as completed production review access.",
+    "Do not mechanically copy Android21 permission-education claims into notes/screenshots for selected iOS16. Validate the exact Apple binary before its public review."
+  ],
+  "sourceEvidence": [
+    "apps/mobile/src/LocationPicker.tsx", "apps/mobile/src/screens/DiscoverScreen.tsx", "apps/mobile/src/CustomerContact.tsx", "apps/api/src/restaurant-discovery.js", "apps/api/src/service-areas.js", "apps/mobile/src/screens/CheckoutScreen.tsx", "apps/api/src/journey.js", "apps/api/src/native-auth.js", "apps/api/src/customer-relationships.js", "apps/api/src/order-messaging.js", "apps/api/src/support-cases.js", "apps/api/src/customer-safety.js", "apps/api/src/customer-privacy.js", "apps/api/src/customer-erasure.js", "apps/api/src/customer-push.js", "apps/api/src/customer-push-worker.js", "apps/api/src/order-live-activities.js", "apps/api/src/loyalty.js", "apps/api/src/offers.js", "apps/api/src/platform-vouchers.js", "apps/api/src/app.js", "apps/api/src/polish.js", "apps/api/legal-documents/customer-privacy-2026-11-08-v1.txt"
+  ],
+  "primaryGuidance": [
+    "https://developer.apple.com/app-store/app-privacy-details/",
+    "https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy/",
+    "https://support.google.com/googleplay/android-developer/answer/10787469",
+    "https://support.google.com/googleplay/android-developer/answer/13327111",
+    "https://support.google.com/googleplay/android-developer/answer/15748846",
+    "https://support.google.com/googleplay/android-developer/answer/9859455",
+    "https://support.google.com/googleplay/android-developer/answer/13849271",
+    "https://support.google.com/googleplay/android-developer/answer/9858738",
+    "https://postcodes.io/",
+    "https://terms.ideal-postcodes.co.uk/website/privacy",
+    "https://docs.railway.com/observability/logs"
+  ]
+}

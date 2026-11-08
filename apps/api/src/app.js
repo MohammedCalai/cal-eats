@@ -20,6 +20,7 @@ import { routeOperations } from "./operations.js";
 import { serveStatic } from "./static.js";
 import { routeProduct } from "./product.js";
 import { routeAccountAccess, assertCustomerSignupEmailReady, issueCustomerSignupVerification } from "./account-access.js";
+import { customerErasureWriteError } from "./customer-erasure.js";
 import {routeCustomerPush} from "./customer-push.js";
 import {routeOrderLiveActivities} from "./order-live-activities.js";
 import { isDemoEmail } from "./seed.js";
@@ -226,14 +227,15 @@ export function createApp({ db, config, logger = console }) {
       if (handled || res.writableEnded || res.headersSent) return;
       throw new HttpError(404, "NOT_FOUND", "Resource not found");
     } catch (error) {
-      const status = Number.isInteger(error.status) ? error.status : 500;
-      const code = error.code ?? "INTERNAL_ERROR";
-      const message = status === 500 ? "Internal server error" : error.message;
+      const failure = customerErasureWriteError(error) ?? error;
+      const status = Number.isInteger(failure.status) ? failure.status : 500;
+      const code = failure.code ?? "INTERNAL_ERROR";
+      const message = status === 500 ? "Internal server error" : failure.message;
       if (status >= 500) {
         const method = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(req.method) ? req.method : "OTHER";
         // Never log raw errors/stacks, URL/query, headers, identities or bodies:
         // provider errors can contain tokens and customer/payment information.
-        try { logger.error(JSON.stringify({ event: "request_failed", requestId, method, status, durationMs: Math.round((performance.now() - startedAt) * 100) / 100, code: error instanceof HttpError ? error.code : "INTERNAL_ERROR" })); }
+        try { logger.error(JSON.stringify({ event: "request_failed", requestId, method, status, durationMs: Math.round((performance.now() - startedAt) * 100) / 100, code: failure instanceof HttpError ? failure.code : "INTERNAL_ERROR" })); }
         catch { /* A logging failure must not replace the original response. */ }
       }
       if (!res.headersSent) sendJson(res, status, { error: { code, message } }); else res.destroy();

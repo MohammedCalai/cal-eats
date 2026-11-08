@@ -5,6 +5,7 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { addNotification } from "./offers.js";
 import { CAMPAIGN_TYPES, campaignType, campaignWeekStart, campaignBudgetUsage, quotePromotion } from "./promotion-mechanics.js";
+import { assertCustomerContentAllowed } from "./content-moderation.js";
 
 const DAY = 86_400_000;
 const clean = (v, min, max, label) => { const s = typeof v === "string" ? v.trim() : ""; if (s.length < min || s.length > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`); return s; };
@@ -115,6 +116,7 @@ async function updatePromotion({req,res,db,config,owner,restaurantId,id,end}) {
     }else{
       if(row.expires_at<=timestamp)throw new HttpError(409,"CAMPAIGN_ENDED","Ended campaigns are available to view only. Create a new campaign to run another offer.");
       const title=body.title===undefined?row.title:clean(body.title,1,80,"Title"),message=body.message===undefined?row.message:clean(body.message,1,500,"Message");
+      if(body.title!==undefined)assertCustomerContentAllowed(title,"listing"); if(body.message!==undefined)assertCustomerContentAllowed(message,"listing");
       if(body.startsAt!==undefined&&row.starts_at<=timestamp)throw new HttpError(409,"CAMPAIGN_STARTED","The start time of an active campaign cannot be changed.");
       const start=new Date(body.startsAt??row.starts_at??row.created_at),expiry=new Date(body.expiresAt??row.expires_at);
       if(!Number.isFinite(+start)||!Number.isFinite(+expiry)||expiry<=start||expiry<=now||expiry-start>366*DAY)throw new HttpError(400,"VALIDATION_ERROR","Choose a valid end date after the start and current time, within one year of the start.");
@@ -153,6 +155,7 @@ async function createPromotion({req,res,db,config,session,restaurantId}) {
   if(type==="buy_one_get_free_item")rules.buyItemId=clean(b.buyItemId,1,100,"Qualifying item");
   const normalized={title:clean(b.title,1,80,"Title"),message:clean(b.message,1,500,"Message"),offerType,campaignType:type,campaignRules:rules,value,menuItemId:offerType==="free_item"?clean(b.menuItemId,1,100,"Gift item"):null,minSubtotalMinor:minimum,startsAt:start.toISOString(),expiresAt:end.toISOString(),redemptionLimit:limit,budgetMinor:budget,weeklyBudgetMinor:weeklyBudget,eligibleItemIds:eligibleItems,eligibleCategories:categories,recipientSegment:segment,customerIds:ids,stackingPolicy:"exclusive",fundingParty:"restaurant"},hash=digest({restaurantId,...normalized});
   const prior=db.prepare("SELECT * FROM offer_campaigns WHERE created_by_user_id=? AND idempotency_key=?").get(owner.id,key);if(prior){if(prior.request_hash!==hash)throw new HttpError(409,"IDEMPOTENCY_CONFLICT","Idempotency key was already used");return sendJson(res,200,{data:campaignDto(db,prior,now)});}
+  assertCustomerContentAllowed(normalized.title,"listing"); assertCustomerContentAllowed(normalized.message,"listing");
   if(end<=now)throw new HttpError(400,"VALIDATION_ERROR","Promotion end must be in the future");
   rules.eligibleItemNames=[];
   for(const id of eligibleItems){const row=db.prepare("SELECT name,price_minor FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(id,restaurantId);if(!row||(type==="buy_one_get_one"&&row.price_minor<=0))throw new HttpError(409,"MENU_UNAVAILABLE","An eligible menu item with a paid base price is required");rules.eligibleItemNames.push(row.name);}

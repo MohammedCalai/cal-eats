@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateReleaseReadiness } from "./release-readiness.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { expo } = JSON.parse(fs.readFileSync(path.join(root, "app.json"), "utf8"));
 const eas = JSON.parse(fs.readFileSync(path.join(root, "eas.json"), "utf8"));
@@ -22,11 +23,13 @@ if (process.env.EAS_BUILD_PLATFORM === "android") {
   try { if (file) firebase = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* Report the configuration check without file contents or private paths. */ }
   check("Android notifications use the Cal-Eats Firebase configuration", Boolean(firebase?.project_info?.project_number && firebase?.client?.some(client => client.client_info?.android_client_info?.package_name === "uk.co.calai.caleats")));
 }
-const pending = Object.entries(readiness).filter(([, value]) => value !== true).map(([name]) => name);
+const releaseReadiness = validateReleaseReadiness(readiness);
+const pending = releaseReadiness.pending;
+check("Public-release readiness includes every required boolean gate", releaseReadiness.valid);
 const production = process.env.EAS_BUILD_PROFILE === "production" || process.env.CAL_EATS_PUBLIC_RELEASE_BUILD === "true" || process.argv.includes("--production");
 check("Approved Cal-Eats Expo project and owner", expo.extra?.eas?.projectId === "5bf59184-c670-44f4-be78-5229cbd02300" && expo.owner === "yankee1707");
 if (production) {
-  check("All public-release evidence reviewed", pending.length === 0);
+  check("All public-release evidence reviewed", releaseReadiness.approved);
 }
-console.log(JSON.stringify({ scope: production ? "public-store-release" : "local-build-configuration", checks, publicReleaseReady: pending.length === 0 && checks.every(row => row.passed), pendingEvidence: pending, limitations: ["Configuration checks are not signed builds, device tests, provider verification or store approval.", "Store submission connections and device verification are separate from EAS build signing."] }, null, 2));
+console.log(JSON.stringify({ scope: production ? "public-store-release" : "local-build-configuration", checks, publicReleaseReady: releaseReadiness.approved && checks.every(row => row.passed), pendingEvidence: pending, readinessSchemaErrors: releaseReadiness.errors, limitations: ["Configuration checks are not signed builds, device tests, provider verification or store approval.", "Store submission connections and device verification are separate from EAS build signing."] }, null, 2));
 if (checks.some(row => !row.passed)) process.exitCode = 1;

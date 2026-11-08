@@ -11,6 +11,7 @@ import { integer, itemDto, stringList, text, validateModifierGroups } from "./jo
 import { restaurantReadiness } from "./readiness.js";
 import { assertMediaCapacity, mediaIsReferenced, mediaStorage } from "./media-policy.js";
 import {mediaObjectKey,mediaSha256,queueMediaObjectRemoval} from "./media-object-store.js";
+import { assertPublicMenuContentAllowed } from "./content-moderation.js";
 
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}` : JSON.stringify(value);
 const hash = (value) => createHash("sha256").update(canonical(value)).digest("hex");
@@ -19,6 +20,7 @@ const mediaDto = (row) => ({ id: row.id, url: `/api/media/${row.id}`, mimeType: 
 
 function normalizedMenuItem(value) {
   exactObject(value, ["name", "description", "priceMinor", "category", "allergens", "dietaryTags", "modifierGroups"]);
+  assertPublicMenuContentAllowed(value);
   return { name: text(value.name, 1, VALIDATION.menuNameMax, "Item name"), description: text(value.description ?? "", 0, VALIDATION.descriptionMax, "Description"), priceMinor: integer(value.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), category: text(value.category ?? "", 0, 80, "Category"), allergens: stringList(value.allergens ?? [], "Allergens"), dietaryTags: stringList(value.dietaryTags ?? [], "Dietary tags"), modifierGroups: validateModifierGroups(value.modifierGroups ?? []) };
 }
 function dimensions(buffer) {

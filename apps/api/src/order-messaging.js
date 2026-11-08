@@ -7,6 +7,7 @@ import { decryptMessage, encryptMessage, messageFingerprint } from "./message-en
 import { notificationStreamHub } from "./notification-stream.js";
 import { queueCustomerEmailForNotification } from "./customer-emails.js";
 import { restaurantMessageArrivalRevision } from "./business-message-attention.js";
+import { assertCustomerContentAllowed } from "./content-moderation.js";
 
 export const DEFAULT_QUICK_RESPONSES = ["We’re preparing your order now.", "Sorry for the delay, we’re very busy.", "Your order will be ready shortly.", "Your driver is on the way.", "Your order is ready for collection.", "Thank you for ordering."];
 export function quickResponsesForOrder(responses,fulfillment) {
@@ -115,6 +116,7 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const user = requireRestaurantOwner(db, session, match[1]); const body = await readJson(req, config.bodyLimit); exactObject(body, ["quickResponses", "supportWindowMinutes"]);
     if (!Array.isArray(body.quickResponses) || body.quickResponses.length !== 6) throw new HttpError(400, "VALIDATION_ERROR", "Six quick responses are required");
     const quick = body.quickResponses.map((x) => clean(x, 1, 120, "Quick response"));
+    quick.forEach(message => assertCustomerContentAllowed(message));
     if (!Number.isInteger(body.supportWindowMinutes) || body.supportWindowMinutes < 0 || body.supportWindowMinutes > MAX_SUPPORT_MINUTES) throw new HttpError(400, "VALIDATION_ERROR", "Support window is invalid");
     const now = nowIso(config); db.prepare("INSERT INTO order_message_settings(restaurant_id,quick_responses,support_window_minutes,updated_by_user_id,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(restaurant_id) DO UPDATE SET quick_responses=excluded.quick_responses,support_window_minutes=excluded.support_window_minutes,updated_by_user_id=excluded.updated_by_user_id,updated_at=excluded.updated_at").run(match[1], JSON.stringify(quick), body.supportWindowMinutes, user.id, now);
     return sendJson(res, 200, { data: settings(db, match[1], config) });
@@ -153,6 +155,7 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["message", "clientMessageId"]); const key = clean(req.headers["idempotency-key"] ?? body.clientMessageId, 1, 100, "Idempotency-Key"); const message = clean(body.message, 1, 300, "Message");
     const hash = messageFingerprint(config, granted.order.id, message); const prior = db.prepare("SELECT * FROM order_messages WHERE sender_user_id=? AND order_id=? AND idempotency_key=?").get(granted.user.id, granted.order.id, key);
     if (prior) { if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used"); if (prior.expires_at <= nowIso(config)) throw new HttpError(410, "MESSAGE_EXPIRED", "This message has expired"); return sendJson(res, 200, { data: await dto(config, prior) }); }
+    assertCustomerContentAllowed(message);
     const createdAt = nowIso(config); const expiresAt = new Date(Date.parse(createdAt) + RETENTION_MS).toISOString(); const id = randomUUID(); const encrypted = await encryptMessage(config, message, { id, orderId: granted.order.id, senderUserId: granted.user.id, createdAt, expiresAt });
     const created = withTransaction(db, () => {
       const order = db.prepare("SELECT * FROM orders WHERE id=?").get(granted.order.id); if (!availability(db, order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");

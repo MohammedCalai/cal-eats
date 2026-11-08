@@ -18,6 +18,21 @@ const run = (db, sql, userId) => db.prepare(sql).run(...params(sql, userId));
 const rows = (db, sql, userId) => db.prepare(sql).all(...params(sql, userId));
 const count = (db, table, where, userId) => db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE ${where}`).get(...params(where, userId)).n;
 const hasTable = (db, name) => Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
+const protectedErasureWrites = new Set([
+  "Customer account has been erased",
+  "Erased customer profiles cannot be restored",
+  "Erased order contact information cannot be restored",
+  "Erased support content cannot be restored"
+]);
+
+// A request can authenticate before erasure and finish reading its body after
+// completion. Keep the database suppression intact, but return a clear conflict
+// for these exact privacy guards instead of reporting an internal server error.
+export function customerErasureWriteError(error) {
+  return error?.code === "ERR_SQLITE_ERROR" && protectedErasureWrites.has(error.message)
+    ? new HttpError(409, "ACCOUNT_ERASED", "This customer account has been deleted. Its personal details can no longer be changed.")
+    : null;
+}
 
 export const CUSTOMER_ERASURE_RETAINED_CATEGORIES = Object.freeze([
   "Pseudonymous order, payment, commission, voucher and accounting records: necessary statutory accounting retention, normally six years from the relevant financial-year end, with documented longer exceptions.",
