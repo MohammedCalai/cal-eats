@@ -3,6 +3,7 @@ import {HttpError,sendJson} from "./http.js";
 import {resolveRestaurantCommission} from "./restaurant-commission.js";
 import {restaurantReadiness} from "./readiness.js";
 import {createHash} from "node:crypto";
+import {merchantCommercialRestaurantIds,resolveMerchantCommercialTerms} from "./merchant-commercial.js";
 
 const validAccount=value=>typeof value==="string"&&/^acct_[A-Za-z0-9]+$/.test(value);
 const validSecret=value=>typeof value==="string"&&/^whsec_[A-Za-z0-9_]{8,}$/.test(value);
@@ -30,9 +31,11 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
     LEFT JOIN stripe_account_readiness s ON s.restaurant_id=r.id AND s.provider_mode=a.provider_mode AND s.provider_account_id=a.provider_reference
     LEFT JOIN contracts c ON c.restaurant_id=r.id
     LEFT JOIN commission_policies p ON p.id=(SELECT id FROM commission_policies WHERE restaurant_id=r.id AND accepted_at IS NOT NULL AND starts_at<=? AND ends_at>? ORDER BY created_at DESC LIMIT 1)`;
-  const termsApproved=row=>Boolean(row.policy_accepted?!row.development_assumption:row.contract_accepted&&!row.demo_only);
+  const merchantIds=merchantCommercialRestaurantIds(db,config);
+  const termsFor=row=>resolveMerchantCommercialTerms({policy:row.policy_accepted?{accepted_at:row.policy_accepted,rate_bps:row.policy_rate,commission_base:row.commission_base,development_assumption:row.development_assumption,version:"legacy-policy"}:null,contract:row.contract_accepted?{accepted_at:row.contract_accepted,rate_bps:row.contract_rate,demo_only:row.demo_only,policy_version:"legacy-contract"}:null,agreement:merchantIds.has(row.id)?{rateBasisPoints:700,base:"food_plus_delivery",policyVersion:config.merchantCommercial.document.version,demoOnly:false}:null});
+  const termsApproved=row=>{const terms=termsFor(row);return terms.accepted&&!terms.demoOnly;};
   const accountReady=row=>row.account_mode==="stripe_live"&&row.account_status==="enabled"&&Boolean(row.charges_enabled&&row.payouts_enabled)&&hasCapabilities(row.capabilities);
-  const baseCorrect=row=>!row.policy_accepted||row.commission_base==="food_plus_delivery";
+  const baseCorrect=row=>termsFor(row).base==="food_plus_delivery";
   const counts=db.prepare(`SELECT COUNT(*) AS approved,SUM(a.provider_mode='stripe_live' AND a.status='enabled' AND s.charges_enabled=1 AND s.payouts_enabled=1 AND ${capabilitySql}) AS bank_ready,
     SUM(CASE WHEN p.id IS NOT NULL THEN p.development_assumption=0 ELSE c.accepted_at IS NOT NULL AND c.demo_only=0 END) AS terms_ready,
     SUM(COALESCE(p.commission_base,'food_plus_delivery')='food_plus_delivery') AS base_ready,
@@ -48,7 +51,8 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
     modeMismatchedAccounts:db.prepare("SELECT COUNT(*) n FROM provider_accounts WHERE provider_mode<>'stripe_live'").get().n,
     outstandingTestAuthorisations:db.prepare("SELECT COUNT(*) n FROM stripe_order_payments WHERE provider_mode='stripe_test' AND status IN ('pending','authorized','unknown')").get().n
   };
-  const approved=Number(counts.approved)||0,readyAccounts=Number(counts.bank_ready)||0,approvedTerms=Number(counts.terms_ready)||0;
+  const approved=Number(counts.approved)||0,readyAccounts=Number(counts.bank_ready)||0;
+  const approvedTerms=db.prepare(`SELECT id,policy_accepted,policy_rate,commission_base,development_assumption,contract_accepted,contract_rate,demo_only FROM (${selection}) WHERE status='approved' AND archived_at IS NULL`).all(now,now).filter(row=>termsApproved(row)&&baseCorrect(row)).length;
   // Match the current-hash-bound live-banking-v1 proof used by banking access,
   // reading all candidate credentials/audits once rather than per restaurant.
   const credentialProofs=db.prepare("SELECT u.id,u.password_hash,a.details FROM users u JOIN audit_events a ON a.entity_type='user' AND a.entity_id=u.id AND a.action='password_changed' WHERE u.account_enabled=1 AND u.role IN ('admin','restaurant')").all(),fingerprints=new Map(),secureUsers=new Set();
@@ -65,7 +69,7 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
     {id:"live_connection",label:"Dedicated Cal-Eats live connection",state:validAccount(liveAccountId)&&keyConfigured?"review":"blocked",detail:validAccount(liveAccountId)&&keyConfigured?"Live connection details are staged; verify the exact Stripe account before activation.":"Stage the confirmed live account and a dedicated restricted server key. Existing Calai keys must stay separate."},
     {id:"live_events",label:"Payment and restaurant payout updates",state:separateEventSecrets?"review":"blocked",detail:separateEventSecrets?"Separate signing secrets are present. Successful signed deliveries must be checked before launch.":"Two separate live event connections and signing secrets are required."},
     {id:"restaurant_accounts",label:"Real restaurant bank onboarding",state:approved>0&&readyAccounts===approved?"ready":"blocked",detail:`${readyAccounts} of ${approved} approved restaurants have a verified live payment and payout account. Test bank accounts cannot be reused.`},
-    {id:"commercial_terms",label:"Approved restaurant commission terms",state:approved>0&&approvedTerms===approved&&Number(counts.base_ready)===approved?"ready":"blocked",detail:`${approvedTerms} of ${approved} approved restaurants have non-demo accepted terms. Commission must include discounted food and charged delivery.`},
+    {id:"commercial_terms",label:"Approved restaurant commission terms",state:approved>0&&approvedTerms===approved?"ready":"blocked",detail:`${approvedTerms} of ${approved} approved restaurants have non-demo accepted terms. Commission must include discounted food and charged delivery.`},
     {id:"restaurant_operations",label:"Restaurant ordering setup",state:approved>0&&Number(counts.operational_ready)===approved?"ready":"blocked",detail:`${Number(counts.operational_ready)||0} of ${approved} approved restaurants have contact details, opening hours, an available menu and fulfillment configured, with new orders unpaused and no suspension.`},
     {id:"account_security",label:"Secure administrator and owner access",state:approved>0&&platformSecurityReady&&secureApprovedOwners===approved?"ready":"blocked",detail:`${securedAdministrators} of ${administrators.length} active administrators have replaced their testing password. ${secureApprovedOwners} of ${approved} approved restaurants have secure active owner access. Every active owner must secure their account before real orders.`},
     {id:"payout_schedule",label:"Restaurant bank payout schedule",state:scheduleConfirmed?"ready":"review",detail:scheduleConfirmed?"The configured weekly Monday payout plan has been confirmed.":"Weekly Monday is the development default. Confirm the live payout schedule before onboarding restaurants."},
@@ -73,7 +77,7 @@ export function paymentLaunchReport(db,config,{page=1,pageSize=25,environment=pr
     {id:"test_handover",label:"Preserve testing history",state:history.testJobsPending||history.outstandingTestAuthorisations||history.modeMismatchedAccounts?"review":"ready",detail:history.testJobsPending||history.outstandingTestAuthorisations||history.modeMismatchedAccounts?"Complete a reviewed handover or isolate live data. Do not replace test bank accounts or lose outstanding test history.":"No outstanding test account handover was found."}
   ];
   const items=db.prepare(`${selection} WHERE r.archived_at IS NULL ORDER BY r.name COLLATE NOCASE,r.id LIMIT ? OFFSET ?`).all(now,now,pageSize,(page-1)*pageSize).map(row=>{
-    const terms=termsApproved(row),bank=accountReady(row),normalRate=row.policy_rate??row.contract_rate??700,reasons=[];
+    const terms=termsApproved(row),bank=accountReady(row),normalRate=termsFor(row).rateBasisPoints,reasons=[];
     const setup=restaurantReadiness(db,row.id),operationalReady=setup.ready&&!row.paused&&!row.suspended,ownerSecurityReady=secureOwnerIds.has(row.id);
     if(!bank)reasons.push(row.account_mode&&row.account_mode!=="stripe_live"?"Create a real restaurant payment account; retain the test account history.":"Complete real business and bank onboarding.");
     if(!terms)reasons.push("Review and accept the real commercial agreement.");

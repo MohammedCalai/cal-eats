@@ -22,6 +22,7 @@ import {runOrderLiveActivities} from "./order-live-activities.js";
 import {runCustomerPrivacyRetention} from "./customer-privacy.js";
 import {runCustomerErasureConfirmations} from "./customer-erasure.js";
 import {initializeCustomerLegal} from "./customer-legal.js";
+import {initializeMerchantCommercial} from "./merchant-commercial.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -30,6 +31,7 @@ catch (error) { closeDatabase(db); throw error; }
 assertHostedPreviewSafe(db, config);
 // Validate immutable legal metadata before any policy-driven minimisation runs.
 initializeCustomerLegal(db,config);
+initializeMerchantCommercial(db,config);
 initializeCustomerEmailDelivery(db,config);
 initializeBusinessWeeklyStatements(db,config);
 let workerRunning = false;

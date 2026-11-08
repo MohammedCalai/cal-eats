@@ -19,6 +19,7 @@ import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
 import OwnerDashboardView, { DashboardCsvDownload } from "./OwnerDashboard.jsx";
 import EarningsPage from "./EarningsPage.jsx";
+import MerchantAgreement from "./MerchantAgreement.jsx";
 import OrderFinancialBreakdown from "./OrderFinancialBreakdown.jsx";
 import { useFinanceResource } from "./finance-resource.js";
 import { OrderAlertProvider, useOrderAlerts } from "./NewOrderAlerts.jsx";
@@ -88,6 +89,7 @@ function App() {
           <Route path="support" element={<OwnerSupport />} />
           <Route path="printers" element={<Printers />} />
           <Route path="earnings" element={<OwnerOnly><Earnings /></OwnerOnly>} />
+          <Route path="agreement" element={<OwnerOnly><OwnerMerchantAgreement /></OwnerOnly>} />
           <Route path="stripe" element={<OwnerOnly><OwnerStripeFinance /></OwnerOnly>} />
           <Route path="refunds" element={<OwnerOnly><Navigate to="/owner/support?scope=customer" replace/></OwnerOnly>} />
           <Route path="settings" element={<OwnerOnly><Settings /></OwnerOnly>} />
@@ -409,6 +411,7 @@ function PrinterWorkspace({ restaurant, permission }) {
 
 
 function Earnings(){const{restaurant}=React.useContext(RestaurantContext);return <EarningsPage key={restaurant.id} restaurantId={restaurant.id}/>;}
+function OwnerMerchantAgreement(){const{restaurant}=React.useContext(RestaurantContext);return <MerchantAgreement key={restaurant.id} restaurantId={restaurant.id}/>;}
 
 
 function Settings(){

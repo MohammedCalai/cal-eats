@@ -1,0 +1,109 @@
+# Manual only. Uses a simulator build already reviewed by the release owner.
+# This is a custom macOS job, not the paid Maestro/Simulators service.
+# Check the account's free CI allowance immediately before starting a run.
+name: Genuine iPhone store screenshots
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        type: string
+        required: true
+      expected_source_sha:
+        type: string
+        required: true
+      restaurant_name:
+        type: string
+        default: Arndale Market Curry Centre
+      dish_name:
+        type: string
+        default: Chips
+jobs:
+  capture:
+    name: Capture the current native customer app
+    runs_on: macos-medium
+    image: macos-tahoe-26.5-xcode-26.6
+    env:
+      SCREENSHOT_BUILD_ID: ${{ inputs.build_id }}
+      EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+      RESTAURANT_NAME: ${{ inputs.restaurant_name }}
+      DISH_NAME: ${{ inputs.dish_name }}
+    steps:
+      - uses: eas/checkout
+      - name: Verify the approved source and capture inputs
+        run: |
+          node <<'NODE'
+          const {execFileSync} = require('node:child_process');
+          if (!/^[a-f0-9-]{36}$/i.test(process.env.SCREENSHOT_BUILD_ID || '')) throw new Error('A simulator build ID is required.');
+          if (!/^[a-f0-9]{40}$/i.test(process.env.EXPECTED_SOURCE_SHA || '')) throw new Error('The full approved source SHA is required.');
+          const actual = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+          if (actual !== process.env.EXPECTED_SOURCE_SHA) throw new Error('Workflow source differs from the approved source.');
+          for (const key of ['RESTAURANT_NAME','DISH_NAME']) if (!(process.env[key] || '').trim() || process.env[key].length > 150) throw new Error('Invalid capture selector.');
+          console.log('Approved source verified. Anonymous native screenshots only.');
+          NODE
+      - uses: eas/download_build
+        id: app
+        with:
+          build_id: ${{ inputs.build_id }}
+          extensions: [app]
+      - name: Boot an iPhone, capture real screens and verify image sizes
+        env:
+          SCREENSHOT_APP_PATH: ${{ steps.app.outputs.artifact_path }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const {spawnSync} = require('node:child_process');
+          const cwd = process.cwd();
+          const mobile = fs.existsSync(path.join(cwd,'.maestro/store-screenshots.yml')) ? cwd : path.join(cwd,'apps/mobile');
+          const out = path.join(mobile,'store-screenshots');
+          fs.mkdirSync(out,{recursive:true});
+          const start=Date.now();
+          let udid;
+          function run(command,args,timeout=30000,inherit=false) {
+            const budget=600000-(Date.now()-start);
+            if(budget<=0)throw new Error('The ten-minute capture budget has expired.');
+            const r=spawnSync(command,args,{encoding:'utf8',timeout:Math.min(timeout,budget),cwd:mobile,stdio:inherit?'inherit':'pipe'});
+            if(r.error)throw r.error;
+            if(r.status!==0)throw new Error(`${path.basename(command)} failed (${r.status}). ${inherit?'':(r.stderr||'').slice(-1200)}`);
+            return r.stdout||'';
+          }
+          try {
+            const available=Object.values(JSON.parse(run('xcrun',['simctl','list','devices','available','--json'])).devices).flat();
+            const names=['iPhone 16 Pro','iPhone 17 Pro','iPhone 16','iPhone 15 Pro','iPhone 15','iPhone 14 Pro'];
+            const device=names.map(name=>available.find(d=>d.name===name)).find(Boolean);
+            if(!device)throw new Error('No supported Dynamic Island medium-display iPhone is installed.');
+            udid=device.udid;
+            if(device.state!=='Booted')run('xcrun',['simctl','boot',udid]);
+            run('xcrun',['simctl','bootstatus',udid,'-b'],150000);
+            run('xcrun',['simctl','ui',udid,'appearance','light']);
+            run('xcrun',['simctl','status_bar',udid,'override','--time','9:41','--batteryState','charged','--batteryLevel','100']);
+            const appPath=process.env.SCREENSHOT_APP_PATH;
+            if(!appPath||!fs.existsSync(appPath)||!appPath.endsWith('.app'))throw new Error('A genuine iOS Simulator .app is required.');
+            const identifier=run('/usr/libexec/PlistBuddy',['-c','Print CFBundleIdentifier',path.join(appPath,'Info.plist')]).trim();
+            if(identifier!=='uk.co.calai.caleats')throw new Error('The supplied build is not the Cal-Eats customer app.');
+            run('xcrun',['simctl','install',udid,appPath],60000);
+            const maestro=fs.existsSync(path.join(process.env.HOME,'.maestro/bin/maestro'))?path.join(process.env.HOME,'.maestro/bin/maestro'):'maestro';
+            run(maestro,['--udid',udid,'test','--format','junit','--output',path.join(out,'report.xml'),'--test-output-dir',out,'-e',`RESTAURANT_NAME=${process.env.RESTAURANT_NAME}`,'-e',`DISH_NAME=${process.env.DISH_NAME}`,'.maestro/store-screenshots.yml'],420000,true);
+            function findPngs(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?findPngs(path.join(dir,e.name)):e.name.endsWith('.png')?[path.join(dir,e.name)]:[]);}
+            const images=findPngs(out).filter(file=>/0[1-5]-(browse|restaurant|menu|item-details|basket)\.png$/.test(file));
+            if(images.length!==5)throw new Error('The complete five-screen capture was not produced.');
+            const dimensions=images.map(file=>{
+              const info=run('sips',['-g','pixelWidth','-g','pixelHeight','-g','hasAlpha',file]);
+              const width=Number(info.match(/pixelWidth: (\d+)/)?.[1]),height=Number(info.match(/pixelHeight: (\d+)/)?.[1]);
+              if(![[1179,2556],[1206,2622]].some(([w,h])=>w===width&&h===height))throw new Error('Unexpected App Store screenshot dimensions.');
+              if(/hasAlpha: yes/.test(info))throw new Error('App Store screenshots must have no alpha channel.');
+              return {file:path.relative(out,file),width,height};
+            });
+            fs.writeFileSync(path.join(out,'capture-manifest.json'),JSON.stringify({createdAt:new Date().toISOString(),sourceCommit:process.env.EXPECTED_SOURCE_SHA,simulatorBuildId:process.env.SCREENSHOT_BUILD_ID,device:device.name,bundleIdentifier:identifier,anonymous:true,retouched:false,images:dimensions},null,2));
+          } finally {
+            if(udid)spawnSync('xcrun',['simctl','shutdown',udid],{timeout:15000,stdio:'ignore'});
+          }
+          NODE
+      - uses: eas/upload_artifact
+        if: ${{ always() }}
+        with:
+          type: other
+          name: Genuine iPhone screenshots and provenance
+          path: |
+            ./store-screenshots/**/*
+            ./apps/mobile/store-screenshots/**/*

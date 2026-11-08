@@ -1,3 +1,4 @@
+import { assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import { createHash, randomUUID } from "node:crypto";
 import { requireUser, requireRole, requireRestaurantMembership } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
@@ -154,6 +155,7 @@ export async function routeSupportCases({ req, res, url, db, config, session }) 
     return sendJson(res, 200, { data: { read: true } });
   }
   if (req.method === "POST" && match[2] === "messages") {
+    if(user.role === "restaurant") assertRestaurantContactAllowed(db,row.user_id,row.restaurant_id);
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["message"]);
     const message = text(body.message, 1, 2000, "Reply"), requestKey = text(req.headers["idempotency-key"], 8, 150, "Retry key"), context = `support:${row.id}`, requestHash = messageFingerprint(config, context, message);
     const prior = db.prepare("SELECT * FROM support_case_messages WHERE case_id=? AND sender_user_id=? AND idempotency_key=?").get(row.id, user.id, requestKey);
@@ -166,6 +168,7 @@ export async function routeSupportCases({ req, res, url, db, config, session }) 
     const encrypted = await encryptMessage(config, message, { id, orderId: context, senderUserId: user.id, createdAt: stamp, expiresAt: "" });
     const saved = withTransaction(db, () => {
       access(db, session, row.id);
+      if(user.role === "restaurant") assertRestaurantContactAllowed(db,row.user_id,row.restaurant_id);
       const replay = db.prepare("SELECT * FROM support_case_messages WHERE case_id=? AND sender_user_id=? AND idempotency_key=?").get(row.id, user.id, requestKey);
       if (replay) {
         if (replay.request_hash !== requestHash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "This retry key belongs to another reply");

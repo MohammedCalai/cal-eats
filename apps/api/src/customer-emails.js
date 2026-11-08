@@ -1,3 +1,4 @@
+import { blockedRestaurantNotification } from "./customer-safety-policy.js";
 import { randomUUID } from "node:crypto";
 import { withTransaction } from "./db/index.js";
 import { requireRole } from "./auth/authorization.js";
@@ -22,6 +23,7 @@ export function initializeCustomerEmailDelivery(db,config) {
 }
 
 function sourceData(db,notification) {
+  if (blockedRestaurantNotification(db,notification)) return null;
   const kind=TYPES.get(notification.type);if(!kind)return null;
   if(kind==="support_reply"||kind==="support_update"){
     const source=supportEmailSource(db,notification),delivery=db.prepare("SELECT * FROM customer_email_delivery_settings WHERE id=1").get();
@@ -83,6 +85,8 @@ export function queueBusinessApplicationEmail(db,config,{userId,restaurantId,res
 }
 
 function sourceIsCurrent(db,row,config) {
+  const safetyNotification=row.notification_id&&db.prepare("SELECT * FROM user_notifications WHERE id=? AND user_id=?").get(row.notification_id,row.customer_id);
+  if(safetyNotification&&blockedRestaurantNotification(db,safetyNotification))return {ok:false,code:"RESTAURANT_CONTACT_BLOCKED"};
   if(row.event_kind==="business_application"){
     const source=db.prepare("SELECT u.email FROM users u JOIN business_application_submissions s ON s.user_id=u.id JOIN restaurant_memberships m ON m.user_id=u.id AND m.restaurant_id=s.restaurant_id AND m.permission='owner' WHERE u.id=? AND u.role='restaurant' AND u.account_enabled=1 AND s.restaurant_id=?").get(row.customer_id,row.restaurant_id),payload=parse(row.payload);
     if(!source||source.email.toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"APPLICATION_RECIPIENT_OR_SOURCE_CHANGED"};

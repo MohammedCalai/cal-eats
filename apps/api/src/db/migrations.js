@@ -7,6 +7,8 @@ import {customerErasureMigration47} from "../customer-erasure-migration.js";
 import {customerLegalArchiveMigration48} from "../customer-legal-archive-migration.js";
 import {customerPrivacyMigration49} from "../customer-privacy-migration.js";
 import {customerEmailVerificationMigration50} from "../customer-email-verification-migration.js";
+import {customerSafetyMigration51} from "../customer-safety-migration.js";
+import {merchantCommercialMigration} from "../merchant-commercial-migration.js";
 import {restaurantCommissionEmailMigration40} from "../restaurant-commission-email-migration.js";
 import {businessMessageAttentionMigration41} from "../business-message-attention-migration.js";
 import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
@@ -311,5 +313,7 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   customerErasureMigration47,
   customerLegalArchiveMigration48,
   customerPrivacyMigration49,
-  customerEmailVerificationMigration50
+  customerEmailVerificationMigration50,
+  customerSafetyMigration51,
+  merchantCommercialMigration
 ];

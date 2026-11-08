@@ -1,3 +1,4 @@
+import { assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import { randomUUID } from "node:crypto";
 import { requireRestaurantOwner, requireRole } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
@@ -165,6 +166,7 @@ async function readMessages(db, thread, user, url, config) {
 }
 
 async function sendMessage({ req, res, db, config, user, role, restaurantId, customerId, thread }) {
+  assertRestaurantContactAllowed(db, customerId, restaurantId);
   const body = await readJson(req, config.bodyLimit); exactObject(body, ["message", "clientMessageId"]);
   const message = clean(body.message, 1, 2000, "Message"), key = clean(req.headers["idempotency-key"] ?? body.clientMessageId, 1, 100, "Idempotency-Key");
   relationship(db, restaurantId, customerId);
@@ -179,6 +181,7 @@ async function sendMessage({ req, res, db, config, user, role, restaurantId, cus
   const id = randomUUID(), expiresAt = new Date(Date.parse(now) + RETENTION_MS).toISOString();
   const encrypted = await encryptMessage(config, message, { id, orderId: `customer-thread:${threadId}`, senderUserId: user.id, createdAt: now, expiresAt });
   const created = withTransaction(db, () => {
+    assertRestaurantContactAllowed(db, customerId, restaurantId);
     // Encryption may yield; recheck both the relationship and current membership before writing.
     relationship(db, restaurantId, customerId);
     if (role === "restaurant" && !db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(restaurantId, user.id)) throw notFound();

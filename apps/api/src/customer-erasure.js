@@ -54,6 +54,8 @@ export function hasCustomerErasureHold(db, userId, now = new Date().toISOString(
 }
 
 const scopedTables = [
+  ["customer_restaurant_safety", "customer_id=?", "restaurantBlocks"],
+  ["customer_safety_reports", "customer_id=?", "safetyReportLinks"],
   ["saved_addresses", "user_id=?", "savedAddresses"],
   ["sessions", "user_id=?", "browserSessions"], ["native_sessions", "user_id=?", "mobileSessions"],
   ["native_business_sessions", "user_id=?", "legacySessions"],
@@ -170,6 +172,7 @@ export function applyCustomerErasure(db,userId,{requestId,adminId,config,note,pr
       db.prepare("UPDATE orders SET offer_snapshot=?,promotion_snapshot=?,platform_voucher_snapshot=?,commission_control_snapshot=? WHERE id=?").run(minimiseJson(order.offer_snapshot),minimiseJson(order.promotion_snapshot),minimiseJson(order.platform_voucher_snapshot),minimiseJson(order.commission_control_snapshot),order.id);
     }
     const deletes=[
+      ["customer_safety_reports","customer_id=?"],["customer_restaurant_safety","customer_id=?"],
       ["order_live_activity_outbox","activity_id IN (SELECT id FROM customer_order_live_activities WHERE user_id=?)"],
       ["customer_order_live_activities","user_id=?"],["customer_push_outbox",`user_id=? OR notification_id IN (${NOTIFICATIONS})`],["customer_push_devices","user_id=?"],
       ["customer_transactional_email_outbox",`customer_id=? OR notification_id IN (${NOTIFICATIONS}) OR order_id IN (${ORDERS}) OR support_case_id IN (${CASES})`],

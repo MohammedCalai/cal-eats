@@ -42,6 +42,8 @@ import { enforceCustomerOrderHistory } from "./customer-order-history.js";
 import { routeDashboardExports } from "./dashboard-exports.js";
 import { initializeCustomerLegal, recordCustomerLegalSubmission, routeCustomerLegal, validateCustomerLegalSubmission } from "./customer-legal.js";
 import {routeCustomerPrivacy} from "./customer-privacy.js";
+import {routeCustomerSafety} from "./customer-safety.js";
+import {initializeMerchantCommercial, routeMerchantCommercial} from "./merchant-commercial.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -66,6 +68,7 @@ function clientKey(req, email = "") { return `${req.socket.remoteAddress ?? "unk
 export function createApp({ db, config, logger = console }) {
   if(isDatabaseReady(db))initializeCustomerEmailDelivery(db,config);
   if(isDatabaseReady(db))initializeCustomerLegal(db,config);
+  if(isDatabaseReady(db))initializeMerchantCommercial(db,config);
   function incrementRateBucket(key, now) {
     const entry = db.prepare("SELECT * FROM auth_rate_limits WHERE bucket_key=?").get(key);
     if (!entry || now - entry.window_start_ms >= config.rateLimit.windowMs) db.prepare("INSERT INTO auth_rate_limits(bucket_key,window_start_ms,attempt_count) VALUES(?,?,1) ON CONFLICT(bucket_key) DO UPDATE SET window_start_ms=excluded.window_start_ms,attempt_count=1").run(key, now);
@@ -119,12 +122,14 @@ export function createApp({ db, config, logger = console }) {
       const legalHandled = await routeCustomerLegal({ req, res, url, db, config, session });
       if (legalHandled || res.writableEnded || res.headersSent) return;
       if(await routeCustomerPrivacy({req,res,url,db,config,session}))return;
+      if(await routeCustomerSafety({req,res,url,db,config,session}))return;
         const pushHandled=await routeCustomerPush({req,res,url,db,config,session,checkRate});
         if(pushHandled||res.writableEnded||res.headersSent)return;
       const liveActivityHandled=await routeOrderLiveActivities({req,res,url,db,config,session,checkRate});
       if(liveActivityHandled||res.writableEnded||res.headersSent)return;
       const passwordChanged=await routePasswordChange({req,res,url,db,config,session,checkRate});
       if(passwordChanged||res.writableEnded||res.headersSent)return;
+      if(await routeMerchantCommercial({req,res,url,db,config,session}))return;
 
       if (req.method === "POST" && url.pathname === "/api/auth/register") {
         const body = await readJson(req, config.bodyLimit);

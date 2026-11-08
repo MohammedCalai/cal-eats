@@ -6,6 +6,7 @@ import { loadCustomerPushConfig } from "./customer-push.js";
 import { loadOrderLiveActivityConfig } from "./order-live-activities.js";
 import { loadCustomerLegalConfig } from "./customer-legal.js";
 import { loadCustomerPrivacyConfig } from "./customer-privacy.js";
+import { loadMerchantCommercialConfig } from "./merchant-commercial.js";
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -69,6 +70,12 @@ export function loadConfig(overrides = {}) {
     catch{throw new Error("Customer privacy activation requires its reviewed policy manifest JSON");}
   }
   const customerPrivacy=loadCustomerPrivacyConfig(privacyInput);
+  let merchantInput=overrides.merchantCommercial;
+  if(merchantInput===undefined&&process.env.CALAI_MERCHANT_COMMERCIAL_ENABLED==="true"){
+    try{merchantInput={...JSON.parse(process.env.CALAI_MERCHANT_COMMERCIAL_MANIFEST_JSON||""),enabled:true};}
+    catch{throw new Error("Merchant agreement activation requires its separately approved manifest JSON");}
+  }
+  const merchantCommercial=loadMerchantCommercialConfig(merchantInput);
   if(runMode==="hosted-preview"&&(customerLegal.enabled||customerPrivacy.enabled)&&(!customerLegal.enabled||!customerPrivacy.enabled||customerPrivacy.version!==customerLegal.documents.privacy.version))throw new Error("Hosted customer legal and privacy controls must be activated together with the same Privacy Notice version");
   return {
     hostname,
@@ -88,6 +95,7 @@ export function loadConfig(overrides = {}) {
     financialRemediesEnabled,
     customerLegal,
     customerPrivacy,
+    merchantCommercial,
     sessionHours: overrides.sessionHours ?? 24,
     bodyLimit: overrides.bodyLimit ?? 16 * 1024,
     orderExpiryMinutes,

@@ -104,7 +104,7 @@ export async function routeStripeConnect(ctx) {
     if (req.method === "GET" && !match[2]) {
       const row = mode ? accountForMode(db,match[1],bankConfig) : null;
       if(scope.onboardingOnly)await ensurePlatform(bankConfig);
-      return sendJson(res,200,{data:{providerMode:bankConfig.paymentProviderMode,configured:configured(bankConfig),account:accountDto(db,row),payoutSchedule:schedule,...scope,passwordChangeRequired:mode==="stripe_live"&&(owner.role!=="restaurant"||!hasLiveBankingCredential(db,owner.id))}});
+      return sendJson(res,200,{data:{providerMode:bankConfig.paymentProviderMode,configured:configured(bankConfig),account:accountDto(db,row),payoutSchedule:schedule,...scope,merchantAgreementReviewAvailable:config.merchantCommercial?.enabled===true,passwordChangeRequired:mode==="stripe_live"&&(owner.role!=="restaurant"||!hasLiveBankingCredential(db,owner.id))}});
     }
     if (req.method === "GET" && match[2] === "payouts") {
       if (!mode || !configured(bankConfig) || !accountForMode(db,match[1],bankConfig)?.provider_reference) return sendJson(res,200,{data:{items:[],hasMore:false,nextCursor:null,providerMode:bankConfig.paymentProviderMode,configured:false,...scope}});

@@ -1,3 +1,4 @@
+import { restaurantContactBlocked, assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import {releasePlatformVoucher} from "./platform-vouchers.js";
 import { createHash, randomUUID } from "node:crypto";
 import { requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
@@ -69,7 +70,7 @@ function customerOffers({res,url,db,config,user}){
   const empty=paged?{items:[],hasMore:false,nextCursor:null}:[];
   const permitted=Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed);
   if(!permitted)return sendJson(res,200,{data:empty});
-  const params={user:user.id,now:config.now().toISOString(),limit:limit+1},filters=["g.customer_id=$user","g.dismissed_at IS NULL","r.archived_at IS NULL"];
+  const params={user:user.id,now:config.now().toISOString(),limit:limit+1},filters=["g.customer_id=$user","g.dismissed_at IS NULL","r.archived_at IS NULL","NOT EXISTS(SELECT 1 FROM customer_restaurant_safety b WHERE b.customer_id=$user AND b.restaurant_id=g.restaurant_id AND b.blocked=1)"];
   if(restaurantId){filters.push("g.restaurant_id=$restaurant");params.restaurant=restaurantId;}
   if(scope==="active")filters.push("(g.status='reserved' OR (g.status='available' AND c.expires_at>$now))");
   if(after){const prior=db.prepare(`SELECT g.*,${personalPriority} personal_priority FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id WHERE g.id=? AND g.customer_id=?`).get(after,user.id);if(!prior||(restaurantId&&prior.restaurant_id!==restaurantId))throw new HttpError(404,"NOT_FOUND","Offer cursor is unavailable");filters.push(`(${personalPriority}<$priority OR (${personalPriority}=$priority AND (g.created_at<$created OR (g.created_at=$created AND g.id<$id))))`);Object.assign(params,{priority:prior.personal_priority,created:prior.created_at,id:prior.id});}
@@ -92,6 +93,8 @@ export async function routeOffers({ req, res, url, db, config, session }) {
       AND (restaurant_id IS NULL OR ($role NOT IN ('restaurant','admin') AND type<>'offer') OR EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=user_notifications.restaurant_id AND ar.archived_at IS NULL))
       AND ($role<>'restaurant' OR restaurant_id IS NULL OR EXISTS(SELECT 1 FROM restaurant_memberships mm WHERE mm.restaurant_id=user_notifications.restaurant_id AND mm.user_id=$uid))
       AND (type<>'customer_message' OR EXISTS(SELECT 1 FROM restaurant_customer_threads t WHERE t.id=user_notifications.conversation_id AND (t.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships cm WHERE cm.restaurant_id=t.restaurant_id AND cm.user_id=$uid AND cm.permission='owner'))))
+      AND NOT ($role='customer' AND type IN ('order_message','customer_message','offer') AND EXISTS(SELECT 1 FROM customer_restaurant_safety b WHERE b.customer_id=$uid AND b.restaurant_id=user_notifications.restaurant_id AND b.blocked=1))
+      AND NOT ($role='customer' AND type='support_reply' AND EXISTS(SELECT 1 FROM support_cases sc JOIN support_case_messages sm ON sm.case_id=sc.id JOIN customer_restaurant_safety b ON b.customer_id=$uid AND b.restaurant_id=sc.restaurant_id AND b.blocked=1 WHERE sc.id=user_notifications.support_case_id AND sm.sender_role='restaurant' AND user_notifications.event_key='support:'||sc.id||':message:'||sm.id))
       AND (type<>'order_message' OR EXISTS(SELECT 1 FROM orders o WHERE o.id=user_notifications.order_id AND (o.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships om WHERE om.restaurant_id=o.restaurant_id AND om.user_id=$uid))))
       AND (support_case_id IS NULL OR EXISTS(SELECT 1 FROM support_cases sc WHERE sc.id=user_notifications.support_case_id AND (sc.user_id=$uid OR $role='admin' OR ($role='restaurant' AND EXISTS(SELECT 1 FROM restaurant_memberships sm WHERE sm.restaurant_id=sc.restaurant_id AND sm.user_id=$uid)))))`;
     const cursor = before ? " AND (created_at<$before OR (created_at=$before AND id<$beforeId))" : "";
@@ -133,6 +136,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     }
     const permitted = Boolean(db.prepare("SELECT COALESCE(mp.in_app_promotions,u.merchant_offers,0) allowed FROM users u LEFT JOIN marketing_preferences mp ON mp.user_id=u.id WHERE u.id=?").get(user.id)?.allowed); if (!permitted) throw new HttpError(409, "MARKETING_CONSENT_WITHDRAWN", "Promotion is unavailable because marketing consent is off");
     const row = db.prepare("SELECT * FROM offer_grants WHERE id=? AND customer_id=? AND dismissed_at IS NULL").get(match[1], user.id); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    assertRestaurantContactAllowed(db,user.id,row.restaurant_id);
     db.prepare("UPDATE offer_grants SET viewed_at=COALESCE(viewed_at,?),updated_at=? WHERE id=?").run(config.now().toISOString(), config.now().toISOString(), row.id);
     const joined = db.prepare("SELECT g.*,c.title,c.message,c.menu_item_id,c.item_name,c.item_value_minor,c.min_subtotal_minor,c.expires_at,c.offer_type,c.offer_value,c.starts_at,c.eligible_item_ids,c.eligible_categories,c.stacking_policy,c.funding_party,c.recipient_segment,c.campaign_type,c.campaign_rules,c.weekly_budget_minor,r.name restaurant_name FROM offer_grants g JOIN offer_campaigns c ON c.id=g.campaign_id JOIN restaurants r ON r.id=g.restaurant_id WHERE g.id=?").get(row.id);
     return sendJson(res, 200, { data: grantDto(joined, config.now().toISOString()) });
@@ -154,6 +158,7 @@ async function createCampaign({ req, res, db, config, session, restaurantId }) {
     const item = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(normalized.menuItemId, restaurantId);
     if (!item) throw new HttpError(409, "MENU_UNAVAILABLE", "Offer item is unavailable");
     if (JSON.parse(item.modifier_groups ?? "[]").some((group) => group.minSelections > 0)) throw new HttpError(409, "OFFER_ITEM_REQUIRES_MODIFIERS", "Offer item cannot require modifiers");
+    for(const id of normalized.customerIds)assertRestaurantContactAllowed(db,id,restaurantId);
     const eligible = new Set(db.prepare(`SELECT DISTINCT o.customer_id FROM orders o JOIN users u ON u.id=o.customer_id WHERE o.restaurant_id=? AND o.status='completed' AND u.merchant_offers=1 AND o.customer_id IN (${normalized.customerIds.map(() => "?").join(",")})`).all(restaurantId, ...normalized.customerIds).map((row) => row.customer_id));
     if (eligible.size !== normalized.customerIds.length) throw new HttpError(409, "RECIPIENT_NOT_ELIGIBLE", "Every recipient must allow offers and have a completed order at this restaurant");
     const nowDate = config.now(); const now = nowDate.toISOString(); const id = randomUUID(); const expiresAt = new Date(nowDate.getTime() + normalized.expiresInDays * 86400000).toISOString();

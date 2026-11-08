@@ -109,6 +109,7 @@ export function runCustomerPrivacyRetention(db, config) {
     for (const item of cases) {
       if (held(db, item.user_id, stamp)) continue;
       if (db.prepare("SELECT 1 FROM customer_transactional_email_outbox WHERE support_case_id=? AND status IN ('claimed','unknown') LIMIT 1").get(item.id)) continue;
+      db.prepare("DELETE FROM customer_safety_reports WHERE case_id=?").run(item.id);
       counts.supportMessages += db.prepare("DELETE FROM support_case_messages WHERE case_id=?").run(item.id).changes;
       counts.supportEmails += db.prepare("UPDATE customer_transactional_email_outbox SET recipient='',payload='{}',source_message_id=NULL,last_error=NULL,status=CASE WHEN status IN ('pending','failed') THEN 'cancelled' ELSE status END WHERE support_case_id=? AND (recipient<>'' OR payload<>'{}')").run(item.id).changes;
       counts.supportNotifications += db.prepare("UPDATE user_notifications SET title='Support case update',message='This support record has reached its content retention period.' WHERE support_case_id=? AND (title<>'Support case update' OR message<>'This support record has reached its content retention period.')").run(item.id).changes;

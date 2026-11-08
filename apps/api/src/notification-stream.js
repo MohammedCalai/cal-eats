@@ -1,3 +1,4 @@
+import { blockedRestaurantNotification } from "./customer-safety-policy.js";
 const hubs = new WeakMap();
 
 function encodeEvent(row) {
@@ -16,7 +17,7 @@ function validClient(db, client, timestamp) {
 
 export function notificationRecipientAllowed(db, row) {
   const user = db.prepare("SELECT role,account_enabled FROM users WHERE id=?").get(row.user_id);
-  if (!user?.account_enabled) return false;
+  if (!user?.account_enabled || blockedRestaurantNotification(db, row)) return false;
   if(row.restaurant_id&&(["restaurant","admin"].includes(user.role)||row.type==="offer")&&!db.prepare("SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL").get(row.restaurant_id))return false;
   if (user.role === "restaurant" && row.restaurant_id && !db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(row.restaurant_id, row.user_id)) return false;
   if (row.support_case_id) {

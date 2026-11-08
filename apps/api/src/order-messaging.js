@@ -1,3 +1,4 @@
+import { assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import { randomUUID } from "node:crypto";
 import { requireRestaurantMembership, requireRestaurantOwner, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
@@ -143,10 +144,11 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const rows = before ? db.prepare("SELECT * FROM order_messages WHERE order_id=? AND expires_at>? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT ?").all(granted.order.id, now, before, before, url.searchParams.get("beforeId") ?? "~", limit) : db.prepare("SELECT * FROM order_messages WHERE order_id=? AND expires_at>? ORDER BY created_at DESC,id DESC LIMIT ?").all(granted.order.id, now, limit);
     if (granted.role === "admin") auditAdminRead(db, granted.user.id, granted.order.id, granted.adminReason, now);
     const items = []; for (const row of rows.reverse()) items.push(await dto(config, row));
-    return sendJson(res, 200, { data: { items, unreadCount: unreadCount(db, granted.order.id, granted.user.id, now), isOpen: state.open, closedAt: state.closesAt, restaurantPhone: granted.role === "customer" ? (db.prepare("SELECT phone FROM restaurants WHERE id=?").get(granted.order.restaurant_id)?.phone || null) : null, quickResponses: granted.role === "restaurant" ? quickResponsesForOrder(settings(db, granted.order.restaurant_id, config).quickResponses,granted.order.fulfillment) : [], nextCursor: rows.length === limit ? { before: rows[0].created_at, beforeId: rows[0].id } : null } });
+    return sendJson(res, 200, { data: { restaurantId:granted.order.restaurant_id, items, unreadCount: unreadCount(db, granted.order.id, granted.user.id, now), isOpen: state.open, closedAt: state.closesAt, restaurantPhone: granted.role === "customer" ? (db.prepare("SELECT phone FROM restaurants WHERE id=?").get(granted.order.restaurant_id)?.phone || null) : null, quickResponses: granted.role === "restaurant" ? quickResponsesForOrder(settings(db, granted.order.restaurant_id, config).quickResponses,granted.order.fulfillment) : [], nextCursor: rows.length === limit ? { before: rows[0].created_at, beforeId: rows[0].id } : null } });
   }
   if (req.method === "POST") {
     const granted = access(db, session, match[1]); if (granted.role === "admin") throw new HttpError(403, "FORBIDDEN", "Administrators cannot send order messages");
+    assertRestaurantContactAllowed(db, granted.order.customer_id, granted.order.restaurant_id);
     if (!availability(db, granted.order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["message", "clientMessageId"]); const key = clean(req.headers["idempotency-key"] ?? body.clientMessageId, 1, 100, "Idempotency-Key"); const message = clean(body.message, 1, 300, "Message");
     const hash = messageFingerprint(config, granted.order.id, message); const prior = db.prepare("SELECT * FROM order_messages WHERE sender_user_id=? AND order_id=? AND idempotency_key=?").get(granted.user.id, granted.order.id, key);
@@ -154,6 +156,7 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
     const createdAt = nowIso(config); const expiresAt = new Date(Date.parse(createdAt) + RETENTION_MS).toISOString(); const id = randomUUID(); const encrypted = await encryptMessage(config, message, { id, orderId: granted.order.id, senderUserId: granted.user.id, createdAt, expiresAt });
     const created = withTransaction(db, () => {
       const order = db.prepare("SELECT * FROM orders WHERE id=?").get(granted.order.id); if (!availability(db, order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
+      assertRestaurantContactAllowed(db, order.customer_id, order.restaurant_id);
       // Encryption yields to other requests. Recheck the key while holding the
       // write transaction, before charging the rate limit or notifying anyone.
       const replay = db.prepare("SELECT * FROM order_messages WHERE sender_user_id=? AND order_id=? AND idempotency_key=?").get(granted.user.id, order.id, key);

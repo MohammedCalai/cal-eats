@@ -20,6 +20,24 @@ async function setup(){
 }
 const fakeTransport=calls=>({send:async(payload,{beforeSend})=>{if(!beforeSend())return {status:'cancelled'};calls.push(payload);return {status:'accepted',ticketId:randomUUID()};},receipt:async()=>({status:'receipt_confirmed'})});
 
+test('restaurant contact block cancels queued promotional push and is rechecked immediately before dispatch',async()=>{
+ const s=await setup(),calls=[];try{
+  assert.equal((await s.register()).status,200);
+  await s.f.json('/api/account/marketing-preferences',{method:'PATCH',headers:s.headers,body:{inAppPromotions:true,pushPromotions:true,source:'push-safety-test'}});
+  const first=s.offer();
+  const block=()=>s.f.json(`/api/customer-safety/restaurants/${s.restaurant.id}`,{method:'PUT',headers:s.headers,body:{blocked:true}});
+  assert.equal((await block()).status,200);
+  assert.equal(s.f.db.prepare('SELECT status FROM customer_push_outbox WHERE notification_id=(SELECT id FROM user_notifications WHERE offer_id=?)').get(first.grant).status,'cancelled');
+  await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls)});assert.equal(calls.length,0);
+  await s.f.json(`/api/customer-safety/restaurants/${s.restaurant.id}`,{method:'PUT',headers:s.headers,body:{blocked:false}});
+  s.offer();
+  await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls),beforeDispatch:async()=>{await block();}});
+  assert.equal(calls.length,0,'An already queued offer cannot pass dispatch after a block');
+  s.voucher();await runCustomerPush(s.f.db,s.f.config,{adapter:fakeTransport(calls)});
+  assert.equal(calls.length,1,'Platform account/voucher notifications are still available');
+ }finally{await s.f.close();}
+});
+
 test('customer iOS and Android pushes stay silent with an old app opting in and a legacy audible device row',async()=>{
  for(const platform of ['ios','android']){
   const s=await setup(),calls=[];try{
