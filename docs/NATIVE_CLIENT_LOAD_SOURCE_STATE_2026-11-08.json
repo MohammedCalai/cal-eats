@@ -1,0 +1,21 @@
+{
+  "observedAt": "2026-11-08T15:59:51.032Z",
+  "parentCommit": "a6305010203ef8fe7c6dfbb33c31528337e1e71f",
+  "trackedDirtyPaths": [
+    "apps/mobile/App.tsx",
+    "apps/mobile/app.json",
+    "apps/mobile/package.json",
+    "apps/mobile/src/CustomerContact.tsx",
+    "apps/mobile/src/OfferInbox.tsx",
+    "apps/mobile/src/OrderMessages.tsx",
+    "apps/mobile/src/RestaurantSafety.tsx",
+    "apps/mobile/src/screens/AccountScreen.tsx",
+    "apps/mobile/src/screens/OrdersScreen.tsx",
+    "apps/mobile/src/screens/RestaurantMenu.tsx",
+    "apps/mobile/src/useCustomerPush.ts",
+    "apps/mobile/test/push-notifications.test.ts",
+    "package-lock.json",
+    "scripts/load-order-capacity.js"
+  ],
+  "note": "The parent commit is a reference, not a claim of a clean checkout. Untracked harness/output files are not included in trackedDirtyPaths."
+}

@@ -1,0 +1,555 @@
+{
+  "createdAt": "2026-11-08T15:59:50.938Z",
+  "sourceCommit": "a6305010203ef8fe7c6dfbb33c31528337e1e71f",
+  "harness": "scripts/load-order-capacity.js",
+  "harnessSha256": "5031baf21e2b687afbe171fab80aca48235dfa9776404f726505e76b8b1e6878",
+  "smoke": false,
+  "nativeCustomers": true,
+  "nativeTransport": {
+    "client": "apps/mobile/src/api.ts",
+    "sha256": "a1c8748354119dfe0fac109f362729ef59d82906be4354ca76d79206c91e3463",
+    "requestsIncludingSetup": 1300,
+    "sessionIssuance": "Real native login HTTP endpoint with an ephemeral synthetic password; setup excluded from load timings",
+    "assertions": [
+      "Bearer authorization for signed-in customer requests",
+      "No Cookie header or customer browser sessions",
+      "Accept application/json",
+      "Origin for mutations",
+      "credentials omit",
+      "redirect error",
+      "Actual mobile-client 15-second timeout"
+    ]
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "sqlite": "3.53.3",
+    "platform": "win32",
+    "architecture": "x64",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-1335U",
+    "logicalCpus": 12,
+    "memoryGiB": 15.64,
+    "persistence": "One isolated SQLite WAL file on the local disk",
+    "apiProcesses": 2,
+    "localWorkerIntervalMs": 60000,
+    "jobsPerWorkerCycle": 25,
+    "printerEmptyPollMs": 3000,
+    "printerHeartbeatMs": 30000,
+    "applicationClock": "2026-11-08T12:00:00.000Z",
+    "transport": "Loopback HTTP only",
+    "providerCredentials": "Not inherited; OS environment whitelist only",
+    "processMetrics": [
+      {
+        "pid": 14608,
+        "cpuUsage": {
+          "user": 10859000,
+          "system": 1750000
+        },
+        "memory": {
+          "rss": 102174720,
+          "heapTotal": 25268224,
+          "heapUsed": 23588376,
+          "external": 4346640,
+          "arrayBuffers": 297774
+        }
+      },
+      {
+        "pid": 10832,
+        "cpuUsage": {
+          "user": 3578000,
+          "system": 1781000
+        },
+        "memory": {
+          "rss": 103358464,
+          "heapTotal": 26578944,
+          "heapUsed": 23600720,
+          "external": 4346528,
+          "arrayBuffers": 297662
+        }
+      }
+    ]
+  },
+  "dataset": {
+    "restaurants": 10000,
+    "menuItems": 200000,
+    "historicalOrders": 50000,
+    "ratings": 20000,
+    "syntheticAccounts": 102,
+    "images": 0,
+    "activeRestaurantsAndSimulatedPrinters": 50,
+    "seedMs": 4775.63
+  },
+  "cases": [
+    {
+      "concurrentClients": 20,
+      "plannedOrders": 100,
+      "completedOrders": 100,
+      "workflowElapsedMs": 4293.67,
+      "observationWindowMs": 67802.5,
+      "completedWorkflowsPerMinute": 1397.41,
+      "workflowLatencyMs": {
+        "count": 100,
+        "p50": 791.16,
+        "p95": 1274.8,
+        "p99": 1341.54,
+        "max": 1383.11
+      },
+      "http": {
+        "requests": 2600,
+        "errors": 0,
+        "latencyMs": {
+          "count": 2600,
+          "p50": 27.85,
+          "p95": 190.93,
+          "p99": 249.05,
+          "max": 420.7
+        },
+        "byEndpoint": {
+          "printer heartbeat": {
+            "count": 150,
+            "p50": 18.22,
+            "p95": 178.63,
+            "p99": 192.96,
+            "max": 197.49,
+            "errors": 0
+          },
+          "browse page (50 maximum)": {
+            "count": 100,
+            "p50": 48.54,
+            "p95": 158.77,
+            "p99": 203.26,
+            "max": 225.94,
+            "errors": 0
+          },
+          "restaurant menu": {
+            "count": 100,
+            "p50": 80.93,
+            "p95": 181.51,
+            "p99": 248.53,
+            "max": 265.12,
+            "errors": 0
+          },
+          "printer claim": {
+            "count": 1200,
+            "p50": 17.08,
+            "p95": 168.83,
+            "p99": 238.25,
+            "max": 420.7,
+            "errors": 0
+          },
+          "automatic price quote": {
+            "count": 100,
+            "p50": 44.45,
+            "p95": 205.28,
+            "p99": 242.01,
+            "max": 259.35,
+            "errors": 0
+          },
+          "create order": {
+            "count": 100,
+            "p50": 71.93,
+            "p95": 180.39,
+            "p99": 240.05,
+            "max": 244.89,
+            "errors": 0
+          },
+          "simultaneous create replay": {
+            "count": 100,
+            "p50": 62.92,
+            "p95": 157.91,
+            "p99": 206.1,
+            "max": 307.08,
+            "errors": 0
+          },
+          "owner accepted": {
+            "count": 100,
+            "p50": 78.32,
+            "p95": 169.51,
+            "p99": 234.72,
+            "max": 248.68,
+            "errors": 0
+          },
+          "owner preparing": {
+            "count": 100,
+            "p50": 66.64,
+            "p95": 166.23,
+            "p99": 187.47,
+            "max": 207.28,
+            "errors": 0
+          },
+          "owner ready": {
+            "count": 100,
+            "p50": 60.64,
+            "p95": 156.82,
+            "p99": 211.61,
+            "max": 214.76,
+            "errors": 0
+          },
+          "owner completed": {
+            "count": 100,
+            "p50": 64.94,
+            "p95": 192.12,
+            "p99": 233.8,
+            "max": 247.78,
+            "errors": 0
+          },
+          "customer order detail": {
+            "count": 100,
+            "p50": 58.15,
+            "p95": 166.06,
+            "p99": 256.05,
+            "max": 412.37,
+            "errors": 0
+          },
+          "owner finance summary": {
+            "count": 100,
+            "p50": 55,
+            "p95": 190.93,
+            "p99": 277.25,
+            "max": 312,
+            "errors": 0
+          },
+          "owner out_for_delivery": {
+            "count": 50,
+            "p50": 70.97,
+            "p95": 191.96,
+            "p99": 252.49,
+            "max": 252.49,
+            "errors": 0
+          },
+          "printer acknowledgement": {
+            "count": 100,
+            "p50": 175.34,
+            "p95": 267.96,
+            "p99": 308.74,
+            "max": 309.77,
+            "errors": 0
+          }
+        }
+      },
+      "confirmationToSimulatedPrintAckMs": {
+        "count": 100,
+        "p50": 2157.94,
+        "p95": 3216.18,
+        "p99": 3312.63,
+        "max": 3316.15
+      },
+      "workerCyclesObserved": [
+        {
+          "pid": 14608,
+          "financial": {
+            "claimed": 25,
+            "completed": 25,
+            "failed": 0,
+            "retried": 0
+          },
+          "observedAfterStartMs": 47154.03
+        },
+        {
+          "pid": 10832,
+          "financial": {
+            "claimed": 25,
+            "completed": 25,
+            "failed": 0,
+            "retried": 0
+          },
+          "observedAfterStartMs": 47521.45
+        }
+      ],
+      "correctness": {
+        "expectedOrders": 100,
+        "actualOrders": 100,
+        "completed": 100,
+        "duplicateAttemptsPerOrder": 2,
+        "commissionMismatches": 0,
+        "missingEnvironment": 0,
+        "missingSettlement": 0,
+        "unbalancedJournalGroups": 0,
+        "duplicateOperationKeys": 0,
+        "invalidTransitionEventCounts": 0,
+        "incorrectOriginalPrintCounts": 0,
+        "acknowledgedPrints": 100,
+        "failedWorkerJobs": 0,
+        "dueWorkerJobs": 16,
+        "unexpectedFinancialExceptions": 0,
+        "foreignKeyErrors": 0,
+        "globalQueues": {
+          "worker": [
+            {
+              "kind||':'||status": "payout_reconcile:delayed",
+              "count": 50
+            },
+            {
+              "kind||':'||status": "transfer_eligibility:completed",
+              "count": 50
+            },
+            {
+              "kind||':'||status": "transfer_eligibility:queued",
+              "count": 16
+            }
+          ],
+          "printer": [
+            {
+              "status": "printed",
+              "count": 100
+            }
+          ],
+          "localNotificationOutbox": [],
+          "localNotifications": 0,
+          "payoutSchedules": [
+            {
+              "status": "scheduled",
+              "count": 50
+            }
+          ]
+        },
+        "passed": true,
+        "nativeCustomerSessions": 50,
+        "browserCustomerSessions": 0
+      },
+      "failures": []
+    },
+    {
+      "concurrentClients": 50,
+      "plannedOrders": 100,
+      "completedOrders": 100,
+      "workflowElapsedMs": 4146.62,
+      "observationWindowMs": 67943.03,
+      "completedWorkflowsPerMinute": 1446.96,
+      "workflowLatencyMs": {
+        "count": 100,
+        "p50": 1851.38,
+        "p95": 2215.71,
+        "p99": 2254.06,
+        "max": 2327.21
+      },
+      "http": {
+        "requests": 2600,
+        "errors": 0,
+        "latencyMs": {
+          "count": 2600,
+          "p50": 57.18,
+          "p95": 352.87,
+          "p99": 399.55,
+          "max": 477.09
+        },
+        "byEndpoint": {
+          "browse page (50 maximum)": {
+            "count": 100,
+            "p50": 91.95,
+            "p95": 149.12,
+            "p99": 214.6,
+            "max": 285.72,
+            "errors": 0
+          },
+          "printer heartbeat": {
+            "count": 150,
+            "p50": 19.97,
+            "p95": 145.29,
+            "p99": 149.14,
+            "max": 150.78,
+            "errors": 0
+          },
+          "restaurant menu": {
+            "count": 100,
+            "p50": 93.5,
+            "p95": 169.85,
+            "p99": 221.42,
+            "max": 335.1,
+            "errors": 0
+          },
+          "printer claim": {
+            "count": 1200,
+            "p50": 17.27,
+            "p95": 160.7,
+            "p99": 383.53,
+            "max": 471.59,
+            "errors": 0
+          },
+          "automatic price quote": {
+            "count": 100,
+            "p50": 129.55,
+            "p95": 318.69,
+            "p99": 470.88,
+            "max": 477.09,
+            "errors": 0
+          },
+          "create order": {
+            "count": 100,
+            "p50": 163.6,
+            "p95": 330.29,
+            "p99": 346.89,
+            "max": 363.5,
+            "errors": 0
+          },
+          "simultaneous create replay": {
+            "count": 100,
+            "p50": 141.61,
+            "p95": 358.2,
+            "p99": 373.62,
+            "max": 392.27,
+            "errors": 0
+          },
+          "owner accepted": {
+            "count": 100,
+            "p50": 172.73,
+            "p95": 385.38,
+            "p99": 402.54,
+            "max": 406.34,
+            "errors": 0
+          },
+          "owner preparing": {
+            "count": 100,
+            "p50": 204.77,
+            "p95": 386.14,
+            "p99": 399.1,
+            "max": 405.27,
+            "errors": 0
+          },
+          "owner ready": {
+            "count": 100,
+            "p50": 225.59,
+            "p95": 396.68,
+            "p99": 410.84,
+            "max": 411.66,
+            "errors": 0
+          },
+          "owner completed": {
+            "count": 100,
+            "p50": 178.27,
+            "p95": 378.8,
+            "p99": 402.63,
+            "max": 421.72,
+            "errors": 0
+          },
+          "customer order detail": {
+            "count": 100,
+            "p50": 140.93,
+            "p95": 331.52,
+            "p99": 387.31,
+            "max": 388.51,
+            "errors": 0
+          },
+          "owner finance summary": {
+            "count": 100,
+            "p50": 118.85,
+            "p95": 395.61,
+            "p99": 412.92,
+            "max": 416.66,
+            "errors": 0
+          },
+          "owner out_for_delivery": {
+            "count": 50,
+            "p50": 194.48,
+            "p95": 393.65,
+            "p99": 396.49,
+            "max": 396.49,
+            "errors": 0
+          },
+          "printer acknowledgement": {
+            "count": 100,
+            "p50": 138.35,
+            "p95": 399.55,
+            "p99": 402.86,
+            "max": 407.06,
+            "errors": 0
+          }
+        }
+      },
+      "confirmationToSimulatedPrintAckMs": {
+        "count": 100,
+        "p50": 2412.84,
+        "p95": 3323.07,
+        "p99": 3400.76,
+        "max": 3447.87
+      },
+      "workerCyclesObserved": [
+        {
+          "pid": 14608,
+          "financial": {
+            "claimed": 25,
+            "completed": 25,
+            "failed": 0,
+            "retried": 0
+          },
+          "observedAfterStartMs": 39323.62
+        },
+        {
+          "pid": 10832,
+          "financial": {
+            "claimed": 25,
+            "completed": 25,
+            "failed": 0,
+            "retried": 0
+          },
+          "observedAfterStartMs": 39678.64
+        }
+      ],
+      "correctness": {
+        "expectedOrders": 100,
+        "actualOrders": 100,
+        "completed": 100,
+        "duplicateAttemptsPerOrder": 2,
+        "commissionMismatches": 0,
+        "missingEnvironment": 0,
+        "missingSettlement": 0,
+        "unbalancedJournalGroups": 0,
+        "duplicateOperationKeys": 0,
+        "invalidTransitionEventCounts": 0,
+        "incorrectOriginalPrintCounts": 0,
+        "acknowledgedPrints": 100,
+        "failedWorkerJobs": 0,
+        "dueWorkerJobs": 32,
+        "unexpectedFinancialExceptions": 0,
+        "foreignKeyErrors": 0,
+        "globalQueues": {
+          "worker": [
+            {
+              "kind||':'||status": "payout_reconcile:delayed",
+              "count": 100
+            },
+            {
+              "kind||':'||status": "transfer_eligibility:completed",
+              "count": 100
+            },
+            {
+              "kind||':'||status": "transfer_eligibility:queued",
+              "count": 32
+            }
+          ],
+          "printer": [
+            {
+              "status": "printed",
+              "count": 200
+            }
+          ],
+          "localNotificationOutbox": [],
+          "localNotifications": 0,
+          "payoutSchedules": [
+            {
+              "status": "scheduled",
+              "count": 100
+            }
+          ]
+        },
+        "passed": true,
+        "nativeCustomerSessions": 50,
+        "browserCustomerSessions": 0
+      },
+      "failures": []
+    }
+  ],
+  "workerErrors": [],
+  "passed": true,
+  "queueDrainedWithinObservation": false,
+  "limitations": [
+    "A bounded, warm local run with 20/50 virtual workflow clients, not 10,000 simultaneous users or active restaurants.",
+    "The 10,000 restaurants, 200,000 menu items, 50,000 historical browse orders and 20,000 ratings are synthetic. Historical orders have no financial ledger and are excluded from new-order invariant counts.",
+    "No real cards, Stripe calls, bank payouts, emails, push delivery, external network, image bytes, physical printers, native UI or password/login throughput tested.",
+    "Authentication sessions are synthetic and auth limits are raised in isolated children. This does not validate abuse resistance.",
+    "The application clock is fixed to avoid expiry/week rollover during the exercise. Latencies use monotonic wall time; future weekly payout jobs stay scheduled.",
+    "The final run uses the current 60-second marketplace/operations cadence with 25 jobs per process; --smoke accelerates it to 500ms. Only these local-safe workers are run, not every main.js maintenance/provider worker.",
+    "Simulated bridges use the example configuration idle poll (3s) and heartbeat (30s); no hardware execution or physical print time measured.",
+    "Two API processes share a single local WAL database; no multi-host, failover, backup restoration or sustained production capacity proven."
+  ],
+  "rawMeasurements": "measurements.json"
+}
