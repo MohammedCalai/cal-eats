@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { ApiError, api } from "./api";
 import { Button, Card, ErrorBanner, Pill } from "./components";
 import { CustomerIcon } from "./CustomerBrandBanner";
@@ -63,6 +63,11 @@ export function useCustomerEmailVerification(token: string | null) {
 }
 
 export type CustomerEmailVerificationReview = ReturnType<typeof useCustomerEmailVerification>;
+export function CustomerEmailVerificationBanner({review,onPress}:{review:CustomerEmailVerificationReview;onPress:()=>void}) {
+  const {status}=review;
+  if(!status?.verificationRequired||status.emailVerified||status.canOrder)return null;
+  return <Pressable accessibilityRole="button" accessibilityLabel="Verify your email to order" accessibilityHint="Opens email verification and resend options" onPress={onPress} style={({pressed})=>[styles.banner,pressed&&{opacity:.8}]}><CustomerIcon name="shield" size={21} colour={colours.blueDark}/><Text style={styles.bannerText}>Verify your email to order</Text><Text accessible={false} style={styles.bannerArrow}>›</Text></Pressable>;
+}
 export function CustomerEmailVerification({ review, context = "account" }: { review: CustomerEmailVerificationReview; context?: "account" | "checkout" | "welcome" }) {
   const { status } = review;
   if (context === "checkout" && status?.canOrder) return null;
@@ -75,4 +80,4 @@ export function CustomerEmailVerification({ review, context = "account" }: { rev
     {status?.delivery === "unavailable" ? <Button tone="quiet" onPress={() => void Linking.openURL("mailto:support@calai.info?subject=Cal-Eats%20email%20verification%20help").catch(() => undefined)}>Contact support</Button> : null}
   </Card>;
 }
-const styles = StyleSheet.create({ heading: { flexDirection: "row", alignItems: "center", gap: 10 }, title: { flex: 1, color: colours.ink, fontSize: 18, lineHeight: 25, fontWeight: "800" }, email: { color: colours.blueDark, fontWeight: "700", fontSize: 15, lineHeight: 22 }, copy: { color: colours.muted, fontSize: 13, lineHeight: 20 } });
+const styles = StyleSheet.create({ banner:{minHeight:46,paddingHorizontal:16,paddingVertical:9,flexDirection:"row",alignItems:"center",gap:10,backgroundColor:"#DDEFFF",borderBottomWidth:1,borderBottomColor:"#B8D5EF"},bannerText:{flex:1,color:colours.blueDark,fontSize:14,lineHeight:21,fontWeight:"800"},bannerArrow:{color:colours.blueDark,fontSize:25,lineHeight:27},heading: { flexDirection: "row", alignItems: "center", gap: 10 }, title: { flex: 1, color: colours.ink, fontSize: 18, lineHeight: 25, fontWeight: "800" }, email: { color: colours.blueDark, fontWeight: "700", fontSize: 15, lineHeight: 22 }, copy: { color: colours.muted, fontSize: 13, lineHeight: 20 } });

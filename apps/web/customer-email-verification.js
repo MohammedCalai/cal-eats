@@ -1,5 +1,10 @@
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 
+export function emailVerificationBannerHtml(user,status) {
+  if(user?.role!=="customer"||status?.verificationRequired!==true||status.emailVerified!==false||status.canOrder!==false)return "";
+  return '<button type="button" class="customer-email-banner-button" data-action="email-verification-options" aria-label="Verify your email to order. Open email verification options."><span class="customer-email-banner-symbol" aria-hidden="true">✉</span><span>Verify your email to order</span><span class="customer-email-banner-arrow" aria-hidden="true">→</span></button>';
+}
+
 export function emailVerificationStatus(value) {
   if (!value || typeof value.email !== "string" || !["emailVerified", "verificationRequired", "canOrder"].every(key => typeof value[key] === "boolean") || value.canOrder !== (value.emailVerified || !value.verificationRequired) || !["email", "local_simulation", "unavailable"].includes(value.delivery) || value.resendAvailableAt != null && (typeof value.resendAvailableAt !== "string" || !Number.isFinite(Date.parse(value.resendAvailableAt)))) throw Error("We couldn’t check your email confirmation. Please try again.");
   return value;

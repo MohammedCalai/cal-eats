@@ -1,5 +1,5 @@
 import { mountCustomerLegal } from "./customer-legal.js";
-import { emailVerificationStatus, mountEmailVerification, mountEmailConfirmation } from "./customer-email-verification.js";
+import { emailVerificationBannerHtml, emailVerificationStatus, mountEmailVerification, mountEmailConfirmation } from "./customer-email-verification.js";
 import {customerOrderHtml,orderSupportFormHtml,shopRatingFormHtml} from "./order-experience.js";
 import {checkoutHtml,mountSchedulePicker,mountOrderHealthConsent} from "./checkout-ui.js";
 import { createLocationClient } from "./location-client.js";
@@ -29,6 +29,8 @@ const account = document.querySelector("#account");
 const toast = document.querySelector("#toast");
 // Keep secondary sticky controls below the banner, including when text wraps.
 const customerHeader = document.querySelector("body.customer-app > .topbar");
+const emailVerificationBanner = document.querySelector("#customer-email-verification-banner");
+let emailVerificationBannerRevision=0,emailVerificationBannerRequest=null;
 let compactCustomerHeader = false;
 window.addEventListener("scroll", () => {
   const offset = window.scrollY;
@@ -75,6 +77,7 @@ function setAccount() {
   if (!state.user || state.user.role === "customer") account.insertAdjacentHTML("afterbegin", `<button class="basket-access" type="button" data-action="open-basket" aria-label="Open basket">${customerIcon("basket")}<span>Basket</span><b data-basket-count></b></button>`);
   updateBasketAccess();
   renderCustomerNotificationPrompt();
+  renderEmailVerificationBanner();
 }
 function stopPolling() { state.emailVerificationPanel?.close();state.emailConfirmationPanel?.close();state.healthCheckout?.close();state.healthCheckout=null; state.schedulePicker?.close();state.schedulePicker=null; clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null; state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.notificationStop?.(); state.notificationStop=null; state.quoteController?.close();state.quoteController=null; if (state.poll) clearInterval(state.poll); if (state.notificationPoll) clearInterval(state.notificationPoll); state.poll = null; state.notificationPoll = null; }
 function stopOrderPolling() { if (state.poll) clearInterval(state.poll); state.poll = null; }
@@ -93,7 +96,29 @@ function restoreBasket(draft){state.fulfillment=draft.fulfillment;state.fulfillm
 function clearDraft(){try{localStorage.removeItem(draftKey());}catch{}state.pendingDraft=null;updateBasketAccess();}
 function saveDraft(){if(!state.selected)return;const draft=sanitizeCartDraft({savedAt:Date.now(),restaurantId:state.selected.id,fulfillment:state.fulfillment,quantities:state.cart,modifiers:state.modifiers});try{draft?localStorage.setItem(draftKey(),JSON.stringify(draft)):localStorage.removeItem(draftKey());}catch{}updateBasketAccess();}
 function readDraft(restaurantId){try{const draft=sanitizeCartDraft(JSON.parse(localStorage.getItem(draftKey())));return draft?.restaurantId===restaurantId?draft:null;}catch{return null;}}
-function resetIdentity(user) { notificationAlert.reset();const priorUser=state.user;const changed=(state.user?.id||null)!==(user?.id||null); if(changed){state.scheduleDraft=null;clearDraft();completedPaymentRefreshes.clear();if(priorUser?.id){state.cart={};state.modifiers={};state.selected=null;state.menu=[];}} stopPolling();state.soundContext?.close().catch(()=>{});state.soundContext=null;state.soundEnabled=false;state.seenNotificationIds=null;state.seenOrderIds=new Set();state.pendingPhoto=null;state.workspaceTab="orders"; clearTimeout(message.timer); toast.textContent = ""; toast.classList.remove("show"); state.generation += 1; state.user = user;state.emailVerification=null;state.customerOrderId=null;state.customerOrderSearch="";state.ordersRenderedHtml=null;notificationAlert.restoreAcknowledged(readNotificationAcknowledgements());state.orders = []; state.refundCases = [];state.orderHelpRequests=[]; state.platformVouchers=[];state.offers = []; state.offerInboxItems=[];state.offerCursors=[null];state.offerPageIndex=0;state.offerNextCursor=null;state.offerRequestVersion=(state.offerRequestVersion||0)+1;state.dismissingOffers=new Set();state.selectedOffer = null;state.discoverCollection="home";state.discoverOffersOnly=false;state.discoverSort="recommended"; state.notifications = []; state.unreadCount = 0; state.workspace = {}; state.orderKey = null; checkoutAttempt.clear(); state.submitting=false; state.addresses=[];state.locationChoices=[];state.locationChoicesScope="";state.locationAddress=null;state.serviceArea=null;if(changed&&priorUser?.id)state.postcode=""; setAccount(); if (user) { state.notificationStop=connectLiveNotifications({onRefresh:loadNotifications}); } }
+function resetIdentity(user) { notificationAlert.reset();const priorUser=state.user;const changed=(state.user?.id||null)!==(user?.id||null); if(changed){state.scheduleDraft=null;clearDraft();completedPaymentRefreshes.clear();if(priorUser?.id){state.cart={};state.modifiers={};state.selected=null;state.menu=[];}} stopPolling();state.soundContext?.close().catch(()=>{});state.soundContext=null;state.soundEnabled=false;state.seenNotificationIds=null;state.seenOrderIds=new Set();state.pendingPhoto=null;state.workspaceTab="orders"; clearTimeout(message.timer); toast.textContent = ""; toast.classList.remove("show"); state.generation += 1; state.user = user;setEmailVerificationStatus(null);state.customerOrderId=null;state.customerOrderSearch="";state.ordersRenderedHtml=null;notificationAlert.restoreAcknowledged(readNotificationAcknowledgements());state.orders = []; state.refundCases = [];state.orderHelpRequests=[]; state.platformVouchers=[];state.offers = []; state.offerInboxItems=[];state.offerCursors=[null];state.offerPageIndex=0;state.offerNextCursor=null;state.offerRequestVersion=(state.offerRequestVersion||0)+1;state.dismissingOffers=new Set();state.selectedOffer = null;state.discoverCollection="home";state.discoverOffersOnly=false;state.discoverSort="recommended"; state.notifications = []; state.unreadCount = 0; state.workspace = {}; state.orderKey = null; checkoutAttempt.clear(); state.submitting=false; state.addresses=[];state.locationChoices=[];state.locationChoicesScope="";state.locationAddress=null;state.serviceArea=null;if(changed&&priorUser?.id)state.postcode=""; setAccount(); if (user) { state.notificationStop=connectLiveNotifications({onRefresh:loadNotifications}); } void refreshEmailVerificationBanner(); }
+
+function renderEmailVerificationBanner(){
+  if(!emailVerificationBanner)return;
+  const html=emailVerificationBannerHtml(state.user,state.emailVerification);
+  if(emailVerificationBanner.innerHTML!==html)emailVerificationBanner.innerHTML=html;
+  emailVerificationBanner.hidden=!html;
+}
+function setEmailVerificationStatus(status){
+  emailVerificationBannerRevision++;emailVerificationBannerRequest=null;
+  state.emailVerification=status;renderEmailVerificationBanner();
+}
+async function refreshEmailVerificationBanner(){
+  if(state.user?.role!=="customer"){renderEmailVerificationBanner();return null;}
+  const generation=state.generation,userId=state.user.id;
+  if(emailVerificationBannerRequest?.generation===generation&&emailVerificationBannerRequest?.userId===userId)return emailVerificationBannerRequest.promise;
+  const revision=++emailVerificationBannerRevision,request={generation,userId,promise:null};
+  request.promise=(async()=>{try{const status=emailVerificationStatus(await api("/api/auth/email-verification/status"));if(generation!==state.generation||userId!==state.user?.id||revision!==emailVerificationBannerRevision)return null;setEmailVerificationStatus(status);return status;}catch{return null;}finally{if(emailVerificationBannerRequest===request)emailVerificationBannerRequest=null;}})();
+  emailVerificationBannerRequest=request;return request.promise;
+}
+const refreshVerificationOnResume=()=>{if(!document.hidden&&!main.querySelector("[data-email-verification],[data-account-email-verification]"))void refreshEmailVerificationBanner();};
+window.addEventListener("focus",refreshVerificationOnResume);
+document.addEventListener("visibilitychange",refreshVerificationOnResume);
 
 function consumeAccessFragment() {
   const fragment=location.hash.slice(1), separator=fragment.indexOf("=");
@@ -181,7 +206,7 @@ async function boot() {
   else {const requested=entry.get("view");await navigate(["account","orders","offers","messages"].includes(requested)?requested:"discover");}
 }
 
-async function navigate(view) {
+async function navigate(view, {resumeCheckout=false} = {}) {
   if (state.submitting || checkoutAttempt.pending) { message("Resolve the original checkout or choose Check Orders before changing your basket."); return; }
   if (state.user && state.user.role !== "customer") return renderCustomerAccountRequired();
   state.emailVerificationPanel?.close(); state.emailConfirmationPanel?.close();
@@ -195,6 +220,7 @@ async function navigate(view) {
   window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   document.querySelectorAll("[data-view]").forEach((node) => node.setAttribute("aria-current", node.dataset.view === view ? "page" : "false"));
   if (view === "discover") return loadDiscover();
+  if(view==="verification"&&state.user?.role==="customer")return renderVerificationPage({checkout:resumeCheckout});
   if (!state.user) return renderAuth();
   if (view === "orders") return state.user.role === "customer" ? loadOrders() : renderDenied("Order history is for customer accounts.");
   if (view === "offers") return state.user.role === "customer" ? loadOffers() : renderDenied("Offers are for customer accounts.");
@@ -368,7 +394,7 @@ async function submitOrder(form) {
     renderConfirmation(order);
   } catch(error) {
     if(generation!==state.generation||!form.isConnected)return;
-    if (error.code === "EMAIL_VERIFICATION_REQUIRED" && !checkoutAttempt.pending) { state.emailVerification = null; renderVerificationPage({ checkout: true }); return; }
+    if (error.code === "EMAIL_VERIFICATION_REQUIRED" && !checkoutAttempt.pending) { setEmailVerificationStatus(null); renderVerificationPage({ checkout: true }); return; }
     box.className="error";box.replaceChildren(document.createTextNode(error.message));
     if(checkoutAttempt.pending) {
       box.append(document.createTextNode(" Your order result is not confirmed. Retry the original request with the same items, address and reviewed total, or check Orders before starting another basket."));
@@ -395,7 +421,7 @@ function renderAccessFlow() {
   stopPolling();
   if (state.accessFlow?.type === "verify-email") {
     main.innerHTML = '<section class="section access-page"><div class="card stack" data-email-confirmation></div></section>';
-    state.emailConfirmationPanel = mountEmailConfirmation(main.querySelector("[data-email-confirmation]"), { api, token: state.accessFlow.token, onConfirmed() { state.accessFlow = null; state.emailVerification = null; } });
+    state.emailConfirmationPanel = mountEmailConfirmation(main.querySelector("[data-email-confirmation]"), { api, token: state.accessFlow.token, onConfirmed() { state.accessFlow = null; setEmailVerificationStatus(null); void refreshEmailVerificationBanner(); } });
     return;
   }
   main.innerHTML = `<section class="section access-page"><div class="card stack"><div class="eyebrow">Account access</div><h1>Choose a new password</h1><form id="reset-password-form" class="stack"><p class="muted">Use at least 12 characters. After resetting, return to the Cal-Eats app or website to sign in.</p><label>New password<input class="field" name="password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><label>Confirm password<input class="field" name="confirmation" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><div class="form-error" role="alert"></div><button class="primary">Reset password</button></form><div class="form-error" role="alert"></div></div></section>`;
@@ -406,7 +432,7 @@ function renderVerificationPage({ initial = state.emailVerification, checkout = 
   state.view = checkout ? "checkout" : "verification";
   main.innerHTML = `<section class="section access-page"><div class="card stack"><h1>${welcome ? "Your Cal-Eats account is created" : checkout ? "One step before checkout" : "Your email confirmation"}</h1><div data-email-verification></div><div class="card-actions"><button type="button" class="secondary" data-view="discover">Browse restaurants</button><button type="button" class="quiet" data-view="account">Account & support</button></div>${checkout ? '<p class="meta">Your basket is saved while you confirm your email.</p>' : ""}</div></section>`;
   const generation = state.generation, navigation = state.navigationVersion;
-  state.emailVerificationPanel = mountEmailVerification(main.querySelector("[data-email-verification]"), { api, initial, welcome, onChange(status) { if (generation !== state.generation || navigation !== state.navigationVersion) return; state.emailVerification = status; if (checkout && status.canOrder) renderCheckout(); } });
+  state.emailVerificationPanel = mountEmailVerification(main.querySelector("[data-email-verification]"), { api, initial, welcome, onChange(status) { if (generation !== state.generation || navigation !== state.navigationVersion) return; setEmailVerificationStatus(status); if (checkout && status.canOrder) renderCheckout(); } });
 }
 
 function recoveryDeliveryHtml(delivery) {
@@ -417,7 +443,7 @@ function recoveryDeliveryHtml(delivery) {
 
 async function authSubmit(form, register = false) {
   const data = Object.fromEntries(new FormData(form)); const button = form.querySelector(AUTH_SUBMIT_SELECTOR); button.disabled = true;
-  try { if(register)data.legalAcceptance=state.legalSignup?.payload(); const result = await api(`/api/auth/${register ? "register" : "login"}`, { method: "POST", body: JSON.stringify(data) }); const resumeCheckout = state.pendingCheckout && result.user.role === "customer"; resetIdentity(result.user);if(state.selected)saveDraft();if(result.emailVerification)state.emailVerification=emailVerificationStatus(result.emailVerification);if(register&&state.emailVerification&&!state.emailVerification.canOrder)return renderVerificationPage({initial:state.emailVerification,checkout:resumeCheckout,welcome:true});if(await resumeCustomerEmailLink())return; if (resumeCheckout) { state.pendingCheckout = false; renderCheckout(); } else await navigate(result.user.role === "customer" ? "discover" : "workspace"); }
+  try { if(register)data.legalAcceptance=state.legalSignup?.payload(); const result = await api(`/api/auth/${register ? "register" : "login"}`, { method: "POST", body: JSON.stringify(data) }); const resumeCheckout = state.pendingCheckout && result.user.role === "customer"; resetIdentity(result.user);if(state.selected)saveDraft();if(result.emailVerification)setEmailVerificationStatus(emailVerificationStatus(result.emailVerification));if(register&&state.emailVerification&&!state.emailVerification.canOrder)return renderVerificationPage({initial:state.emailVerification,checkout:resumeCheckout,welcome:true});if(await resumeCustomerEmailLink())return; if (resumeCheckout) { state.pendingCheckout = false; renderCheckout(); } else await navigate(result.user.role === "customer" ? "discover" : "workspace"); }
   catch (error) { const box = form.querySelector(".form-error"); box.className = "form-error error"; box.textContent = error.message; button.disabled = false; }
 }
 
@@ -469,10 +495,10 @@ async function loadAccount(){
 
 function renderAccount() {
   state.emailVerificationPanel?.close();
-  state.emailVerification = state.workspace.account.emailVerification ?? state.emailVerification;
+  setEmailVerificationStatus(state.workspace.account.emailVerification ?? state.emailVerification);
   main.innerHTML=customerAccountHtml(state.workspace.account);
   const verification = main.querySelector("[data-account-email-verification]");
-  if (verification) state.emailVerificationPanel = mountEmailVerification(verification, { api, initial: state.workspace.account.emailVerification ?? null, onChange(status) { state.emailVerification = status; if (state.workspace.account) state.workspace.account.emailVerification = status; const badge = main.querySelector(".account-verification"); if (badge) badge.textContent = status.emailVerified ? "Email verified" : status.verificationRequired ? "Email confirmation needed" : "Customer account"; } });
+  if (verification) state.emailVerificationPanel = mountEmailVerification(verification, { api, initial: state.workspace.account.emailVerification ?? null, onChange(status) { setEmailVerificationStatus(status); if (state.workspace.account) state.workspace.account.emailVerification = status; const badge = main.querySelector(".account-verification"); if (badge) badge.textContent = status.emailVerified ? "Email verified" : status.verificationRequired ? "Email confirmation needed" : "Customer account"; } });
   const box=main.querySelector('#account-marketing-preferences');if(box)void mountMarketingPreferences(box,{api});
 }
 function openAddressEditor(id){const address=id?state.addresses.find(item=>item.id===id):{};if(!address)return;showDialog(addressEditorHtml(address));}
@@ -649,6 +675,7 @@ document.addEventListener("click", async (event) => {
   if(action==="rate-shop")return showShopRating(button.dataset.id);
   if(action==="notification-rating"){closeDialog();return showShopRating(button.dataset.order);}
   if(action==="open-basket")return openBasket();
+  if(action==="email-verification-options"&&state.user?.role==="customer")return navigate("verification",{resumeCheckout:state.view==="checkout"});
   if(action==="replace-basket"){const pending=pendingBasketReplacement;pendingBasketReplacement=null;closeDialog();if(!pending||pending.generation!==state.generation||pending.restaurantId!==state.selected?.id)return;clearDraft();return pending.commit();}
   if(action==="close-location"){state.locationSelectorOpen=false;const picker=document.querySelector('.discovery-address');if(picker){picker.open=false;picker.querySelector('summary')?.focus();}return;}
   if(action==="open-platform-support")return showCustomerContact(button.dataset.id,true);

@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { emailVerificationHtml, emailVerificationStatus, mountEmailVerification, mountEmailConfirmation } from "../customer-email-verification.js";
+import { emailVerificationBannerHtml, emailVerificationHtml, emailVerificationStatus, mountEmailVerification, mountEmailConfirmation } from "../customer-email-verification.js";
 import { customerAccountHtml } from "../customer-account.js";
 
 const pending = (extra = {}) => ({ email: "customer@fixture.invalid", emailVerified: false, verificationRequired: true, canOrder: false, resendAvailableAt: null, delivery: "email", ...extra });
+test("compact header banner targets required pending customers and leaves other accounts alone",()=>{
+  const customer={role:"customer"};
+  const html=emailVerificationBannerHtml(customer,pending());
+  assert.match(html,/>Verify your email to order</);assert.match(html,/type="button"/);assert.match(html,/data-action="email-verification-options"/);assert.match(html,/aria-label="Verify your email to order/);
+  assert.equal(emailVerificationBannerHtml(null,pending()),"");assert.equal(emailVerificationBannerHtml({role:"restaurant"},pending()),"");assert.equal(emailVerificationBannerHtml({role:"admin"},pending()),"");
+  assert.equal(emailVerificationBannerHtml(customer,null),"");assert.equal(emailVerificationBannerHtml(customer,pending({emailVerified:true,canOrder:true})),"");assert.equal(emailVerificationBannerHtml(customer,pending({verificationRequired:false,canOrder:true})),"");
+});
 function surface() {
   const listeners = new Map();
   return { isConnected: true, innerHTML: "", listeners, addEventListener(type, listener) { listeners.set(type, listener); }, removeEventListener(type) { listeners.delete(type); } };
