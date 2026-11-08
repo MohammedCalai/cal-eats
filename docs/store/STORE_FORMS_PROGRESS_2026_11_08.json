@@ -1,6 +1,6 @@
 {
   "assessedOn": "2026-11-08",
-  "status": "PARTIAL_SAVED_FORMS_OPERATOR_FACTS_AND_ACCESS_PENDING",
+  "status": "SAVED_GOOGLE_RATING_AND_APPLE_REVIEW_CONTACT_REVIEW_ACCESS_PENDING",
   "publicReviewSubmitted": false,
   "apple": {
     "appId": "6831180948",
@@ -21,11 +21,11 @@
       "matureMedicalSexualViolenceGamblingEditorialContent": "None in reviewed current app/catalogue; merchant/private UGC controls are separately disclosed."
     },
     "reviewNotes": "SAVED_PREPARATION_DRAFT_NOT_FINAL_REVIEW_INSTRUCTIONS",
-    "notesScope": "Factual customer role, collection-only Arndale browsing, optional location, verified customer review account preparation, messaging/safety, privacy/deletion routes, paused ordering and missing final native corrections are explicitly described. Credentials and private contact fields remain blank.",
-    "privateNotesReadbackSha256": "1b6195a2160db4027a91ddd419979f6a801edc428ca5af38b166fc172134ad67",
+    "notesScope": "Factual customer role, collection-only Arndale browsing, optional location, verified customer review-account preparation, messaging/safety, privacy/deletion routes, paused ordering and missing final native corrections are explicitly described. Private review contact is saved; reviewer credentials remain blank.",
+    "privateNotesReadbackSha256": "7a8a54fc044b64ea5691da14c9c7a3a063f5f1fcf1e9a221d7338cc9ee40808c",
     "manualReleaseVerified": true,
     "contentRights": "SAVED_VERIFIED: Yes, this app has the necessary rights to its third-party content.",
-    "reviewContact": "PENDING_OPERATOR_NAME_PHONE_EMAIL",
+    "reviewContact": "SAVED_VERIFIED_PRIVATE_REVIEW_TEAM_CONTACT_ONLY",
     "accessibilityClaims": "No unverified blanket feature-support claim entered",
     "screenshots": {
       "mediumDisplayCount": 1,
@@ -50,15 +50,82 @@
         "Not an independent legal-title or photographer-licence verification.",
         "Does not accept the unapproved merchant commercial schedule or establish permission for all future restaurants."
       ]
+    },
+    "reviewContactApproval": {
+      "operatorProvided": true,
+      "correctedNameAcknowledged": true,
+      "privateValuesInRepository": false,
+      "entered": true,
+      "privateSavedReadbackSha256": "7a8a54fc044b64ea5691da14c9c7a3a063f5f1fcf1e9a221d7338cc9ee40808c",
+      "privateVisualVerificationSha256": "9a97edb7bbfb3c772beaa94bf4e3f48eeac128ce630e5d4ebc46142c3b43aac1",
+      "verification": "Saved form shows the approved name, telephone and email visually. Text inspection privacy-redacts telephone/email; no literal-value assertion is based on those masked fields.",
+      "scope": "Only Apple App Review contact fields; no public listing or IARC contact change."
     }
   },
   "googlePlay": {
     "contentRating": {
       "category": "All other app types",
       "contact": "support@calai.info",
-      "iarcTermsAccepted": false,
-      "questionnaireSubmitted": false,
-      "state": "PREPARED_PENDING_EXPLICIT_IARC_TERMS_APPROVAL"
+      "iarcTermsAccepted": true,
+      "operatorApprovalReceived": true,
+      "questionnaireSubmitted": true,
+      "state": "COMPLETED_SAVED_VERIFIED_NOT_PUBLIC_APP_REVIEW",
+      "submittedAtDisplay": "8 November 2026, 23:00",
+      "certificateId": null,
+      "certificateIdDisplay": "-",
+      "ratings": {
+        "Brazil": "All ages",
+        "NorthAmerica": "Everyone",
+        "Europe": "PEGI 3",
+        "Germany": "USK: All ages",
+        "RestOfWorld": "3+",
+        "Russia": "3+",
+        "SouthKorea": "3+"
+      },
+      "interactiveElements": [
+        "Users interact",
+        "Shares location"
+      ],
+      "contentDescriptors": [],
+      "answers": {
+        "downloadedRatingsRelevantContent": false,
+        "nativeUserInteraction": true,
+        "primaryUserContentSharing": false,
+        "publicNudityPermitted": false,
+        "publicGraphicViolencePermitted": false,
+        "blocking": true,
+        "reporting": true,
+        "chatModeration": true,
+        "invitedFriendsOnly": false,
+        "onlineCatalogue": true,
+        "catalogueViolence": false,
+        "catalogueSexualityOrNudity": false,
+        "catalogueOffensiveLanguage": false,
+        "catalogueDrugReferences": false,
+        "focusOnAgeRestrictedProducts": false,
+        "preciseFulfilmentLocationShared": true,
+        "digitalGoodsPurchases": false,
+        "cashRewardsGiftCardsPlayToEarnCryptoOrTransferableAssets": false,
+        "webBrowserOrSearchEngine": false,
+        "primarilyNewsOrEducational": false
+      },
+      "interpretation": {
+        "catalogue": "The rating-specific Google product-store taxonomy treats seller product listings as Online content; private chats/star ratings are secondary user content. Merchant material remains subject to broader UGC safety duties.",
+        "moderation": "Enforced bounded English peer-text screening plus report/block and reactive administration exist; no complete image/all-language premoderation is claimed.",
+        "location": "Yes conservatively reflects the selected precise delivery address shared with the restaurant for fulfilment. The nearby-postcode GPS lookup alone is not social/live location sharing; there is no public user-location map.",
+        "promotionalCredit": "Administrator-issued, customer-scoped platform-funded contributions against physical food are not purchasable, giftable, transferable or withdrawable gift cards/cash rewards. No customer cash-out, earned prizes, wagering, play-to-earn, crypto or transferable assets exist. The preliminary gift-card-equivalence interpretation was corrected before final saving; no cash-reward descriptor is part of the completed rating.",
+        "audience": "IARC content suitability is distinct from the intended adults18+ target audience and approved customer Terms. Do not fabricate mature content to force an18+ rating.",
+        "reassessment": "Reassess for new merchant content, restricted goods, new reward mechanisms or changed location/messaging behavior."
+      },
+      "privateAnswersSha256": "2ed9e152b99867cf30ffebfbeebed7777cdab370124a93bce8eff909ceb2f646",
+      "privateCompletedReadbackSha256": "eee3adb205c0c3124d5db9e5886607089195c47374f6bc4829c31cfa371a78d3",
+      "publicReviewSubmitted": false,
+      "primaryReferences": [
+        "https://support.google.com/googleplay/android-developer/answer/11070862?hl=en-GB",
+        "https://support.google.com/googleplay/android-developer/answer/12994051?hl=en-GB",
+        "https://support.google.com/googleplay/android-developer/answer/11069750?hl=en-GB",
+        "https://web.iarcservices.com/terms"
+      ]
     },
     "reviewAccess": {
       "state": "UNSAVED_FULL_ACCESS_CERTIFICATION_NOT_MADE",
@@ -67,16 +134,13 @@
     },
     "targetAudience": "BLOCKED_ON_SIGN_IN_DETAILS; intended adult18+",
     "dataSafety": "16-type saved draft remains unchanged; blocked on target audience",
-    "publicSetup": "7 of 11 last verified; no new completed Google task claimed"
+    "publicSetup": "8 of 11 verified from authenticated Dashboard after content-rating completion"
   },
-  "operatorInputPending": [
-    "Private review-team contact full name, phone and email",
-    "Explicit IARC Terms acceptance and rating-contact sharing approval"
-  ],
+  "operatorInputPending": [],
   "remainingDependencies": [
     "Working restaurant ordering/payment setup before full-access certification and public submission",
     "Final corrected native candidates and exact-device verification",
-    "Final restaurant service/menu/rights and screenshot checks"
+    "Final restaurant service/menu and required screenshot-display checks"
   ],
   "primaryReferences": [
     "https://web.iarcservices.com/terms",

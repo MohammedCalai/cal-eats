@@ -85,9 +85,9 @@
     "documentStatus": "UNAPPROVED DRAFT; explicitly incomplete",
     "finding": "The proposed merchant schedule remains unapproved and unsigned. Separately, the operator explicitly confirmed current Arndale name/menu/image permission for Cal-Eats and official store materials on8November; this is not a grant for every future restaurant or independent legal-title verification.",
     "proposedMediaRightsGrantTextPresent": true,
-    "activeAcceptedMediaRightsGrantEstablished": false,
     "signedCommercialScheduleAccepted": false,
-    "currentArndaleUsePermissionConfirmedByOperator": true
+    "currentArndaleUsePermissionConfirmedByOperator": true,
+    "signedDraftMediaRightsGrantAccepted": false
   },
   "merchantMediaMetadata": {
     "source": "apps/api/src/polish.js; media_assets/media_asset_objects schema",

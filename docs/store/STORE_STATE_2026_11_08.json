@@ -63,7 +63,7 @@
       "privatePublicationProofSha256": "9f1d9460a185c7eefe11b3b64bf78c23821e84a1375cb14e4a0506877ec8fa4d",
       "draftAnswerEvidence": "artifacts/store-preparation-20261108/apple-privacy-draft-readback.private.txt"
     },
-    "reviewAccess": "Dedicated pre-verified customer remains private. Saved Apple preparation notes accurately explain currently paused ordering and pending final native candidate; private credentials/contact fields are still blank. No full-feature review readiness certified.",
+    "reviewAccess": "Dedicated pre-verified customer remains private. Saved Apple preparation notes accurately explain paused ordering and pending final native candidate; private reviewer contact is now saved. Credential fields remain blank. No full-feature review readiness certified.",
     "submission": "NOT_SUBMITTED",
     "releaseMode": "MANUAL_SAVED_VERIFIED",
     "nextNativeBuild": {
@@ -79,9 +79,9 @@
     },
     "reviewNotes": {
       "state": "SAVED_PREPARATION_DRAFT_NOT_FINAL",
-      "privateReadbackSha256": "1b6195a2160db4027a91ddd419979f6a801edc428ca5af38b166fc172134ad67",
+      "privateReadbackSha256": "7a8a54fc044b64ea5691da14c9c7a3a063f5f1fcf1e9a221d7338cc9ee40808c",
       "credentialsEntered": false,
-      "privateContactEntered": false,
+      "privateContactEntered": true,
       "publicSubmission": false
     },
     "contentRights": {
@@ -113,6 +113,17 @@
       "origin": "Genuine anonymous iPhone17Pro simulator capture from earlier source b0a2e10; Browse components match selected iOS17 but this is not a fresh17 capture.",
       "otherNativeScreensAvailableLocally": false,
       "limits": "Exact final native/screenshots and required display-set validation remain before public submission."
+    },
+    "reviewContact": {
+      "state": "SAVED_VERIFIED_PRIVATE_REVIEW_TEAM_CONTACT_ONLY",
+      "operatorProvided": true,
+      "correctedNameAcknowledged": true,
+      "privateValuesInRepository": false,
+      "entered": true,
+      "privateSavedReadbackSha256": "7a8a54fc044b64ea5691da14c9c7a3a063f5f1fcf1e9a221d7338cc9ee40808c",
+      "privateVisualVerificationSha256": "9a97edb7bbfb3c772beaa94bf4e3f48eeac128ce630e5d4ebc46142c3b43aac1",
+      "verification": "Saved form shows the approved name, telephone and email visually. Text inspection privacy-redacts telephone/email; no literal-value assertion is based on those masked fields.",
+      "scope": "Only Apple App Review contact fields; no public listing or IARC contact change."
     }
   },
   "googlePlay": {
@@ -171,12 +182,75 @@
       },
       "aiAssetLabels": "All five listing visuals labelled for embedded generated brand/illustrative artwork. Native screenshots retain original pixels without retouching."
     },
-    "contentRating": "Consumer-app category and support@calai.info rating contact prepared in browser; IARC Terms acceptance approval pending, questionnaire not completed or submitted.",
+    "contentRating": {
+      "category": "All other app types",
+      "contact": "support@calai.info",
+      "iarcTermsAccepted": true,
+      "operatorApprovalReceived": true,
+      "questionnaireSubmitted": true,
+      "state": "COMPLETED_SAVED_VERIFIED_NOT_PUBLIC_APP_REVIEW",
+      "submittedAtDisplay": "8 November 2026, 23:00",
+      "certificateId": null,
+      "certificateIdDisplay": "-",
+      "ratings": {
+        "Brazil": "All ages",
+        "NorthAmerica": "Everyone",
+        "Europe": "PEGI 3",
+        "Germany": "USK: All ages",
+        "RestOfWorld": "3+",
+        "Russia": "3+",
+        "SouthKorea": "3+"
+      },
+      "interactiveElements": [
+        "Users interact",
+        "Shares location"
+      ],
+      "contentDescriptors": [],
+      "answers": {
+        "downloadedRatingsRelevantContent": false,
+        "nativeUserInteraction": true,
+        "primaryUserContentSharing": false,
+        "publicNudityPermitted": false,
+        "publicGraphicViolencePermitted": false,
+        "blocking": true,
+        "reporting": true,
+        "chatModeration": true,
+        "invitedFriendsOnly": false,
+        "onlineCatalogue": true,
+        "catalogueViolence": false,
+        "catalogueSexualityOrNudity": false,
+        "catalogueOffensiveLanguage": false,
+        "catalogueDrugReferences": false,
+        "focusOnAgeRestrictedProducts": false,
+        "preciseFulfilmentLocationShared": true,
+        "digitalGoodsPurchases": false,
+        "cashRewardsGiftCardsPlayToEarnCryptoOrTransferableAssets": false,
+        "webBrowserOrSearchEngine": false,
+        "primarilyNewsOrEducational": false
+      },
+      "interpretation": {
+        "catalogue": "The rating-specific Google product-store taxonomy treats seller product listings as Online content; private chats/star ratings are secondary user content. Merchant material remains subject to broader UGC safety duties.",
+        "moderation": "Enforced bounded English peer-text screening plus report/block and reactive administration exist; no complete image/all-language premoderation is claimed.",
+        "location": "Yes conservatively reflects the selected precise delivery address shared with the restaurant for fulfilment. The nearby-postcode GPS lookup alone is not social/live location sharing; there is no public user-location map.",
+        "promotionalCredit": "Administrator-issued, customer-scoped platform-funded contributions against physical food are not purchasable, giftable, transferable or withdrawable gift cards/cash rewards. No customer cash-out, earned prizes, wagering, play-to-earn, crypto or transferable assets exist. The preliminary gift-card-equivalence interpretation was corrected before final saving; no cash-reward descriptor is part of the completed rating.",
+        "audience": "IARC content suitability is distinct from the intended adults18+ target audience and approved customer Terms. Do not fabricate mature content to force an18+ rating.",
+        "reassessment": "Reassess for new merchant content, restricted goods, new reward mechanisms or changed location/messaging behavior."
+      },
+      "privateAnswersSha256": "2ed9e152b99867cf30ffebfbeebed7777cdab370124a93bce8eff909ceb2f646",
+      "privateCompletedReadbackSha256": "eee3adb205c0c3124d5db9e5886607089195c47374f6bc4829c31cfa371a78d3",
+      "publicReviewSubmitted": false,
+      "primaryReferences": [
+        "https://support.google.com/googleplay/android-developer/answer/11070862?hl=en-GB",
+        "https://support.google.com/googleplay/android-developer/answer/12994051?hl=en-GB",
+        "https://support.google.com/googleplay/android-developer/answer/11069750?hl=en-GB",
+        "https://web.iarcservices.com/terms"
+      ]
+    },
     "submission": "NOT_SUBMITTED_TO_PUBLIC_REVIEW",
     "publicSetup": {
-      "completed": 7,
+      "completed": 8,
       "total": 11,
-      "verifiedFrom": "Authenticated Dashboard readback after saving the store forms",
+      "verifiedFrom": "Authenticated Dashboard after saved IARC completion,8 November2026",
       "completedTasks": [
         "Privacy policy",
         "Ads",
@@ -184,7 +258,8 @@
         "Financial features",
         "Health",
         "Category and contact details",
-        "Store listing"
+        "Store listing",
+        "Content rating"
       ]
     },
     "internalDistribution": {
@@ -203,10 +278,7 @@
       "testerLink": "https://play.google.com/apps/internaltest/4700960164758478673"
     }
   },
-  "pendingUserDecisions": [
-    "IARC Terms acceptance",
-    "Private store-review contact name, telephone and email"
-  ],
+  "pendingUserDecisions": [],
   "scope": "Saved store state, deployed source and bounded verification evidence. Store drafts are not public approval. No passwords, account tokens or private customer identities are included.",
   "localAndHostedVerification": {
     "focusedSafetyChecks": "Passed18 bounded moderation/messaging/marketing checks; images and all-language classification are not claimed.",
@@ -242,14 +314,12 @@
       "currentAndroid22ContainsNewConsentFix": false
     }
   },
-  "pendingOperatorConfirmations": [
-    "Accept IARC Terms of Use to complete Cal-Eats content rating"
-  ],
+  "pendingOperatorConfirmations": [],
   "remainingPublicReleaseWork": [
     "Real provider/restaurant verification, bank onboarding and commercial acceptance",
     "Genuine paid order, commission/commission-free-period and payout reconciliation",
-    "Final review access with a functioning ordering journey, review contact details and menu/photo rights",
-    "Complete Google target audience/content-rating/Data safety and final store listing/review checks; Apple’s privacy label is already published",
+    "Final review access with a functioning ordering journey; private Apple reviewer contact is saved",
+    "Complete Google reviewer access, target audience and final Data safety; IARC content rating is completed and Apple privacy label is published",
     "Final exact native build/device verification; Android 22 screenshots are saved, but iOS 17 still lacks the later guest fix.",
     "Review remaining test credentials before public launch"
   ],
@@ -303,7 +373,8 @@
     "googleDataTypes": 16,
     "result": "No concrete new collection flow, required data-type change or purpose mismatch was found against the reviewed customer code/configuration and approved Privacy Notice. Conservative GPS/sharing and search-processing qualifications remain.",
     "nativeSourceLimit": "The native marketing-preference account-change race correction is a later source change, absent from iOS 17 and Android 22; it changes account-scoping behavior, not declared data types or purposes.",
-    "storeBoundary": "Apple label publication does not complete Google’s saved draft, reviewer access, IARC/content rating, review contact details, app review or public release."
+    "storeBoundary": "Apple privacy publication, saved private review contact and completed IARC content rating do not complete Google reviewer access/target audience/Data safety, native app readiness, public review or release."
   },
-  "storeFormsProgress": "docs/store/STORE_FORMS_PROGRESS_2026_11_08.json"
+  "storeFormsProgress": "docs/store/STORE_FORMS_PROGRESS_2026_11_08.json",
+  "pendingOperatorActions": []
 }
