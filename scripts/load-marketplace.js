@@ -13,7 +13,10 @@ import { createSession } from '../apps/api/src/auth/sessions.js';
 const filename = fileURLToPath(import.meta.url);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-if (process.argv[2] === '--worker') {
+if (process.argv[2] === '--directory-capacity') {
+  const { runDirectoryCapacity } = await import('./load-restaurant-directory.js');
+  await runDirectoryCapacity();
+} else if (process.argv[2] === '--worker') {
   const { createApp } = await import('../apps/api/src/app.js');
   const { createServer, closeServer } = await import('../apps/api/src/server.js');
   const { runOperationsCycle } = await import('../apps/api/src/operations.js');

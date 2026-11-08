@@ -7,6 +7,7 @@ import { WorkspaceDialog } from "./CustomerWorkspace.jsx";
 import OrderFinancialBreakdown from "./OrderFinancialBreakdown.jsx";
 import { RestaurantBankSetupSummary, StripeRestaurantFinance } from "./StripePayments.jsx";
 import "./EarningsFinance.css";
+import { payoutScheduleState } from "./payout-schedule-state.js";
 
 const periods = [["today", "Today"], ["yesterday", "Yesterday"], ["this_week", "This week"], ["last_week", "Last week"]];
 const readable = value => String(value || "Awaiting update").replaceAll("_", " ");
@@ -28,7 +29,7 @@ function BankPayoutWorkspace({ restaurantId, showSetupLink }) {
   const cursor = cursors[cursorIndex];
   const query = new URLSearchParams({ pageSize: "20", ...(cursor ? { startingAfter: cursor } : {}) });
   const payouts = useFinanceResource(`${root}/payouts?${query}`);
-  const bank = banking.value, rows = payouts.value?.items || [];
+  const bank = banking.value, rows = payouts.value?.items || [],schedule=payoutScheduleState(bank);
   useEffect(() => {
     const refresh = () => { if (!document.hidden && !managing.current) { void banking.reload(); void payouts.reload(); } };
     window.addEventListener("focus", refresh);
@@ -59,7 +60,7 @@ function BankPayoutWorkspace({ restaurantId, showSetupLink }) {
         {bank.canManageBankDetails && <button className="primary" disabled={busy} onClick={() => void manageBank()}>{busy ? "Opening secure account…" : "View or update bank details"}</button>}
         <p className="fine">Cal-Eats shows only masked bank information. Changes are made on the payment provider’s secure pages. {bank.refreshedAt ? `Last refreshed ${shortDate(bank.refreshedAt)}.` : ""}</p>
       </>}
-      <p className="fine">{bank.onboardingOnly?"Payout plan":"Payout schedule"}: {bank.payoutSchedule?.interval === "weekly" ? `weekly on ${readable(bank.payoutSchedule.weeklyAnchor || "monday")}` : readable(bank.payoutSchedule?.interval)}. {bank.onboardingOnly?"Bank payouts remain subject to completed setup, launch checks and available funds. ":""}Available funds, verification and bank processing affect arrival.</p>
+      <div className="fine" aria-label="Payout schedule verification"><p><strong>Cal-Eats plan:</strong> {schedule.plan}.</p><p><strong>Current provider schedule:</strong> {schedule.verified?schedule.actual:"Not yet verified"}{schedule.verifiedAt?` · checked ${shortDate(schedule.verifiedAt)}`:""}.</p>{schedule.mismatch&&<p className="finance-preview-note">Your current schedule differs from the Cal-Eats plan. Open your secure payment account to review payout settings.</p>}{!schedule.verified&&<p>{merchantCopy(schedule.message)}</p>}<p>{bank.onboardingOnly?"Bank payouts remain subject to completed setup and launch checks. ":""}Available funds, verification and bank processing affect arrival.</p></div>
     </>}
     <h3>Bank payout history · all dates</h3>
     <p className="fine">These are the payment provider’s bank payout records. Transfers from individual orders to your connected payment account are shown separately in each order breakdown.</p>

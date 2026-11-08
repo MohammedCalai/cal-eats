@@ -47,8 +47,21 @@ export function discoverRestaurants(db, url, now, customerId = null) {
   const minutes = fulfillment === "collection" ? "r.estimated_collection_minutes" : "r.estimated_delivery_minutes";
   const order = collection === "popular" ? "completed_order_count_30d DESC," : collection === "quick" || sort === "quick" ? `${minutes} IS NULL,${minutes},` : sort === "fee" ? "r.delivery_fee_minor," : "";
   // Category filtering happens before pagination, so See all includes the whole directory.
-  const selected = db.prepare(`SELECT r.*,${popularity} completed_order_count_30d,${availableOffer} available_offer_id,(SELECT COUNT(*) FROM restaurant_order_ratings rating WHERE rating.restaurant_id=r.id) rating_count,(SELECT AVG(stars) FROM restaurant_order_ratings rating WHERE rating.restaurant_id=r.id) rating_average FROM restaurants r WHERE ${clauses.join(" AND ")} ORDER BY ${order}r.name,r.id LIMIT $limit OFFSET $offset`).all(parameters);
-  const terms = db.prepare("SELECT COALESCE(group_concat(name||' '||category,' '),'') terms FROM menu_items WHERE restaurant_id=? AND available=1");
-  const rows = selected.slice(0, pageSize).map(row => ({ ...row, search_terms: terms.get(row.id).terms }));
+  const rankedPopularity = collection === "popular";
+  const directoryParameters = { ...parameters };
+  if (!rankedPopularity) delete directoryParameters.since;
+  if (!rankedPopularity && !permitted) delete directoryParameters.now;
+  const selected = db.prepare(`SELECT r.*,${rankedPopularity ? popularity : "0"} completed_order_count_30d,${availableOffer} available_offer_id FROM restaurants r WHERE ${clauses.join(" AND ")} ORDER BY ${order}r.name,r.id LIMIT $limit OFFSET $offset`).all(directoryParameters);
+  const pageRows = selected.slice(0, pageSize), ids = pageRows.map(row => row.id);
+  let rows = [];
+  if (ids.length) {
+    // Hydrate only the returned page in a fixed number of grouped queries. The
+    // directory/category filtering and ranking still happen before LIMIT.
+    const placeholders = ids.map(() => "?").join(",");
+    const terms = new Map(db.prepare(`SELECT restaurant_id,group_concat(name||' '||category,' ') terms FROM menu_items WHERE restaurant_id IN (${placeholders}) AND available=1 GROUP BY restaurant_id`).all(...ids).map(row => [row.restaurant_id, row.terms]));
+    const ratings = new Map(db.prepare(`SELECT restaurant_id,COUNT(*) rating_count,AVG(stars) rating_average FROM restaurant_order_ratings WHERE restaurant_id IN (${placeholders}) GROUP BY restaurant_id`).all(...ids).map(row => [row.restaurant_id, row]));
+    const popular = rankedPopularity ? null : new Map(db.prepare(`SELECT restaurant_id,COUNT(*) completed_order_count_30d FROM orders WHERE restaurant_id IN (${placeholders}) AND status='completed' AND created_at>=? AND created_at<=? GROUP BY restaurant_id`).all(...ids, parameters.since, parameters.now).map(row => [row.restaurant_id, row.completed_order_count_30d]));
+    rows = pageRows.map(row => ({ ...row, completed_order_count_30d: popular ? popular.get(row.id) ?? 0 : row.completed_order_count_30d, rating_count: ratings.get(row.id)?.rating_count ?? 0, rating_average: ratings.get(row.id)?.rating_average ?? null, search_terms: terms.get(row.id) ?? "" }));
+  }
   return { rows, pagination: { page, pageSize, hasNext: selected.length > pageSize, hasPrevious: page > 1 } };
 }

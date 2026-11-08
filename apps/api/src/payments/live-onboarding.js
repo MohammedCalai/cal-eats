@@ -3,7 +3,7 @@ import { createStripeAdapter } from "./stripe-test.js";
 const accountIdPattern=/^acct_[A-Za-z0-9]+$/;
 const restaurantIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const signingSecretPattern=/^whsec_[A-Za-z0-9_]{8,}$/;
-const onboardingMethods=["retrievePlatformAccount","createConnectedAccount","refreshConnectedAccount","configureWeeklyPayouts","createAccountLink","createAccountLoginLink","listExternalBankAccounts","listPayouts"];
+const onboardingMethods=["retrievePlatformAccount","createConnectedAccount","refreshConnectedAccount","configureWeeklyPayouts","retrievePayoutSchedule","createAccountLink","createAccountLoginLink","listExternalBankAccounts","listPayouts"];
 
 // Preparing a real restaurant's bank account does not activate customer charges,
 // transfers, payment webhooks or the global payment workers.

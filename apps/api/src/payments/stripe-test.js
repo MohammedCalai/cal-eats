@@ -39,7 +39,7 @@ export function createStripeAdapter(config = {}) {
     const modes = Array.isArray(body?.data) ? body.data.map((item)=>item?.livemode) : [body?.livemode],expectedLive=mode==="live";
     const modeOmissionAllowed=options.allowModeOmissionForObject&&body?.object===options.allowModeOmissionForObject&&body?.livemode===undefined;
     if(response.ok&&options.requireTestObject&&!modeOmissionAllowed&&modes.some((objectMode)=>objectMode!==expectedLive))throw new StripeTestConfigurationError("Stripe returned an unverified or live-mode object whose mode does not match the configured adapter");
-    if (!response.ok) return { ok: false, status: retryable(response.status, body) ? "unknown" : "failed", providerReference: options.providerReference, errorCode: safeError(body, response.status) };
+    if (!response.ok) return { ok: false, status: retryable(response.status, body) ? "unknown" : "failed", providerReference: options.providerReference, errorCode: safeError(body, response.status, method, path) };
     return { ok: true, body };
   }
 
@@ -82,6 +82,25 @@ export function createStripeAdapter(config = {}) {
       const schedule=result.body?.payouts?.schedule;
       if(result.body?.object!=="balance_settings"||schedule?.interval!=="weekly"||!Array.isArray(schedule.weekly_payout_days)||schedule.weekly_payout_days.length!==1||schedule.weekly_payout_days[0]!==weeklyAnchor)return {ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_SCHEDULE_MISMATCH"};
       return normalized(result.body, { status: "confirmed", providerReference: accountId });
+    },
+    async retrievePayoutSchedule(input) {
+      const accountId=ref(input.accountId,"acct"),result=await request("GET","/v1/balance_settings",null,{stripeAccount:accountId,requireTestObject:true,allowModeOmissionForObject:"balance_settings"});
+      if(!result.ok)return result;
+      const schedule=result.body?.payouts?.schedule,days=new Set(["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]);
+      const invalid=()=>({ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_SCHEDULE_UNAVAILABLE"});
+      if(result.body?.object!=="balance_settings"||!schedule||!["daily","weekly","monthly","manual"].includes(schedule.interval))return invalid();
+      const normalizedSchedule={interval:schedule.interval,weeklyPayoutDays:[]};
+      if(schedule.interval==="weekly"){
+        const weekly=schedule.weekly_payout_days;
+        if(!Array.isArray(weekly)||!weekly.length||weekly.length>7||new Set(weekly).size!==weekly.length||weekly.some(day=>!days.has(day)))return invalid();
+        normalizedSchedule.weeklyPayoutDays=[...weekly];if(weekly.length===1)normalizedSchedule.weeklyAnchor=weekly[0];
+      }
+      if(schedule.interval==="monthly"){
+        const monthly=schedule.monthly_payout_days;
+        if(!Array.isArray(monthly)||!monthly.length||monthly.length>31||new Set(monthly).size!==monthly.length||monthly.some(day=>!Number.isSafeInteger(day)||day<1||day>31))return invalid();
+        normalizedSchedule.monthlyPayoutDays=[...monthly];
+      }
+      return {ok:true,status:"confirmed",providerReference:accountId,payoutSchedule:normalizedSchedule};
     },
     async authorizePayment(input) {
       const result = await request("POST", "/v1/payment_intents", { amount: money(input.amountMinor), currency: "gbp", payment_method: ref(input.paymentMethodId,"pm"), confirm: true, capture_method: "manual", "payment_method_types[]": "card", "expand[]":"latest_charge.balance_transaction", transfer_group: bounded(input.transferGroup,1,100,"transferGroup"), "metadata[order_id]": bounded(input.orderId,1,100,"orderId") }, { idempotencyKey: input.idempotencyKey, requireTestObject:true });
@@ -158,7 +177,14 @@ function checkoutResult(r){if(!r.ok)return r;const session=r.body,pi=typeof sess
 function paymentState(s){if(s==="requires_capture")return{operationStatus:"confirmed",paymentState:"authorized"};if(s==="succeeded")return{operationStatus:"confirmed",paymentState:"captured"};if(s==="canceled")return{operationStatus:"confirmed",paymentState:"cancelled"};if(s==="requires_action")return{operationStatus:"pending",paymentState:"action_required"};if(s==="processing")return{operationStatus:"pending",paymentState:"processing"};if(s==="requires_confirmation")return{operationStatus:"pending",paymentState:"requires_confirmation"};if(s==="requires_payment_method")return{operationStatus:"failed",paymentState:"requires_payment_method"};return{operationStatus:"unknown",paymentState:"unknown"}}
 function mapRefund(s){return s==="succeeded"?"confirmed":s==="failed"||s==="canceled"?"failed":s==="pending"?"pending":"unknown"}
 function mapSetup(s){return s==="succeeded"?"confirmed":s==="canceled"||s==="requires_payment_method"?"failed":["processing","requires_action","requires_confirmation"].includes(s)?"pending":"unknown"}
-function safeError(body,status){const code=body?.error?.code||body?.error?.type;return typeof code==="string"&&/^[a-z0-9_]{1,80}$/i.test(code)?code:`STRIPE_HTTP_${status}`}
+function safeError(body,status,method,path){
+  // Stripe supplies no machine code for this Connect prerequisite. Match only
+  // the known account-creation response and expose a fixed safe code, never its
+  // raw message, request details, credentials or dashboard URL.
+  const profileMessage="You must complete your platform profile to use Connect and create live connected accounts. Visit your dashboard at https://dashboard.stripe.com/connect/accounts/overview to answer the questionnaire.";
+  if(status===400&&method==="POST"&&path==="/v1/accounts"&&body?.error?.type==="invalid_request_error"&&body.error.message===profileMessage)return "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED";
+  const code=body?.error?.code||body?.error?.type;return typeof code==="string"&&/^[a-z0-9_]{1,80}$/i.test(code)?code:`STRIPE_HTTP_${status}`;
+}
 function retryable(status,body){return status===409||status===429||status>=500||body?.error?.type==="api_error"}
 function payoutResult(r){if(!r.ok)return r;const p=r.body,status=p.status==="paid"?"confirmed":p.status==="failed"||p.status==="canceled"?"failed":["pending","in_transit"].includes(p.status)?"pending":"unknown";return normalized(p,{status,paymentState:p.status,providerReference:p.id,amountMinor:p.amount,currency:typeof p.currency==="string"?p.currency.toUpperCase():null,createdAt:isoSeconds(p.created),arrivalAt:isoSeconds(p.arrival_date),errorCode:p.failure_code})}
 function transferResult(r,fallbackSource){const t=r.body;return normalized(t,{status:t.reversed?"failed":"confirmed",providerReference:t.id,transferId:t.id,amountMinor:safeAmount(t.amount),currency:safeCurrency(t.currency),destinationAccountId:typeof t.destination==="string"?t.destination:t.destination?.id,sourceTransactionId:typeof t.source_transaction==="string"?t.source_transaction:t.source_transaction?.id??fallbackSource,transferGroup:typeof t.transfer_group==="string"?t.transfer_group:undefined})}

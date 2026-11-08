@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { BACKUP_ROOT } from "./backup.js";
 import { assertPrivacySuppressionSafe, loadPinnedPrivacySuppressionLedger } from "./restore-privacy.js";
+import {mediaObjectInventory,assertMediaRestoreProof,loadPinnedMediaProof} from "./media-object-manifest.js";
 
 const REQUIRED_TABLES = ["schema_migrations", "users", "restaurants", "orders"];
 
@@ -21,7 +22,7 @@ export function resolveBackupInput(input) {
   return resolved;
 }
 
-export function inspectDatabase(filename, { suppressionLedger, requirePrivacyClearance = false, now } = {}) {
+export function inspectDatabase(filename, { suppressionLedger, requirePrivacyClearance = false, now, mediaProof } = {}) {
   const db = new DatabaseSync(filename, { readOnly: true });
   try {
     const integrity = db.prepare("PRAGMA integrity_check").all().map((row) => Object.values(row)[0]);
@@ -36,7 +37,8 @@ export function inspectDatabase(filename, { suppressionLedger, requirePrivacyCle
     const counts = Object.fromEntries(["users", "restaurants", "orders"].map((table) => [table, db.prepare(`SELECT count(*) AS count FROM ${table}`).get().count]));
     if (requirePrivacyClearance && !suppressionLedger) throw new Error("Restore remains quarantined: supply the latest independently verified privacy suppression ledger from the current environment. The backup's own tombstones cannot prove that later erasures or holds were applied.");
     const privacy = suppressionLedger ? assertPrivacySuppressionSafe(db, suppressionLedger, { now }) : { status: "not_checked", reason: "integrity_only_not_restore_authorization" };
-    return { integrity: "ok", foreignKeyViolations: 0, migrationCount, counts, privacy };
+    const inventory=mediaObjectInventory(db),media=requirePrivacyClearance||mediaProof?assertMediaRestoreProof(inventory,mediaProof):{status:inventory.count?"external_versions_not_verified":"not_required",...inventory};
+    return { integrity: "ok", foreignKeyViolations: 0, migrationCount, counts, privacy, media };
   } finally {
     db.close();
   }
@@ -60,19 +62,23 @@ export function checkBackup(input, privacyOptions = {}) {
 function main() {
   const [input, ...extra] = process.argv.slice(2);
   const options = { requirePrivacyClearance: true };
-  let ledgerPath, ledgerHash;
+  let ledgerPath, ledgerHash,mediaProofPath,mediaProofHash;
   for(let index=0;index<extra.length;index++) {
     const flag=extra[index];
     if(flag==="--integrity-only") options.requirePrivacyClearance=false;
     else if(flag==="--privacy-ledger") ledgerPath=extra[++index];
     else if(flag==="--privacy-ledger-sha256") ledgerHash=extra[++index];
+    else if(flag==="--media-proof") mediaProofPath=extra[++index];
+    else if(flag==="--media-proof-sha256") mediaProofHash=extra[++index];
     else throw new Error("Usage: node scripts/restore-check.js backups/<file>.sqlite --privacy-ledger <current-ledger.json> --privacy-ledger-sha256 <verified-sha256> (or --integrity-only for inspection without restore clearance)");
   }
   if(ledgerPath||ledgerHash)options.suppressionLedger=loadPinnedPrivacySuppressionLedger(ledgerPath,ledgerHash);
+  if(mediaProofPath||mediaProofHash)options.mediaProof=loadPinnedMediaProof(mediaProofPath,mediaProofHash);
   const result = checkBackup(input,options);
   console.log(`Backup verified: ${result.backupPath}`);
   console.log(`Integrity: ${result.integrity}; migrations: ${result.migrationCount}; users: ${result.counts.users}; restaurants: ${result.counts.restaurants}; orders: ${result.counts.orders}`);
   console.log(`Privacy restore clearance: ${result.privacy.status}`);
+  console.log(`Image version restore clearance: ${result.media.status}; external images: ${result.media.count}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { main(); } catch (error) { console.error(`Restore check failed: ${error.message}`); process.exitCode = 1; } }

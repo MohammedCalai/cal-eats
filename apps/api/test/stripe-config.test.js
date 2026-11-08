@@ -39,3 +39,14 @@ test("restricted Stripe keys keep the same sandbox and live isolation", async ()
   assert.throws(() => createStripeAdapter({ secretKey: "rk_live_localfixture", mode: "live" }), /explicit/);
   assert.equal(createStripeAdapter({ secretKey: "rk_live_localfixture", mode: "live", liveEnabled: true }).mode, "stripe_live");
 });
+
+test("only the exact live Connect profile prerequisite becomes a safe actionable error code",async()=>{
+  const message="You must complete your platform profile to use Connect and create live connected accounts. Visit your dashboard at https://dashboard.stripe.com/connect/accounts/overview to answer the questionnaire.";
+  const replies=[{type:"invalid_request_error",message},{type:"invalid_request_error",message:"Another invalid request with private provider details"},{type:"invalid_request_error",message}];
+  const adapter=createStripeAdapter({mode:"live",liveEnabled:true,secretKey:"rk_live_profile_fixture",fetchImpl:async()=>({ok:false,status:400,json:async()=>({error:replies.shift()})})});
+  const first=await adapter.createConnectedAccount({restaurantId:"restaurant-fixture",email:"fixture@example.invalid",idempotencyKey:"profile-create-fixture"});
+  assert.deepEqual(first,{ok:false,status:"failed",providerReference:undefined,errorCode:"STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED"});
+  const other=await adapter.createConnectedAccount({restaurantId:"restaurant-fixture",email:"fixture@example.invalid",idempotencyKey:"profile-create-fixture"});assert.equal(other.errorCode,"invalid_request_error");
+  const refresh=await adapter.refreshConnectedAccount({accountId:"acct_fixture"});assert.equal(refresh.errorCode,"invalid_request_error","The special mapping only applies to account creation");
+  for(const result of[first,other,refresh])assert.doesNotMatch(JSON.stringify(result),/questionnaire|dashboard\.stripe|private provider|rk_live_profile_fixture|fixture@example/);
+});

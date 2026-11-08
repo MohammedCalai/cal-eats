@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 import { exportPrivacySuppressionLedger, assertPrivacySuppressionSafe } from "./restore-privacy.js";
+import {writeMediaObjectManifest} from "./media-object-manifest.js";
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const BACKUP_ROOT = path.resolve(process.env.CALAI_BACKUP_DIR || path.join(PROJECT_ROOT, "backups"));
@@ -78,6 +79,7 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
       // exported from the current environment; this check cannot know future
       // erasures and does not purge old managed/provider backups.
       if (copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='customer_erasure_tombstones'").get()) assertPrivacySuppressionSafe(copy, exportPrivacySuppressionLedger(copy));
+      writeMediaObjectManifest(copy,destinationPath);
     } finally { copy.close(); }
   } catch (error) {
     try {

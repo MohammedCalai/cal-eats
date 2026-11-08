@@ -1,6 +1,6 @@
 import {restaurantCommissionMigration39} from "../restaurant-commission-migration.js";
 import {accountAccessEmailMigration43} from "../account-access-email.js";
-import {customerPushMigration44} from "../customer-push.js";
+import {customerPushMigration44} from "../customer-push-migration.js";
 import {orderLiveActivityMigration45} from "../order-live-activity-migration.js";
 import {customerLegalMigration46} from "../customer-legal-migration.js";
 import {customerErasureMigration47} from "../customer-erasure-migration.js";
@@ -11,6 +11,9 @@ import {customerSafetyMigration51} from "../customer-safety-migration.js";
 import {merchantCommercialMigration} from "../merchant-commercial-migration.js";
 import {financialEnvironmentMigration} from "../financial-environment-migration.js";
 import {merchantCommercialTermMigration54} from "../merchant-commercial-term-migration.js";
+import {payoutApiProvenanceMigration55} from "../payout-api-provenance-migration.js";
+import {mediaObjectMigration56} from "../media-object-migration.js";
+import {accountSetupAttemptMigration57} from "../payments/account-setup-attempt-migration.js";
 import {restaurantCommissionEmailMigration40} from "../restaurant-commission-email-migration.js";
 import {businessMessageAttentionMigration41} from "../business-message-attention-migration.js";
 import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
@@ -319,5 +322,8 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   customerSafetyMigration51,
   merchantCommercialMigration,
   financialEnvironmentMigration,
-  merchantCommercialTermMigration54
+  merchantCommercialTermMigration54,
+  payoutApiProvenanceMigration55,
+  mediaObjectMigration56,
+  accountSetupAttemptMigration57
 ];

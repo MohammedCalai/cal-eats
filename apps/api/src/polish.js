@@ -10,6 +10,7 @@ import { updateMarketingPreferences } from "./loyalty.js";
 import { integer, itemDto, stringList, text, validateModifierGroups } from "./journey.js";
 import { restaurantReadiness } from "./readiness.js";
 import { assertMediaCapacity, mediaIsReferenced, mediaStorage } from "./media-policy.js";
+import {mediaObjectKey,mediaSha256,queueMediaObjectRemoval} from "./media-object-store.js";
 
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}` : JSON.stringify(value);
 const hash = (value) => createHash("sha256").update(canonical(value)).digest("hex");
@@ -48,8 +49,8 @@ export async function routePolish({ req, res, url, db, config, session }) {
   match=url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/menu\/order$/); if(match&&req.method==="PUT"){requireRestaurantOwner(db,session,match[1]);const body=await readJson(req,config.bodyLimit);exactObject(body,["itemIds"]);const existing=db.prepare("SELECT id FROM menu_items WHERE restaurant_id=?").all(match[1]).map(x=>x.id);if(!Array.isArray(body.itemIds)||body.itemIds.length!==existing.length||new Set(body.itemIds).size!==existing.length||body.itemIds.some(id=>!existing.includes(id)))throw new HttpError(400,"VALIDATION_ERROR","Item order must be an exact permutation");withTransaction(db,()=>body.itemIds.forEach((id,index)=>db.prepare("UPDATE menu_items SET sort_order=? WHERE id=? AND restaurant_id=?").run(index,id,match[1])));return sendJson(res,200,{data:db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? ORDER BY sort_order,created_at,rowid").all(match[1]).map(itemDto)});}
   match=url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/menu\/import$/); if(match&&req.method==="POST")return importMenu({req,res,db,config,session,restaurantId:match[1]});
   match=url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/(cover|menu\/([^/]+)\/photo)$/); if(match&&req.method==="POST")return uploadMedia({req,res,db,config,session,restaurantId:match[1],itemId:match[3]??null});
-  if(match&&req.method==="DELETE")return removeMedia({res,db,session,restaurantId:match[1],itemId:match[3]??null});
-  match=url.pathname.match(/^\/api\/media\/([^/]+)$/); if(match&&req.method==="GET")return serveMedia({res,db,session,id:match[1]});
+  if(match&&req.method==="DELETE")return removeMedia({res,db,config,session,restaurantId:match[1],itemId:match[3]??null});
+  match=url.pathname.match(/^\/api\/media\/([^/]+)$/); if(match&&req.method==="GET")return serveMedia({res,db,config,session,id:match[1]});
   return false;
 }
 
@@ -69,6 +70,23 @@ async function uploadMedia({ req, res, db, config, session, restaurantId, itemId
   requireRestaurantOwner(db, session, restaurantId);
   mediaTarget(db, restaurantId, itemId);
   const image = decodeImage(await readJson(req, 1_450_000));
+  const store=config.mediaObjectStore,id=randomUUID(),stamp=config.now().toISOString();
+  let object;
+  if(store){
+    const key=mediaObjectKey(restaurantId,id,image.mimeType),sha256=mediaSha256(image.data);
+    withTransaction(db,()=>{
+      requireRestaurantOwner(db,session,restaurantId);
+      // This is only a preflight: the final transaction repeats quota checks
+      // after the network request, so concurrent uploads cannot exceed100MB.
+      const {old}=mediaTarget(db,restaurantId,itemId);
+      assertMediaCapacity(mediaStorage(db,restaurantId).usedBytes,image.data.length,old?.byte_length??0);
+      db.prepare("INSERT INTO media_object_cleanup(object_key,backend_id,available_at,created_at) VALUES(?,?,?,?)").run(key,store.backendId,new Date(config.now().getTime()+3600000).toISOString(),stamp);
+    });
+    let saved;
+    try{saved=await store.put({key,bytes:image.data,mimeType:image.mimeType,sha256});if(!saved?.versionId)throw Error("Unversioned media");}
+    catch{throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo could not be saved securely. Please try again.");}
+    object={key,sha256,versionId:saved.versionId};
+  }
   const created = withTransaction(db, () => {
     // Recheck ownership and target after reading the asynchronous request body.
     requireRestaurantOwner(db, session, restaurantId);
@@ -77,24 +95,50 @@ async function uploadMedia({ req, res, db, config, session, restaurantId, itemId
     else db.prepare("UPDATE restaurants SET cover_media_id=NULL WHERE id=?").run(restaurantId);
     const reclaim = old && !mediaIsReferenced(db, old.id) ? old.byte_length : 0;
     assertMediaCapacity(mediaStorage(db, restaurantId).usedBytes, image.data.length, reclaim);
-    const id = randomUUID(), now = config.now().toISOString();
-    db.prepare("INSERT INTO media_assets VALUES(?,?,?,?,?,?,?,?)").run(id, restaurantId, image.mimeType, image.data, image.width, image.height, image.data.length, now);
+    const now = config.now().toISOString();
+    db.prepare("INSERT INTO media_assets VALUES(?,?,?,?,?,?,?,?)").run(id, restaurantId, image.mimeType, object?Buffer.alloc(0):image.data, image.width, image.height, image.data.length, now);
+    if(object){
+      db.prepare("INSERT INTO media_asset_objects VALUES(?,?,?,?,?,?,?,?)").run(id,restaurantId,store.backendId,object.key,object.versionId,object.sha256,image.data.length,now);
+      db.prepare("DELETE FROM media_object_cleanup WHERE object_key=? AND backend_id=?").run(object.key,store.backendId);
+    }
     if (itemId) db.prepare("UPDATE menu_items SET photo_media_id=? WHERE id=? AND restaurant_id=?").run(id, itemId, restaurantId);
     else db.prepare("UPDATE restaurants SET cover_media_id=? WHERE id=?").run(id, restaurantId);
-    if (target.current && reclaim) db.prepare("DELETE FROM media_assets WHERE id=? AND restaurant_id=?").run(target.current, restaurantId);
+    if (target.current && reclaim) {queueMediaObjectRemoval(db,target.current,now);db.prepare("DELETE FROM media_assets WHERE id=? AND restaurant_id=?").run(target.current, restaurantId);}
     return { id, mime_type: image.mimeType, width: image.width, height: image.height };
   });
   return sendJson(res, 201, { data: { ...mediaDto(created), storage: mediaStorage(db, restaurantId) } });
 }
 
-function removeMedia({ res, db, session, restaurantId, itemId }) {
+function removeMedia({ res, db, config, session, restaurantId, itemId }) {
   requireRestaurantOwner(db, session, restaurantId);
   withTransaction(db, () => {
     const { target } = mediaTarget(db, restaurantId, itemId);
     if (itemId) db.prepare("UPDATE menu_items SET photo_media_id=NULL WHERE id=? AND restaurant_id=?").run(itemId, restaurantId);
     else db.prepare("UPDATE restaurants SET cover_media_id=NULL WHERE id=?").run(restaurantId);
-    if (target.current && !mediaIsReferenced(db, target.current)) db.prepare("DELETE FROM media_assets WHERE id=? AND restaurant_id=?").run(target.current, restaurantId);
+    if (target.current && !mediaIsReferenced(db, target.current)) {queueMediaObjectRemoval(db,target.current,config.now().toISOString());db.prepare("DELETE FROM media_assets WHERE id=? AND restaurant_id=?").run(target.current, restaurantId);}
   });
   return sendJson(res, 200, { data: { removed: true, storage: mediaStorage(db, restaurantId) } });
 }
-function serveMedia({res,db,session,id}){const row=db.prepare("SELECT m.*,r.status,r.suspended FROM media_assets m JOIN restaurants r ON r.id=m.restaurant_id WHERE m.id=?").get(id);if(!row)throw new HttpError(404,"NOT_FOUND","Resource not found");const user=session?.user;const owner=user?.role==="restaurant"&&db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(row.restaurant_id,user.id);if(!(row.status==="approved"&&!row.suspended)&&user?.role!=="admin"&&!owner)throw new HttpError(404,"NOT_FOUND","Resource not found");res.setHeader("Content-Security-Policy","sandbox; default-src 'none'");res.writeHead(200,{"Content-Type":row.mime_type,"Content-Length":row.data.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(row.data);return true;}
+function visibleMedia(db,session,id){
+  const row=db.prepare("SELECT m.id,m.restaurant_id,m.mime_type,m.byte_length,r.status,r.suspended,r.archived_at FROM media_assets m JOIN restaurants r ON r.id=m.restaurant_id WHERE m.id=?").get(id);
+  if(!row)throw new HttpError(404,"NOT_FOUND","Resource not found");
+  const user=session?.user,owner=user?.role==="restaurant"&&db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(row.restaurant_id,user.id);
+  if(!(row.status==="approved"&&!row.suspended&&!row.archived_at)&&user?.role!=="admin"&&!owner)throw new HttpError(404,"NOT_FOUND","Resource not found");
+  return row;
+}
+async function serveMedia({res,db,config,session,id}){
+  const row=visibleMedia(db,session,id);
+  const object=db.prepare("SELECT * FROM media_asset_objects WHERE media_id=? AND restaurant_id=?").get(id,row.restaurant_id);
+  res.setHeader("Content-Security-Policy","sandbox; default-src 'none'");
+  if(object){
+    const store=config.mediaObjectStore;
+    if(!store||store.backendId!==object.backend_id||object.byte_length!==row.byte_length)throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo is temporarily unavailable");
+    let bytes;
+    try{bytes=await store.read({key:object.object_key,versionId:object.object_version,byteLength:object.byte_length,sha256:object.content_sha256});if(bytes.length!==row.byte_length||mediaSha256(bytes)!==object.content_sha256)throw Error("Invalid media content");}
+    catch{throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo is temporarily unavailable");}
+    visibleMedia(db,session,id);
+    res.writeHead(200,{"Content-Type":row.mime_type,"Content-Length":bytes.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(bytes);return true;
+  }
+  const bytes=db.prepare("SELECT data FROM media_assets WHERE id=?").get(id).data;
+  res.writeHead(200,{"Content-Type":row.mime_type,"Content-Length":bytes.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(bytes);return true;
+}

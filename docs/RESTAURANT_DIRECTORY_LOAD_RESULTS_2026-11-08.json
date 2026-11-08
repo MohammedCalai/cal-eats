@@ -1,0 +1,254 @@
+{
+  "createdAt": "2026-11-08T15:10:27.664Z",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "win32",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-1335U",
+    "persistence": "One isolated SQLite WAL file on this local machine",
+    "apiProcesses": 1,
+    "httpClients": 8,
+    "outboundProviders": "Disabled; worker receives a minimal environment and no provider keys"
+  },
+  "dataset": {
+    "restaurants": 10000,
+    "menuItems": 200000,
+    "historicalOrders": 50000,
+    "ratings": 20000,
+    "syntheticAccounts": 1,
+    "images": 0
+  },
+  "seedMs": 4433.76,
+  "pagesWalked": 200,
+  "uniqueRestaurantsSeen": 10000,
+  "baselineLabel": "a52cdb699cf54df8977cbc9ed9715824d1c9e6e3",
+  "directQueryResults": {
+    "first page": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 1.69,
+          "p95": 1.99,
+          "max": 1.99
+        },
+        "preparedStatements": 2,
+        "executedStatements": 51
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 1.09,
+          "p95": 1.39,
+          "max": 1.39
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    },
+    "last page": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 4.17,
+          "p95": 4.32,
+          "max": 4.32
+        },
+        "preparedStatements": 2,
+        "executedStatements": 51
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 3.89,
+          "p95": 4.28,
+          "max": 4.28
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    },
+    "past last page": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 2.8,
+          "p95": 3.86,
+          "max": 3.86
+        },
+        "preparedStatements": 2,
+        "executedStatements": 1
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 2.57,
+          "p95": 3.03,
+          "max": 3.03
+        },
+        "preparedStatements": 1,
+        "executedStatements": 1
+      }
+    },
+    "menu keyword beyond first page": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 95.65,
+          "p95": 96.27,
+          "max": 96.27
+        },
+        "preparedStatements": 2,
+        "executedStatements": 2
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 95.45,
+          "p95": 95.7,
+          "max": 95.7
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    },
+    "cuisine": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 4,
+          "p95": 4.5,
+          "max": 4.5
+        },
+        "preparedStatements": 2,
+        "executedStatements": 101
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 3.7,
+          "p95": 3.7,
+          "max": 3.7
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    },
+    "delivery postcode": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 1.09,
+          "p95": 1.56,
+          "max": 1.56
+        },
+        "preparedStatements": 2,
+        "executedStatements": 51
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 1.09,
+          "p95": 1.24,
+          "max": 1.24
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    },
+    "popular ranking": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 16.56,
+          "p95": 17.12,
+          "max": 17.12
+        },
+        "preparedStatements": 2,
+        "executedStatements": 51
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 16.81,
+          "p95": 17.79,
+          "max": 17.79
+        },
+        "preparedStatements": 3,
+        "executedStatements": 3
+      }
+    },
+    "free delivery": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 1.04,
+          "p95": 1.46,
+          "max": 1.46
+        },
+        "preparedStatements": 2,
+        "executedStatements": 51
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 0.96,
+          "p95": 1.06,
+          "max": 1.06
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    },
+    "quick ranking": {
+      "before": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 4.41,
+          "p95": 4.87,
+          "max": 4.87
+        },
+        "preparedStatements": 2,
+        "executedStatements": 51
+      },
+      "after": {
+        "latencyMs": {
+          "count": 3,
+          "p50": 4.43,
+          "p95": 5,
+          "max": 5
+        },
+        "preparedStatements": 4,
+        "executedStatements": 4
+      }
+    }
+  },
+  "http": {
+    "requests": 209,
+    "errors": 0,
+    "latencyMs": {
+      "count": 209,
+      "p50": 21.05,
+      "p95": 41.22,
+      "max": 85.08
+    },
+    "maximumResponseBytes": 129084
+  },
+  "correctness": {
+    "stablePageBoundaries": true,
+    "allRestaurantIdsUnique": true,
+    "filtersBeforePagination": true,
+    "baselineResultsIdentical": true
+  },
+  "failures": [],
+  "workerOutput": [],
+  "limitations": [
+    "This measures the real 10,000-restaurant directory, not 10,000 simultaneous businesses/customers.",
+    "A short local warm-cache GET exercise, not sustainable production throughput, regional latency or checkout/worker capacity certification.",
+    "No real identities, payments, mail, notifications, printing or provider calls. Historical orders are synthetic browse counters, not financial-ledger fixtures.",
+    "No image bytes are allocated or downloaded: 100MB per business would be 1TB before overhead and backups, and requires separate storage/restore testing.",
+    "Popularity sorting and substring menu search still inspect matching directory/history data before pagination. PostgreSQL/object-storage/multi-node rollout is not validated."
+  ],
+  "sourceFiles": {
+    "apps/api/src/restaurant-discovery.js": "a17dca9a207e88b4000f15f1b5ad85ef4da3a6a5c9d098a3a4dffd449911d0f2",
+    "scripts/load-restaurant-directory.js": "baa8b24b6bc1618a30dc180a38eb941e6f165085c274cf87b9f9f130275d196a"
+  }
+}

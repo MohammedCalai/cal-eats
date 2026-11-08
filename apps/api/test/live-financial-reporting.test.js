@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { journeyFixture } from "./helpers.js";
 import { buildFinanceSummary } from "../src/marketplace-reporting.js";
+import { recordVerifiedPayoutApiRead } from "../src/financial-environment.js";
 import { buildWeeklyStatementSnapshot, weeklyStatementPeriod, initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "../src/business-weekly-statements.js";
 
 const insert = (db,table,row) => db.prepare(`INSERT INTO ${table}(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(()=>"?").join(",")})`).run(...Object.values(row));
@@ -45,6 +46,9 @@ test("live owner earnings and weekly totals exclude fictional cash/test cards an
     for(const id of old)assert.equal(weekly.csv.includes(id),false);
     assert.equal(weekly.csv.includes(unverifiedPayout),false);assert.match(weekly.csv,/financialScope/);
     assert.equal(testing.summary.ordersPlaced,2);assert.equal(testing.summary.grossSalesMinor,800);assert.equal(testing.summary.cashSalesMinor,400);assert.equal(testing.summary.cardSalesMinor,400);assert.equal(testing.csv.includes(liveId),false);
+    recordVerifiedPayoutApiRead(f.db,{...f.config,paymentProviderMode:"stripe_live",stripePlatformAccountId:"acct_platform",stripeProvider:{mode:"stripe_live"}},{restaurantId:shop.id,accountId:account,payoutId:unverifiedPayout,amountMinor:666,currency:"GBP",verifiedAt:stamp});
+    assert.equal(buildFinanceSummary(f.db,shop.id,null,f.config).bankPaidMinor,1443,"Fresh verified API evidence qualifies before its webhook arrives");
+    assert.equal(buildWeeklyStatementSnapshot(f.db,shop.id,period,f.config).summary.bankPayoutRecordedMinor,1443);
     assert.equal(financialFacts(f.db),before,"Reporting does not change historical financial facts");
     assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(),[]);
   } finally { await f.close(); }

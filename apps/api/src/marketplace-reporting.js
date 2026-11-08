@@ -33,7 +33,9 @@ export function cashCollectionFinancePredicate(alias, scope) {
 }
 function bankEvidence(alias, mode) {
   const a = aliasFor(alias);
-  return `EXISTS(SELECT 1 FROM provider_events finance_event WHERE finance_event.provider='${mode}' AND finance_event.object_type='payout' AND finance_event.event_type LIKE 'payout.%' AND finance_event.object_id=${a}.id AND finance_event.provider_account_reference=${a}.provider_account_id AND finance_event.restaurant_id=${a}.restaurant_id AND finance_event.status='completed' AND finance_event.error IS NULL)`;
+  const event = `EXISTS(SELECT 1 FROM provider_events finance_event WHERE finance_event.provider='${mode}' AND finance_event.object_type='payout' AND finance_event.event_type LIKE 'payout.%' AND finance_event.object_id=${a}.id AND finance_event.provider_account_reference=${a}.provider_account_id AND finance_event.restaurant_id=${a}.restaurant_id AND finance_event.status='completed' AND finance_event.error IS NULL)`;
+  const api = `EXISTS(SELECT 1 FROM stripe_payout_api_provenance finance_read WHERE finance_read.payout_id=${a}.id AND finance_read.restaurant_id=${a}.restaurant_id AND finance_read.provider_account_id=${a}.provider_account_id AND finance_read.provider_mode='${mode}' AND finance_read.amount_minor=${a}.amount_minor AND finance_read.currency='GBP' AND finance_read.source='stripe_payouts_api_read')`;
+  return `(${event} OR ${api})`;
 }
 export function bankPayoutFinancePredicate(alias, scope) { return scoped(bankEvidence(alias, "stripe_live"), scope); }
 export function bankPayoutProviderModeSql(alias) {
@@ -153,7 +155,7 @@ export function buildFinanceSummary(db, restaurantId, url = null, config = null)
     pendingMinor,availableMinor:Math.max(0,completedCardNet-heldCardMinor-paidTransfersMinor-inTransitTransfersMinor-pendingTransfersMinor),heldMinor,
     platformVoucherCreditMinor:sum(rangedOperations.filter(row=>row.kind==="platform_voucher_credit"&&row.status==="confirmed")),providerCostMinor,providerCostsPendingCount,
     paidTransfersMinor,inTransitTransfersMinor,pendingTransfersMinor,bankPaidMinor,bankPendingMinor,bankPayoutUnverifiedCount,
-    bankPayoutBasis:"Only completed provider payout events proving the recorded environment contribute to live bank totals; unverified history is excluded.",
+    bankPayoutBasis:"Completed provider payout events or immutable verified API-read evidence must prove the recorded environment; unverified history is excluded.",
     nextPayout:next?{scheduledFor:next.scheduled_for,estimatedAmountMinor:next.amount_minor,status:next.status}:null
   };
 }

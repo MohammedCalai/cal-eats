@@ -23,6 +23,7 @@ import {runCustomerPrivacyRetention} from "./customer-privacy.js";
 import {runCustomerErasureConfirmations} from "./customer-erasure.js";
 import {initializeCustomerLegal} from "./customer-legal.js";
 import {initializeMerchantCommercial} from "./merchant-commercial.js";
+import {runMediaObjectCleanup} from "./media-object-store.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -43,6 +44,13 @@ let currentCommissionWorker = Promise.resolve();
 let accountEmailRunning=false,currentAccountEmailWorker=Promise.resolve();
 let customerPushRunning=false,currentCustomerPushWorker=Promise.resolve();
 let liveActivityRunning=false,currentLiveActivityWorker=Promise.resolve();
+let mediaCleanupRunning=false,currentMediaCleanup=Promise.resolve();
+function triggerMediaCleanup(){
+  if(mediaCleanupRunning)return currentMediaCleanup;
+  mediaCleanupRunning=true;
+  currentMediaCleanup=runMediaObjectCleanup(db,config).catch(()=>{console.error("Image cleanup worker failed");}).finally(()=>{mediaCleanupRunning=false;});
+  return currentMediaCleanup;
+}
 function triggerLiveActivities(){
   if(liveActivityRunning)return currentLiveActivityWorker;
   liveActivityRunning=true;
@@ -108,6 +116,7 @@ void triggerCommissionEmails();
 void triggerAccountEmails();
 void triggerCustomerPush();
 void triggerLiveActivities();
+void triggerMediaCleanup();
 const worker = setInterval(() => { void triggerWorkers(); }, 60_000);
 worker.unref();
 const alertWorker=setInterval(()=>{void triggerOrderAlerts();},5000);
@@ -120,15 +129,17 @@ const customerPushWorker=setInterval(()=>{void triggerCustomerPush();},5000);
 customerPushWorker.unref();
 const liveActivityWorker=setInterval(()=>{void triggerLiveActivities();},5000);
 liveActivityWorker.unref();
+const mediaCleanupWorker=setInterval(()=>{void triggerMediaCleanup();},60000);
+mediaCleanupWorker.unref();
 
 let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
-  shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);clearInterval(customerPushWorker);clearInterval(liveActivityWorker);
+  shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);clearInterval(customerPushWorker);clearInterval(liveActivityWorker);clearInterval(mediaCleanupWorker);
   notificationStreamHub(db).close();
   const result = await closeServer(server, { graceMs: 5_000 });
   if (!result.drained) process.exit(1);
-  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
+  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
   if (!workerDrained) process.exit(1);
   closeDatabase(db);
 }
