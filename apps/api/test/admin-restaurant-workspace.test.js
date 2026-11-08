@@ -103,3 +103,29 @@ test('admin can create, edit and end restaurant-funded marketing without bypassi
   assert.equal((await f.request(`/api/admin/restaurants/${f.restaurant.id}/manage/loyalty/promotions/${id}`,{method:'PATCH',body:{title:'Too late'}})).status,409);
  }finally{await f.close();}
 });
+
+test('administrator cover removal is explicit, audited and cannot delete another restaurant media through a mismatched reference',async()=>{
+ const f=await setup();try{
+  const ownerCookie=await f.login('restaurant@calai.local','LocalRestaurant!4310'),otherCookie=await f.login('restaurant2@calai.local','LocalRestaurant2!4310');
+  const image={mimeType:'image/png',dataBase64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII='};
+  const first=await f.json(`/api/restaurant/restaurants/${f.restaurant.id}/cover`,{method:'POST',cookie:ownerCookie,body:image}),second=await f.json(`/api/restaurant/restaurants/${f.other.id}/cover`,{method:'POST',cookie:otherCookie,body:image});
+  assert.equal(first.status,201,first.text);assert.equal(second.status,201,second.text);
+  const root=`/api/admin/restaurants/${f.restaurant.id}/manage/cover`,audits=()=>f.db.prepare("SELECT * FROM audit_events WHERE action='admin_restaurant_managed' AND json_extract(details,'$.resource')='cover'").all();
+  for(const session of [null,f.owner,f.customer])assert.equal((await f.request(root,{method:'DELETE',session})).status,session?403:401);
+  assert.equal((await f.request(root,{method:'POST',body:image})).status,404,'The new administrative capability removes covers; it does not grant cover upload');
+  assert.equal((await f.json(`/api/restaurant/restaurants/${f.other.id}/cover`,{method:'DELETE',cookie:ownerCookie})).status,404,'One restaurant owner cannot remove another restaurant cover');
+  assert.equal(audits().length,0);
+  f.db.prepare('UPDATE restaurants SET cover_media_id=? WHERE id=?').run(second.body.data.id,f.restaurant.id);
+  const mismatch=await f.request(root,{method:'DELETE'});assert.equal(mismatch.status,404);
+  assert.equal(f.db.prepare('SELECT cover_media_id FROM restaurants WHERE id=?').get(f.restaurant.id).cover_media_id,second.body.data.id,'A mismatched media owner must fail without partially clearing the cover');
+  assert.ok(f.db.prepare('SELECT id FROM media_assets WHERE id=?').get(second.body.data.id));assert.equal(audits().length,0);
+  f.db.prepare('UPDATE restaurants SET cover_media_id=? WHERE id=?').run(first.body.data.id,f.restaurant.id);
+  const removed=await f.request(root,{method:'DELETE'});assert.equal(removed.status,200);assert.equal(removed.body.data.removed,true);
+  assert.equal(f.db.prepare('SELECT cover_media_id FROM restaurants WHERE id=?').get(f.restaurant.id).cover_media_id,null);
+  assert.equal(f.db.prepare('SELECT id FROM media_assets WHERE id=?').get(first.body.data.id),undefined);
+  assert.equal(f.db.prepare('SELECT cover_media_id FROM restaurants WHERE id=?').get(f.other.id).cover_media_id,second.body.data.id);assert.ok(f.db.prepare('SELECT id FROM media_assets WHERE id=?').get(second.body.data.id));
+  assert.equal((await f.request(`/api/admin/restaurants/${f.restaurant.id}/workspace`)).body.data.restaurant.coverImageUrl,null);
+  const logged=audits();assert.equal(logged.length,1);assert.equal(logged[0].actor_user_id,f.admin.user.id);assert.equal(logged[0].entity_id,f.restaurant.id);assert.deepEqual(JSON.parse(logged[0].details),{method:'DELETE',resource:'cover'});
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
+ }finally{await f.close();}
+});

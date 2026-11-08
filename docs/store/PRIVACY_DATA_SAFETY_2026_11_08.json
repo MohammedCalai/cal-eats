@@ -1,6 +1,7 @@
 {
   "status": "EVIDENCE_BASED_DRAFT_NOT_A_STORE_SUBMISSION",
   "preparedAt": "2026-11-08",
+  "savedStateCheckpoint": "STORE_STATE_2026_11_08.json records subsequently saved store drafts and the incomplete publication/submission state; this file remains the evidence/rationale draft, not a certification.",
   "app": {
     "name": "Cal-Eats",
     "operator": "CALAI LTD",
@@ -66,7 +67,7 @@
   "googlePlay": {
     "collectsData": true,
     "encryptedInTransit": { "recommendedAnswer": true, "basis": "Production app API and the implemented service-provider requests use HTTPS. Native client rejects remote cleartext API origins. This is not an end-to-end-encryption or all-storage-encryption claim." },
-    "deletion": { "recommendedAnswer": true, "webUrl": "https://eats.calai.info/account-deletion/", "inApp": "Account > Security & privacy > Delete your account", "process": "Password/identity-confirmed intake, internal staff review and actual personal-data erasure/login revocation; necessary financial/legal evidence retained as explained in the notice. Not merely account disabling." },
+    "deletion": { "recommendedAnswer": true, "webUrl": "https://eats.calai.info/account-deletion/", "specificDataWithoutAccountClosureUrl": "https://eats.calai.info/account-deletion/", "inApp": "Account > Security & privacy > Delete your account", "process": "Password/identity-confirmed intake, internal staff review and actual personal-data erasure/login revocation; necessary financial/legal evidence retained as explained in the notice. Not merely account disabling. The public page also explains removal of specific personal data while keeping the account, using saved-address controls or a verified email request." },
     "independentSecurityReview": false,
     "familiesCommitment": false,
     "dataTypes": [

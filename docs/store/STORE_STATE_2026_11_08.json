@@ -1,11 +1,48 @@
 {
   "status": "PREPARATION_CHECKPOINT_NOT_PUBLIC_APPROVAL",
   "date": "2026-11-08",
+  "sourceAndHosting": {
+    "lastVerifiedApplicationSource": "83a67be0c145a53bfd430e4783ee1b29ed719553",
+    "lastVerifiedRailwayDeployment": "b4da9a37-3232-48d9-8531-2b2c24e3d871",
+    "railwayStatus": "SUCCESS",
+    "scope": "Verified deployment baseline before the subsequent audited cover-removal change. The repository HEAD contains the latest source; final hosting identity is recorded in the private operational checkpoint. Real payments remain paused."
+  },
   "apple": {
     "appId": "6831180948",
     "version": "1.0.0",
     "selectedBuild": 16,
+    "newBuild": {
+      "number": 17,
+      "source": "83a67be",
+      "easBuildId": "06b7fed2-5d05-4dbf-bca9-f5c15d32100e",
+      "state": "APPLE_VALID_IN_BETA_TESTING",
+      "costScope": "Existing free allowance; no plan upgrade",
+      "submission": "TESTFLIGHT_AVAILABLE_TO_EXISTING_INTERNAL_GROUP_NOT_PUBLIC_REVIEW",
+      "appleBuildId": "dfdd10df-b20d-4b8a-af18-88601551679c",
+      "submissionId": "6c9ba50f-846a-4283-a558-cb65a10694d7",
+      "ipaSha256": "e3e059ce0c86bdc0f8d5c8e608e528af30efa4cdbfd5a6ed890cf6a2f6e76a8f",
+      "deviceRuntimeVerified": false
+    },
     "versionState": "PREPARE_FOR_SUBMISSION",
+    "subtitle": {
+      "value": "Local food, offers & updates",
+      "state": "SAVED"
+    },
+    "macAndVisionAvailability": "DISABLED_VERIFIED: both checkboxes remain unchecked after saved-page reload.",
+    "pricing": {
+      "state": "SAVED_VERIFIED",
+      "baseStorefront": "United Kingdom",
+      "price": "GBP0 / free",
+      "evidence": "Saved Current Price table was reopened and the United Kingdom row showed GBP0.00; this is the app download price, not restaurant food pricing."
+    },
+    "territories": {
+      "state": "SAVED_VERIFIED",
+      "countries": [
+        "United Kingdom"
+      ],
+      "count": 1,
+      "availability": "Available on App Release; this is not public release or approval."
+    },
     "privacy": {
       "state": "DRAFT_SAVED_UNPUBLISHED",
       "typeCount": 17,
@@ -17,7 +54,7 @@
       "evidence": "artifacts/store-preparation-20261108/apple-privacy-draft-readback.private.txt",
       "publish": "Pending the operator's requested final publication confirmation. An enabled Publish button and saved preview do not establish publication."
     },
-    "reviewAccess": "Dedicated pre-verified customer review credentials/contact details are still being prepared; no password is stored here.",
+    "reviewAccess": "A dedicated customer reviewer account was created through the ordinary API and email-verified. Credentials remain in private storage, not in either store or this document. Full-feature access is not certified while paid ordering is paused; contact details/notes still need final store entry.",
     "submission": "NOT_SUBMITTED"
   },
   "googlePlay": {
@@ -26,22 +63,86 @@
     "internalVersionCode": 21,
     "internalRelease": 9,
     "publicState": "DRAFT",
-    "baselinePublicSetupCount": "0/11 at the earlier authenticated audit, superseded as a current count by the subsequent individual saves below; no new total is inferred.",
+    "baselinePublicSetupCount": "Historical audit0/11, superseded by the authenticated6/11 readback above.",
     "savedReportedByOperator": {
       "privacyPolicy": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
       "governmentApp": false,
       "healthAppFeatures": false,
       "containsAds": false,
-      "financialFeatures": ["Rewards, points, frequent flier miles, and other incentives"],
+      "financialFeatures": [
+        "Rewards, points, frequent flier miles, and other incentives"
+      ],
       "category": "Food & Drink",
       "contactEmail": "support@calai.info",
       "website": "https://eats.calai.info"
     },
-    "dataSafety": "BEING_EDITED_NOT_CONFIRMED_SAVED_OR_SUBMITTED",
+    "dataSafety": {
+      "state": "SAVED_AS_DRAFT_CHANGES_SAVED_CONFIRMED",
+      "typeCount": 16,
+      "allSelectedTypesCollected": true,
+      "includesInAppSearchHistory": true,
+      "ephemeralProcessing": "No for all selected types, conservatively; no hosting/supplier query-retention exemption is claimed.",
+      "sharing": "Precise GPS location is Shared for App functionality. Other handling uses the actual service-provider/user-initiated-transfer exceptions reported in the form; do not infer that no data leaves Cal-Eats infrastructure.",
+      "deletionLinks": {
+        "accountAndAssociatedData": "https://eats.calai.info/account-deletion/",
+        "specificDataWithoutAccountClosure": "https://eats.calai.info/account-deletion/",
+        "publicPage": "Coordinator verified HTTP200 after deploying the added data-only deletion section."
+      },
+      "completion": "NOT_COMPLETE_OR_SUBMITTED: completion requires Target audience, which requires App access. A saved draft preview is not Google review or approval."
+    },
     "targetAudience": "Waiting for reviewer-access prerequisite; intended audience is adults18+.",
-    "reviewAccess": "Customer reviewer account preparation in progress; credentials omitted.",
-    "contentRatingAndStoreListing": "No final completion or review status is established by this checkpoint.",
-    "submission": "NOT_SUBMITTED_TO_PUBLIC_REVIEW"
+    "reviewAccess": "An App access Yes/full-feature certification was not saved and was discarded because paid ordering is paused. A verified reviewer account now exists privately but has not been entered in either store. Do not certify full access until the ordering/payment prerequisite is genuinely available.",
+    "storeListing": {
+      "state": "TEXT_AND_GRAPHICS_SAVED_DRAFT_INCOMPLETE",
+      "shortDescription": "SAVED",
+      "fullDescription": "SAVED",
+      "icon": "UPLOADED1/1",
+      "featureGraphic": "UPLOADED1/1",
+      "saveEvidence": "Save as Draft followed by Your changes have been saved.",
+      "remainingAssets": [
+        "At least two genuine Android screenshots"
+      ],
+      "completion": "Still incomplete; final listing validation and other store prerequisites are separate."
+    },
+    "contentRating": "No final completion or review status is established by this checkpoint.",
+    "submission": "NOT_SUBMITTED_TO_PUBLIC_REVIEW",
+    "publicSetup": {
+      "completed": 6,
+      "total": 11,
+      "verifiedFrom": "Authenticated Dashboard readback after saving the store forms",
+      "completedTasks": [
+        "Privacy policy",
+        "Ads",
+        "Government apps",
+        "Financial features",
+        "Health",
+        "Category and contact details"
+      ]
+    }
   },
-  "scope": "Records saved-state evidence and the coordinator's live UI report. This agent made documentation-only changes; no forms, publication, legal acceptance or submission were executed by this agent. No passwords or account tokens are included."
+  "pendingUserDecisions": [
+    "Apple App Privacy Publish confirmation",
+    "Disposable test-account deletion verification"
+  ],
+  "scope": "Records saved-state evidence and the coordinator's live UI report. This agent made documentation-only changes; no forms, publication, legal acceptance or submission were executed by this agent. No passwords or account tokens are included. No current public-setup total is inferred.",
+  "localAndHostedVerification": {
+    "focusedSafetyChecks": "Passed18 bounded moderation/messaging/marketing checks; images and all-language classification are not claimed.",
+    "authAndPrivacyChecks": "Passed16 focused auth/privacy/readiness regression checks.",
+    "adminCoverRemoval": "Passed6 scoped management tests and portal build; no live merchant image was removed.",
+    "liveRecovery": "Normal welcome/reset delivery worker, own-link verification/reset, revoked old access, replay protection and fresh login passed for a disposable account. Inbox receipt and physical-device reset UI were not established.",
+    "liveDeletion": "Password-confirmed disposable request is eligible with no blockers; permanent completion awaits the specific operator confirmation.",
+    "reviewLogin": "Dedicated email-verified customer created and signed in through the normal API; privileged endpoints denied. Credentials remain private and were not entered in either store."
+  },
+  "pendingOperatorConfirmations": [
+    "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration",
+    "Permanently complete only the identified disposable test-account deletion"
+  ],
+  "remainingPublicReleaseWork": [
+    "Real provider/restaurant verification, bank onboarding and commercial acceptance",
+    "Genuine paid order, commission/commission-free-period and payout reconciliation",
+    "Final review access with a functioning ordering journey, review contact details and menu/photo rights",
+    "Complete target audience/content-rating and final privacy/listing submissions",
+    "At least two genuine Android listing screenshots and exact final native device verification",
+    "Review remaining test credentials before public launch"
+  ]
 }

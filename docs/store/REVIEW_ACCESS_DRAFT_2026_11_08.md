@@ -2,6 +2,8 @@
 
 Prepared 8 November 2026. This file contains no credentials and is not a claim that either store has received a submission. Android internal build 21 uses source `edc261b87e5550470317c35fa5f2689cb320e5ed`; the last confirmed Apple selection is iOS build 16 from `b0a2e10c76456fa2d915ac846d753db299695f42`. Use instructions and screenshots that match the exact submitted build.
 
+Checkpoint: a dedicated customer review account has been created through the ordinary API and email-verified; credentials are private and have not been entered in either store. Google's full-feature App access certification was deliberately discarded unsaved because paid ordering is paused. New iOS17 build `06b7fed2-5d05-4dbf-bca9-f5c15d32100e` from source `83a67be` is finished and its IPA verified; TestFlight submission is in progress, with upload/processing/selection not yet confirmed here. Do not treat account creation or a completed build as public review access. Apple's free/UK-only pricing and availability are saved; Mac/Vision Pro availability is disabled after reload verification.
+
 ## Resolve before using these notes
 
 - Provide a dedicated, enabled, pre-verified **customer** reviewer account in each store's private access fields. Enter its password there only; do not place it in this repository, screenshots, support messages or this document. A restaurant or administrator login is not customer-app review access.

@@ -73,6 +73,7 @@ export async function routeAdminRestaurantWorkspace(context) {
   // Only these existing owner operations are exposed. Payments, order transitions,
   // delivery settings, printers, customer-message sending and account credentials are deliberately absent.
   const permitted=(/^menu(?:\/(?:order|import|[^/]+(?:\/photo)?))?$/.test(tail)&&["GET","POST","PATCH","PUT","DELETE"].includes(req.method))
+    ||(tail==="cover"&&req.method==="DELETE")
     ||(tail==="profile"&&req.method==="PATCH")
     ||(tail==="loyalty"&&req.method==="GET")
     ||(/^loyalty\/promotions(?:\/[^/]+(?:\/end)?)?$/.test(tail)&&["GET","POST","PATCH"].includes(req.method))
