@@ -4,6 +4,14 @@
 
 Evidence: [Hermes export results](./ANDROID_HERMES_EXPORT_RESULTS_2026-11-08.json), [native-client load results](./NATIVE_CLIENT_LOAD_RESULTS_2026-11-08.json), and [load source state at startup](./NATIVE_CLIENT_LOAD_SOURCE_STATE_2026-11-08.json). The earlier [600-order browser-cookie load](./ORDER_CAPACITY_VALIDATION_2026-11-08.md) remains unchanged and separate.
 
+## Signed internal testing update
+
+After the local checks, Android **1.0.0 (20)** was built from `2e4e5e662ab8c8b6c36165c0d62ee9ab3259e2d1` in the existing Yankee1707 Cal-Eats project. Google Play internal release **8** was confirmed **Available to internal testers** on 8 November 2026 at 16:12 UTC. It is not a public/production release. The [existing tester link](https://play.google.com/apps/internaltest/4700960164758478673) now serves this update as Google propagates it.
+
+The signed AAB SHA-256 is `eb19ab4344219813bc8438f652dd7ef2d8a9b55de2d136ee2b8c8f14effad4fd`. Archive digests, upload signature, package/version, packaged fixes and the approved notification configuration passed inspection. The compiled manifest has minimum API 24 and target API 36; unused microphone, overlay and external-storage permissions are absent. All 34 native 64-bit libraries passed 16 KB ELF alignment checks, and bundle packaging requests 16 KB page alignment. The compiled default notification channel resolves to `cal-eats-updates-quiet`.
+
+These checks do not certify the generated Google Play APK or physical phone behavior. The user has been asked to update and check the camera-cutout/system-button spacing; a real silent notification and its tap destination are still awaiting that handset session. No iPhone binary or public store submission changed during this Android update.
+
 ## Source provenance and compilation
 
 Both runs began with parent commit `a6305010203ef8fe7c6dfbb33c31528337e1e71f` plus the frozen Android layout/back-navigation/notification changes in the working tree. Those changes and the extended harness were then committed as **`2e4e5e662ab8c8b6c36165c0d62ee9ab3259e2d1`**. The recorded mobile source hashes all match that commit's working files. No API source changed between the parent and this commit. The report's parent commit is therefore a provenance reference, not a false claim of a clean checkout at run start.
