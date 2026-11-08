@@ -12,6 +12,11 @@
     "android": {
       "package": "uk.co.calai.caleats",
       "permissions": [],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize"
     },

@@ -49,7 +49,7 @@ test("hosted customer entry is app-first while local preview, recovery and check
     const links=await fetch(origin+"/app-downloads.json");assert.equal(links.headers.get("cache-control"),"no-store");assert.deepEqual(await links.json(),customerDownloadConfig({}));
     for(const path of ["/download.js","/landing.js","/landing.css"]){assert.equal((await fetch(origin+path)).status,200,path);}
     // Receipts, legal routes and APIs are not captured by the download gate.
-    for(const path of ["/api/orders/owned/receipt","/privacy/","/terms/","/account-deletion/","/api/auth/me"]){assert.equal((await fetch(origin+path)).status,404,path);}
+    for(const path of ["/api/orders/owned/receipt","/privacy/","/terms/","/api/auth/me"]){assert.equal((await fetch(origin+path)).status,404,path);}
     for(const search of ["?payment_order=owned-order","?view=register-restaurant","?view=account","?payment_order="]){assert.equal(preserveCustomerWebFlow(search),clientPreserve(search));}
   }finally{server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));}
 });

@@ -1,0 +1,21 @@
+{
+  "observedAt": "2026-11-08T15:42:52.7563012Z",
+  "parentCommit": "6b85ed508d028853ad77d336a453ea9d78622d38",
+  "trackedDirtyPaths": [
+    "apps/api/src/static.js",
+    "apps/api/test/customer-downloads.test.js",
+    "apps/mobile/app.json",
+    "apps/web/support.html"
+  ],
+  "sourceSha256": {
+    "apps/api/src/marketplace.js": "04fce7f6dcebfc7ad073ee2e6459891b1e858c57eda3c3a01cfcdc373acae4d9",
+    "apps/api/src/journey.js": "e3d50ebe55e9edd1bd04c57782603970b11f95bf3a782570277b6a91485e027c",
+    "apps/api/src/order-confirmation.js": "e9335f4dc7a454a2b8347645a66c28ecb3775a7ec9d7c6c3f37bcbf78f61ba72",
+    "apps/api/src/operations.js": "6f199c65b23f88c5f35b3dab42ffd0436298f402cd46494cc516dcf5755f234d",
+    "apps/api/src/financial-environment.js": "8c6ab2ba1dc2a3f5db3fdf1cf380bc6f686433f00a5acb5dcab02f252665c101",
+    "apps/api/src/static.js": "ab9449008d542de31fbece4e5a4d83380602ccae4e3a965984d981e07701e667",
+    "apps/api/src/config.js": "face8648eb036157a5bab2fdc4253f6d395e1c6dc14d56b6a356d8233df63fb3",
+    "apps/api/src/restaurant-discovery.js": "a17dca9a207e88b4000f15f1b5ad85ef4da3a6a5c9d098a3a4dffd449911d0f2",
+    "scripts/load-order-capacity.js": "d1e163f6b5b61fa726c366a4d1ff4a26e80a5c7975868535390ed0d2c83a14c7"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "newOrderTotals": [
+    {
+      "payment_method": "cash",
+      "payment_status": "cash_collected",
+      "orders": 200,
+      "totalMinor": 225000,
+      "commissionMinor": 15800
+    },
+    {
+      "payment_method": "mock_card",
+      "payment_status": "mock_captured",
+      "orders": 400,
+      "totalMinor": 450000,
+      "commissionMinor": 31600
+    }
+  ],
+  "ledger": [
+    {
+      "kind": "commission_cash_receivable",
+      "rows": 200,
+      "amountMinor": 15800
+    },
+    {
+      "kind": "commission_mock",
+      "rows": 400,
+      "amountMinor": 31600
+    }
+  ],
+  "inAppNotifications": [
+    {
+      "type": "new_order",
+      "rows": 600
+    },
+    {
+      "type": "order_status",
+      "rows": 2700
+    },
+    {
+      "type": "shop_rating",
+      "rows": 600
+    }
+  ],
+  "emailOutbox": [
+    {
+      "status": "pending",
+      "mode": "local",
+      "rows": 2700
+    }
+  ],
+  "printReceipts": {
+    "minimumAttempt": 1,
+    "maximumAttempt": 1,
+    "originalJobs": 600
+  },
+  "duplicateJobKeys": 0
+}
