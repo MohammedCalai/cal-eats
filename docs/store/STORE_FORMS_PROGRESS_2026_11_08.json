@@ -1,0 +1,77 @@
+{
+  "assessedOn": "2026-11-08",
+  "status": "PARTIAL_SAVED_FORMS_OPERATOR_FACTS_AND_ACCESS_PENDING",
+  "publicReviewSubmitted": false,
+  "apple": {
+    "appId": "6831180948",
+    "versionState": "PREPARE_FOR_SUBMISSION",
+    "selectedBuild": 17,
+    "category": "Food & Drink",
+    "ageRating": "18+ override matching approved customer minimum age; Korean equivalent19+",
+    "ageSuitabilityUrl": "https://eats.calai.info/legal/terms/2026-11-08-v1",
+    "ageSuitabilityUrlState": "SAVED_VERIFIED",
+    "ratingAnswersReviewed": {
+      "parentalControls": false,
+      "ageAssurance": false,
+      "unrestrictedWebAccess": false,
+      "userGeneratedContent": true,
+      "socialMedia": false,
+      "messagingAndChat": true,
+      "paidAdvertising": false,
+      "matureMedicalSexualViolenceGamblingEditorialContent": "None in reviewed current app/catalogue; merchant/private UGC controls are separately disclosed."
+    },
+    "reviewNotes": "SAVED_PREPARATION_DRAFT_NOT_FINAL_REVIEW_INSTRUCTIONS",
+    "notesScope": "Factual customer role, collection-only Arndale browsing, optional location, verified customer review account preparation, messaging/safety, privacy/deletion routes, paused ordering and missing final native corrections are explicitly described. Credentials and private contact fields remain blank.",
+    "privateNotesReadbackSha256": "1b6195a2160db4027a91ddd419979f6a801edc428ca5af38b166fc172134ad67",
+    "manualReleaseVerified": true,
+    "contentRights": "UNANSWERED: user confirmation of restaurant permissions requested; neither Yes nor No asserted",
+    "reviewContact": "PENDING_OPERATOR_NAME_PHONE_EMAIL",
+    "accessibilityClaims": "No unverified blanket feature-support claim entered",
+    "screenshots": {
+      "mediumDisplayCount": 1,
+      "filename": "01-browse-native.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "dbfd2c415f4fd1bd3fa44b396f3c5eb88cfd73f32ec779afb007969700a118c0",
+      "origin": "Genuine anonymous iPhone17Pro simulator capture from earlier source b0a2e10; Browse components match selected iOS17 but this is not a fresh17 capture.",
+      "otherNativeScreensAvailableLocally": false,
+      "limits": "Exact final native/screenshots and required display-set validation remain before public submission."
+    }
+  },
+  "googlePlay": {
+    "contentRating": {
+      "category": "All other app types",
+      "contact": "support@calai.info",
+      "iarcTermsAccepted": false,
+      "questionnaireSubmitted": false,
+      "state": "PREPARED_PENDING_EXPLICIT_IARC_TERMS_APPROVAL"
+    },
+    "reviewAccess": {
+      "state": "UNSAVED_FULL_ACCESS_CERTIFICATION_NOT_MADE",
+      "checkbox": "Sign-in details in this declaration provide full access to all the features and content within this app, including premium or paid content",
+      "reason": "Paid ordering is paused. The form was inspected and the coordinator discarded only its own unsaved Yes selection; no credentials were entered or submitted."
+    },
+    "targetAudience": "BLOCKED_ON_SIGN_IN_DETAILS; intended adult18+",
+    "dataSafety": "16-type saved draft remains unchanged; blocked on target audience",
+    "publicSetup": "7 of 11 last verified; no new completed Google task claimed"
+  },
+  "operatorInputPending": [
+    "Private review-team contact full name, phone and email",
+    "Explicit IARC Terms acceptance and rating-contact sharing approval",
+    "Restaurant business-name/menu/image permissions for Cal-Eats and official store-listing materials"
+  ],
+  "remainingDependencies": [
+    "Working restaurant ordering/payment setup before full-access certification and public submission",
+    "Final corrected native candidates and exact-device verification",
+    "Final restaurant service/menu/rights and screenshot checks"
+  ],
+  "primaryReferences": [
+    "https://web.iarcservices.com/terms",
+    "https://support.google.com/googleplay/android-developer/answer/9859455",
+    "https://support.google.com/googleplay/android-developer/answer/7021383",
+    "https://developer.apple.com/help/app-store-connect/reference/app-information/age-ratings-values-and-definitions/",
+    "https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications"
+  ]
+}

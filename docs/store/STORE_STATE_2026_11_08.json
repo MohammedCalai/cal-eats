@@ -63,12 +63,39 @@
       "privatePublicationProofSha256": "9f1d9460a185c7eefe11b3b64bf78c23821e84a1375cb14e4a0506877ec8fa4d",
       "draftAnswerEvidence": "artifacts/store-preparation-20261108/apple-privacy-draft-readback.private.txt"
     },
-    "reviewAccess": "A dedicated customer reviewer account was created through the ordinary API and email-verified. Credentials remain in private storage, not in either store or this document. Full-feature access is not certified while paid ordering is paused; contact details/notes still need final store entry.",
+    "reviewAccess": "Dedicated pre-verified customer remains private. Saved Apple preparation notes accurately explain currently paused ordering and pending final native candidate; private credentials/contact fields are still blank. No full-feature review readiness certified.",
     "submission": "NOT_SUBMITTED",
     "releaseMode": "MANUAL_SAVED_VERIFIED",
     "nextNativeBuild": {
       "required": "Include guest-safety fix, later factual AuthScreen copy and native marketing-preference account-change race correction; then verify the exact final iPhone journey.",
       "existingFreeIosAllowance": "15 of 15 consumed; no paid build or upgrade initiated."
+    },
+    "ageRating": {
+      "state": "SAVED_VERIFIED",
+      "minimum": "18+",
+      "basis": "Existing higher-age override matches approved18+ customer terms; content questions reviewed without inventing mature content.",
+      "ageSuitabilityUrl": "https://eats.calai.info/legal/terms/2026-11-08-v1",
+      "ageSuitabilityUrlState": "SAVED_VERIFIED"
+    },
+    "reviewNotes": {
+      "state": "SAVED_PREPARATION_DRAFT_NOT_FINAL",
+      "privateReadbackSha256": "1b6195a2160db4027a91ddd419979f6a801edc428ca5af38b166fc172134ad67",
+      "credentialsEntered": false,
+      "privateContactEntered": false,
+      "publicSubmission": false
+    },
+    "contentRights": "UNANSWERED_PENDING_OPERATOR_PERMISSION_CONFIRMATION",
+    "listingScreenshots": {
+      "mediumDisplayCount": 1,
+      "filename": "01-browse-native.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "dbfd2c415f4fd1bd3fa44b396f3c5eb88cfd73f32ec779afb007969700a118c0",
+      "origin": "Genuine anonymous iPhone17Pro simulator capture from earlier source b0a2e10; Browse components match selected iOS17 but this is not a fresh17 capture.",
+      "otherNativeScreensAvailableLocally": false,
+      "limits": "Exact final native/screenshots and required display-set validation remain before public submission."
     }
   },
   "googlePlay": {
@@ -104,7 +131,7 @@
       "completion": "NOT_COMPLETE_OR_SUBMITTED: completion requires Target audience, which requires App access. A saved draft preview is not Google review or approval."
     },
     "targetAudience": "Waiting for reviewer-access prerequisite; intended audience is adults18+.",
-    "reviewAccess": "An App access Yes/full-feature certification was not saved and was discarded because paid ordering is paused. A verified reviewer account now exists privately but has not been entered in either store. Do not certify full access until the ordering/payment prerequisite is genuinely available.",
+    "reviewAccess": "Fresh form readback requires the supplied sign-in details to provide full access to all features/content including paid content. Only coordinator-created unsaved selections were discarded; credentials remain private and no full-access declaration was made while ordering is paused.",
     "storeListing": {
       "state": "SAVED_READY_TO_SEND_FOR_REVIEW_NOT_SUBMITTED",
       "shortDescription": "SAVED",
@@ -161,7 +188,8 @@
   },
   "pendingUserDecisions": [
     "IARC Terms acceptance",
-    "Private store-review contact name, telephone and email"
+    "Private store-review contact name, telephone and email",
+    "Restaurant business-name/menu/image permission confirmation for official store materials"
   ],
   "scope": "Saved store state, deployed source and bounded verification evidence. Store drafts are not public approval. No passwords, account tokens or private customer identities are included.",
   "localAndHostedVerification": {
@@ -223,7 +251,6 @@
     "mobileTypecheck": "PASSED",
     "currentIOS17IncludesFix": false,
     "currentAndroid21IncludesFix": false,
-    "currentAndroid 22IncludesFix": true,
     "android22Evidence": {
       "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
       "easBuildId": "0aa67c71-41af-4379-930e-49f37c5c0934",
@@ -234,7 +261,8 @@
       "orderOrPaymentSubmitted": false,
       "physicalDeviceVerified": false
     },
-    "futureSourceOnlyCopy": "AuthScreen wording now describes saved addresses and orders; this correction was made after Android 22 and is absent from Android 22 and iOS 17."
+    "futureSourceOnlyCopy": "AuthScreen wording now describes saved addresses and orders; this correction was made after Android 22 and is absent from Android 22 and iOS 17.",
+    "currentAndroid22IncludesFix": true
   },
   "freeBuildAllowance": {
     "android": {
@@ -260,5 +288,6 @@
     "result": "No concrete new collection flow, required data-type change or purpose mismatch was found against the reviewed customer code/configuration and approved Privacy Notice. Conservative GPS/sharing and search-processing qualifications remain.",
     "nativeSourceLimit": "The native marketing-preference account-change race correction is a later source change, absent from iOS 17 and Android 22; it changes account-scoping behavior, not declared data types or purposes.",
     "storeBoundary": "Apple label publication does not complete Google’s saved draft, reviewer access, IARC/content rating, review contact details, app review or public release."
-  }
+  },
+  "storeFormsProgress": "docs/store/STORE_FORMS_PROGRESS_2026_11_08.json"
 }
