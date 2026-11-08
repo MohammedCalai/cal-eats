@@ -83,9 +83,11 @@
   "merchantGrantEvidence": {
     "reviewedDocument": "docs/legal/CAL_EATS_MERCHANT_COMMERCIAL_SCHEDULE_DRAFT.md",
     "documentStatus": "UNAPPROVED DRAFT; explicitly incomplete",
-    "finding": "The document now contains proposed merchant menu/photo permission wording. It remains an unapproved, inactive draft and is not evidence of an executed or accepted grant from any restaurant.",
+    "finding": "The proposed merchant schedule remains unapproved and unsigned. Separately, the operator explicitly confirmed current Arndale name/menu/image permission for Cal-Eats and official store materials on8November; this is not a grant for every future restaurant or independent legal-title verification.",
     "proposedMediaRightsGrantTextPresent": true,
-    "activeAcceptedMediaRightsGrantEstablished": false
+    "activeAcceptedMediaRightsGrantEstablished": false,
+    "signedCommercialScheduleAccepted": false,
+    "currentArndaleUsePermissionConfirmedByOperator": true
   },
   "merchantMediaMetadata": {
     "source": "apps/api/src/polish.js; media_assets/media_asset_objects schema",
@@ -970,5 +972,17 @@
     "screenshotProvenance": "docs/store/screenshots/android22/provenance.json",
     "guidance": "https://support.google.com/googleplay/android-developer/answer/17262077?hl=en-GB",
     "scopeLimit": "Saved per-asset labelling is not public release, store approval or certification of underlying third-party rights."
+  },
+  "operatorRestaurantPermission20261108": {
+    "confirmedOn": "2026-11-08",
+    "restaurant": "Arndale Market Curry Centre",
+    "operatorExplicitlyConfirmed": true,
+    "scope": "Permission to publish this restaurant business name/menu in Cal-Eats and official store screenshots, including necessary rights to any supplied restaurant images.",
+    "evidence": "Explicit operator answer in this conversation; Apple saved declaration readback.",
+    "privateAppleReadbackSha256": "486e85c5f763793881655c7d06a6f3f74f9b3979666ca1449cab54b68160ea4a",
+    "limits": [
+      "Not an independent legal-title or photographer-licence verification.",
+      "Does not accept the unapproved merchant commercial schedule or establish permission for all future restaurants."
+    ]
   }
 }

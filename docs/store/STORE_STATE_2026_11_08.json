@@ -84,7 +84,24 @@
       "privateContactEntered": false,
       "publicSubmission": false
     },
-    "contentRights": "UNANSWERED_PENDING_OPERATOR_PERMISSION_CONFIRMATION",
+    "contentRights": {
+      "state": "SAVED_VERIFIED",
+      "containsThirdPartyContent": true,
+      "necessaryRightsConfirmedByOperator": true,
+      "restaurantPermission": {
+        "confirmedOn": "2026-11-08",
+        "restaurant": "Arndale Market Curry Centre",
+        "operatorExplicitlyConfirmed": true,
+        "scope": "Permission to publish this restaurant business name/menu in Cal-Eats and official store screenshots, including necessary rights to any supplied restaurant images.",
+        "evidence": "Explicit operator answer in this conversation; Apple saved declaration readback.",
+        "privateAppleReadbackSha256": "486e85c5f763793881655c7d06a6f3f74f9b3979666ca1449cab54b68160ea4a",
+        "limits": [
+          "Not an independent legal-title or photographer-licence verification.",
+          "Does not accept the unapproved merchant commercial schedule or establish permission for all future restaurants."
+        ]
+      },
+      "publicReviewSubmitted": false
+    },
     "listingScreenshots": {
       "mediumDisplayCount": 1,
       "filename": "01-browse-native.png",
@@ -188,8 +205,7 @@
   },
   "pendingUserDecisions": [
     "IARC Terms acceptance",
-    "Private store-review contact name, telephone and email",
-    "Restaurant business-name/menu/image permission confirmation for official store materials"
+    "Private store-review contact name, telephone and email"
   ],
   "scope": "Saved store state, deployed source and bounded verification evidence. Store drafts are not public approval. No passwords, account tokens or private customer identities are included.",
   "localAndHostedVerification": {

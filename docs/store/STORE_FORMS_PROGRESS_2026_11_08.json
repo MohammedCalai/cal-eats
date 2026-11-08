@@ -24,7 +24,7 @@
     "notesScope": "Factual customer role, collection-only Arndale browsing, optional location, verified customer review account preparation, messaging/safety, privacy/deletion routes, paused ordering and missing final native corrections are explicitly described. Credentials and private contact fields remain blank.",
     "privateNotesReadbackSha256": "1b6195a2160db4027a91ddd419979f6a801edc428ca5af38b166fc172134ad67",
     "manualReleaseVerified": true,
-    "contentRights": "UNANSWERED: user confirmation of restaurant permissions requested; neither Yes nor No asserted",
+    "contentRights": "SAVED_VERIFIED: Yes, this app has the necessary rights to its third-party content.",
     "reviewContact": "PENDING_OPERATOR_NAME_PHONE_EMAIL",
     "accessibilityClaims": "No unverified blanket feature-support claim entered",
     "screenshots": {
@@ -38,6 +38,18 @@
       "origin": "Genuine anonymous iPhone17Pro simulator capture from earlier source b0a2e10; Browse components match selected iOS17 but this is not a fresh17 capture.",
       "otherNativeScreensAvailableLocally": false,
       "limits": "Exact final native/screenshots and required display-set validation remain before public submission."
+    },
+    "restaurantContentPermission": {
+      "confirmedOn": "2026-11-08",
+      "restaurant": "Arndale Market Curry Centre",
+      "operatorExplicitlyConfirmed": true,
+      "scope": "Permission to publish this restaurant business name/menu in Cal-Eats and official store screenshots, including necessary rights to any supplied restaurant images.",
+      "evidence": "Explicit operator answer in this conversation; Apple saved declaration readback.",
+      "privateAppleReadbackSha256": "486e85c5f763793881655c7d06a6f3f74f9b3979666ca1449cab54b68160ea4a",
+      "limits": [
+        "Not an independent legal-title or photographer-licence verification.",
+        "Does not accept the unapproved merchant commercial schedule or establish permission for all future restaurants."
+      ]
     }
   },
   "googlePlay": {
@@ -59,8 +71,7 @@
   },
   "operatorInputPending": [
     "Private review-team contact full name, phone and email",
-    "Explicit IARC Terms acceptance and rating-contact sharing approval",
-    "Restaurant business-name/menu/image permissions for Cal-Eats and official store-listing materials"
+    "Explicit IARC Terms acceptance and rating-contact sharing approval"
   ],
   "remainingDependencies": [
     "Working restaurant ordering/payment setup before full-access certification and public submission",
