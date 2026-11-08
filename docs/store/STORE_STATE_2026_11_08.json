@@ -2,11 +2,11 @@
   "status": "PREPARATION_CHECKPOINT_NOT_PUBLIC_APPROVAL",
   "date": "2026-11-08",
   "sourceAndHosting": {
-    "lastVerifiedApplicationSource": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
-    "lastVerifiedRailwayDeployment": "d49e0aff-00fc-443e-b983-f03425d3ee79",
+    "lastVerifiedApplicationSource": "947a4e330efbb8e7eec074cfdd7fd9e37619a990",
+    "lastVerifiedRailwayDeployment": "8c908d8b-64a4-49bf-81e9-d7b3ca72364f",
     "railwayStatus": "SUCCESS",
     "schemaVersion": 58,
-    "scope": "Verified running backend source and schema58; later documentation/native-only source checkpoints are tracked separately. Real customer charging remains paused."
+    "scope": "Confirmed deployment of privacy restore-check hardening; API schema58 and the approved runtime policy are unchanged. Native consent changes in this source require future app binaries. Real customer charging remains paused."
   },
   "apple": {
     "appId": "6831180948",
@@ -45,21 +45,29 @@
       "availability": "Available on App Release; this is not public release or approval."
     },
     "privacy": {
-      "state": "DRAFT_SAVED_UNPUBLISHED",
+      "state": "PUBLISHED_VERIFIED",
       "typeCount": 17,
       "allTypesLinked": true,
       "purposeGroupsMatchDeclarationDraft": true,
-      "comparison": "All 17 saved type/purpose groups match PRIVACY_DATA_SAFETY_2026_11_08.json. Purchase History is represented by the Purchases heading in the saved UI summary.",
+      "comparison": "The published 17 data types retain the saved purposes and user linkage matched to PRIVACY_DATA_SAFETY_2026_11_08.json. Purchase History appears under Purchases in the UI.",
       "trackingAnswerReportedByOperator": false,
       "trackingEvidenceLimit": "The coordinator reports individual not-tracking answers saved; the summary readback proves type/purpose/linkage state, not those individual checkbox screens.",
-      "evidence": "artifacts/store-preparation-20261108/apple-privacy-draft-readback.private.txt",
-      "publish": "Pending the operator's requested final publication confirmation. An enabled Publish button and saved preview do not establish publication."
+      "evidence": "artifacts/privacy-completion-20261108/apple-privacy-published.private.txt",
+      "publish": "Published after the operator explicitly confirmed Apple’s accuracy/update declaration on 8 November 2026. The saved page reports Published a few seconds ago. This publishes the App Privacy label only; no app review submission or public app release occurred.",
+      "publishedOn": "2026-11-08",
+      "operatorAccuracyAndUpdateDeclarationConfirmed": true,
+      "operatorConfirmationDate": "2026-11-08",
+      "privacyPolicyUrl": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
+      "userPrivacyChoicesUrl": "https://eats.calai.info/account-deletion/",
+      "userPrivacyChoicesUrlState": "SAVED_VERIFIED",
+      "privatePublicationProofSha256": "9f1d9460a185c7eefe11b3b64bf78c23821e84a1375cb14e4a0506877ec8fa4d",
+      "draftAnswerEvidence": "artifacts/store-preparation-20261108/apple-privacy-draft-readback.private.txt"
     },
     "reviewAccess": "A dedicated customer reviewer account was created through the ordinary API and email-verified. Credentials remain in private storage, not in either store or this document. Full-feature access is not certified while paid ordering is paused; contact details/notes still need final store entry.",
     "submission": "NOT_SUBMITTED",
     "releaseMode": "MANUAL_SAVED_VERIFIED",
     "nextNativeBuild": {
-      "required": "Include guest-safety fix and later factual AuthScreen copy; then verify exact final iPhone journey.",
+      "required": "Include guest-safety fix, later factual AuthScreen copy and native marketing-preference account-change race correction; then verify the exact final iPhone journey.",
       "existingFreeIosAllowance": "15 of 15 consumed; no paid build or upgrade initiated."
     }
   },
@@ -152,7 +160,6 @@
     }
   },
   "pendingUserDecisions": [
-    "Apple App Privacy Publish confirmation",
     "IARC Terms acceptance",
     "Private store-review contact name, telephone and email"
   ],
@@ -179,18 +186,27 @@
       "invalidCurrentAccessPasswordRemoved": true
     },
     "reviewLogin": "Dedicated email-verified customer created and signed in through the normal API; privileged endpoints denied. Credentials remain private and were not entered in either store.",
-    "android22Emulator": "Verified AAB-derived Android22 runtime: guest Browse/Collection, public Arndale menu, one-item local basket, explicit safety sign-in and Back preserve restaurant/cart. No login credentials, food order or payment submitted; not physical-device or notification UAT."
+    "android22Emulator": "Verified AAB-derived Android 22 runtime: guest Browse/Collection, public Arndale menu, one-item local basket, explicit safety sign-in and Back preserve restaurant/cart. No login credentials, food order or payment submitted; not physical-device or notification UAT.",
+    "privacyHardening": {
+      "sourceCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990",
+      "restoreSuppressionRegressionTests": 6,
+      "restoreSuppressionResult": "PASSED",
+      "privateTestLogSha256": "36e7dd4cb4d6472ef7bb5d8f72934e884fe9a4f2c32b58e0c79d317eae0b3d28",
+      "nativeConsentTypecheck": "PASSED",
+      "actualHostedRestoreDrillPerformed": false,
+      "currentIos17ContainsNewConsentFix": false,
+      "currentAndroid22ContainsNewConsentFix": false
+    }
   },
   "pendingOperatorConfirmations": [
-    "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration",
     "Accept IARC Terms of Use to complete Cal-Eats content rating"
   ],
   "remainingPublicReleaseWork": [
     "Real provider/restaurant verification, bank onboarding and commercial acceptance",
     "Genuine paid order, commission/commission-free-period and payout reconciliation",
     "Final review access with a functioning ordering journey, review contact details and menu/photo rights",
-    "Complete target audience/content-rating and final privacy/listing submissions",
-    "Final exact native build/device verification; Android22 screenshots are saved, but iOS17 still lacks the later guest fix.",
+    "Complete Google target audience/content-rating/Data safety and final store listing/review checks; Apple’s privacy label is already published",
+    "Final exact native build/device verification; Android 22 screenshots are saved, but iOS 17 still lacks the later guest fix.",
     "Review remaining test credentials before public launch"
   ],
   "releaseEvidence": {
@@ -207,7 +223,7 @@
     "mobileTypecheck": "PASSED",
     "currentIOS17IncludesFix": false,
     "currentAndroid21IncludesFix": false,
-    "currentAndroid22IncludesFix": true,
+    "currentAndroid 22IncludesFix": true,
     "android22Evidence": {
       "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
       "easBuildId": "0aa67c71-41af-4379-930e-49f37c5c0934",
@@ -218,7 +234,7 @@
       "orderOrPaymentSubmitted": false,
       "physicalDeviceVerified": false
     },
-    "futureSourceOnlyCopy": "AuthScreen wording now describes saved addresses and orders; this correction was made after Android22 and is absent from Android22 and iOS17."
+    "futureSourceOnlyCopy": "AuthScreen wording now describes saved addresses and orders; this correction was made after Android 22 and is absent from Android 22 and iOS 17."
   },
   "freeBuildAllowance": {
     "android": {
@@ -235,6 +251,14 @@
     },
     "overageBuilds": 0,
     "paidBuildInitiated": false,
-    "scope": "Expo allowance readback after Android22; provider allowances can change."
+    "scope": "Expo allowance readback after Android 22; provider allowances can change."
+  },
+  "privacyReaudit": {
+    "assessedOn": "2026-11-08",
+    "appleDataTypes": 17,
+    "googleDataTypes": 16,
+    "result": "No concrete new collection flow, required data-type change or purpose mismatch was found against the reviewed customer code/configuration and approved Privacy Notice. Conservative GPS/sharing and search-processing qualifications remain.",
+    "nativeSourceLimit": "The native marketing-preference account-change race correction is a later source change, absent from iOS 17 and Android 22; it changes account-scoping behavior, not declared data types or purposes.",
+    "storeBoundary": "Apple label publication does not complete Google’s saved draft, reviewer access, IARC/content rating, review contact details, app review or public release."
   }
 }

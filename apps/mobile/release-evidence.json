@@ -10,8 +10,8 @@
   ],
   "sourceBinding": {
     "documentationBaselineCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
-    "deployedApplicationCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
-    "applicationDeploymentId": "d49e0aff-00fc-443e-b983-f03425d3ee79",
+    "deployedApplicationCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990",
+    "applicationDeploymentId": "8c908d8b-64a4-49bf-81e9-d7b3ca72364f",
     "applicationDeploymentStatus": "SUCCESS",
     "schemaVersion": 58,
     "iosInternalBuild": {
@@ -145,6 +145,37 @@
       "limits": [
         "Internal availability is not public Google review, production release or completed final physical-phone UAT.",
         "Android 22 guest fixes are not present in the existing iOS 17 binary; later AuthScreen address-copy changes are not compiled into either binary."
+      ]
+    },
+    "apple-privacy-store-publication": {
+      "verifiedOn": "2026-11-08",
+      "publicReference": "../../docs/store/PRIVACY_COMPLETION_2026_11_08.json",
+      "privateReadbackSha256": "9f1d9460a185c7eefe11b3b64bf78c23821e84a1375cb14e4a0506877ec8fa4d",
+      "privateScreenshotSha256": "2986ffebf1df5155fbbdd5165251d61442fce543e4b175010dcce4937781c47d",
+      "result": "Operator-approved17-type Apple privacy label is published, with approved policy URL and direct privacy-choices/deletion URL.",
+      "limits": [
+        "Privacy label publication does not submit, approve or release the app.",
+        "Google draft, full review access, payment readiness and exact native/device verification remain separate."
+      ]
+    },
+    "native-consent-scope-hardening": {
+      "sourceFile": "src/MarketingPreferences.tsx",
+      "result": "Token-scoped preference state, late-response guards and synchronous request lock prevent old-account results or rapid toggles from changing a new account preference view.",
+      "validation": "Mobile TypeScript check passed; no physical-device race reproduction claimed.",
+      "limits": [
+        "Source-only: current iOS17 and Android22 predate this correction; no new signed binary was built."
+      ],
+      "sourceCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990"
+    },
+    "privacy-restore-suppression-hardening": {
+      "sourceCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990",
+      "deploymentId": "8c908d8b-64a4-49bf-81e9-d7b3ca72364f",
+      "focusedTestCount": 6,
+      "privateTestLogSha256": "36e7dd4cb4d6472ef7bb5d8f72934e884fe9a4f2c32b58e0c79d317eae0b3d28",
+      "result": "Read-only restore checks reject leftover recovery credentials, account-access/local mail and order-linked support/transactional mail. Regression fixtures verify orphan copies, older optional columns, count-only diagnostics and preservation of unrelated customer/financial records.",
+      "limits": [
+        "No live database erasure or hosted/off-host backup restore was performed.",
+        "Current independently pinned suppression-ledger storage/replay and supplier backup expiry remain operational evidence requirements."
       ]
     }
   },

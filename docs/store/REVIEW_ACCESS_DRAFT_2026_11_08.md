@@ -8,7 +8,7 @@ Android 22 EAS build `0aa67c71-41af-4379-930e-49f37c5c0934` produced AAB SHA-256
 
 Internal testers can use the [existing Google Play tester link](https://play.google.com/apps/internaltest/4700960164758478673). Google reported zero device-compatibility changes and a missing R8 deobfuscation-file warning, accepted for the internal release only. Public crash-symbol/deobfuscation review remains pending. Internal availability does not claim public review submission, physical-phone UAT or real-payment verification.
 
-The hosted backend runs source 354a593 in successful Railway deployment `d49e0aff-00fc-443e-b983-f03425d3ee79`. iOS 17 predates that source's native guest-safety fix. The free iOS build allowance is exhausted at 15/15 and no paid build is authorised. The later AuthScreen explanation about saving addresses/following orders is a source-only correction made after Android 22; it appears in neither build 22 nor iOS 17.
+The hosted backend runs privacy-hardening source 947a4e3 in successful Railway deployment `8c908d8b-64a4-49bf-81e9-d7b3ca72364f`. iOS 17 predates the native guest-safety fix from source354a593. The free iOS build allowance is exhausted at 15/15 and no paid build is authorised. The later AuthScreen explanation about saving addresses/following orders is a source-only correction made after Android 22; it appears in neither build 22 nor iOS 17.
 
 ## Resolve before using these notes
 
@@ -18,7 +18,7 @@ The hosted backend runs source 354a593 in successful Railway deployment `d49e0af
 - Resolve the live ordering/payment gate. Real customer charging is paused pending the genuine provider/restaurant onboarding checks. Do not submit a disabled ordering experience, tell reviewers a test card is a real payment method, or hide a payment block behind the review credentials.
 - Supply the review contact's actual name, phone and email in the store fields. `support@calai.info` is the published support/privacy address; the contact person's name and phone still need an operator-supplied value.
 - Confirm menu/photo rights and complete the truthful content-rights declaration. Final pricing/territories and applicable agreements are separate operator decisions.
-- Publish Apple's prepared App Privacy answers only after the operator's declaration confirmation, complete the IARC Terms/rating step after approval, and supply the private review contact details. The merchant content/menu/photo clause remains an unapproved draft; it is not proof of merchant agreement or rights.
+- Apple's reviewed App Privacy responses are now published after the operator explicitly approved the accuracy/update declaration. The privacy-policy and privacy-choices URLs are saved. This is publication of the privacy label, not submission or release of the app. Complete the IARC Terms/rating step after approval and supply the private review contact details. The merchant content/menu/photo clause remains an unapproved draft; it is not proof of merchant agreement or rights.
 - Include the native guest-safety correction in the final iOS candidate and verify that exact binary. Current iOS 17 can show an authentication error when a guest opens a restaurant menu because its safety-state lookup requires sign-in; the Android 22 fix does not change iOS 17.
 
 ## Review-notes text to finalise after those checks
@@ -51,3 +51,5 @@ The immutable approved Privacy Notice and Terms are available at https://eats.ca
 The release checklist still has three evidence-backed true gates and nine false gates. Listing validation, screenshots and emulator navigation do not approve public release, live payments/payouts, complete device/background checks, recovery inbox evidence or full reviewer access.
 
 Google requires reusable review access that works irrespective of reviewer location; see [review sign-in requirements](https://support.google.com/googleplay/android-developer/answer/15748846). Apple's [app completeness guidance](https://developer.apple.com/app-store/review/guidelines/#app-completeness) similarly requires usable access and a working backend. Manual internal completion of deletion is permitted by [Apple's account-deletion guidance](https://developer.apple.com/help/app-review/guideline-reference/5-1-1-account-deletion).
+
+Apple’s privacy-label publication does not establish final reviewer ordering access. The additional native consent-state correction from source947a4e3 must be included in the next iOS/Android review candidates; it adds no data categories or purposes. Google’s saved Data safety preview still requires Target audience, whose form requires completed sign-in details.

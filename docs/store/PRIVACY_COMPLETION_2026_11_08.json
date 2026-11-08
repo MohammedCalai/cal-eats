@@ -1,0 +1,64 @@
+{
+  "assessedOn": "2026-11-08",
+  "status": "APPLE_PRIVACY_PUBLISHED_GOOGLE_PREREQUISITE_PENDING",
+  "scope": "Customer privacy notices, app controls and store disclosures; not a full legal/compliance certification or public app review approval.",
+  "apple": {
+    "appId": "6831180948",
+    "state": "PUBLISHED_VERIFIED",
+    "dataTypeCount": 17,
+    "operatorApprovedAccuracyAndUpdateDeclaration": true,
+    "privacyPolicyUrl": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
+    "privacyChoicesUrl": "https://eats.calai.info/account-deletion/",
+    "privatePublicationReadbackSha256": "9f1d9460a185c7eefe11b3b64bf78c23821e84a1375cb14e4a0506877ec8fa4d",
+    "privatePublicationScreenshotSha256": "2986ffebf1df5155fbbdd5165251d61442fce543e4b175010dcce4937781c47d",
+    "appSubmittedOrReleased": false
+  },
+  "googlePlay": {
+    "state": "SAVED_DATA_SAFETY_DRAFT",
+    "dataTypeCount": 16,
+    "finalSaveBlockedBy": "Target audience questionnaire requires sign-in details; complete usable reviewer access after real ordering/payment setup.",
+    "privatePrerequisiteReadbackSha256": "3e5da296850843f312af014bc6f0667a6722beb341aee3d4474a11e28e613643",
+    "fullFeatureAccessNotCertifiedWhileOrderingPaused": true,
+    "appSubmittedOrReleased": false
+  },
+  "policy": {
+    "version": "2026-11-08-v1",
+    "previouslyApprovedAndActive": true,
+    "newPolicyVersionCreated": false,
+    "publicDeletionResourceVerifiedHttp200": true,
+    "retention": "Eligible chats/allergy/resolved-support30 days; delivery/contact90 days; necessary financial records6 years. Existing exceptions and rights deadlines remain unchanged."
+  },
+  "nativeConsentHardening": {
+    "file": "apps/mobile/src/MarketingPreferences.tsx",
+    "change": "Token-scoped preference state, late-response guards and synchronous request lock prevent old-account results or rapid toggles from changing a new account preference view.",
+    "validation": "Mobile TypeScript check passed; no physical-device race reproduction claimed.",
+    "availableInCurrentIos17": false,
+    "availableInCurrentAndroid22": false,
+    "nextNativeBuildRequired": true,
+    "sourceCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990"
+  },
+  "verificationLimits": [
+    "Existing account-erasure completion remains the previously approved bounded domain/API evidence; it was not rerun.",
+    "Google final Data safety submission remains blocked by its reviewer-access/target-audience prerequisites.",
+    "Final native privacy journeys, provider-side records and a hosted backup recovery drill are not established by this review.",
+    "No new data-category/purpose mismatch or implemented cross-app advertising matching was identified; conservative supplier location/query-retention declarations remain."
+  ],
+  "restoreSuppressionHardening": {
+    "sourceCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990",
+    "deploymentId": "8c908d8b-64a4-49bf-81e9-d7b3ca72364f",
+    "focusedTestCount": 6,
+    "privateTestLogSha256": "36e7dd4cb4d6472ef7bb5d8f72934e884fe9a4f2c32b58e0c79d317eae0b3d28",
+    "result": "Read-only restore checks reject leftover recovery credentials, account-access/local mail and order-linked support/transactional mail. Regression fixtures verify orphan copies, older optional columns, count-only diagnostics and preservation of unrelated customer/financial records.",
+    "limits": [
+      "No live database erasure or hosted/off-host backup restore was performed.",
+      "Current independently pinned suppression-ledger storage/replay and supplier backup expiry remain operational evidence requirements."
+    ]
+  },
+  "hosting": {
+    "sourceCommit": "947a4e330efbb8e7eec074cfdd7fd9e37619a990",
+    "deploymentId": "8c908d8b-64a4-49bf-81e9-d7b3ca72364f",
+    "state": "SUCCESS",
+    "schemaVersion": 58,
+    "realPaymentsEnabled": false
+  }
+}
