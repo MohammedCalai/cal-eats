@@ -16,6 +16,18 @@ const required = [
 
 for (const file of required) if (!existsSync(join(root, file))) failures.push(`Missing required file: ${file}`);
 
+// Operator scripts have an explicit runtime COPY list. Check their local
+// dependencies too: a valid local backup must not fail only after deployment.
+const dockerfile=readFileSync(join(root,"Dockerfile"),"utf8");
+const copiedScripts=new Set([...dockerfile.matchAll(/scripts\/[A-Za-z0-9_.-]+\.js/g)].map(match=>resolve(root,match[0])));
+for(const script of copiedScripts){
+  if(!existsSync(script)){failures.push(`Missing packaged script: ${relative(root,script)}`);continue;}
+  for(const match of readFileSync(script,"utf8").matchAll(/from\s+["'](\.\.?\/[^"']+\.js)["']/g)){
+    const target=resolve(script,"..",match[1]);
+    if(target.startsWith(join(root,"scripts")+sep)&&!copiedScripts.has(target))failures.push(`Runtime script dependency missing from Dockerfile: ${relative(root,target)}`);
+  }
+}
+
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const lock = existsSync(join(root, "package-lock.json")) ? JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) : null;
 if (lock && (lock.name !== packageJson.name || lock.lockfileVersion !== 3)) failures.push("package-lock.json does not match the root package or npm lockfile format.");
