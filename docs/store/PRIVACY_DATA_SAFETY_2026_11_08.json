@@ -10,8 +10,8 @@
     "package": "uk.co.calai.caleats",
     "appleAppId": "6831180948",
     "playApplicationId": "4974049900851003157",
-    "android": { "version": "1.0.0", "build": 21, "source": "edc261b87e5550470317c35fa5f2689cb320e5ed", "distribution": "INTERNAL_TESTING" },
-    "appleSelected": { "version": "1.0.0", "build": 16, "source": "b0a2e10c76456fa2d915ac846d753db299695f42", "state": "PREPARE_FOR_SUBMISSION" },
+    "android": { "version": "1.0.0", "build": 22, "source": "354a593714e10a1dad9cfb52d4c4df5780df21c7", "distribution": "INTERNAL_TESTING" },
+    "appleSelected": { "version": "1.0.0", "build": 17, "source": "83a67be0c145a53bfd430e4783ee1b29ed719553", "state": "PREPARE_FOR_SUBMISSION" },
     "privacyUrl": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
     "termsUrl": "https://eats.calai.info/legal/terms/2026-11-08-v1",
     "accountDeletionUrl": "https://eats.calai.info/account-deletion/"
@@ -108,7 +108,7 @@
     "Postcodes.io's public operator policy is not a specific promise about raw reverse-geocoding coordinate retention. A verified narrower guarantee can justify revisiting precise-location retention and sharing answers; present draft does not rely on that guarantee.",
     "Merchant photo rights/content-rights declaration, review contact details, secure review credentials, pricing/territories and applicable agreements remain operator facts, not privacy code facts.",
     "A working ordering/payment/restaurant journey is still required before public submission. Do not describe disabled checkout or unavailable restaurant service as completed production review access.",
-    "Do not mechanically copy Android21 permission-education claims into notes/screenshots for selected iOS16. Validate the exact Apple binary before its public review."
+    "Do not mechanically copy Android22 permission-education claims into notes/screenshots for selected iOS17. Validate the exact Apple binary before its public review."
   ],
   "sourceEvidence": [
     "apps/mobile/src/LocationPicker.tsx", "apps/mobile/src/screens/DiscoverScreen.tsx", "apps/mobile/src/CustomerContact.tsx", "apps/api/src/restaurant-discovery.js", "apps/api/src/service-areas.js", "apps/mobile/src/screens/CheckoutScreen.tsx", "apps/api/src/journey.js", "apps/api/src/native-auth.js", "apps/api/src/customer-relationships.js", "apps/api/src/order-messaging.js", "apps/api/src/support-cases.js", "apps/api/src/customer-safety.js", "apps/api/src/customer-privacy.js", "apps/api/src/customer-erasure.js", "apps/api/src/customer-push.js", "apps/api/src/customer-push-worker.js", "apps/api/src/order-live-activities.js", "apps/api/src/loyalty.js", "apps/api/src/offers.js", "apps/api/src/platform-vouchers.js", "apps/api/src/app.js", "apps/api/src/polish.js", "apps/api/legal-documents/customer-privacy-2026-11-08-v1.txt"

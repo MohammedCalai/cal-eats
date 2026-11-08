@@ -83,8 +83,9 @@
   "merchantGrantEvidence": {
     "reviewedDocument": "docs/legal/CAL_EATS_MERCHANT_COMMERCIAL_SCHEDULE_DRAFT.md",
     "documentStatus": "UNAPPROVED DRAFT; explicitly incomplete",
-    "mediaRightsGrantPresent": false,
-    "finding": "Commercial commission/payout clauses do not grant or evidence restaurant menu/photo licensing. Do not treat this draft as a signed content-rights agreement."
+    "finding": "The document now contains proposed merchant menu/photo permission wording. It remains an unapproved, inactive draft and is not evidence of an executed or accepted grant from any restaurant.",
+    "proposedMediaRightsGrantTextPresent": true,
+    "activeAcceptedMediaRightsGrantEstablished": false
   },
   "merchantMediaMetadata": {
     "source": "apps/api/src/polish.js; media_assets/media_asset_objects schema",
@@ -926,5 +927,48 @@
     "Hermes source podspec selects runtime variants using build properties. The actual runtime and its third-party notices must be checked against resolved native build evidence, not assumed from the React Native version.",
     "Eight exact Android21 AAB notice resources were collected. They are evidence for those resources, not every Gradle dependency or the full Public Suffix List/MPL licence/source obligation.",
     "No current public or in-app Open source/Third-party notices surface was found. This documentation is not automatically served, linked, or embedded in a native release."
-  ]
+  ],
+  "merchantContentProposalEvidence": {
+    "document": "docs/legal/CAL_EATS_MERCHANT_COMMERCIAL_SCHEDULE_DRAFT.md",
+    "textSha256": "6d6ce88f687b0f1199a18ffa8220f9d91bf7806ccb7a38fc5745b0ce7c525b7b",
+    "recordedAt": "2026-11-08T20:34:25.410506+00:00",
+    "scope": "Proposed merchant content/menu/photo section only; separate from original Calai/Cal-Eats asset provenance and existing session branding-use authorization",
+    "approvalState": "UNAPPROVED",
+    "activated": false,
+    "merchantAcceptanceVerified": false,
+    "commercialTermsChangedByProposal": false
+  },
+  "googlePlayListingAILabelling": {
+    "recordedAt": "2026-11-08T20:34:25.410518+00:00",
+    "evidenceSource": "Authenticated Google Play Console save/readback reported by the release coordinator in this session; this inventory edit performs no store operation",
+    "savedVisualCount": 5,
+    "savedLabel": "Created or edited with AI",
+    "visuals": [
+      {
+        "kind": "store_icon",
+        "asset": "artifacts/store-preparation-20261108/google-play-icon-512.png"
+      },
+      {
+        "kind": "feature_graphic",
+        "asset": "artifacts/store-preparation-20261108/google-play-feature-1024x500.png"
+      },
+      {
+        "kind": "android_screenshot",
+        "asset": "docs/store/screenshots/android22/01-browse.png"
+      },
+      {
+        "kind": "android_screenshot",
+        "asset": "docs/store/screenshots/android22/02-menu.png"
+      },
+      {
+        "kind": "android_screenshot",
+        "asset": "docs/store/screenshots/android22/03-basket.png"
+      }
+    ],
+    "reason": "The supplied generated Calai/Cal-Eats brand appears throughout the five visuals; Browse also includes the generated illustrative food fallback. The saved labels describe AI-origin artwork appearing in each asset.",
+    "screenshotAuthenticity": "The Android22 screenshots are genuine native captures, not synthetic UI or AI-fabricated screenshots. They were not cropped, recomposed or retouched; only a fully opaque alpha plane was removed for lossless RGB export without changing the image pixels.",
+    "screenshotProvenance": "docs/store/screenshots/android22/provenance.json",
+    "guidance": "https://support.google.com/googleplay/android-developer/answer/17262077?hl=en-GB",
+    "scopeLimit": "Saved per-asset labelling is not public release, store approval or certification of underlying third-party rights."
+  }
 }

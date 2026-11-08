@@ -2,11 +2,11 @@
   "status": "PREPARATION_CHECKPOINT_NOT_PUBLIC_APPROVAL",
   "date": "2026-11-08",
   "sourceAndHosting": {
-    "lastVerifiedApplicationSource": "a7742830356e81d4d4549158bbd77378086e902b",
-    "lastVerifiedRailwayDeployment": "fdc04665-b909-47ef-a9f8-50cbdc62aa30",
+    "lastVerifiedApplicationSource": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+    "lastVerifiedRailwayDeployment": "d49e0aff-00fc-443e-b983-f03425d3ee79",
     "railwayStatus": "SUCCESS",
     "schemaVersion": 58,
-    "scope": "Verified deployed application code. Later documentation-only checkpoints may have a newer repository/deployment identity in the private operational record. Real customer charging remains paused."
+    "scope": "Verified running backend source and schema58; later documentation/native-only source checkpoints are tracked separately. Real customer charging remains paused."
   },
   "apple": {
     "appId": "6831180948",
@@ -57,13 +57,17 @@
     },
     "reviewAccess": "A dedicated customer reviewer account was created through the ordinary API and email-verified. Credentials remain in private storage, not in either store or this document. Full-feature access is not certified while paid ordering is paused; contact details/notes still need final store entry.",
     "submission": "NOT_SUBMITTED",
-    "releaseMode": "MANUAL_SAVED_VERIFIED"
+    "releaseMode": "MANUAL_SAVED_VERIFIED",
+    "nextNativeBuild": {
+      "required": "Include guest-safety fix and later factual AuthScreen copy; then verify exact final iPhone journey.",
+      "existingFreeIosAllowance": "15 of 15 consumed; no paid build or upgrade initiated."
+    }
   },
   "googlePlay": {
     "applicationId": "4974049900851003157",
     "package": "uk.co.calai.caleats",
-    "internalVersionCode": 21,
-    "internalRelease": 9,
+    "internalVersionCode": 22,
+    "internalRelease": 10,
     "publicState": "DRAFT",
     "savedReportedByOperator": {
       "privacyPolicy": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
@@ -94,21 +98,31 @@
     "targetAudience": "Waiting for reviewer-access prerequisite; intended audience is adults18+.",
     "reviewAccess": "An App access Yes/full-feature certification was not saved and was discarded because paid ordering is paused. A verified reviewer account now exists privately but has not been entered in either store. Do not certify full access until the ordering/payment prerequisite is genuinely available.",
     "storeListing": {
-      "state": "TEXT_AND_GRAPHICS_SAVED_DRAFT_INCOMPLETE",
+      "state": "SAVED_READY_TO_SEND_FOR_REVIEW_NOT_SUBMITTED",
       "shortDescription": "SAVED",
       "fullDescription": "SAVED",
       "icon": "UPLOADED1/1",
       "featureGraphic": "UPLOADED1/1",
-      "saveEvidence": "Save as Draft followed by Your changes have been saved.",
-      "remainingAssets": [
-        "At least two genuine Android screenshots"
-      ],
-      "completion": "Still incomplete; final listing validation and other store prerequisites are separate."
+      "saveEvidence": "Console Change saved and Ready to send for review; Dashboard marked Store Listing complete.",
+      "remainingAssets": [],
+      "completion": "Listing task complete; public review not sent and other setup/reviewer/payment prerequisites remain.",
+      "phoneScreenshots": {
+        "count": 3,
+        "format": "PNG RGB 1080x1920",
+        "sourceBuild": 22,
+        "provenance": "docs/store/screenshots/android22/provenance.json",
+        "files": [
+          "01-browse.png",
+          "02-menu.png",
+          "03-basket.png"
+        ]
+      },
+      "aiAssetLabels": "All five listing visuals labelled for embedded generated brand/illustrative artwork. Native screenshots retain original pixels without retouching."
     },
     "contentRating": "Consumer-app category and support@calai.info rating contact prepared in browser; IARC Terms acceptance approval pending, questionnaire not completed or submitted.",
     "submission": "NOT_SUBMITTED_TO_PUBLIC_REVIEW",
     "publicSetup": {
-      "completed": 6,
+      "completed": 7,
       "total": 11,
       "verifiedFrom": "Authenticated Dashboard readback after saving the store forms",
       "completedTasks": [
@@ -117,8 +131,24 @@
         "Government apps",
         "Financial features",
         "Health",
-        "Category and contact details"
+        "Category and contact details",
+        "Store listing"
       ]
+    },
+    "internalDistribution": {
+      "state": "AVAILABLE_TO_INTERNAL_TESTERS",
+      "releaseName": "1.0.0 (22) - Smoother guest browsing",
+      "releasedAtDisplay": "8 Nov 2026 20:35",
+      "trackId": "4700960164758478673",
+      "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+      "easBuildId": "0aa67c71-41af-4379-930e-49f37c5c0934",
+      "aabSha256": "a8fe3e7d6037b010b02cf29f46b757874e5b6250d98286d014b83eb14df9c69b",
+      "privateConsoleReadbackSha256": "5bec5aec128028f15fd63ec5abc29a50687561221ac9a2cfa638e85ce024d237",
+      "review": "NOT_REVIEWED",
+      "publicSubmission": false,
+      "deviceSupportChanges": 0,
+      "warning": "Missing optional R8/ProGuard deobfuscation file; no blocking validation errors. Final public crash-symbol coverage still needs review.",
+      "testerLink": "https://play.google.com/apps/internaltest/4700960164758478673"
     }
   },
   "pendingUserDecisions": [
@@ -148,7 +178,8 @@
       },
       "invalidCurrentAccessPasswordRemoved": true
     },
-    "reviewLogin": "Dedicated email-verified customer created and signed in through the normal API; privileged endpoints denied. Credentials remain private and were not entered in either store."
+    "reviewLogin": "Dedicated email-verified customer created and signed in through the normal API; privileged endpoints denied. Credentials remain private and were not entered in either store.",
+    "android22Emulator": "Verified AAB-derived Android22 runtime: guest Browse/Collection, public Arndale menu, one-item local basket, explicit safety sign-in and Back preserve restaurant/cart. No login credentials, food order or payment submitted; not physical-device or notification UAT."
   },
   "pendingOperatorConfirmations": [
     "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration",
@@ -159,7 +190,7 @@
     "Genuine paid order, commission/commission-free-period and payout reconciliation",
     "Final review access with a functioning ordering journey, review contact details and menu/photo rights",
     "Complete target audience/content-rating and final privacy/listing submissions",
-    "At least two genuine Android listing screenshots and exact final native device verification",
+    "Final exact native build/device verification; Android22 screenshots are saved, but iOS17 still lacks the later guest fix.",
     "Review remaining test credentials before public launch"
   ],
   "releaseEvidence": {
@@ -169,12 +200,41 @@
     "publicReleaseApproved": false
   },
   "nativeGuestBrowsingFix": {
-    "status": "SOURCE_FIXED_AWAITING_NEW_BINARY",
+    "status": "ANDROID22_INTERNAL_AVAILABLE_AND_EMULATOR_VERIFIED_IOS_PENDING",
     "discoveredOn": "Android21 guest emulator",
     "symptom": "Authenticated safety lookup displayed an authentication-required error during public menu browsing",
     "behavior": "Guest skips private state request and can enter normal customer sign-in to report or block; existing API authorisation unchanged",
     "mobileTypecheck": "PASSED",
     "currentIOS17IncludesFix": false,
-    "currentAndroid21IncludesFix": false
+    "currentAndroid21IncludesFix": false,
+    "currentAndroid22IncludesFix": true,
+    "android22Evidence": {
+      "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+      "easBuildId": "0aa67c71-41af-4379-930e-49f37c5c0934",
+      "aabSha256": "a8fe3e7d6037b010b02cf29f46b757874e5b6250d98286d014b83eb14df9c69b",
+      "emulatorGuestMenuAndCartVerified": true,
+      "signInReturnPreservesRestaurantAndCart": true,
+      "authenticationErrorAbsent": true,
+      "orderOrPaymentSubmitted": false,
+      "physicalDeviceVerified": false
+    },
+    "futureSourceOnlyCopy": "AuthScreen wording now describes saved addresses and orders; this correction was made after Android22 and is absent from Android22 and iOS17."
+  },
+  "freeBuildAllowance": {
+    "android": {
+      "used": 9,
+      "total": 15
+    },
+    "ios": {
+      "used": 15,
+      "total": 15
+    },
+    "total": {
+      "used": 24,
+      "total": 30
+    },
+    "overageBuilds": 0,
+    "paidBuildInitiated": false,
+    "scope": "Expo allowance readback after Android22; provider allowances can change."
   }
 }

@@ -9,19 +9,69 @@
     "Source, binary or provider changes require reassessment of the affected evidence. Private proof digests identify operator-held records; their personal data and credentials are not copied here."
   ],
   "sourceBinding": {
-    "documentationBaselineCommit": "ac1e6a2f3e8680931c5b23aa1a2376a074418ebb",
-    "deployedApplicationCommit": "a7742830356e81d4d4549158bbd77378086e902b",
-    "applicationDeploymentId": "fdc04665-b909-47ef-a9f8-50cbdc62aa30",
+    "documentationBaselineCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+    "deployedApplicationCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+    "applicationDeploymentId": "d49e0aff-00fc-443e-b983-f03425d3ee79",
     "applicationDeploymentStatus": "SUCCESS",
     "schemaVersion": 58,
-    "iosInternalBuild": { "version": "1.0.0", "build": 17, "sourceCommit": "83a67be0c145a53bfd430e4783ee1b29ed719553", "deviceJourneyVerified": false },
-    "androidInternalBuild": { "version": "1.0.0", "build": 21, "sourceCommit": "edc261b87e5550470317c35fa5f2689cb320e5ed", "deviceJourneyVerified": false }
+    "iosInternalBuild": {
+      "version": "1.0.0",
+      "build": 17,
+      "sourceCommit": "83a67be0c145a53bfd430e4783ee1b29ed719553",
+      "deviceJourneyVerified": false,
+      "limits": [
+        "Does not include the guest reporting/authentication fix in source 354a593."
+      ]
+    },
+    "androidInternalBuild": {
+      "version": "1.0.0",
+      "build": 22,
+      "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+      "easBuildId": "0aa67c71-41af-4379-930e-49f37c5c0934",
+      "aabSha256": "a8fe3e7d6037b010b02cf29f46b757874e5b6250d98286d014b83eb14df9c69b",
+      "track": "internal",
+      "consoleTrackId": "4700960164758478673",
+      "releaseId": "10",
+      "availability": "AVAILABLE_TO_INTERNAL_TESTERS",
+      "releasedAtDisplay": "8 Nov 2026 20:35 (Europe/London)",
+      "reviewStatus": "NOT_REVIEWED",
+      "deviceJourneyVerified": false,
+      "evidenceIds": [
+        "google22-internal-availability",
+        "android22-native-guest-emulator"
+      ]
+    },
+    "androidEmulatorCandidate": {
+      "version": "1.0.0",
+      "build": 22,
+      "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+      "easBuildId": "0aa67c71-41af-4379-930e-49f37c5c0934",
+      "aabSha256": "a8fe3e7d6037b010b02cf29f46b757874e5b6250d98286d014b83eb14df9c69b",
+      "localGuestJourneyVerified": true,
+      "physicalDeviceVerified": false,
+      "googleInternalAvailability": "AVAILABLE_TO_INTERNAL_TESTERS_RELEASE10_VERIFIED"
+    },
+    "postBinarySourceChanges": [
+      "AuthScreen address copy changed after Android 22 was built and is not included in Android 22 or iOS 17. Source changes are not evidence that an existing store binary was updated."
+    ],
+    "historicalAndroid21DeviceEvidence": {
+      "version": "1.0.0",
+      "build": 21,
+      "sourceCommit": "edc261b87e5550470317c35fa5f2689cb320e5ed",
+      "deviceJourneyVerified": false,
+      "scope": "Historical Samsung Galaxy S10 navigation, notification prompt and silent-banner evidence only; not a full journey or Android 22 evidence."
+    }
   },
   "evidence": {
     "hosted-source-review": {
-      "publicReferences": ["../../docs/STORE_SUBMISSION_READINESS_2026_11_08.md", "../../docs/store/STORE_STATE_2026_11_08.json"],
+      "publicReferences": [
+        "../../docs/STORE_SUBMISSION_READINESS_2026_11_08.md",
+        "../../docs/store/STORE_STATE_2026_11_08.json"
+      ],
       "result": "Deployed application source and schema readiness verified; focused safety, cover-removal, auth/privacy and release-schema checks passed.",
-      "limits": ["Not a full production UAT, real-payment test or hosted capacity certification."]
+      "limits": [
+        "Not a full production UAT, real-payment test or hosted capacity certification."
+      ]
     },
     "operator-approved-active-policy": {
       "policyVersion": "2026-11-08-v1",
@@ -30,38 +80,144 @@
       "privateActivationProofSha256": "22084113137e8e5bd6540d1fc1278738e21bfd5c5eaaf58fcf659d3362979dbf",
       "privatePublishedTextProofSha256": "c502a51180fe26b3e9e804cef7e80775ec180c8062bb53e16ebb9456c19abffe",
       "result": "Operator-approved Terms and Privacy Notice are active; public endpoint text/version checks passed and reviewed retention is enabled.",
-      "limits": ["This records operator approval, not an independent legal opinion or final store privacy-declaration approval."]
+      "limits": [
+        "This records operator approval, not an independent legal opinion or final store privacy-declaration approval."
+      ]
     },
     "hosted-recovery-api-and-mail-dispatch": {
       "verifiedAt": "2026-11-08T18:20:29.492Z",
       "privateProofSha256": "2a73aa1cf49683a98ce4c8360f462c858b29ba1ffe463c8e809205c952536ba5",
       "result": "Ordinary signup/verification and password recovery passed through the hosted API and normal email worker; old access and reset-token replay were rejected.",
-      "limits": ["Inbox receipt and the actual reset-link/device UI journey remain unverified."]
+      "limits": [
+        "Inbox receipt and the actual reset-link/device UI journey remain unverified."
+      ]
     },
     "hosted-customer-erasure-domain-completion": {
       "verifiedAt": "2026-11-08T18:39:32.291Z",
       "privateProofSha256": "128679b90456e2cdbf38a1b6f4d320555f74bfb75bed93b9055c8d3eadcb1457",
       "result": "One explicitly approved disposable customer completed ordinary password-confirmed intake and authorised scoped maintenance using the exported domain planner and erasure transaction, with enabled administrator, policy, exact-scope, blocker and fresh preview-hash checks. Tombstone, erased profile, recovery/session removal and browser/native login rejection were verified. Exactly one completion email was sent by the normal worker; protected profiles remained unchanged.",
-      "limits": ["Not an observed admin HTTP/UI or physical-device deletion test.", "Completion-email inbox receipt, processor deletion and backup restore/suppression drills were not established by this test.", "The approved account had no orders, payments, messages or saved addresses; local fixtures cover broader retention cases."]
+      "limits": [
+        "Not an observed admin HTTP/UI or physical-device deletion test.",
+        "Completion-email inbox receipt, processor deletion and backup restore/suppression drills were not established by this test.",
+        "The approved account had no orders, payments, messages or saved addresses; local fixtures cover broader retention cases."
+      ]
     },
     "current-internal-device-evidence": {
       "publicReference": "../../docs/STORE_SUBMISSION_READINESS_2026_11_08.md",
-      "result": "Current signed binaries are available internally. Reported Samsung Galaxy S10 Android 21 prompt and silent banner behavior are bounded device evidence.",
-      "limits": ["No complete final-build iOS/Android customer journey or terminal/background Live Activity proof."]
+      "result": "iOS 17 and Android 22 are confirmed available to their existing internal store testers. Reported Samsung Galaxy S10 Android 21 prompt and silent-banner behavior remain bounded historical physical-device evidence; they are not extended to Android 22.",
+      "limits": [
+        "The Android 21 phone results do not establish Android 22 notification or physical-device behavior.",
+        "No complete final-build iOS/Android customer journey or terminal/background Live Activity proof."
+      ]
+    },
+    "android22-native-guest-emulator": {
+      "publicReference": "../../docs/store/screenshots/android22/provenance.json",
+      "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+      "versionCode": 22,
+      "aabSha256": "a8fe3e7d6037b010b02cf29f46b757874e5b6250d98286d014b83eb14df9c69b",
+      "result": "The coordinator verified genuine Android 22 guest Browse, restaurant menu, basket and sign-in/return UI on the local Android 36 emulator at 1080x1920/density420 with default fonts and normal system bars. The guest menu no longer shows an authentication-required banner; reporting opens customer sign-in, and returning preserves one Nan at GBP2.00 in the basket. Three genuine Browse/menu/basket PNGs and their hashes are recorded in the linked provenance file.",
+      "artifactScope": "The unchanged signed AAB passed exact source/package/version, existing upload-signer/CMS, API 36, quiet-channel, permission and 16KB artifact checks. The emulator APK uses a separate local test certificate; its runtime bundle and native libraries match the AAB. APK 16KB alignment was verified; the emulator itself uses 4KB pages.",
+      "limits": [
+        "No customer login, signup, food order or payment was submitted in this guest UI check.",
+        "Emulator captures do not establish Google internal availability, physical-phone behavior, locked-screen notification delivery, iOS behavior or full payment UAT."
+      ]
+    },
+    "saved-google-listing-preparation": {
+      "publicReferences": [
+        "../../docs/store/STORE_STATE_2026_11_08.json",
+        "../../docs/store/screenshots/android22/provenance.json"
+      ],
+      "result": "The coordinator verified the Google listing saved as Ready to review, with three genuine Android 22 PNGs and 7/11 initial setup tasks complete.",
+      "limits": [
+        "Saved listing readiness is not final Data safety, target-audience/content-rating completion, full reviewer ordering access or public submission/approval."
+      ]
+    },
+    "google22-internal-availability": {
+      "publicReference": "../../docs/store/STORE_STATE_2026_11_08.json",
+      "privateConsoleReadbackSha256": "5bec5aec128028f15fd63ec5abc29a50687561221ac9a2cfa638e85ce024d237",
+      "privateConsoleScreenshotSha256": "d76d609283de14875a60182ac09786082039127bc2c553c8fa8cdbe9e64eeef4",
+      "package": "uk.co.calai.caleats",
+      "versionCode": 22,
+      "consoleTrackId": "4700960164758478673",
+      "releaseId": "10",
+      "result": "Authenticated Google Play Console readback and saved screenshot show the active internal release 1.0.0 (22) - Smoother guest browsing available to internal testers, one version code, released 8 November at 20:35, Not reviewed. The coordinator verified release 10 contains only the new 22 bundle and excludes the previous 21 bundle. Existing testers, countries and permissions were retained.",
+      "existingOptInUrl": "https://play.google.com/apps/internaltest/4700960164758478673",
+      "limits": [
+        "Internal availability is not public Google review, production release or completed final physical-phone UAT.",
+        "Android 22 guest fixes are not present in the existing iOS 17 binary; later AuthScreen address-copy changes are not compiled into either binary."
+      ]
     }
   },
   "gates": {
-    "publicReleaseApproved": { "approved": false, "remaining": "Explicit public-release approval is absent; public submission/release is not authorised by this checklist." },
-    "backendUpdateDeployedAndReviewed": { "approved": true, "scope": "Deployment and focused review of the identified hosted application source only.", "evidenceIds": ["hosted-source-review"] },
-    "livePaymentsAndRestaurantPayoutsVerified": { "approved": false, "remaining": "Genuine restaurant bank/provider setup, controlled paid-order settlement, discount/commission treatment, commission-free periods and weekly payout reconciliation remain incomplete." },
-    "accountRecoveryEmailVerified": { "approved": false, "evidenceIds": ["hosted-recovery-api-and-mail-dispatch"], "remaining": "Verify inbox delivery and the actual recovery-link UI journey; worker dispatch and direct API confirmation alone do not satisfy this gate." },
-    "privacyAndTermsApproved": { "approved": true, "scope": "Operator-approved published customer Terms/Privacy and matching active retention policy; store declarations remain a separate gate.", "evidenceIds": ["operator-approved-active-policy"] },
-    "accountDeletionCompletedAndVerified": { "approved": true, "scope": "Bounded hosted customer intake/domain erasure and access-revocation completion for the explicitly approved disposable test account; remaining UI, inbox and restore limits are retained.", "evidenceIds": ["hosted-customer-erasure-domain-completion"] },
-    "backgroundNotificationsVerified": { "approved": false, "evidenceIds": ["current-internal-device-evidence"], "remaining": "Finish current-binary order, offer and message notification destinations across supported foreground/background/closed-app states on both platforms." },
-    "iosLiveActivityBackgroundAndTerminalVerified": { "approved": false, "remaining": "Verify current iOS build background/lock-screen updates and removal at terminal order states." },
-    "iosPhysicalDeviceVerified": { "approved": false, "remaining": "Complete the full iOS 17-build physical-device acceptance journey, including checkout, receipt, messaging, recovery and deletion UI." },
-    "androidPhysicalDeviceVerified": { "approved": false, "evidenceIds": ["current-internal-device-evidence"], "remaining": "Complete the full Android 21-build physical-device acceptance journey; limited Samsung navigation/prompt/banner reports do not establish it." },
-    "weakTestPasswordsReplaced": { "approved": false, "remaining": "Privileged, business and remaining customer test credentials require an evidenced inventory and replacement before public operation." },
-    "storeListingsAndReviewAccessApproved": { "approved": false, "remaining": "Finish usable full reviewer ordering access, content rights, store disclosures/listings, required Android screenshots and final public review details. An enabled review login alone is insufficient." }
+    "publicReleaseApproved": {
+      "approved": false,
+      "remaining": "Explicit public-release approval is absent; public submission/release is not authorised by this checklist."
+    },
+    "backendUpdateDeployedAndReviewed": {
+      "approved": true,
+      "scope": "Deployment and focused review of the identified hosted application source only.",
+      "evidenceIds": [
+        "hosted-source-review"
+      ]
+    },
+    "livePaymentsAndRestaurantPayoutsVerified": {
+      "approved": false,
+      "remaining": "Genuine restaurant bank/provider setup, controlled paid-order settlement, discount/commission treatment, commission-free periods and weekly payout reconciliation remain incomplete."
+    },
+    "accountRecoveryEmailVerified": {
+      "approved": false,
+      "evidenceIds": [
+        "hosted-recovery-api-and-mail-dispatch"
+      ],
+      "remaining": "Verify inbox delivery and the actual recovery-link UI journey; worker dispatch and direct API confirmation alone do not satisfy this gate."
+    },
+    "privacyAndTermsApproved": {
+      "approved": true,
+      "scope": "Operator-approved published customer Terms/Privacy and matching active retention policy; store declarations remain a separate gate.",
+      "evidenceIds": [
+        "operator-approved-active-policy"
+      ]
+    },
+    "accountDeletionCompletedAndVerified": {
+      "approved": true,
+      "scope": "Bounded hosted customer intake/domain erasure and access-revocation completion for the explicitly approved disposable test account; remaining UI, inbox and restore limits are retained.",
+      "evidenceIds": [
+        "hosted-customer-erasure-domain-completion"
+      ]
+    },
+    "backgroundNotificationsVerified": {
+      "approved": false,
+      "evidenceIds": [
+        "current-internal-device-evidence"
+      ],
+      "remaining": "Finish current-binary order, offer and message notification destinations across supported foreground/background/closed-app states on both platforms."
+    },
+    "iosLiveActivityBackgroundAndTerminalVerified": {
+      "approved": false,
+      "remaining": "Verify current iOS build background/lock-screen updates and removal at terminal order states."
+    },
+    "iosPhysicalDeviceVerified": {
+      "approved": false,
+      "remaining": "Complete the full final iOS physical-device acceptance journey, including the guest fix absent from iOS 17, checkout, receipt, messaging, recovery and deletion UI."
+    },
+    "androidPhysicalDeviceVerified": {
+      "approved": false,
+      "evidenceIds": [
+        "current-internal-device-evidence",
+        "android22-native-guest-emulator"
+      ],
+      "remaining": "Complete the full final Android physical-device acceptance journey; historical Android 21 Samsung reports and Android 22 guest emulator checks do not establish it."
+    },
+    "weakTestPasswordsReplaced": {
+      "approved": false,
+      "remaining": "Privileged, business and remaining customer test credentials require an evidenced inventory and replacement before public operation."
+    },
+    "storeListingsAndReviewAccessApproved": {
+      "approved": false,
+      "evidenceIds": [
+        "saved-google-listing-preparation"
+      ],
+      "remaining": "Google listing and three native Android 22 screenshots are saved Ready to review at 7/11 setup tasks. Finish usable full reviewer ordering access, final content rights/disclosures, target audience/content rating and public review details. A saved listing or enabled review login alone is insufficient."
+    }
   }
 }

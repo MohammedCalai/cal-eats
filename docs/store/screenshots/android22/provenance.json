@@ -1,0 +1,59 @@
+{
+  "package": "uk.co.calai.caleats",
+  "version": "1.0.0",
+  "versionCode": 22,
+  "sourceCommit": "354a593714e10a1dad9cfb52d4c4df5780df21c7",
+  "androidApi": 36,
+  "device": "Dedicated local Android emulator, 1080x1920 at density420, default fonts and normal system bars",
+  "aabSha256": "a8fe3e7d6037b010b02cf29f46b757874e5b6250d98286d014b83eb14df9c69b",
+  "localApkSha256": "065101d03c5dcacc3b1d33e92719b2d302a35d7bc0479584b8aa63463fa53678",
+  "runtimeAssetSha256": "04dfeaa6f119d9f70fc3654bcfca452e1e60d614051679868fe1dc9b2910f32b",
+  "provenance": "SDK read-only native capture of the verified AAB-derived app. Runtime bundle/native libraries match the AAB; the derived APK uses a local testing certificate instead of Play signing. The published AAB is unchanged.",
+  "processing": "No crop, resize, composition or retouching. Original pixels are retained; only a proven fully opaque alpha plane was removed for lossless RGB PNG export.",
+  "content": "Genuine guest Browse, menu and local basket states using the current Arndale catalogue. No food order, account signup or payment was submitted. Fallback food imagery remains visibly illustrative.",
+  "screenshots": [
+    {
+      "file": "01-browse.png",
+      "capturedAt": "2026-11-08T20:18:41.467642+00:00",
+      "dimensions": [
+        1080,
+        1920
+      ],
+      "format": "PNG RGB, 24-bit, no alpha",
+      "bytes": 505577,
+      "sha256": "e3fa0e41ff2cda2cd6a7378361731d2326d060720c51861b07c03ffb9a561121",
+      "nativeScreenshotSha256": "c1114be3ca817160b6c38c7d575ab8506bedb9ffd0b027511134c7c6cf05d2b6",
+      "rgbPixelsPreservedExactly": true
+    },
+    {
+      "file": "02-menu.png",
+      "capturedAt": "2026-11-08T20:21:43.130086+00:00",
+      "dimensions": [
+        1080,
+        1920
+      ],
+      "format": "PNG RGB, 24-bit, no alpha",
+      "bytes": 104016,
+      "sha256": "672f38e862b4b8177bdef80e2da0e6fa2796591f273ec2126ab7802bd6f030f0",
+      "nativeScreenshotSha256": "b5038a70c781d868e4cc7508cad6d91d0081669f7db766017025c1c9e1c22122",
+      "rgbPixelsPreservedExactly": true
+    },
+    {
+      "file": "03-basket.png",
+      "capturedAt": "2026-11-08T20:24:17.092472+00:00",
+      "dimensions": [
+        1080,
+        1920
+      ],
+      "format": "PNG RGB, 24-bit, no alpha",
+      "bytes": 132703,
+      "sha256": "5ff95acc64f11bce7e884a527de48458c10721192fe9f3c236f55a44a7f6be3f",
+      "nativeScreenshotSha256": "c2e2147e20ab0c730871a868b9e4a5a95a1c8e0df13383979a0222965c1df7df",
+      "rgbPixelsPreservedExactly": true
+    }
+  ],
+  "limits": [
+    "Emulator evidence is not physical-phone, locked-screen notification, iOS or full payment UAT.",
+    "These captures depict Android22. The final public release must be rechecked if the interface or restaurant content changes."
+  ]
+}
