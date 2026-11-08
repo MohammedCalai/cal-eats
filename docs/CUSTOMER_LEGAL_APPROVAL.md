@@ -1,28 +1,37 @@
-# Customer legal review scaffold — not activated
+# Customer legal and privacy release
 
-The customer terms and privacy notice are awaiting owner review. This change contains no operative legal document, active version, approval reference or public policy page. `CALAI_CUSTOMER_LEGAL_ENABLED` defaults to false and the manifest is deliberately absent. No live database or hosting setting was changed.
+The owner reviewed the customer Terms and authorised CALAI LTD’s full registered office. The Privacy Notice was prepared from tested application behaviour, a source audit and current primary provider sources on 8 November 2026. Packaged text is in apps/api/legal-documents. A committed file does not activate a policy.
 
 ## Implemented locally
 
-- Migration 46 adds approved-document metadata and append-only application acceptance history. Evidence records the authenticated customer, exact version and SHA-256, server time, web/native channel and signup/new-order context. Ordinary retries do not rewrite that evidence.
-- An active manifest must explicitly include both documents, canonical UTC approval/effective dates, approval reference, exact string versions/hashes, and dedicated same-origin `/legal/` URLs. Existing approved versions cannot be replaced with different metadata.
-- New account creation checks affirmative Terms acceptance and the provided Privacy Notice version. User and evidence creation share one transaction.
-- Existing customers can sign in and use existing orders, conversations, support, account summary and deletion requests. Only a **new** order requires the current Terms and notice. Original idempotent order recovery does not require a later version.
-- Customer UI has one mandatory, unticked Terms checkbox. Privacy notice provision is acknowledged with the signup/new-order confirmation action, using the displayed version/hash; it is not consent to all processing. A privacy-only revision does not ask customers to accept unchanged Terms again.
-- Optional marketing stays separate and defaults remain off. No health-data/allergy consent is inferred from accepting the Terms.
+- Immutable actual-text legal archives, exact SHA-256 checking and public pre-login HTML/text routes when activated.
+- One unticked Terms acceptance checkbox. Privacy provision, marketing and optional allergy consent remain separate.
+- Atomic signup acceptance and new-order gating. Login, existing history, support, privacy requests and original idempotent order recovery remain available.
+- Per-order applicable legal snapshots, receipt references and the actual accepted Terms in confirmation emails.
+- Password-confirmed in-app deletion intake, optional reason, internal administrator review, real eligible-data erasure, revoked login and encrypted completion notification. Active orders, payment/support work, uncertain dispatch and legal holds block completion. Monetary records and minimal legal evidence remain.
+- Policy-controlled retention/minimisation and a separate default-off approval gate for health-note collection.
+- Restore clearance requires an authoritative external, pinned suppression ledger. Integrity-only checks do not clear a restored copy for service.
 
-## Required before activation
+## Configuration
 
-1. Owner approves the exact final customer terms and privacy text, controller/contact/supplier facts, retention schedule and implementation commitments. Do not use the fictional document metadata in tests.
-2. Publish the approved versions at immutable, version-specific public URLs and keep archived copies of the **actual text**. The current ledger stores metadata, not the text itself: a hash plus a mutable URL is not a completed durable-contract-copy solution.
-3. Add a per-order reference/snapshot of the applicable terms and deliver the accepted terms and order confirmation in a durable form, such as the confirmation email with the actual terms copy or a stable downloadable attachment. The current acceptance ledger alone does not implement that delivery.
-4. Verify the manifest-driven Account and guest/signup links against the actual approved public documents. The read-only UI now selects approved links when enabled and keeps development notices only for an explicitly disabled manifest. Public `/legal/` document text is deliberately not served by this scaffold.
-5. Implement and verify the genuine in-app deletion flow and permitted retention/minimisation, including processors/backups, before claiming deletion is complete. The existing support-verified action closes login access only.
-6. Resolve the optional allergy-note health-data treatment and provide just-in-time information/any required consent separately. Complete the factual App Store privacy answers and declaration review.
-7. Only after these items pass, create the approved manifest in private hosting configuration and deliberately enable the feature. Run a focused native/web new-account and existing-user/version-update acceptance check. A server rollout should coordinate the active manifest so older instances cannot apply a superseded policy.
+CALAI_CUSTOMER_LEGAL_ENABLED and CALAI_CUSTOMER_PRIVACY_ENABLED both default to false. Activate them together only after the release gates below pass.
 
-## Configuration shape
+CALAI_CUSTOMER_LEGAL_MANIFEST_JSON contains documents.terms and documents.privacy. Each needs version, sha256, canonical same-origin URL, canonical UTC approvedAt/effectiveAt, approvalReference and exactly one of text or a safe packaged archiveFile filename. Text bytes must match the hash; existing versions cannot be replaced.
 
-`CALAI_CUSTOMER_LEGAL_MANIFEST_JSON` is an operator-approved JSON object with `documents.terms` and `documents.privacy`. Each contains `version`, `sha256`, `url`, `approvedAt`, `approvalReference` and `effectiveAt`. There are intentionally no copyable live/example versions here. Public hosted origins are HTTPS; loopback HTTP is allowed only through the existing local development configuration. A document that is not yet effective fails closed for legal review/new orders; sign-in and existing-account rights remain available.
+CALAI_CUSTOMER_PRIVACY_MANIFEST_JSON contains the matching version, canonical UTC approvedAt, approvalReference, retention and the one-calendar-month deletion target. Health collection additionally requires explicit supplier-scope approval; customer consent cannot expand a processor contract.
 
-Account-erasure retention and any eventual evidence purge must follow the approved retention policy. Acceptance history has no dependency on ephemeral login sessions and survives a sanitized backup. No erasure operation is provided or run by this scaffold.
+The proposed schedule is chat bodies 30 days from creation; eligible terminal-order allergy notes 30 days; terminal-order contacts 90 days; resolved support content 12 calendar months. Necessary accounting records have a six-year minimum, not a blanket retention of all personal information. Financial records are not automatically purged by the retention worker.
+
+## Before activation and store submission
+
+1. Review the final notice and exact operational retention commitments. An instruction to write a notice is not evidence of a supplier contract.
+2. Confirm processor and UK transfer arrangements in the actual supplier accounts. Railway’s public DPA requires execution and lists no special-category data. Keep optional health collection off until appropriate coverage is confirmed.
+3. Confirm Expo’s binding push-processing terms, Microsoft tenant/product coverage, and Postcodes.io precise-location processing scope/location/safeguard. Public privacy pages alone do not prove account contract coverage.
+4. Record actual backup/log expiry and protect a current authoritative erasure-suppression ledger outside restorable backups. Apply deletion restrictions before a restored copy returns to service.
+5. Operate a safe expiry/review process for private local mail spools and independent operational copies. Delivered emails and restaurant paper receipts cannot be recalled by an app migration; explain relevant exceptions in deletion responses.
+6. Review App Store privacy answers against the final native build and provider facts. No inference of no tracking is made solely from the absence of an advertising SDK.
+7. Coordinate hosted migrations, legal/privacy activation and native release. Verify legal links, signup, existing-user acceptance and deletion using temporary fixtures only.
+
+No live customer erasure, financial changes, provider-key changes, hosted activation or store submission is performed by this local phase. The owner phone app remains on hold.
+
+New customer signup also queues a welcome/verification service email. Verification is required for new orders from newly registered accounts; pre-existing accounts keep their existing access. Login, browsing, support and privacy requests stay available while verification is pending. This is separate from marketing consent.

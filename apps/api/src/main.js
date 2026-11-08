@@ -19,6 +19,8 @@ import {runRestaurantCommissionEmails} from "./restaurant-commission-emails.js";
 import {runAccountAccessEmails} from "./account-access-email.js";
 import {runCustomerPush} from "./customer-push.js";
 import {runOrderLiveActivities} from "./order-live-activities.js";
+import {runCustomerPrivacyRetention} from "./customer-privacy.js";
+import {runCustomerErasureConfirmations} from "./customer-erasure.js";
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -51,7 +53,7 @@ function triggerCustomerPush(){
 function triggerAccountEmails(){
   if(accountEmailRunning)return currentAccountEmailWorker;
   accountEmailRunning=true;
-  currentAccountEmailWorker=runAccountAccessEmails(db,config).catch(error=>{console.error("Account recovery email worker failed",error instanceof Error?error.name:"unknown error");}).finally(()=>{accountEmailRunning=false;});
+  currentAccountEmailWorker=Promise.allSettled([runAccountAccessEmails(db,config),runCustomerErasureConfirmations(db,config)]).then(results=>{for(const result of results)if(result.status==="rejected")console.error("Account email worker failed",result.reason instanceof Error?result.reason.name:"unknown error");}).finally(()=>{accountEmailRunning=false;});
   return currentAccountEmailWorker;
 }
 function triggerCommissionEmails() {
@@ -76,6 +78,7 @@ async function runWorkers() {
     runMessageRetention(db, config);
     runCustomerMessageRetention(db, config);
     runPromotionMaintenance(db, config);
+    runCustomerPrivacyRetention(db,config);
     await runProviderEventReconciliation(db, config);
     await runStripeConnectWorker(db, config);
     await runBusinessWeeklyStatements(db, config);

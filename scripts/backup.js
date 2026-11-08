@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
+import { exportPrivacySuppressionLedger, assertPrivacySuppressionSafe } from "./restore-privacy.js";
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const BACKUP_ROOT = path.resolve(process.env.CALAI_BACKUP_DIR || path.join(PROJECT_ROOT, "backups"));
@@ -55,7 +56,7 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
     try {
       // Delete delivery dependants before registrations, and registrations before
       // the native session they reference. This also works with older schemas.
-      const temporaryTables = ["order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
+      const temporaryTables = ["customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
       const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
       if (present.length) {
         copy.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");
@@ -68,6 +69,12 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
       if (copy.prepare("PRAGMA foreign_key_check").get()) throw new Error("Sanitized backup has a foreign key violation");
       const integrity = copy.prepare("PRAGMA integrity_check").all();
       if (integrity.length !== 1 || integrity[0].integrity_check !== "ok") throw new Error("Sanitized backup failed its integrity check");
+      // Tombstones and holds are deliberately preserved in every new copy.
+      // Reject a copy that resurrects data already erased in this snapshot.
+      // Restoring an OLDER snapshot still requires a separately verified ledger
+      // exported from the current environment; this check cannot know future
+      // erasures and does not purge old managed/provider backups.
+      if (copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='customer_erasure_tombstones'").get()) assertPrivacySuppressionSafe(copy, exportPrivacySuppressionLedger(copy));
     } finally { copy.close(); }
   } catch (error) {
     try {

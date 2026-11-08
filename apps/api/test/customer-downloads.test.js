@@ -28,6 +28,9 @@ test("device routing handles Android, iPhone and touch iPad without forwarding a
   destination=null;location.hash="#reset-password=private-token";
   await initializeDownloads({document,location,navigator:{userAgent:"iPhone"},fetch:async()=>{throw Error("must not fetch");}});
   assert.equal(destination,"/account-access/#reset-password=private-token");assert.equal(accessLinkDestination("#arbitrary=private-token"),null);
+  destination=null;location.hash="#verify-email=verification-secret";
+  await initializeDownloads({document,location,navigator:{userAgent:"iPhone"},fetch:async()=>{throw Error("Verification must be routed before store lookup");}});
+  assert.equal(destination,"/account-access/#verify-email=verification-secret");
   location.hash="";destination=null;node.disabled=true;
   await initializeDownloads({document,location,navigator:{userAgent:"iPhone"},fetch:async()=>({ok:true,json:async()=>customerDownloadConfig({})})});
   assert.equal(destination,null);assert.equal(node.disabled,true);

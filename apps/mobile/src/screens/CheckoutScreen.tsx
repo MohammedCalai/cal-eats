@@ -12,6 +12,8 @@ import { initialScheduleChoice } from "../schedule-choice";
 import type { Address, CartEntry, Fulfillment, Offer, Order, PaymentMethod, Restaurant } from "../types";
 import { createCheckoutAttempt } from "../../../web/checkout-attempt.js";
 import { CustomerLegalReview, useCustomerLegal } from "../CustomerLegalReview";
+import { OrderHealthConsent, useOrderHealthConsent } from "../OrderHealthConsent";
+import { CustomerEmailVerification, type CustomerEmailVerificationReview } from "../CustomerEmailVerification";
 
 type Quote = {
   scheduledFor:string|null; scheduleMinimumLeadMinutes:number; scheduleMaxDays:number;
@@ -32,7 +34,7 @@ function transientQuoteError(error:unknown) { return error instanceof ApiError &
 type PaymentConfig = { providerMode:string; cardAvailable:boolean; stripeMode:"test"|"live"|null };
 function stripeCheckoutUrl(value:string){const url=new URL(value);if(url.protocol!=="https:"||url.hostname!=="checkout.stripe.com"||url.username||url.password)throw Error("Secure checkout returned an unexpected destination.");return url.toString();}
 
-export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillment, onBack, onCheckOrders, onOrdered, initialAddress, onOfferResolved, onAddress, onScrollOffset, initialSchedule, onScheduleChange }: { initialPhone?:string|null; initialSchedule?:ScheduleChoice|null; onScheduleChange?:(choice:ScheduleChoice)=>void; onScrollOffset?:(offset:number)=>void; initialAddress?:Address|null; onOfferResolved?:(offerId?:string)=>void; onAddress?:(address:Address)=>void; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onCheckOrders: () => void; onOrdered: (order: Order) => void }) {
+export function CheckoutScreen({ emailVerification, initialPhone, token, restaurant, cart, fulfillment, onBack, onCheckOrders, onOrdered, initialAddress, onOfferResolved, onAddress, onScrollOffset, initialSchedule, onScheduleChange }: { emailVerification:CustomerEmailVerificationReview;initialPhone?:string|null; initialSchedule?:ScheduleChoice|null; onScheduleChange?:(choice:ScheduleChoice)=>void; onScrollOffset?:(offset:number)=>void; initialAddress?:Address|null; onOfferResolved?:(offerId?:string)=>void; onAddress?:(address:Address)=>void; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onCheckOrders: () => void; onOrdered: (order: Order) => void }) {
   const [firstOffers,setFirstOffers]=useState<Offer[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]),[claimingOffer,setClaimingOffer]=useState(false);
   const [address, setAddress] = useState<Address>(initialAddress?{...initialAddress}:{ label: "Home", line1: "", line2: "", city: "", postcode: "" }); const [saveAddress, setSaveAddress] = useState(false);
@@ -49,6 +51,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
   const targetTime=scheduleMode==="scheduled"?scheduledFor:null;
   const recovering = Boolean(attempt.pending), locked = busy || recovering || claimingOffer;
   const legal = useCustomerLegal(token, !recovering);
+  const healthConsent = useOrderHealthConsent(token, allergyNotes);
   const [paymentConfig,setPaymentConfig]=useState<PaymentConfig>({providerMode:"unknown",cardAvailable:false,stripeMode:null});
   const estimated = useMemo(() => cartTotals(cart, fulfillment, restaurant), [cart, fulfillment, restaurant]);
   const [quoteResult,setQuoteResult]=useState<{request:string;value:Quote}|null>(null),[quoting,setQuoting]=useState(false),[quoteError,setQuoteError]=useState(""),[quoteRevision,setQuoteRevision]=useState(0);
@@ -103,10 +106,12 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
     try {
       let body = null;
       if (!original) {
+        await emailVerification.requireForNewOrder();
         const current=checkedQuote(await api<Quote>("/api/orders/quote",{method:"POST",token,body:quoteRequest}),targetTime);
         if(latest.current.quoteRequest!==quoteRequest)throw Error("Your order details changed. Wait for the updated total before placing your order.");
         setQuoteResult({request:quoteRequest,value:current});latest.current.onOfferResolved?.(current.offerId??undefined);
         if(quoteSignature(current)!==quoteSignature(quote!)){reviewChanged=true;throw Error("Your price or offer changed. Review the updated order, then place your order.");}
+        const allergyConsentPayload = healthConsent.payload();
         await legal.acceptForNewOrder();
         body = {
         restaurantId: restaurant.id,
@@ -119,7 +124,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
         ...(fulfillment === "delivery" ? { deliveryAddress: { line1: address.line1, ...(address.line2 ? { line2: address.line2 } : {}), city: address.city, postcode: address.postcode } } : {}),
         ...(phone.trim() ? { customerPhone: phone.trim() } : {}),
         ...(fulfillment === "delivery" && instructions.trim() ? { deliveryInstructions: instructions.trim() } : {}),
-        ...(allergyNotes.trim() ? { allergyNotes: allergyNotes.trim() } : {}),
+        ...(allergyNotes.trim() ? { allergyNotes: allergyNotes.trim(), ...(allergyConsentPayload ? { allergyConsent: allergyConsentPayload } : {}) } : {}),
         ...(current.offerId ? { offerId: current.offerId } : {})
         };
       }
@@ -148,6 +153,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
     <SectionTitle eyebrow={restaurant.name} title="Finish your order" action={<Text style={styles.headingAmount}>{money(totals.totalMinor)}</Text>}/>
     <Text style={styles.intro}>{fulfillment==="delivery"?"Delivered to your door":"Ready to collect from the restaurant"}</Text>
     {recovering ? <Card tone="warning"><Text style={styles.lineName}>Confirm your original order</Text><Text style={styles.meta}>The result of your last request is still unknown. Your original items, address, timing and price are kept for a safe retry.</Text></Card> : null}
+    {!recovering ? <CustomerEmailVerification review={emailVerification} context="checkout"/> : null}
 
     <View style={styles.checkoutCard}>
       <CheckoutStep number={1} title={fulfillment === "delivery" ? "Delivery details" : "Collection details"} detail={fulfillment === "delivery" ? "Choose where your food should arrive." : "Check your collection details and preferred time."}/>
@@ -170,7 +176,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
       <Text style={styles.paymentNote}>{quote?.totalMinor===0&&quote.platformVoucherMinor?"Your restaurant is credited by Cal-Eats.":paymentConfig.cardAvailable?`Enter card details on the secure checkout page.${paymentConfig.stripeMode === "live" ? "" : " This is a test payment; no real money moves."} Check your order for the confirmed payment status. Cash is paid directly to the restaurant.`:paymentConfig.providerMode==="local_simulator"?"This is a test payment; no real money moves. Cash is paid directly to the restaurant.":paymentConfig.providerMode==="unknown"?"Checking payment availability…":"Card payment is unavailable. Cash, when offered, is paid directly to the restaurant."}</Text>
     </View>
 
-    <View style={styles.checkoutCard}><OptionalCheckoutSection title="Allergy information"><Text style={styles.meta}>Contact the restaurant directly about severe allergies or anything you are unsure about.</Text><Field editable={!locked} label="Allergy notes" value={allergyNotes} onChangeText={setAllergyNotes} multiline maxLength={500} placeholder="Tell the restaurant about any allergies"/></OptionalCheckoutSection></View>
+    <View style={styles.checkoutCard}><OptionalCheckoutSection title="Allergy information"><Text style={styles.meta}>Contact the restaurant directly about severe allergies or anything you are unsure about.</Text>{healthConsent.collectionAvailable || allergyNotes ? <><Field editable={!locked && healthConsent.collectionAvailable} label="Allergy notes" value={allergyNotes} onChangeText={setAllergyNotes} multiline maxLength={500} placeholder="Tell the restaurant about any allergies"/>{!healthConsent.collectionAvailable && allergyNotes ? <Button tone="quiet" disabled={locked} onPress={() => setAllergyNotes("")}>Clear optional allergy notes</Button> : null}<OrderHealthConsent review={healthConsent} notes={allergyNotes} disabled={locked}/></> : <Text style={styles.finePrint}>{healthConsent.status ? "Please discuss any allergies directly with the restaurant before ordering." : "Checking allergy-note availability…"}</Text>}</OptionalCheckoutSection></View>
 
     {firstOffers.length?<Card tone="info"><Text accessibilityRole="header" style={styles.smallTitle}>An offer for your first order</Text><Text style={styles.meta}>Add an offer to your account. We’ll apply it automatically when this order qualifies.</Text>{firstOffers.map(c=><Button key={c.id} tone="secondary" disabled={locked} onPress={()=>void claimFirstOffer(c)}>Add offer: {c.title} · {offerBenefit(c)} · Ends {offerEndDate(c)}</Button>)}</Card>:null}
 
@@ -190,7 +196,7 @@ export function CheckoutScreen({ initialPhone, token, restaurant, cart, fulfillm
       <ErrorBanner message={quoteError}/>
       <ErrorBanner message={error || (!recovering && !localCheck.ok && timingReady ? localCheck.reason : "")}/>
       {!recovering ? <CustomerLegalReview review={legal}/> : null}
-      <Button accessibilityLabel={recovering?"Retry original order":confirmLabel} busy={busy} disabled={!recovering && (!legal.ready || !localCheck.ok || !quoteReady || !quote || quoting || claimingOffer || paymentConfig.providerMode === "unknown")} onPress={() => void placeOrder()}>{recovering ? `Retry original order · ${money(totals.totalMinor)}` : confirmLabel}</Button>
+      <Button accessibilityLabel={recovering?"Retry original order":confirmLabel} busy={busy} disabled={!recovering && (!emailVerification.canOrder || !legal.ready || !healthConsent.ready || !localCheck.ok || !quoteReady || !quote || quoting || claimingOffer || paymentConfig.providerMode === "unknown")} onPress={() => void placeOrder()}>{recovering ? `Retry original order · ${money(totals.totalMinor)}` : confirmLabel}</Button>
       <Text style={styles.finePrint}>{recovering?"Retrying keeps your original order details and checks the same order.":payment === "cash" ? `Pay the restaurant on ${fulfillment === "delivery" ? "delivery" : "collection"}. Your restaurant will confirm your order after it is received.` : "Your restaurant will confirm your order after it is received."}</Text>
     </View>
   </ScrollView>;

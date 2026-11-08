@@ -3,6 +3,7 @@ import { requireRole } from "./auth/authorization.js";
 import { revokeUserSessions } from "./auth/session-management.js";
 import { withTransaction } from "./db/index.js";
 import { exactObject, HttpError, readJson, sendJson } from "./http.js";
+import { handleCustomerErasure } from "./customer-erasure.js";
 
 const ACTION = "account_login_closed_verified";
 
@@ -20,7 +21,9 @@ function assertCustomerWorkComplete(db, userId) {
   if (active || payment || operation || remedy || refundJob) throw new HttpError(409, "ACCOUNT_CLOSURE_BLOCKED", "Complete this customer's active orders, unsettled payments and open order support before closing their login.");
 }
 
-export async function handleVerifiedAccountClosure({ req, res, url, db, config, session }) {
+export async function handleVerifiedAccountClosure(context) {
+  if (await handleCustomerErasure(context)) return true;
+  const { req, res, url, db, config, session } = context;
   const match = url.pathname.match(/^\/api\/admin\/deletion-requests\/([^/]+)\/close-account$/);
   if (!match || req.method !== "POST") return false;
   const admin = requireRole(session, "admin"), body = await readJson(req, config.bodyLimit);

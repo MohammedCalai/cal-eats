@@ -1,0 +1,91 @@
+CAL-EATS CUSTOMER PRIVACY NOTICE
+Version: 2026-11-08-v1
+Last updated: 8 November 2026
+
+1. Who is responsible for your information
+
+Cal-Eats is operated by CALAI LTD, company number 16995419, registered at 62 Cades Close, Luton, England, LU1 5QQ. CALAI LTD is the controller of the personal information used to operate the Cal-Eats customer app, website and marketplace. Contact support@calai.info about this notice or your privacy rights, or write to our registered office marked “Privacy”.
+
+The restaurant you order from supplies your food and arranges its delivery or collection. It is separately responsible for the information it needs to fulfil your order, communicate with you, maintain its own lawful records and handle food-safety matters. You can ask us to help identify the restaurant and its contact details. Restaurants do not receive your password or full payment-card details through Cal-Eats.
+
+2. Information we use
+
+Account and contact details: your name, email address, password hash, phone number where supplied, account identifiers, saved addresses, sign-in sessions and preferences. We do not store your password as readable text.
+
+Orders and payments: your restaurant, items and choices, quantities, prices, discounts, vouchers, delivery charge, fulfilment method, requested time, delivery/contact instructions, order status and events, payment status and payment-provider references. A delivery order includes the delivery address. Our order and accounting records do not store your full card number or card security code. When you choose online payment, the payment provider collects payment details in its checkout and may return payment-method information needed to process or investigate the transaction.
+
+Messages and help requests: messages to a restaurant or Cal-Eats, their replies, order links, case subjects, status and related records. Messages are accessible to their intended restaurant or support recipients and authorised platform staff who need to resolve a problem. Our message encryption does not make conversations end-to-end encrypted.
+
+Optional allergy information, where this feature is available: the allergy notes you choose to enter for a particular order. These may reveal health information. The feature is enabled only after the required provider arrangements are in place. When enabled, we ask for separate explicit consent before saving and sharing the notes with that restaurant. They are not needed to browse or place an order and are not used for advertising or customer groups. Please do not put medical information in ordinary messages or delivery instructions unnecessarily. Contact the restaurant directly about food safety and serious allergies.
+
+Location: your entered postcode, selected address and saved delivery locations. If you choose “Use my location” and allow the device permission, we use your foreground location to find a nearby postcode and available restaurants. The lookup sends coordinates to Postcodes.io through our server; it does not include your Cal-Eats name, email or account identifier. We do not continuously track your location in the background. An address or postcode you then save or use for an order becomes part of those records. You can enter a postcode instead and change device permissions at any time.
+
+Offers and ratings: your separate marketing choices, restaurant relationship and order history, offer eligibility, offers sent or dismissed, redemptions and star ratings. Ratings have no customer comment field. Restaurants can see relevant customer relationships and order activity for their own business, not a directory of all customers of every restaurant.
+
+Technical and notification information: device platform, app/installation identifiers, sign-in and security records, network address used for connection and abuse prevention, push-notification tokens, notification delivery/read information, and live-order display tokens and state. Our operational records can include request time, route, result, duration and error information. They are used to operate and protect the service.
+
+We receive information from you, your device, restaurants, payment and notification providers, and our own service activity. You do not have to provide optional information. Without information needed for an account, payment or delivery, we may be unable to provide that particular service.
+
+3. Why we use it and our legal bases
+
+We use account, order, address, payment and service-message information to take the steps you request, perform our agreement with you, route orders, provide order updates and help resolve problems. This is processing necessary for a contract or requested steps before a contract under Article 6(1)(b) UK GDPR. A restaurant uses the order details needed to supply your food and service.
+
+For new customer accounts, we automatically send a welcome email containing a one-use verification link. Verification is required before a new customer places an order. The link expires after 24 hours; you can request another in the app. We use protected verification tokens and delivery records to confirm control of the email address and protect the account. This service email does not subscribe you to promotional messages. You can still browse, sign in, contact support and exercise privacy rights while verification is pending.
+
+We use necessary transaction and accounting records to meet legal obligations under Article 6(1)(c), including tax and accounting requirements and responding to lawful requests.
+
+We use proportionate security, access, audit, support and operational information in our legitimate interests under Article 6(1)(f): preventing fraud and misuse, protecting accounts and other people, investigating disputes, measuring service reliability and improving the marketplace. We balance these interests against your rights and minimise the information used. You can object to processing based on legitimate interests.
+
+We use consent under Article 6(1)(a) for optional marketing and optional device-location use. Allergy notes also require your explicit consent under Article 9(2)(a). You can withdraw consent; withdrawal does not change the lawfulness of processing before withdrawal. Device permission alone does not give a restaurant permission to market to you. Acceptance of our Terms does not opt you into marketing.
+
+Restaurant offers can be selected using your relationship with that restaurant, order counts, recency or offer eligibility. You can change the available marketing preferences in your account and object to direct marketing at any time. We do not use these selections to make decisions producing legal or similarly significant effects on you. Order, security and support notifications are service communications, separate from promotional messages.
+
+4. Who receives information
+
+The restaurant receives the information needed for your order and messages, including relevant contact, delivery and separately consented allergy details. Its authorised team and delivery personnel may use these to prepare and deliver the order. Restaurant receipt printing can create a paper copy; restaurants must protect and dispose of their own copies appropriately.
+
+Authorised Cal-Eats staff have access according to their duties. We use service providers for hosting and storage (Railway), transactional email (Microsoft), mobile push delivery (Expo and the Apple/Google notification services), live-order displays (Apple), payment processing (Stripe), and postcode/location lookup (Postcodes.io, operated by Ideal Postcodes). They receive the information needed for the function they provide. For example, notification providers receive device tokens and notification content or routing information; email providers process recipient addresses and email content. We use generic phone-alert text rather than including private message bodies or delivery addresses in push banners. Order status and estimated time may appear in the iPhone live-order display on your lock screen.
+
+Payment providers, app stores and restaurants may also act as independent controllers for their own legal, fraud-prevention, account or service purposes. Their privacy notices explain those activities. Stripe's notice is at https://stripe.com/privacy; Apple's at https://www.apple.com/legal/privacy/; Google's at https://policies.google.com/privacy; Expo's at https://expo.dev/privacy; Railway's at https://railway.com/legal/privacy; Microsoft's at https://privacy.microsoft.com/; and Ideal Postcodes' at https://terms.ideal-postcodes.co.uk/website/privacy.
+
+We may disclose necessary information to professional advisers, authorities or courts where legally required or justified to protect legal rights. We do not sell customer personal information or provide private allergy notes or message contents to advertising networks.
+
+5. International processing
+
+Our suppliers operate internationally. Hosting, notification, email, payment and support processing may involve access or storage outside the UK, including in the United States and the European Economic Area. A supplier's UK website or a UK restaurant does not mean all processing stays in the UK.
+
+Restricted international transfers need an applicable UK adequacy decision or another permitted safeguard, such as the UK International Data Transfer Agreement or the EU standard contractual clauses with the UK Addendum, together with the required assessment. The mechanism depends on the supplier, destination and processing concerned. Contact support@calai.info for information about the safeguards applicable to your information and how to obtain a copy, subject to necessary confidential redactions. We do not treat your acceptance of our Terms as consent to waive international-transfer protections.
+
+6. How long information is kept
+
+We keep account details and saved addresses while your account is in use, unless you remove or change them or request deletion. Necessary sign-in and security records may be retained to protect the service and investigate misuse; retention depends on their purpose, an incident or legal claim, and applicable supplier settings. We do not promise that providers erase their own records when you dismiss a notification.
+
+Our scheduled retention controls apply these limits to eligible Cal-Eats service records:
+- Order and restaurant-conversation message bodies: 30 days after each message was created. Message expiry does not necessarily remove delivery, read or audit metadata, or a separate support case.
+- Optional order allergy notes: 30 days after an order completes or is rejected.
+- Personal delivery/contact details and free-text instructions in completed or rejected order records and eligible stored print-service copies: 90 days after that terminal status.
+- Support case content and replies: 12 calendar months after the case is resolved and last updated.
+
+For the order and support retention controls, active orders, unresolved order-specific support or payment work, and documented legal holds can delay the relevant deletion. We retain only what remains necessary and review the reason for keeping it. The customer's 90-day past-order view is an access limit; it is not a statement that every accounting record is deleted after 90 days.
+
+Necessary accounting and transaction evidence is normally kept for six years from the end of the financial year to which it relates, or longer where law requires it or a documented legal claim justifies it. This does not mean keeping all messages, allergy notes and address details for six years. Retained records can include amounts, discounts, commission, restaurant, transaction references and limited evidence needed to account for a transaction or demonstrate a legal decision.
+
+Backups are for recovery and may contain older information until the copies leave the backup cycle. Deletion restrictions and suppression records must be applied before a restored copy returns to service. Private operational email copies have a separate retention/review process. Some provider backups, paper receipts, delivered emails and independently held restaurant/payment records are outside the app's direct deletion controls; we explain relevant exceptions when handling a request rather than promising immediate removal from every copy.
+
+7. Your choices and privacy rights
+
+You can edit account details and saved addresses, change marketing preferences, and manage notification/location permissions. Push notifications depend on your device permission. Turning them off does not prevent you checking updates inside the app. Live-order displays may also be controlled in your phone settings.
+
+You can request access to your personal information, correction, deletion, restriction, portability where applicable, or object to relevant processing. The downloadable account summary is a convenient summary, not a complete subject-access response. Contact support@calai.info for a full request. You can also withdraw optional marketing or allergy consent there. For an active order, we will explain any effect on the service and any separate lawful reason for necessary retention.
+
+To request account deletion, open Account, then Security & privacy, then Delete your account. Confirm your password and intention in the app. A reason is optional. Our team reviews the request internally; you do not need to telephone or email to initiate it. Your login remains available during review. We normally act within one calendar month and will explain any lawful extension, unresolved order, verification need or retained category. On completion we remove the login and eligible personal data, revoke active access and send a confirmation. Necessary financial/legal records remain restricted to their permitted purposes. We may ask for proportionate verification if there is a reasonable doubt about identity; please do not send a password or identity document without a secure request from us.
+
+You can complain to us or to the Information Commissioner's Office at https://ico.org.uk/make-a-complaint/. Your rights and our legal obligations are not reduced by the Terms or this notice.
+
+8. Device storage, security and changes
+
+The app and website use storage needed for sign-in, basket and address preferences, notification acknowledgements and service operation. The mobile app uses secure device storage for sign-in material. The reviewed customer app does not include an advertising identifier or a cross-app advertising-tracking SDK. A provider's separate checkout, website or app-store service may use its own technologies as explained in its notice.
+
+We use access controls, encrypted connections and protected service credentials. Selected private messages and notification credentials are encrypted at rest; authorised service processing can still access information where needed. No service can guarantee absolute security. Keep your login private and contact us if you suspect misuse.
+
+Cal-Eats customer accounts are intended for people aged 18 or over. We may update this notice as the service changes. The version and date above identify this notice; material changes are brought to your attention, and new consent is requested where required. Earlier accepted Terms and notice versions remain available with their version references.

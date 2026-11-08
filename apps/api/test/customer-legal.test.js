@@ -3,10 +3,11 @@ import test from "node:test";
 import { Readable } from "node:stream";
 import { createApp } from "../src/app.js";
 import { customerLegalStatus, initializeCustomerLegal, loadCustomerLegalConfig } from "../src/customer-legal.js";
+import { legalContentSha256 } from "../src/customer-legal-archive.js";
 import { journeyFixture } from "./helpers.js";
 
-// These metadata-only documents are fictional local fixtures, not published policies.
-const documents = (terms = "fixture-terms-1", privacy = "fixture-privacy-1") => ({ enabled: true, documents: Object.fromEntries([["terms", terms, "a"], ["privacy", privacy, "b"]].map(([kind, version, hash]) => [kind, { version, sha256: hash.repeat(64), url: `/legal/${kind}/${version}`, approvedAt: "2025-12-01T00:00:00.000Z", effectiveAt: "2026-01-01T00:00:00.000Z", approvalReference: "Fictional local fixture only" }])) });
+// These complete texts are fictional local fixtures, not published policies.
+const documents = (terms = "fixture-terms-1", privacy = "fixture-privacy-1") => ({ enabled: true, documents: Object.fromEntries([["terms", terms], ["privacy", privacy]].map(([kind, version]) => { const text = `Fictional ${kind} ${version}\n\nExact local fixture text only.\n`; return [kind, { version, text, sha256: legalContentSha256(text), url: `/legal/${kind}/${version}`, approvedAt: "2025-12-01T00:00:00.000Z", effectiveAt: "2026-01-01T00:00:00.000Z", approvalReference: "Fictional local fixture only" }]; })) });
 const submission = policy => ({ termsVersion: policy.documents.terms.version, termsSha256: policy.documents.terms.sha256, termsAccepted: true, privacyVersion: policy.documents.privacy.version, privacySha256: policy.documents.privacy.sha256, privacyNoticeAcknowledged: true });
 
 test("unconfigured legal review is disabled and records no acceptance for legacy registration", async () => {
@@ -28,9 +29,9 @@ test("activation needs typed, approved owned-document identities and rejects mut
   }
   const f = await journeyFixture({ customerLegal: documents() });
   try {
-    const changed = documents(); changed.documents.terms.sha256 = "c".repeat(64);
+    const changed = documents(); changed.documents.terms.text += "Changed fixture"; changed.documents.terms.sha256 = legalContentSha256(changed.documents.terms.text);
     assert.throws(() => initializeCustomerLegal(f.db, { ...f.config, customerLegal: loadCustomerLegalConfig(changed, f.config.origin) }), /cannot be replaced/);
-    assert.equal(f.db.prepare("SELECT content_sha256 FROM customer_legal_documents WHERE kind='terms'").get().content_sha256, "a".repeat(64));
+    assert.equal(f.db.prepare("SELECT content_sha256 FROM customer_legal_documents WHERE kind='terms'").get().content_sha256, documents().documents.terms.sha256);
   } finally { await f.close(); }
 });
 

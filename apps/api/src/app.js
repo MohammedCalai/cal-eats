@@ -19,7 +19,7 @@ import { routeOffers } from "./offers.js";
 import { routeOperations } from "./operations.js";
 import { serveStatic } from "./static.js";
 import { routeProduct } from "./product.js";
-import { routeAccountAccess } from "./account-access.js";
+import { routeAccountAccess, assertCustomerSignupEmailReady, issueCustomerSignupVerification } from "./account-access.js";
 import {routeCustomerPush} from "./customer-push.js";
 import {routeOrderLiveActivities} from "./order-live-activities.js";
 import { isDemoEmail } from "./seed.js";
@@ -41,6 +41,7 @@ import { routeServiceAreas } from "./service-areas.js";
 import { enforceCustomerOrderHistory } from "./customer-order-history.js";
 import { routeDashboardExports } from "./dashboard-exports.js";
 import { initializeCustomerLegal, recordCustomerLegalSubmission, routeCustomerLegal, validateCustomerLegalSubmission } from "./customer-legal.js";
+import {routeCustomerPrivacy} from "./customer-privacy.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -106,7 +107,7 @@ export function createApp({ db, config, logger = console }) {
       const nativeSession = bearerProvided ? readNativeSession(db, req, config) : null;
       const session = bearerProvided ? nativeSession : readSession(db, token, config);
       enforceCustomerOrderHistory({ url, db, config, session });
-      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password"].includes(url.pathname);
+      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password","/api/native/auth/email-verification/confirm"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
       const pairingRoute = url.pathname === "/api/devices/pair";
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute;
@@ -117,6 +118,7 @@ export function createApp({ db, config, logger = console }) {
       if (nativeHandled || res.writableEnded || res.headersSent) return;
       const legalHandled = await routeCustomerLegal({ req, res, url, db, config, session });
       if (legalHandled || res.writableEnded || res.headersSent) return;
+      if(await routeCustomerPrivacy({req,res,url,db,config,session}))return;
         const pushHandled=await routeCustomerPush({req,res,url,db,config,session,checkRate});
         if(pushHandled||res.writableEnded||res.headersSent)return;
       const liveActivityHandled=await routeOrderLiveActivities({req,res,url,db,config,session,checkRate});
@@ -131,20 +133,22 @@ export function createApp({ db, config, logger = console }) {
         if (config.runMode === "hosted-preview" && isDemoEmail(identity.email)) throw new HttpError(400, "RESERVED_EMAIL", "Email is reserved");
         checkRate(req, identity.email);
         validateCustomerLegalSubmission(db, config, null, body.legalAcceptance);
+        assertCustomerSignupEmailReady(config);
         const passwordHash = await hashPassword(identity.password);
         const user = { id: randomUUID(), name: identity.name, email: identity.email, role: "customer" };
-        let created;
+        let created, emailVerification;
         try {
           created = withTransaction(db, () => {
-            db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(user.id, user.name, user.email, passwordHash, user.role, config.now().toISOString());
+            db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at,email_verification_required) VALUES(?,?,?,?,?,?,1)").run(user.id, user.name, user.email, passwordHash, user.role, config.now().toISOString());
             recordCustomerLegalSubmission(db, config, user.id, body.legalAcceptance, "web", "signup");
+            emailVerification=issueCustomerSignupVerification(db,config,user.id);
             return createSession(db, user.id, config);
           });
         } catch (error) {
           if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists");
           throw error;
         }
-        return sendJson(res, 201, { data: { user } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
+        return sendJson(res, 201, { data: { user, emailVerification } }, { "Set-Cookie": cookieFor(created.token, created.expires, config.now(), config.secureCookies) });
       }
       const applicationHandled=await routeBusinessApplications({req,res,url,db,config,session,checkRate});
       if(applicationHandled||res.writableEnded||res.headersSent)return;
@@ -201,15 +205,15 @@ export function createApp({ db, config, logger = console }) {
       if (offersHandled || res.writableEnded || res.headersSent) return;
       const supportHandled=await routeSupportCases({req,res,url,db,config,session});
       if(supportHandled||res.writableEnded||res.headersSent)return;
-      const productHandled = await routeProduct({ req, res, url, db, config, session });
+      const productHandled = await routeProduct({ req, res, url, db, config, session, checkRate });
       if (productHandled || res.writableEnded || res.headersSent) return;
       if (url.pathname === "/api/native/account/export" && req.method === "GET") {
         const nativeUrl = new URL(url); nativeUrl.pathname = "/api/account/export";
-        if (await routeProduct({ req, res, url: nativeUrl, db, config, session })) return;
+        if (await routeProduct({ req, res, url: nativeUrl, db, config, session, checkRate })) return;
       }
       if (url.pathname === "/api/native/account/deletion-request" && req.method === "POST") {
         const nativeUrl = new URL(url); nativeUrl.pathname = "/api/account/deletion-requests";
-        if (await routeProduct({ req, res, url: nativeUrl, db, config, session })) return;
+        if (await routeProduct({ req, res, url: nativeUrl, db, config, session, checkRate })) return;
       }
       const operationHandled = await routeOperations({ req, res, url, db, config, session });
       if (operationHandled || res.writableEnded || res.headersSent) return;

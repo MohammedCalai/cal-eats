@@ -13,8 +13,8 @@ const accountDto = (row) => ({ id: row.id, name: row.name, email: row.email, rol
 const supportDto = (row) => ({ id: row.id, userId: row.user_id, orderId: row.order_id, subject: row.subject, message: row.message, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at });
 const deletionDto = (row) => ({ id: row.id, userId: row.user_id, reason: row.reason, status: row.status, note: row.note, createdAt: row.created_at, updatedAt: row.updated_at });
 
-export async function routeProduct({ req, res, url, db, config, session }) {
-  if (await handleVerifiedAccountClosure({ req, res, url, db, config, session })) return true;
+export async function routeProduct({ req, res, url, db, config, session, checkRate }) {
+  if (await handleVerifiedAccountClosure({ req, res, url, db, config, session, checkRate })) return true;
   let match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/staff$/);
   if (match && req.method === "GET") {
     requireRestaurantOwner(db, session, match[1]);

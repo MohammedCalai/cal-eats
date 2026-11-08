@@ -14,7 +14,7 @@ const recoveryMessages: Record<RecoveryDelivery, { title: string; detail: string
   local_simulation: { title: "Development recovery", detail: "Reset instructions are recorded locally in this development environment. They are not sent by email. Contact Cal-Eats support if you need help signing in." },
   unavailable: { title: "Email recovery is unavailable", detail: "We cannot send password reset emails right now. Contact Cal-Eats support for help signing in. Never include your password." }
 };
-export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenticated: (token: string, user: User) => Promise<void>; onContinueBrowsing?: () => void }) {
+export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenticated: (token: string, user: User, context?: { created: boolean }) => Promise<void>; onContinueBrowsing?: () => void }) {
   const [mode, setMode] = useState<Mode>("login");
   const legal = useCustomerLegal(null, mode === "register" || mode === "login");
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
@@ -52,7 +52,7 @@ export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenti
       }
       const body = mode === "register" ? { name, email, password, legalAcceptance: legal.signupPayload() } : { email, password };
       const result = await api<{ user: User; token: string; expiresAt: string }>(`/api/native/auth/${mode}`, { method: "POST", body: JSON.stringify(body) });
-      if (current()) await onAuthenticated(result.token, result.user);
+      if (current()) await onAuthenticated(result.token, result.user, { created: mode === "register" });
     } catch (caught) { if (current()) setError((caught as Error).message); }
     finally { if (request.current === id) { inFlight.current = false; if (mounted.current) setBusy(false); } }
   }
@@ -68,6 +68,7 @@ export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenti
         <Field editable={!busy} label={mode === "apply" ? "Set new password" : "Password"} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} textContentType={mode === "login" ? "password" : "newPassword"} autoComplete={mode === "login" ? "current-password" : "new-password"} maxLength={128} hint={mode === "apply" || mode === "register" ? "Use at least 12 characters." : undefined}/>
         <ErrorBanner message={error}/>
         {mode === "register" ? <CustomerLegalReview review={legal}/> : mode === "login" ? <CustomerLegalDocuments review={legal}/> : null}
+        {mode === "register" ? <Text style={styles.sub}>We’ll send a welcome email with a secure link to verify your email address before your first order. You can keep browsing while you verify.</Text> : null}
         <Button busy={busy} disabled={mode === "register" && !legal.ready} onPress={submit}>{mode === "apply" ? "Submit application" : mode === "register" ? "Create account" : "Sign in"}</Button>
         {mode === "apply" ? <Text style={styles.sub}>The Calai team will contact you within 72 hours. Your restaurant stays private until reviewed and approved.</Text> : null}
         {mode === "login" ? <><Button disabled={busy} tone="quiet" onPress={() => { setMode("register"); setError(""); }}>New here? Create an account</Button><Button disabled={busy} tone="quiet" onPress={() => { setMode("forgot"); setRecoveryDelivery(null); setError(""); }}>Forgot password</Button><Button disabled={busy} tone="quiet" onPress={() => { applicationKey.current = null; setMode("apply"); setError(""); }}>List your restaurant</Button></> : <Button disabled={busy} tone="quiet" onPress={() => { setMode("login"); setError(""); }}>Back to sign in</Button>}

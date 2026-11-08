@@ -3,6 +3,7 @@ import {Link} from "react-router-dom";
 import {api,json} from "./api.js";
 import {shortDate} from "./model.js";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
+import {AdminCustomerErasure} from "./AdminCustomerErasure.jsx";
 import {AdminMessageIncidents} from "./OrderMessaging.jsx";
 import {AdminPageHeading,AdminPager,AdminResourceMessage,AdminTable,useAdminResource} from "./AdminWorkspaceShared.jsx";
 import "./AdminWorkspace.css";
@@ -38,6 +39,7 @@ function DeletionReview({request,onClose,onSaved}) {
   }
   return <WorkspaceDialog title="Review account closure request" onClose={()=>{if(!inFlight.current)onClose();}}>
     <p><strong>{request.userName}</strong><br/>{request.userEmail}</p><p>{request.reason}</p>
+    {request.userRole==="customer"&&request.status!=="resolved"&&<AdminCustomerErasure requestId={request.id} onBusyChange={value=>{inFlight.current=value;setBusy(value?"erase":"");}} onComplete={()=>{onSaved();onClose();}}/>}
     <section className="panel"><h3>Customer login</h3><p>Support must verify the customer's identity and their closure request before closing access. This signs them out and disables their login. Order and financial history remain available, and the personal-data review stays under review.</p>
       {closedAt?<>{accountEnabled===true?<p className="alert" role="status">This login was closed previously and has since been enabled again. Support must verify a new closure request before closing it again.</p>:<p className="alert success" role="status">Customer login closed on {shortDate(closedAt)}. Personal-data review {(closure?.dataReviewStatus||request.status)==="resolved"?"is resolved":"remains open"}.</p>}<p className="fine">Verification record: {closure?.note||request.closureNote}</p></>:canClose?<form onSubmit={closeLogin}>
         <label>Verification note<textarea value={verificationNote} onChange={e=>setVerificationNote(e.target.value)} required minLength={20} maxLength={1000} rows={3} disabled={Boolean(busy)} placeholder="Record how you verified this customer's identity and request."/></label><p className="fine">Use 20–1000 characters. Do not record passwords or identity-document numbers.</p>

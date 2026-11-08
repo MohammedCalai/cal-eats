@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { requireRole } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { exactObject, HttpError, readJson, sendJson } from "./http.js";
+import { archiveCustomerLegalDocument, legalVersionPath, loadApprovedLegalText, routeCustomerLegalArchive } from "./customer-legal-archive.js";
 
 const fields = ["termsVersion", "termsSha256", "termsAccepted", "privacyVersion", "privacySha256", "privacyNoticeAcknowledged"];
 const disabled = Object.freeze({ enabled: false, documents: null });
@@ -17,10 +18,10 @@ export function loadCustomerLegalConfig(input, origin) {
     if (!value || typeof value.version !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(value.version) || typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256)) throw new Error("Approved legal documents require a string version and exact SHA-256");
     if (typeof value.url !== "string" || typeof value.approvedAt !== "string" || typeof value.effectiveAt !== "string") throw new Error("Approved legal URL and dates must be strings");
     let url; try { url = new URL(value.url, origin); } catch { throw new Error("Approved legal document URL is invalid"); }
-    if (url.origin !== origin || url.username || url.password || url.search || url.hash || !url.pathname.startsWith("/legal/")) throw new Error("Approved legal documents must have a dedicated same-origin /legal/ URL");
+    if (url.origin !== origin || url.username || url.password || url.search || url.hash || url.pathname !== legalVersionPath(kind, value.version) || value.version.endsWith(".txt")) throw new Error("Approved legal documents must have a canonical same-origin versioned /legal/ URL");
     const approved = new Date(value.approvedAt), effective = new Date(value.effectiveAt);
     if (!Number.isFinite(approved.getTime()) || !Number.isFinite(effective.getTime()) || approved.toISOString() !== value.approvedAt || effective.toISOString() !== value.effectiveAt || effective < approved || typeof value.approvalReference !== "string" || value.approvalReference.trim().length < 10 || value.approvalReference.length > 200) throw new Error("Approved legal documents require operator approval and canonical UTC effective dates");
-    documents[kind] = Object.freeze({ version: value.version, sha256: value.sha256, url: url.href, approvedAt: approved.toISOString(), approvalReference: value.approvalReference.trim(), effectiveAt: effective.toISOString() });
+    documents[kind] = Object.freeze({ version: value.version, sha256: value.sha256, url: url.href, approvedAt: approved.toISOString(), approvalReference: value.approvalReference.trim(), effectiveAt: effective.toISOString(), text: loadApprovedLegalText(value) });
   }
   return Object.freeze({ enabled: true, documents: Object.freeze(documents) });
 }
@@ -40,6 +41,7 @@ export function initializeCustomerLegal(db, config) {
       if (old) {
         for (const [field, value] of Object.entries({ content_sha256: document.sha256, public_url: document.url, approved_at: document.approvedAt, approval_reference: document.approvalReference, effective_at: document.effectiveAt })) if (old[field] !== value) throw new Error("An approved legal document version cannot be replaced; create a new version");
       } else db.prepare("INSERT INTO customer_legal_documents VALUES(?,?,?,?,?,?,?,?)").run(kind, document.version, document.sha256, document.url, document.approvedAt, document.approvalReference, document.effectiveAt, config.now().toISOString());
+      archiveCustomerLegalDocument(db, kind, document, config.now().toISOString());
     }
   });
 }
@@ -85,6 +87,7 @@ export function requireCurrentCustomerLegal(db, config, userId) {
 }
 
 export async function routeCustomerLegal({ req, res, url, db, config, session }) {
+  if (routeCustomerLegalArchive({ req, res, url, db, config })) return true;
   if (url.pathname === "/api/customer/legal" && req.method === "GET") return sendJson(res, 200, { data: customerLegalStatus(db, config, session?.user.role === "customer" ? session.user.id : null) });
   if (url.pathname !== "/api/customer/legal/acceptances" || req.method !== "POST") return false;
   const user = requireRole(session, "customer"), body = await readJson(req, config.bodyLimit);

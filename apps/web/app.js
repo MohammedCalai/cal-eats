@@ -1,6 +1,7 @@
 import { mountCustomerLegal } from "./customer-legal.js";
+import { emailVerificationStatus, mountEmailVerification, mountEmailConfirmation } from "./customer-email-verification.js";
 import {customerOrderHtml,orderSupportFormHtml,shopRatingFormHtml} from "./order-experience.js";
-import {checkoutHtml,mountSchedulePicker} from "./checkout-ui.js";
+import {checkoutHtml,mountSchedulePicker,mountOrderHealthConsent} from "./checkout-ui.js";
 import { createLocationClient } from "./location-client.js";
 import { basketReplacementHtml, basketReviewHtml } from "./basket-ui.js";
 import { customerIcon, customerReceiptHtml } from "./customer-ui.js";
@@ -75,7 +76,7 @@ function setAccount() {
   updateBasketAccess();
   renderCustomerNotificationPrompt();
 }
-function stopPolling() { state.schedulePicker?.close();state.schedulePicker=null; clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null; state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.notificationStop?.(); state.notificationStop=null; state.quoteController?.close();state.quoteController=null; if (state.poll) clearInterval(state.poll); if (state.notificationPoll) clearInterval(state.notificationPoll); state.poll = null; state.notificationPoll = null; }
+function stopPolling() { state.emailVerificationPanel?.close();state.emailConfirmationPanel?.close();state.healthCheckout?.close();state.healthCheckout=null; state.schedulePicker?.close();state.schedulePicker=null; clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null; state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.notificationStop?.(); state.notificationStop=null; state.quoteController?.close();state.quoteController=null; if (state.poll) clearInterval(state.poll); if (state.notificationPoll) clearInterval(state.notificationPoll); state.poll = null; state.notificationPoll = null; }
 function stopOrderPolling() { if (state.poll) clearInterval(state.poll); state.poll = null; }
 function draftKey(){return `calai-cart:${state.user?.id||"guest"}`;}
 function storedBasket(){try{return sanitizeCartDraft(JSON.parse(localStorage.getItem(draftKey())));}catch{return null;}}
@@ -92,7 +93,7 @@ function restoreBasket(draft){state.fulfillment=draft.fulfillment;state.fulfillm
 function clearDraft(){try{localStorage.removeItem(draftKey());}catch{}state.pendingDraft=null;updateBasketAccess();}
 function saveDraft(){if(!state.selected)return;const draft=sanitizeCartDraft({savedAt:Date.now(),restaurantId:state.selected.id,fulfillment:state.fulfillment,quantities:state.cart,modifiers:state.modifiers});try{draft?localStorage.setItem(draftKey(),JSON.stringify(draft)):localStorage.removeItem(draftKey());}catch{}updateBasketAccess();}
 function readDraft(restaurantId){try{const draft=sanitizeCartDraft(JSON.parse(localStorage.getItem(draftKey())));return draft?.restaurantId===restaurantId?draft:null;}catch{return null;}}
-function resetIdentity(user) { notificationAlert.reset();const priorUser=state.user;const changed=(state.user?.id||null)!==(user?.id||null); if(changed){state.scheduleDraft=null;clearDraft();completedPaymentRefreshes.clear();if(priorUser?.id){state.cart={};state.modifiers={};state.selected=null;state.menu=[];}} stopPolling();state.soundContext?.close().catch(()=>{});state.soundContext=null;state.soundEnabled=false;state.seenNotificationIds=null;state.seenOrderIds=new Set();state.pendingPhoto=null;state.workspaceTab="orders"; clearTimeout(message.timer); toast.textContent = ""; toast.classList.remove("show"); state.generation += 1; state.user = user;state.customerOrderId=null;state.customerOrderSearch="";state.ordersRenderedHtml=null;notificationAlert.restoreAcknowledged(readNotificationAcknowledgements());state.orders = []; state.refundCases = [];state.orderHelpRequests=[]; state.platformVouchers=[];state.offers = []; state.offerInboxItems=[];state.offerCursors=[null];state.offerPageIndex=0;state.offerNextCursor=null;state.offerRequestVersion=(state.offerRequestVersion||0)+1;state.dismissingOffers=new Set();state.selectedOffer = null;state.discoverCollection="home";state.discoverOffersOnly=false;state.discoverSort="recommended"; state.notifications = []; state.unreadCount = 0; state.workspace = {}; state.orderKey = null; checkoutAttempt.clear(); state.submitting=false; state.addresses=[];state.locationChoices=[];state.locationChoicesScope="";state.locationAddress=null;state.serviceArea=null;if(changed&&priorUser?.id)state.postcode=""; setAccount(); if (user) { state.notificationStop=connectLiveNotifications({onRefresh:loadNotifications}); } }
+function resetIdentity(user) { notificationAlert.reset();const priorUser=state.user;const changed=(state.user?.id||null)!==(user?.id||null); if(changed){state.scheduleDraft=null;clearDraft();completedPaymentRefreshes.clear();if(priorUser?.id){state.cart={};state.modifiers={};state.selected=null;state.menu=[];}} stopPolling();state.soundContext?.close().catch(()=>{});state.soundContext=null;state.soundEnabled=false;state.seenNotificationIds=null;state.seenOrderIds=new Set();state.pendingPhoto=null;state.workspaceTab="orders"; clearTimeout(message.timer); toast.textContent = ""; toast.classList.remove("show"); state.generation += 1; state.user = user;state.emailVerification=null;state.customerOrderId=null;state.customerOrderSearch="";state.ordersRenderedHtml=null;notificationAlert.restoreAcknowledged(readNotificationAcknowledgements());state.orders = []; state.refundCases = [];state.orderHelpRequests=[]; state.platformVouchers=[];state.offers = []; state.offerInboxItems=[];state.offerCursors=[null];state.offerPageIndex=0;state.offerNextCursor=null;state.offerRequestVersion=(state.offerRequestVersion||0)+1;state.dismissingOffers=new Set();state.selectedOffer = null;state.discoverCollection="home";state.discoverOffersOnly=false;state.discoverSort="recommended"; state.notifications = []; state.unreadCount = 0; state.workspace = {}; state.orderKey = null; checkoutAttempt.clear(); state.submitting=false; state.addresses=[];state.locationChoices=[];state.locationChoicesScope="";state.locationAddress=null;state.serviceArea=null;if(changed&&priorUser?.id)state.postcode=""; setAccount(); if (user) { state.notificationStop=connectLiveNotifications({onRefresh:loadNotifications}); } }
 
 function consumeAccessFragment() {
   const fragment=location.hash.slice(1), separator=fragment.indexOf("=");
@@ -183,8 +184,10 @@ async function boot() {
 async function navigate(view) {
   if (state.submitting || checkoutAttempt.pending) { message("Resolve the original checkout or choose Check Orders before changing your basket."); return; }
   if (state.user && state.user.role !== "customer") return renderCustomerAccountRequired();
+  state.emailVerificationPanel?.close(); state.emailConfirmationPanel?.close();
   restaurantMenuController?.close();restaurantMenuController=null;state.navigationVersion++;state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.quoteController?.close();state.quoteController=null;if (view !== "orders") stopOrderPolling();state.schedulePicker?.close();state.schedulePicker=null;
   state.view = view;
+  state.healthCheckout?.close();state.healthCheckout=null;
   renderCustomerNotificationPrompt();
   if(view!=="offers"){clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null;}
   state.customerOrderId=view==="orders"?(state.focusOrderId||null):null;
@@ -288,10 +291,13 @@ function renderBasket(keepScroll = false) {
 function basketQuoteBody(){const address=state.locationAddress||[...state.addresses,...state.locationChoices].find(address=>address.postcode?.replace(/\s/g,"").toUpperCase()===state.postcode.replace(/\s/g,"").toUpperCase());return{restaurantId:state.selected.id,items:orderItemPayload(cartLines(state.menu,state.cart,state.modifiers)),fulfillment:state.fulfillment,autoApplyOffers:true,autoApplyVouchers:true,...(state.fulfillment==="delivery"?{deliveryAddress:{line1:address?.line1||"",...(address?.line2?{line2:address.line2}:{}),city:address?.city||"",postcode:address?.postcode||state.postcode}}:{})};}
 
 function renderCheckout() {
+  state.emailVerificationPanel?.close();
   restaurantMenuController?.close();restaurantMenuController=null;
   state.view="checkout";renderCustomerNotificationPrompt();
   if (!state.user) { state.pendingCheckout = true; return renderAuth("Sign in or create a customer account to place this order."); }
   if (state.user.role !== "customer") return renderDenied("Only customer accounts can place orders.");
+  state.pendingCheckout = false;
+  if (state.emailVerification?.canOrder !== true) return renderVerificationPage({ checkout: true });
   const lines = cartLines(state.menu, state.cart, state.modifiers); const totals = cartTotals(lines, state.fulfillment, state.selected.delivery);
   const invalid = lines.map((line) => validateModifierSelection(line, state.modifiers[line.id])).find((result) => !result.ok);
   if (invalid) { message(invalid.reason); return renderMenu(); }
@@ -304,6 +310,8 @@ function renderCheckout() {
   state.legalCheckout?.close();
   const legalContainer=document.createElement("div");document.querySelector("#place-order").before(legalContainer);
   state.legalCheckout=mountCustomerLegal(legalContainer,{api});
+  state.healthCheckout?.close();
+  state.healthCheckout=mountOrderHealthConsent(document.querySelector("#checkout-form"),{api});
 
 }
 
@@ -340,8 +348,10 @@ async function submitOrder(form) {
       await state.legalCheckout?.acceptForNewOrder();
       if(generation!==state.generation||!form.isConnected)return;
       const data=checkoutFormValues(form),lines=cartLines(state.menu,state.cart,state.modifiers);
+      const allergyConsent=state.healthCheckout?.payload();
       body={restaurantId:state.selected.id,expectedTotalMinor:state.quoteController.totalMinor,items:orderItemPayload(lines),paymentMethod:state.quoteController.fullyFunded?"voucher":data.get("paymentMethod"),fulfillment:state.fulfillment,...(state.quoteController.voucherId?{voucherId:state.quoteController.voucherId}:{}),...(data.get("scheduledFor")?{scheduledFor:data.get("scheduledFor")} :{}),...(state.quoteController.offerId?{offerId:state.quoteController.offerId}:{}),...(data.get("customerPhone")?{customerPhone:data.get("customerPhone")} :{}),...(data.get("deliveryInstructions")?{deliveryInstructions:data.get("deliveryInstructions")} :{}),...(data.get("allergyNotes")?{allergyNotes:data.get("allergyNotes")} :{})};
       if(state.fulfillment==="delivery")body.deliveryAddress={line1:data.get("line1"),...(data.get("line2")?{line2:data.get("line2")} :{}),city:data.get("city"),postcode:data.get("postcode")};
+      if(allergyConsent)body.allergyConsent=allergyConsent;
     }
     state.quoteController?.close();state.quoteController=null;
     button.disabled=true;button.textContent=original?"Checking original order…":"Placing order…";
@@ -358,6 +368,7 @@ async function submitOrder(form) {
     renderConfirmation(order);
   } catch(error) {
     if(generation!==state.generation||!form.isConnected)return;
+    if (error.code === "EMAIL_VERIFICATION_REQUIRED" && !checkoutAttempt.pending) { state.emailVerification = null; renderVerificationPage({ checkout: true }); return; }
     box.className="error";box.replaceChildren(document.createTextNode(error.message));
     if(checkoutAttempt.pending) {
       box.append(document.createTextNode(" Your order result is not confirmed. Retry the original request with the same items, address and reviewed total, or check Orders before starting another basket."));
@@ -380,7 +391,23 @@ function renderAuth(note = "") {
 }
 
 function renderForgotPassword() { stopPolling(); main.innerHTML = `<section class="section access-page"><button class="quiet" data-action="auth">← Sign in</button><form id="forgot-password-form" class="card stack"><div class="eyebrow">Account access</div><h1>Reset your password</h1><p class="muted">Enter your email and we’ll prepare reset instructions if the account exists.</p><label>Email<input class="field" name="email" type="email" required autocomplete="email"></label><div class="form-error"></div><button class="primary">Send reset instructions</button></form></section>`; }
-function renderAccessFlow() { stopPolling(); const verification=state.accessFlow?.type === "verify-email"; main.innerHTML = `<section class="section access-page"><div class="card stack"><div class="eyebrow">Account access</div><h1>${verification ? "Confirm your email" : "Choose a new password"}</h1>${verification ? `<p>Confirm your email address to continue to Cal-Eats.</p><button class="primary" data-action="confirm-email">Confirm email</button>` : `<form id="reset-password-form" class="stack"><p class="muted">Use at least 12 characters. After resetting, return to the Cal-Eats app or website to sign in.</p><label>New password<input class="field" name="password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><label>Confirm password<input class="field" name="confirmation" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><div class="form-error" role="alert"></div><button class="primary">Reset password</button></form>`}<div class="form-error" role="alert"></div></div></section>`; }
+function renderAccessFlow() {
+  stopPolling();
+  if (state.accessFlow?.type === "verify-email") {
+    main.innerHTML = '<section class="section access-page"><div class="card stack" data-email-confirmation></div></section>';
+    state.emailConfirmationPanel = mountEmailConfirmation(main.querySelector("[data-email-confirmation]"), { api, token: state.accessFlow.token, onConfirmed() { state.accessFlow = null; state.emailVerification = null; } });
+    return;
+  }
+  main.innerHTML = `<section class="section access-page"><div class="card stack"><div class="eyebrow">Account access</div><h1>Choose a new password</h1><form id="reset-password-form" class="stack"><p class="muted">Use at least 12 characters. After resetting, return to the Cal-Eats app or website to sign in.</p><label>New password<input class="field" name="password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><label>Confirm password<input class="field" name="confirmation" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><div class="form-error" role="alert"></div><button class="primary">Reset password</button></form><div class="form-error" role="alert"></div></div></section>`;
+}
+
+function renderVerificationPage({ initial = state.emailVerification, checkout = false, welcome = false } = {}) {
+  state.emailVerificationPanel?.close();
+  state.view = checkout ? "checkout" : "verification";
+  main.innerHTML = `<section class="section access-page"><div class="card stack"><h1>${welcome ? "Your Cal-Eats account is created" : checkout ? "One step before checkout" : "Your email confirmation"}</h1><div data-email-verification></div><div class="card-actions"><button type="button" class="secondary" data-view="discover">Browse restaurants</button><button type="button" class="quiet" data-view="account">Account & support</button></div>${checkout ? '<p class="meta">Your basket is saved while you confirm your email.</p>' : ""}</div></section>`;
+  const generation = state.generation, navigation = state.navigationVersion;
+  state.emailVerificationPanel = mountEmailVerification(main.querySelector("[data-email-verification]"), { api, initial, welcome, onChange(status) { if (generation !== state.generation || navigation !== state.navigationVersion) return; state.emailVerification = status; if (checkout && status.canOrder) renderCheckout(); } });
+}
 
 function recoveryDeliveryHtml(delivery) {
   if (delivery === "email") return `<h1>Check your email</h1><div class="notice" role="status">If an active account matches this email, a password reset link will arrive shortly.</div><p class="muted">Check your inbox and spam folder. Open the link to choose a new password, then return to the Cal-Eats app or website to sign in.</p>`;
@@ -390,7 +417,7 @@ function recoveryDeliveryHtml(delivery) {
 
 async function authSubmit(form, register = false) {
   const data = Object.fromEntries(new FormData(form)); const button = form.querySelector(AUTH_SUBMIT_SELECTOR); button.disabled = true;
-  try { if(register)data.legalAcceptance=state.legalSignup?.payload(); const result = await api(`/api/auth/${register ? "register" : "login"}`, { method: "POST", body: JSON.stringify(data) }); const resumeCheckout = state.pendingCheckout && result.user.role === "customer"; resetIdentity(result.user);if(await resumeCustomerEmailLink())return; if (resumeCheckout) { state.pendingCheckout = false; renderCheckout(); } else await navigate(result.user.role === "customer" ? "discover" : "workspace"); }
+  try { if(register)data.legalAcceptance=state.legalSignup?.payload(); const result = await api(`/api/auth/${register ? "register" : "login"}`, { method: "POST", body: JSON.stringify(data) }); const resumeCheckout = state.pendingCheckout && result.user.role === "customer"; resetIdentity(result.user);if(state.selected)saveDraft();if(result.emailVerification)state.emailVerification=emailVerificationStatus(result.emailVerification);if(register&&state.emailVerification&&!state.emailVerification.canOrder)return renderVerificationPage({initial:state.emailVerification,checkout:resumeCheckout,welcome:true});if(await resumeCustomerEmailLink())return; if (resumeCheckout) { state.pendingCheckout = false; renderCheckout(); } else await navigate(result.user.role === "customer" ? "discover" : "workspace"); }
   catch (error) { const box = form.querySelector(".form-error"); box.className = "form-error error"; box.textContent = error.message; button.disabled = false; }
 }
 
@@ -437,11 +464,15 @@ async function refreshAccountSupport(){
 }
 async function loadAccount(){
   stopOrderPolling();loading("Loading account");const generation=state.generation,navigation=state.navigationVersion;
-  try{const[profile,support,deletion,preferences,sessions,addresses,orders]=await Promise.all([api("/api/account"),api("/api/support?page=1&pageSize=30"),api("/api/account/deletion-requests").catch(()=>[]),api("/api/account/preferences"),api("/api/account/sessions"),api("/api/account/addresses"),api("/api/orders")]);if(generation!==state.generation||navigation!==state.navigationVersion||state.view!=="account")return;state.addresses=addresses;state.workspace.account={profile,support:Array.isArray(support)?support:support.items||[],deletion,preferences,sessions,addresses,helpOrders:(Array.isArray(orders)?orders:orders.items||[]).slice().sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,40)};renderAccount();}catch(error){if(generation===state.generation&&navigation===state.navigationVersion&&state.view==="account")showError(error);}
+  try{const[profile,support,deletion,preferences,sessions,addresses,orders,privacyPolicy,erasure,emailVerification]=await Promise.all([api("/api/account"),api("/api/support?page=1&pageSize=30"),api("/api/account/deletion-requests").catch(()=>[]),api("/api/account/preferences"),api("/api/account/sessions"),api("/api/account/addresses"),api("/api/orders"),api("/api/customer/privacy-policy").catch(()=>null),api("/api/account/erasure-requests").catch(()=>[]),api("/api/auth/email-verification/status").then(emailVerificationStatus).catch(()=>null)]);if(generation!==state.generation||navigation!==state.navigationVersion||state.view!=="account")return;state.addresses=addresses;state.workspace.account={privacyPolicy,erasure,emailVerification,profile,support:Array.isArray(support)?support:support.items||[],deletion,preferences,sessions,addresses,helpOrders:(Array.isArray(orders)?orders:orders.items||[]).slice().sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,40)};renderAccount();}catch(error){if(generation===state.generation&&navigation===state.navigationVersion&&state.view==="account")showError(error);}
 }
 
 function renderAccount() {
+  state.emailVerificationPanel?.close();
+  state.emailVerification = state.workspace.account.emailVerification ?? state.emailVerification;
   main.innerHTML=customerAccountHtml(state.workspace.account);
+  const verification = main.querySelector("[data-account-email-verification]");
+  if (verification) state.emailVerificationPanel = mountEmailVerification(verification, { api, initial: state.workspace.account.emailVerification ?? null, onChange(status) { state.emailVerification = status; if (state.workspace.account) state.workspace.account.emailVerification = status; const badge = main.querySelector(".account-verification"); if (badge) badge.textContent = status.emailVerified ? "Email verified" : status.verificationRequired ? "Email confirmation needed" : "Customer account"; } });
   const box=main.querySelector('#account-marketing-preferences');if(box)void mountMarketingPreferences(box,{api});
 }
 function openAddressEditor(id){const address=id?state.addresses.find(item=>item.id===id):{};if(!address)return;showDialog(addressEditorHtml(address));}
@@ -630,8 +661,6 @@ document.addEventListener("click", async (event) => {
   if (action === "add-option-row") { button.closest(".modifier-editor-group").querySelector(".option-rows").insertAdjacentHTML("beforeend",optionRow()); return; }
   if (action === "auth") { state.accessFlow=null; return renderAuth(); }
   if (action === "forgot-password") return renderForgotPassword();
-  if (action === "confirm-email") { const box=button.closest(".card").querySelector(".form-error"); button.disabled=true; try { await api("/api/auth/email-verification/confirm",{method:"POST",body:JSON.stringify({token:state.accessFlow.token})}); state.accessFlow=null; box.className="notice"; box.innerHTML="Email confirmed. <button class=\"primary\" data-action=\"auth\">Continue to sign in</button>"; button.remove(); } catch(error){box.className="form-error error";box.textContent=error.message;button.disabled=false;} return; }
-  if (action === "send-verification") { button.disabled=true; try { await api("/api/auth/email-verification/send",{method:"POST",body:"{}"}); message("Confirmation link prepared in local mail."); } catch(error){message(error.message);button.disabled=false;} return; }
   if(action==="revoke-session"){await api(`/api/account/sessions/${encodeURIComponent(button.dataset.id)}`,{method:"DELETE"}).then(()=>loadAccount()).catch(error=>message(error.message));return;}
   if(action==="revoke-other-sessions"){await api("/api/account/sessions/revoke-others",{method:"POST",body:"{}"}).then(result=>{message(`${result.revokedCount} other session(s) signed out.`);return loadAccount();}).catch(error=>message(error.message));return;}
   if(action==="add-address")return openAddressEditor();
@@ -752,7 +781,7 @@ document.addEventListener("submit", async (event) => {
     if(form.dataset.sending==="true")return;const data=Object.fromEntries(new FormData(form)),generation=state.generation,navigation=state.navigationVersion,button=form.querySelector("button[type=submit]"),box=form.querySelector(".form-error");if(!data.orderId)delete data.orderId;const fingerprint=JSON.stringify(data);if(form.dataset.fingerprint!==fingerprint){form.dataset.fingerprint=fingerprint;form.dataset.key=createRequestKey("support-request");}form.dataset.sending="true";button.disabled=true;button.textContent="Sending…";box.className="form-error";box.textContent="";
     try{const result=await api("/api/support",{method:"POST",headers:{"Idempotency-Key":form.dataset.key},body:JSON.stringify(data)});if(generation!==state.generation)return;message(`Request ${result.reference||shortId(result.id)} sent to ${result.recipient||"Cal-Eats support"}.`);if(state.view==="account"&&navigation===state.navigationVersion){await loadAccount();if(generation===state.generation&&state.view==="account")await showCustomerContact(result.id,true);}void loadNotifications();}catch(error){if(generation===state.generation&&form.isConnected){box.className="form-error error";box.textContent=`${error.message} Your request is kept here so you can retry.`;}}finally{if(form.isConnected){form.dataset.sending="false";button.disabled=false;button.textContent="Send help request";}}return;
   }
-  if (form.getAttribute("id") === "deletion-form") { const d = Object.fromEntries(new FormData(form)); try { await api("/api/account/deletion-requests", { method:"POST", body:JSON.stringify(d) }); message("Request received. Support reviews your request and may ask for verification if needed."); await loadAccount(); } catch(error){ message(error.message); } return; }
+  if(form.id==="deletion-form"){if(form.dataset.sending)return;const verified=form.dataset.verified==="true",data=Object.fromEntries(new FormData(form)),button=form.querySelector('button[type=submit]'),box=form.querySelector('.form-error'),generation=state.generation,navigation=state.navigationVersion;form.dataset.sending="true";button.disabled=true;box.textContent="";try{await api(verified?"/api/account/deletion-requests/verified":"/api/account/deletion-requests",{method:"POST",body:JSON.stringify(data)});form.reset();if(generation!==state.generation||navigation!==state.navigationVersion)return;message(verified?"Deletion request verified. Our team will review it and confirm completion.":"Account closure request sent for support review.");await loadAccount();}catch(error){if(form.isConnected)box.textContent=error.message;}finally{if(form.isConnected){delete form.dataset.sending;button.disabled=false;}}return;}
   if (form.getAttribute("id") === "refund-case-create") { const d=new FormData(form),button=form.querySelector("button[type=submit]"),box=form.querySelector(".form-error"),files=[...form.elements.photos.files]; button.disabled=true;box.textContent="";try{if(files.length>3)throw new Error("Choose up to three photos.");const photos=[];for(const file of files)photos.push(await normalizedPhoto(file));const body={orderId:form.dataset.id,reason:d.get("reason"),description:d.get("description")},itemIds=d.getAll("itemIds");if(itemIds.length)body.itemIds=itemIds;const item=await api("/api/refund-cases",{method:"POST",body:JSON.stringify(body)});const failed=[];for(const photo of photos){try{await api(`/api/refund-cases/${encodeURIComponent(item.id)}/evidence`,{method:"POST",body:JSON.stringify(photo)});}catch(error){failed.push(error.message);}}closeDialog();message(failed.length?`Case ${item.reference} submitted, but ${failed.length} photo upload failed. Open the case to retry.`:`Case ${item.reference} submitted for review.`);await loadOrders();}catch(error){box.className="form-error error";box.textContent=error.message;button.disabled=false;}return; }
   if (form.getAttribute("id") === "refund-case-reply") { const button=form.querySelector("button"),box=form.querySelector(".form-error"),id=form.dataset.id;button.disabled=true;try{await api(`/api/refund-cases/${encodeURIComponent(id)}/reply`,{method:"POST",body:JSON.stringify({message:new FormData(form).get("message")})});message("Reply sent.");await showRefundCase(id);}catch(error){box.className="form-error error";box.textContent=error.message;button.disabled=false;}return; }
   if (form.getAttribute("id") === "refund-case-evidence") { const button=form.querySelector("button"),box=form.querySelector(".form-error"),id=form.dataset.id;button.disabled=true;try{const body=await normalizedPhoto(form.elements.photo.files[0]);await api(`/api/refund-cases/${encodeURIComponent(id)}/evidence`,{method:"POST",body:JSON.stringify(body)});message("Private evidence added.");await showRefundCase(id);}catch(error){box.className="form-error error";box.textContent=error.message;button.disabled=false;}return; }

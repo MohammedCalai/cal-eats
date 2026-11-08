@@ -1,5 +1,36 @@
 import {money} from "./model.js";
 import {customerIcon} from "./customer-ui.js";
+
+export function mountOrderHealthConsent(form,{api}) {
+  const notes=form.querySelector('[name="allergyNotes"]'),container=document.createElement("div");
+  notes.after(container);notes.hidden=true;
+  let status=null,closed=false,failed=false;
+  function render(){
+    if(closed||!form.isConnected)return;
+    notes.hidden=status?.healthDataEnabled!==true&&!notes.value.trim();notes.readOnly=status?.healthDataEnabled!==true;
+    if(status&&!status.healthDataEnabled){container.innerHTML=`<p class="meta">Please discuss any allergies directly with the restaurant before ordering.</p>${notes.value.trim()?'<button type="button" class="quiet" data-clear-health-notes>Clear optional allergy notes</button>':""}`;return;}
+    if(status&&!notes.value.trim()){container.innerHTML="";return;}
+    if(!status){container.innerHTML=`<p class="meta" role="status">${failed?"Please discuss any allergies directly with the restaurant before ordering. Allergy-note collection is unavailable.":"Checking allergy-note availability…"}</p>${notes.value.trim()?'<button type="button" class="quiet" data-clear-health-notes>Clear optional allergy notes</button>':""}`;return;}
+    container.innerHTML=`<label class="customer-legal-check"><input type="checkbox" data-health-consent ${form.dataset.checkoutLocked==="1"?'disabled data-checkout-disabled="0"':""}><span>${e(status.healthConsent.text)}</span></label>`;
+  }
+  const input=()=>render(),click=event=>{if(event.target.closest("[data-clear-health-notes]")&&form.dataset.checkoutLocked!=="1"){notes.value="";notes.dispatchEvent(new Event("input",{bubbles:true}));}};notes.addEventListener("input",input);container.addEventListener("click",click);render();
+  void api("/api/customer/privacy").then(value=>{
+    if(closed||!form.isConnected)return;
+    if(typeof value?.enabled!=="boolean"||typeof value.healthDataEnabled!=="boolean"||value.healthDataEnabled&&(!value.enabled||!value.healthConsent?.version||!value.healthConsent.text||!/^[a-f0-9]{64}$/.test(value.healthConsent.sha256)))throw Error("Allergy-note information could not be verified.");
+    status=value;render();
+  }).catch(()=>{failed=true;render();});
+  return {
+    payload(){
+      if(closed||!form.isConnected)throw Error("Return to the current checkout before ordering.");
+      if(!notes.value.trim())return undefined;
+      if(!status)throw Error("Allergy-note information is unavailable. Wait for it to load, or clear the optional notes before ordering.");
+      if(!status.healthDataEnabled)throw Error("Allergy-note collection is unavailable. Contact the restaurant directly about allergies before ordering.");
+      if(!container.querySelector("[data-health-consent]")?.checked)throw Error("Please explicitly agree to sharing your allergy notes with the restaurant, or clear the optional notes before ordering.");
+      return {accepted:true,version:status.healthConsent.version,sha256:status.healthConsent.sha256};
+    },
+    close(){closed=true;notes.removeEventListener("input",input);container.removeEventListener("click",click);notes.value="";container.innerHTML="";}
+  };
+}
 const e=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const heading=(number,title,copy)=>`<header class="checkout-step-heading"><span>${number}</span><div><h2>${title}</h2><p>${copy}</p></div></header>`;
 export function checkoutHtml({restaurant,fulfillment,addresses=[],postcode,user,lines,totals}){
