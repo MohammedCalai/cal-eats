@@ -27,3 +27,11 @@ Samsung's separate lock-screen/brief-pop-up choices still govern screen-off pres
 Targeted backend integration checks cover mixed legacy/new devices, invalid channels, platform mismatch, generation/idempotency and upgrade races. Mobile checks cover the actual SDK enum, channel-choice preservation, account isolation and permission-prompt state. Final signed-package inspection and a repeat Galaxy S10 pop-up test are required before recording the corrected behavior as physically verified.
 
 The previous native-client order-load results remain separate and unchanged. No order/payment logic, bank setup, marketing consent or business notification sound changed in this correction.
+
+## Internal testing release
+
+Android **1.0.0 (21)**, built from `edc261b87e5550470317c35fa5f2689cb320e5ed`, was confirmed available on Google Play internal release9 on 8 November 2026 at 17:01 UTC. The [existing tester link](https://play.google.com/apps/internaltest/4700960164758478673) serves the update as Google propagates it. The customer should open the app and choose **Allow notifications** before the repeat quiet-pop-up test.
+
+Validation passed: **61 mobile logic checks**, **10 targeted API integration checks**, Android Hermes export, exact package/version/signature inspection and the compiled quiet-v2 configuration. All 34 native 64-bit libraries passed 16KB alignment checks; the package targets API36 with minimum API24. The signed AAB SHA-256 is `a5784529b2c16c8796323eb2f545c1c88e50489f7d9a682c60f31f7bc8c3d244`.
+
+The hosted service is healthy on migration58, and an existing legacy encrypted Android registration remained readable after the additive migration. This is backward-compatibility evidence, not new-device delivery proof. The Android21 prompt and Galaxy S10 pop-up retest remain pending the customer's update and affirmative setup action.
