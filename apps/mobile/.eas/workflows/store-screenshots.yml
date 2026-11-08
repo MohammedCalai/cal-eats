@@ -1,6 +1,7 @@
 # Manual only. Uses a simulator build already reviewed by the release owner.
 # This is a custom macOS job, not the paid Maestro/Simulators service.
 # Check the account's free CI allowance immediately before starting a run.
+# May run from a clean local source archive without granting GitHub access.
 name: Genuine iPhone store screenshots
 on:
   workflow_dispatch:
@@ -11,6 +12,9 @@ on:
       expected_source_sha:
         type: string
         required: true
+      capture_workflow_sha:
+        type: string
+        required: true
       restaurant_name:
         type: string
         default: Arndale Market Curry Centre
@@ -18,27 +22,49 @@ on:
         type: string
         default: Chips
 jobs:
+  resolve_build:
+    name: Resolve the approved simulator binary
+    type: get-build
+    params:
+      platform: ios
+      profile: simulator
+      app_identifier: uk.co.calai.caleats
+      git_commit_hash: ${{ inputs.expected_source_sha }}
+      simulator: true
+      wait_for_in_progress: false
   capture:
     name: Capture the current native customer app
+    needs: [resolve_build]
     runs_on: macos-medium
     image: macos-tahoe-26.5-xcode-26.6
     env:
       SCREENSHOT_BUILD_ID: ${{ inputs.build_id }}
       EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+      CAPTURE_WORKFLOW_SHA: ${{ inputs.capture_workflow_sha }}
+      VERIFIED_ACCOUNT: ${{ account.name }}
+      VERIFIED_PROJECT_ID: ${{ app.id }}
+      VERIFIED_PROJECT_SLUG: ${{ app.slug }}
+      VERIFIED_BUILD_ID: ${{ needs.resolve_build.outputs.build_id }}
+      VERIFIED_BINARY_SOURCE: ${{ needs.resolve_build.outputs.git_commit_hash }}
+      VERIFIED_PROFILE: ${{ needs.resolve_build.outputs.profile }}
+      VERIFIED_SIMULATOR: ${{ needs.resolve_build.outputs.simulator }}
+      VERIFIED_PLATFORM: ${{ needs.resolve_build.outputs.platform }}
+      VERIFIED_APP_IDENTIFIER: ${{ needs.resolve_build.outputs.app_identifier }}
       RESTAURANT_NAME: ${{ inputs.restaurant_name }}
       DISH_NAME: ${{ inputs.dish_name }}
     steps:
       - uses: eas/checkout
-      - name: Verify the approved source and capture inputs
+      - name: Verify the approved binary and capture inputs
         run: |
           node <<'NODE'
-          const {execFileSync} = require('node:child_process');
           if (!/^[a-f0-9-]{36}$/i.test(process.env.SCREENSHOT_BUILD_ID || '')) throw new Error('A simulator build ID is required.');
           if (!/^[a-f0-9]{40}$/i.test(process.env.EXPECTED_SOURCE_SHA || '')) throw new Error('The full approved source SHA is required.');
-          const actual = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
-          if (actual !== process.env.EXPECTED_SOURCE_SHA) throw new Error('Workflow source differs from the approved source.');
+          if (!/^[a-f0-9]{40}$/i.test(process.env.CAPTURE_WORKFLOW_SHA || '')) throw new Error('The separate capture workflow SHA is required.');
+          if(process.env.VERIFIED_ACCOUNT!=='yankee1707'||process.env.VERIFIED_PROJECT_ID!=='5bf59184-c670-44f4-be78-5229cbd02300'||process.env.VERIFIED_PROJECT_SLUG!=='cal-eats')throw new Error('The workflow is not running in the approved Cal-Eats project.');
+          if(process.env.VERIFIED_BUILD_ID!==process.env.SCREENSHOT_BUILD_ID||process.env.VERIFIED_BINARY_SOURCE!==process.env.EXPECTED_SOURCE_SHA)throw new Error('The server-resolved simulator build differs from the approved binary.');
+          if(process.env.VERIFIED_PROFILE!=='simulator'||process.env.VERIFIED_SIMULATOR!=='true'||(process.env.VERIFIED_PLATFORM||'').toLowerCase()!=='ios'||process.env.VERIFIED_APP_IDENTIFIER!=='uk.co.calai.caleats')throw new Error('The resolved build is not the approved customer iOS Simulator binary.');
           for (const key of ['RESTAURANT_NAME','DISH_NAME']) if (!(process.env[key] || '').trim() || process.env[key].length > 150) throw new Error('Invalid capture selector.');
-          console.log('Approved source verified. Anonymous native screenshots only.');
+          console.log('Approved binary source and separate capture-workflow revision recorded. Anonymous native screenshots only.');
           NODE
       - uses: eas/download_build
         id: app
@@ -94,7 +120,7 @@ jobs:
               if(/hasAlpha: yes/.test(info))throw new Error('App Store screenshots must have no alpha channel.');
               return {file:path.relative(out,file),width,height};
             });
-            fs.writeFileSync(path.join(out,'capture-manifest.json'),JSON.stringify({createdAt:new Date().toISOString(),sourceCommit:process.env.EXPECTED_SOURCE_SHA,simulatorBuildId:process.env.SCREENSHOT_BUILD_ID,device:device.name,bundleIdentifier:identifier,anonymous:true,retouched:false,images:dimensions},null,2));
+            fs.writeFileSync(path.join(out,'capture-manifest.json'),JSON.stringify({createdAt:new Date().toISOString(),binarySourceCommit:process.env.VERIFIED_BINARY_SOURCE,captureWorkflowCommit:process.env.CAPTURE_WORKFLOW_SHA,captureWorkflowSource:'Clean local checkout archive; revision verified by the dispatching release owner',simulatorBuildId:process.env.VERIFIED_BUILD_ID,expoAccount:process.env.VERIFIED_ACCOUNT,expoProjectId:process.env.VERIFIED_PROJECT_ID,profile:process.env.VERIFIED_PROFILE,device:device.name,bundleIdentifier:identifier,anonymous:true,retouched:false,images:dimensions},null,2));
           } finally {
             if(udid)spawnSync('xcrun',['simctl','shutdown',udid],{timeout:15000,stdio:'ignore'});
           }
