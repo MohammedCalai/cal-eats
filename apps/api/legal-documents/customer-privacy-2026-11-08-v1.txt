@@ -64,7 +64,7 @@ Our scheduled retention controls apply these limits to eligible Cal-Eats service
 - Order and restaurant-conversation message bodies: 30 days after each message was created. Message expiry does not necessarily remove delivery, read or audit metadata, or a separate support case.
 - Optional order allergy notes: 30 days after an order completes or is rejected.
 - Personal delivery/contact details and free-text instructions in completed or rejected order records and eligible stored print-service copies: 90 days after that terminal status.
-- Support case content and replies: 12 calendar months after the case is resolved and last updated.
+- Support case content and replies: 30 days after the case is resolved and last updated.
 
 For the order and support retention controls, active orders, unresolved order-specific support or payment work, and documented legal holds can delay the relevant deletion. We retain only what remains necessary and review the reason for keeping it. The customer's 90-day past-order view is an access limit; it is not a statement that every accounting record is deleted after 90 days.
 
@@ -78,7 +78,7 @@ You can edit account details and saved addresses, change marketing preferences, 
 
 You can request access to your personal information, correction, deletion, restriction, portability where applicable, or object to relevant processing. The downloadable account summary is a convenient summary, not a complete subject-access response. Contact support@calai.info for a full request. You can also withdraw optional marketing or allergy consent there. For an active order, we will explain any effect on the service and any separate lawful reason for necessary retention.
 
-To request account deletion, open Account, then Security & privacy, then Delete your account. Confirm your password and intention in the app. A reason is optional. Our team reviews the request internally; you do not need to telephone or email to initiate it. Your login remains available during review. We normally act within one calendar month and will explain any lawful extension, unresolved order, verification need or retained category. On completion we remove the login and eligible personal data, revoke active access and send a confirmation. Necessary financial/legal records remain restricted to their permitted purposes. We may ask for proportionate verification if there is a reasonable doubt about identity; please do not send a password or identity document without a secure request from us.
+To request account deletion, open Account, then Security & privacy, then Delete your account. Confirm your password and intention in the app. A reason is optional. Our team reviews the request internally; you do not need to telephone or email to initiate it. Your login remains available during review. We normally act within 30 days, or sooner if the one-calendar-month legal deadline falls earlier, and will explain any lawful extension, unresolved order, verification need or retained category. On completion we remove the login and eligible personal data, revoke active access and send a confirmation. Necessary financial/legal records remain restricted to their permitted purposes. We may ask for proportionate verification if there is a reasonable doubt about identity; please do not send a password or identity document without a secure request from us.
 
 You can complain to us or to the Information Commissioner's Office at https://ico.org.uk/make-a-complaint/. Your rights and our legal obligations are not reduced by the Terms or this notice.
 

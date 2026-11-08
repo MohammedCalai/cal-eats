@@ -5,6 +5,7 @@ import { withTransaction } from "./db/index.js";
 import { exactObject, HttpError, readJson, sendJson } from "./http.js";
 import { messageEncryptionKey } from "./message-encryption.js";
 import { createOrderAlertEmailAdapter } from "./order-alert-email.js";
+import { customerErasureDueAt } from "./privacy-deadline.js";
 
 const ORDERS = "SELECT id FROM orders WHERE customer_id=?";
 const THREADS = "SELECT id FROM restaurant_customer_threads WHERE customer_id=?";
@@ -19,7 +20,7 @@ const count = (db, table, where, userId) => db.prepare(`SELECT COUNT(*) n FROM $
 const hasTable = (db, name) => Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
 
 export const CUSTOMER_ERASURE_RETAINED_CATEGORIES = Object.freeze([
-  "Pseudonymous order, payment, commission, voucher and accounting records: necessary financial retention, up to six years under the reviewed policy.",
+  "Pseudonymous order, payment, commission, voucher and accounting records: necessary statutory accounting retention, normally six years from the relevant financial-year end, with documented longer exceptions.",
   "Minimal legal acceptance versions, hashes and timestamps: necessary contract evidence under the reviewed retention policy.",
   "Minimal request, review and suppression evidence: prevents restoration of erased accounts from backups.",
   "A purpose-limited encrypted completion-email recipient: removed after dispatch or within seven days. Backup copies expire under the reviewed backup schedule; suppression is required before restoration."
@@ -31,9 +32,9 @@ function approvedPolicy(config) {
   const policy = config?.customerPrivacy;
   const retention = policy?.retention;
   return Boolean(policy?.enabled === true && typeof policy.version === "string" && policy.version.length > 0
-    && Number.isFinite(Date.parse(policy.approvedAt)) && typeof policy.approvalReference === "string" && policy.approvalReference.trim().length >= 10 && policy.deletionTargetCalendarMonths === 1
+    && Number.isFinite(Date.parse(policy.approvedAt)) && typeof policy.approvalReference === "string" && policy.approvalReference.trim().length >= 10 && policy.deletionTargetCalendarMonths === 1 && policy.deletionTargetDays === 30
     && retention?.chatDays === 30 && retention?.allergyDays === 30 && retention?.orderContactDays === 90
-    && retention?.resolvedSupportMonths === 12 && retention?.accountingYears === 6);
+    && retention?.resolvedSupportDays === 30 && retention?.accountingYears === 6);
 }
 function requirePolicy(config) {
   if (!approvedPolicy(config)) throw new HttpError(503, "PRIVACY_REVIEW_REQUIRED", "Account deletion is not activated until the privacy notice and retention arrangements have been reviewed. Your request has not been submitted.");
@@ -128,10 +129,6 @@ function requestView(row) {
   return { id:row.request_id,status:row.status,requestedAt:row.created_at,verifiedAt:row.verified_at,dueAt:row.due_at,
     completedAt:row.completed_at??null,retainedCategories:[...CUSTOMER_ERASURE_RETAINED_CATEGORIES],accountEnabled:row.status!=="completed" };
 }
-function addCalendarMonth(value) {
-  const date = new Date(value), day=date.getUTCDate();date.setUTCDate(1);date.setUTCMonth(date.getUTCMonth()+1);
-  const last = new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,0)).getUTCDate();date.setUTCDate(Math.min(day,last));return date.toISOString();
-}
 function completionSeal(config, id, recipient) {
   const {key,version}=messageEncryptionKey(config),nonce=randomBytes(12),cipher=createCipheriv("aes-256-gcm",key,nonce);
   cipher.setAAD(Buffer.from(`cal-eats:erasure-confirmation:v1:${id}`));
@@ -217,7 +214,7 @@ export function applyCustomerErasure(db,userId,{requestId,adminId,config,note,pr
 }
 
 export async function handleCustomerErasure({req,res,url,db,config,session,checkRate}) {
-  if(req.method==="GET"&&url.pathname==="/api/customer/privacy-policy")return sendJson(res,200,{data:{enabled:approvedPolicy(config),version:config.customerPrivacy?.version??null,deletionTargetCalendarMonths:1}});
+  if(req.method==="GET"&&url.pathname==="/api/customer/privacy-policy")return sendJson(res,200,{data:{enabled:approvedPolicy(config),version:config.customerPrivacy?.version??null,deletionTargetDays:30,deletionTargetCalendarMonths:1}});
   if(req.method==="GET"&&["/api/account/erasure-requests","/api/native/account/erasure-requests"].includes(url.pathname)) {
     const user=requireRole(session,"customer");customerOnly(db,user.id);
     return sendJson(res,200,{data:db.prepare("SELECT e.*,d.created_at FROM customer_erasure_requests e JOIN deletion_requests d ON d.id=e.request_id WHERE e.user_id=? ORDER BY e.verified_at DESC").all(user.id).map(requestView)});
@@ -234,11 +231,11 @@ export async function handleCustomerErasure({req,res,url,db,config,session,check
       const existing=db.prepare("SELECT e.*,d.created_at FROM customer_erasure_requests e JOIN deletion_requests d ON d.id=e.request_id WHERE e.user_id=? AND e.status='requested'").get(actor.id);if(existing)return requestView(existing);
       const now=config.now().toISOString();
       // Upgrade an unverified legacy intake; never treat legacy login closure as erasure.
-      const legacy=db.prepare("SELECT id,created_at FROM deletion_requests WHERE user_id=? AND status<>'resolved' AND id NOT IN (SELECT request_id FROM customer_erasure_requests) ORDER BY created_at DESC LIMIT 1").get(actor.id);
+      const legacy=db.prepare("SELECT id,created_at FROM deletion_requests WHERE user_id=? AND status<>'resolved' AND id NOT IN (SELECT request_id FROM customer_erasure_requests) ORDER BY created_at ASC,rowid ASC LIMIT 1").get(actor.id);
       const id=legacy?.id??randomUUID(),createdAt=legacy?.created_at??now;
       if(legacy)db.prepare("UPDATE deletion_requests SET reason=?,status='requested',note='',updated_at=? WHERE id=?").run(body.reason?.trim()??"",now,id);
       else db.prepare("INSERT INTO deletion_requests(id,user_id,reason,status,note,created_at,updated_at) VALUES(?,?,?,'requested','',?,?)").run(id,actor.id,body.reason?.trim()??"",now,now);
-      const dueAt=addCalendarMonth(now);
+      const dueAt=customerErasureDueAt(createdAt);
       db.prepare("INSERT INTO customer_erasure_requests(request_id,user_id,verified_at,due_at,policy_version,status) VALUES(?,?,?,?,?,'requested')").run(id,actor.id,now,dueAt,policy.version);
       db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),actor.id,"deletion_request",id,"customer_erasure_requested_verified",JSON.stringify({requestId:id,policyVersion:policy.version,verification:"current_password",dueAt}),now);
       return requestView({request_id:id,status:"requested",created_at:createdAt,verified_at:now,due_at:dueAt});

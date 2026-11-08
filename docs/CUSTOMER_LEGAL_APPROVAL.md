@@ -18,9 +18,9 @@ CALAI_CUSTOMER_LEGAL_ENABLED and CALAI_CUSTOMER_PRIVACY_ENABLED both default to 
 
 CALAI_CUSTOMER_LEGAL_MANIFEST_JSON contains documents.terms and documents.privacy. Each needs version, sha256, canonical same-origin URL, canonical UTC approvedAt/effectiveAt, approvalReference and exactly one of text or a safe packaged archiveFile filename. Text bytes must match the hash; existing versions cannot be replaced.
 
-CALAI_CUSTOMER_PRIVACY_MANIFEST_JSON contains the matching version, canonical UTC approvedAt, approvalReference, retention and the one-calendar-month deletion target. Health collection additionally requires explicit supplier-scope approval; customer consent cannot expand a processor contract.
+CALAI_CUSTOMER_PRIVACY_MANIFEST_JSON contains the matching version, canonical UTC approvedAt, approvalReference, retention and the 30-day deletion target capped at one calendar month. Health collection additionally requires explicit supplier-scope approval; customer consent cannot expand a processor contract.
 
-The proposed schedule is chat bodies 30 days from creation; eligible terminal-order allergy notes 30 days; terminal-order contacts 90 days; resolved support content 12 calendar months. Necessary accounting records have a six-year minimum, not a blanket retention of all personal information. Financial records are not automatically purged by the retention worker.
+The owner’s selected schedule is chat bodies 30 days from creation; eligible terminal-order allergy notes 30 days; terminal-order contacts 90 days; resolved support content 30 days. Necessary accounting records have a six-year minimum, not a blanket retention of all personal information. Financial records are not automatically purged by the retention worker.
 
 ## Before activation and store submission
 
@@ -35,3 +35,5 @@ The proposed schedule is chat bodies 30 days from creation; eligible terminal-or
 No live customer erasure, financial changes, provider-key changes, hosted activation or store submission is performed by this local phase. The owner phone app remains on hold.
 
 New customer signup also queues a welcome/verification service email. Verification is required for new orders from newly registered accounts; pre-existing accounts keep their existing access. Login, browsing, support and privacy requests stay available while verification is pending. This is separate from marketing consent.
+
+The owner selected 30 days for the ordinary categories and 90 days for delivery/contact copies on 8 November 2026. Necessary financial records retain the statutory six-year minimum; deletion responses must respect an earlier one-calendar-month deadline. These exceptions do not authorise general personal-data retention beyond the selected periods.

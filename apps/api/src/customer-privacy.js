@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { withTransaction } from "./db/index.js";
 import { exactObject, HttpError, sendJson } from "./http.js";
 
-const defaults = Object.freeze({ chatDays: 30, allergyDays: 30, orderContactDays: 90, resolvedSupportMonths: 12, accountingYears: 6 });
-const disabled = Object.freeze({ enabled: false, version: null, approvedAt: null, healthDataEnabled: false, retention: defaults, deletionTargetCalendarMonths: 1 });
+const defaults = Object.freeze({ chatDays: 30, allergyDays: 30, orderContactDays: 90, resolvedSupportDays: 30, accountingYears: 6 });
+const disabled = Object.freeze({ enabled: false, version: null, approvedAt: null, healthDataEnabled: false, retention: defaults, deletionTargetDays: 30, deletionTargetCalendarMonths: 1 });
 const healthText = "I explicitly agree to Cal-Eats storing these optional allergy notes and sharing them with this restaurant to handle this order. I can order without entering allergy notes. To withdraw this consent, contact support@calai.info; the team will verify the request and explain any effect on an active order. Allergy notes are not used for marketing.";
 export const orderHealthConsentNotice = Object.freeze({ version: "allergy-order-v1", sha256: createHash("sha256").update(healthText).digest("hex"), text: healthText });
 
@@ -17,10 +17,11 @@ export function loadCustomerPrivacyConfig(input) {
   if (input.retention != null && (typeof input.retention !== "object" || Array.isArray(input.retention) || Object.keys(input.retention).some(key => !(key in defaults)))) throw new Error("Customer privacy retention fields are invalid");
   for (const [key, value] of Object.entries(defaults)) if (retention[key] !== value) throw new Error(`Customer privacy retention ${key} must match the reviewed policy`);
   if (input.deletionTargetCalendarMonths !== undefined && input.deletionTargetCalendarMonths !== 1) throw new Error("Customer privacy deletion target must be one calendar month");
+  if (input.deletionTargetDays !== undefined && input.deletionTargetDays !== 30) throw new Error("Customer privacy deletion target must be 30 days, capped at one calendar month");
   if (input.healthDataEnabled !== undefined && typeof input.healthDataEnabled !== "boolean") throw new Error("Health-data collection enablement must be an explicit boolean");
   const healthDataEnabled = input.healthDataEnabled === true;
   if (healthDataEnabled && (typeof input.healthDataApprovalReference !== "string" || input.healthDataApprovalReference.trim().length < 10 || input.healthDataApprovalReference.length > 200)) throw new Error("Health-data collection requires a separately verified provider-coverage approval reference");
-  return Object.freeze({ enabled: true, version: input.version, approvedAt: approved.toISOString(), approvalReference: input.approvalReference.trim(), healthDataEnabled, ...(healthDataEnabled ? { healthDataApprovalReference: input.healthDataApprovalReference.trim() } : {}), retention: Object.freeze(retention), deletionTargetCalendarMonths: 1 });
+  return Object.freeze({ enabled: true, version: input.version, approvedAt: approved.toISOString(), approvalReference: input.approvalReference.trim(), healthDataEnabled, ...(healthDataEnabled ? { healthDataApprovalReference: input.healthDataApprovalReference.trim() } : {}), retention: Object.freeze(retention), deletionTargetDays: 30, deletionTargetCalendarMonths: 1 });
 }
 
 export async function routeCustomerPrivacy({ req, res, url, config }) {
@@ -52,12 +53,6 @@ export function recordOrderHealthConsent(db, config, { orderId, userId, allergyN
   db.prepare("INSERT INTO order_health_consents(order_id,user_id,policy_version,notice_version,notice_sha256,consented_at,source) VALUES(?,?,?,?,?,?,?)").run(orderId, userId, config.customerPrivacy.version, consent.version, consent.sha256, now, source);
 }
 
-export function subtractCalendarMonths(date, months) {
-  const result = new Date(date), day = result.getUTCDate();
-  result.setUTCDate(1); result.setUTCMonth(result.getUTCMonth() - months);
-  const last = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
-  result.setUTCDate(Math.min(day, last)); return result;
-}
 const tableExists = (db, name) => Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
 function held(db, userId, stamp) {
   return tableExists(db, "customer_erasure_holds") && Boolean(db.prepare("SELECT 1 FROM customer_erasure_holds WHERE user_id=? AND released_at IS NULL AND (expires_at IS NULL OR expires_at>?) LIMIT 1").get(userId, stamp));
@@ -100,7 +95,7 @@ export function runCustomerPrivacyRetention(db, config) {
   if (policy.approvedAt > stamp) return { enabled: false, reason: "approval_not_effective" };
   const allergyCutoff = new Date(clock.getTime() - policy.retention.allergyDays * 86400000).toISOString();
   const contactCutoff = new Date(clock.getTime() - policy.retention.orderContactDays * 86400000).toISOString();
-  const supportCutoff = subtractCalendarMonths(clock, policy.retention.resolvedSupportMonths).toISOString();
+  const supportCutoff = new Date(clock.getTime() - policy.retention.resolvedSupportDays * 86400000).toISOString();
   return withTransaction(db, () => {
     const counts = { enabled: true, allergyNotes: 0, orderContacts: 0, printCopies: 0, supportCases: 0, supportMessages: 0, supportNotifications: 0, supportEmails: 0 };
     const rows = batch(db, "orders", `SELECT o.*,COALESCE((SELECT MAX(e.created_at) FROM order_events e WHERE e.order_id=o.id AND e.to_status IN ('completed','rejected')),o.updated_at) AS terminal_at FROM orders o WHERE o.status IN ('completed','rejected') AND (o.allergy_notes<>'' OR o.customer_name<>'' OR o.customer_email<>'' OR o.customer_phone<>'' OR o.delivery_instructions<>'' OR o.delivery_address IS NOT NULL OR EXISTS(SELECT 1 FROM device_print_jobs p WHERE p.order_id=o.id AND (p.receipt LIKE '%"allergyNotes":%' OR p.receipt LIKE '%"customerPhone":%' OR p.receipt LIKE '%"deliveryAddress":%' OR p.receipt LIKE '%"orderNotes":%'))) AND o.id>? ORDER BY o.id LIMIT 500`);

@@ -3,11 +3,20 @@ import test from "node:test";
 import { createHash, randomUUID } from "node:crypto";
 import { journeyFixture } from "./helpers.js";
 import { planCustomerErasure, applyCustomerErasure, runCustomerErasureConfirmations } from "../src/customer-erasure.js";
+import { customerErasureDueAt } from "../src/privacy-deadline.js";
 
-const policy={enabled:true,version:"privacy-fixture-v1",approvedAt:"2026-01-01T00:00:00.000Z",approvalReference:"isolated-fixture-review-only",deletionTargetCalendarMonths:1,retention:{chatDays:30,allergyDays:30,orderContactDays:90,resolvedSupportMonths:12,accountingYears:6}};
+const policy={enabled:true,version:"privacy-fixture-v1",approvedAt:"2026-01-01T00:00:00.000Z",approvalReference:"isolated-fixture-review-only",deletionTargetDays:30,deletionTargetCalendarMonths:1,retention:{chatDays:30,allergyDays:30,orderContactDays:90,resolvedSupportDays:30,accountingYears:6}};
 const note="Identity and intent verified using in-app password confirmation. No unresolved work or legal hold remains.";
 const insert=(db,table,row)=>db.prepare(`INSERT INTO ${table}(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(()=>"?").join(",")})`).run(...Object.values(row));
 const digest=db=>createHash("sha256").update(JSON.stringify({orders:db.prepare("SELECT id,customer_id,restaurant_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,commission_minor,payment_method,payment_status,contract_rate_bps,contract_policy_version,commission_base,gross_food_minor,restaurant_discount_minor,customer_payable_minor,platform_voucher_minor FROM orders ORDER BY id").all(),items:db.prepare("SELECT id,order_id,menu_item_id,name,unit_price_minor,quantity,base_price_minor,is_offer_item FROM order_items ORDER BY id").all(),ledger:db.prepare("SELECT * FROM ledger_entries ORDER BY id").all(),journal:db.prepare("SELECT * FROM journal_postings ORDER BY id").all(),operations:db.prepare("SELECT id,order_id,kind,status,amount_minor,currency,provider_mode,provider_reference FROM marketplace_operations ORDER BY id").all()})).digest("hex");
+
+test("deletion targets use the earlier of 30 elapsed days and a clamped calendar month",()=>{
+  assert.equal(customerErasureDueAt("2026-01-31T01:00:00.000Z"),"2026-02-28T01:00:00.000Z");
+  assert.equal(customerErasureDueAt("2024-01-31T01:00:00.000Z"),"2024-02-29T01:00:00.000Z");
+  assert.equal(customerErasureDueAt("2026-03-01T01:00:00.000Z"),"2026-03-31T01:00:00.000Z");
+  assert.equal(customerErasureDueAt("2026-04-01T01:00:00.000Z"),"2026-05-01T01:00:00.000Z");
+  assert.throws(()=>customerErasureDueAt("not a date"),/valid original request time/);
+});
 
 test("verified customer deletion: review, blockers, atomic minimisation, financial preservation and safe completion",async()=>{
   let stamp="2026-01-31T01:00:00.000Z";
@@ -21,9 +30,11 @@ test("verified customer deletion: review, blockers, atomic minimisation, financi
     assert.equal((await intake(customer,{password:"LocalCustomer!4310",confirm:"yes"})).status,400);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_erasure_requests").get().n,0);
     const legacy=await f.json("/api/account/deletion-requests",{method:"POST",cookie:customer,body:{reason:"An earlier optional reason"}});assert.equal(legacy.status,201,legacy.text);
+    f.db.prepare("UPDATE deletion_requests SET created_at='2026-01-01T01:00:00.000Z' WHERE id=?").run(legacy.body.data.id);
+    insert(f.db,"deletion_requests",{id:randomUUID(),user_id:user.id,reason:"Later duplicate request",status:"requested",note:"",created_at:"2026-01-20T01:00:00.000Z",updated_at:stamp});
     const unverified=await f.json(`/api/admin/deletion-requests/${legacy.body.data.id}/erasure-preview`,{cookie:admin});assert.equal(unverified.status,200,unverified.text);assert.ok(unverified.body.data.blockers.some(b=>b.code==="VERIFIED_REQUEST_REQUIRED"));
-    const requested=await intake();assert.equal(requested.status,201,requested.text);assert.equal(requested.body.data.id,legacy.body.data.id);assert.equal(requested.body.data.dueAt,"2026-02-28T01:00:00.000Z");
-    assert.deepEqual((await intake()).body,requested.body);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM deletion_requests WHERE user_id=?").get(user.id).n,1);
+    const requested=await intake();assert.equal(requested.status,201,requested.text);assert.equal(requested.body.data.id,legacy.body.data.id);assert.equal(requested.body.data.requestedAt,"2026-01-01T01:00:00.000Z");assert.equal(requested.body.data.verifiedAt,stamp);assert.equal(requested.body.data.dueAt,"2026-01-31T01:00:00.000Z");
+    assert.deepEqual((await intake()).body,requested.body);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM deletion_requests WHERE user_id=?").get(user.id).n,2);
     const requestId=requested.body.data.id,route=`/api/admin/deletion-requests/${requestId}`;
     const preview=()=>f.json(`${route}/erasure-preview`,{cookie:admin}),erase=(previewHash,cookie=admin)=>f.json(`${route}/erase-customer`,{method:"POST",cookie,body:{confirm:"ERASE CUSTOMER DATA",note,previewHash}});
     assert.equal((await f.json("/api/account/erasure-requests",{cookie:customer})).body.data[0].id,requestId);
@@ -87,6 +98,7 @@ test("privacy erasure remains off without reviewed policy and completion receipt
   try{
     const customer=await f.login("customer@calai.local","LocalCustomer!4310"),body={password:"LocalCustomer!4310",confirm:"DELETE MY ACCOUNT"};
     assert.equal((await f.json("/api/customer/privacy-policy")).body.data.enabled,false);
+    assert.equal((await f.json("/api/customer/privacy-policy")).body.data.deletionTargetDays,30);
     const denied=await f.json("/api/account/deletion-requests/verified",{method:"POST",cookie:customer,body});assert.equal(denied.status,503,denied.text);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_erasure_requests").get().n,0);
     f.config.customerPrivacy=policy;const accepted=await f.json("/api/account/deletion-requests/verified",{method:"POST",cookie:customer,body});assert.equal(accepted.status,201,accepted.text);
     const userId=f.db.prepare("SELECT id FROM users WHERE email='customer@calai.local'").get().id,adminId=f.db.prepare("SELECT id FROM users WHERE email='admin@calai.local'").get().id,requestId=accepted.body.data.id;

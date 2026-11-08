@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
-import { loadCustomerPrivacyConfig, orderHealthConsentNotice, requireOrderHealthConsent, runCustomerPrivacyRetention, subtractCalendarMonths } from "../src/customer-privacy.js";
+import { loadCustomerPrivacyConfig, orderHealthConsentNotice, requireOrderHealthConsent, runCustomerPrivacyRetention } from "../src/customer-privacy.js";
 
 const approved = { enabled: true, version: "fixture-v1", approvedAt: "2025-12-01T00:00:00.000Z", approvalReference: "Fictional fixture approval only" };
 const healthApproved = { ...approved, healthDataEnabled: true, healthDataApprovalReference: "Fictional provider coverage approval" };
@@ -23,7 +23,10 @@ test("privacy controls default off and only reviewed dates, retention and separa
   assert.equal(loadCustomerPrivacyConfig(healthApproved).healthDataEnabled, true);
   assert.throws(()=>requireOrderHealthConsent({runMode:"hosted-preview",customerPrivacy:loadCustomerPrivacyConfig()},"Fictional note",consent),error=>error.code==="ALLERGY_COLLECTION_UNAVAILABLE");
   assert.doesNotThrow(()=>requireOrderHealthConsent({runMode:"hosted-preview",customerPrivacy:loadCustomerPrivacyConfig()},"",null));
-  assert.equal(subtractCalendarMonths(new Date("2024-03-31T12:34:00.000Z"), 1).toISOString(), "2024-02-29T12:34:00.000Z");
+  assert.equal(loadCustomerPrivacyConfig(approved).retention.resolvedSupportDays,30);
+  assert.equal(loadCustomerPrivacyConfig(approved).deletionTargetDays,30);
+  assert.throws(()=>loadCustomerPrivacyConfig({...approved,retention:{resolvedSupportMonths:12}}),/fields are invalid/);
+  assert.throws(()=>loadCustomerPrivacyConfig({...approved,deletionTargetDays:31}),/30 days/);
 });
 
 test("new optional allergy notes require matching separate explicit consent and no notes are required to order", async () => {
@@ -138,17 +141,20 @@ test("settled print copies lose only expired health/contact fields and unresolve
   }finally{await f.close();}
 });
 
-test("resolved support content and replies expire by calendar month while open, recent and held cases remain", async () => {
+test("resolved support expires exactly after 30 elapsed days while recent, open and held cases remain", async () => {
   const f = await journeyFixture({ customerPrivacy: approved });
   try {
     const user=f.db.prepare("SELECT id FROM users WHERE role='customer' LIMIT 1").get().id;
-    for(const [id,status,at] of [["old","resolved","2024-12-31T12:00:00.000Z"],["open","open","2024-12-31T12:00:00.000Z"],["recent","resolved","2025-01-02T12:00:00.000Z"]]) f.db.prepare("INSERT INTO support_cases(id,user_id,subject,message,status,created_at,updated_at) VALUES(?,?,'Private subject','Private body',?,?,?)").run(id,user,status,at,at);
-    f.db.prepare("INSERT INTO support_case_messages VALUES('reply','old',?,'customer','fixture','hash','Private encrypted body','nonce','tag','key','2024-12-31T12:00:00.000Z')").run(user);
-    f.config.now=()=>new Date("2026-01-01T12:00:00.000Z");
+    const admin=f.db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get().id;
+    f.db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES('held-support-user','Fixture','held-support@example.invalid','not-a-login','customer','2025-01-01T00:00:00.000Z')").run();
+    f.db.prepare("INSERT INTO customer_erasure_holds VALUES('support-hold','held-support-user','legal_claim',?,'2026-02-01T00:00:00.000Z',NULL,NULL)").run(admin);
+    for(const [id,status,at,who] of [["old","resolved","2026-03-01T12:00:00.000Z",user],["open","open","2026-01-01T12:00:00.000Z",user],["recent","resolved","2026-03-01T12:00:00.001Z",user],["held","resolved","2026-01-01T12:00:00.000Z","held-support-user"]]) f.db.prepare("INSERT INTO support_cases(id,user_id,subject,message,status,created_at,updated_at) VALUES(?,?,'Private subject','Private body',?,?,?)").run(id,who,status,at,at);
+    f.db.prepare("INSERT INTO support_case_messages VALUES('reply','old',?,'customer','fixture','hash','Private encrypted body','nonce','tag','key','2026-03-01T12:00:00.000Z')").run(user);
+    f.config.now=()=>new Date("2026-03-31T12:00:00.000Z");
     const result=runCustomerPrivacyRetention(f.db,f.config);
     assert.equal(result.supportCases,1);assert.equal(result.supportMessages,1);
     assert.equal(f.db.prepare("SELECT message FROM support_cases WHERE id='old'").get().message,"");
-    for(const id of ["open","recent"])assert.equal(f.db.prepare("SELECT message FROM support_cases WHERE id=?").get(id).message,"Private body");
+    for(const id of ["open","recent","held"])assert.equal(f.db.prepare("SELECT message FROM support_cases WHERE id=?").get(id).message,"Private body");
     assert.equal(runCustomerPrivacyRetention(f.db,f.config).supportCases,0);
   } finally { await f.close(); }
 });
