@@ -2,10 +2,11 @@
   "status": "PREPARATION_CHECKPOINT_NOT_PUBLIC_APPROVAL",
   "date": "2026-11-08",
   "sourceAndHosting": {
-    "lastVerifiedApplicationSource": "83a67be0c145a53bfd430e4783ee1b29ed719553",
-    "lastVerifiedRailwayDeployment": "b4da9a37-3232-48d9-8531-2b2c24e3d871",
+    "lastVerifiedApplicationSource": "a7742830356e81d4d4549158bbd77378086e902b",
+    "lastVerifiedRailwayDeployment": "fdc04665-b909-47ef-a9f8-50cbdc62aa30",
     "railwayStatus": "SUCCESS",
-    "scope": "Verified deployment baseline before the subsequent audited cover-removal change. The repository HEAD contains the latest source; final hosting identity is recorded in the private operational checkpoint. Real payments remain paused."
+    "schemaVersion": 58,
+    "scope": "Verified deployed application code. Later documentation-only checkpoints may have a newer repository/deployment identity in the private operational record. Real customer charging remains paused."
   },
   "apple": {
     "appId": "6831180948",
@@ -63,7 +64,6 @@
     "internalVersionCode": 21,
     "internalRelease": 9,
     "publicState": "DRAFT",
-    "baselinePublicSetupCount": "Historical audit0/11, superseded by the authenticated6/11 readback above.",
     "savedReportedByOperator": {
       "privacyPolicy": "https://eats.calai.info/legal/privacy/2026-11-08-v1",
       "governmentApp": false,
@@ -121,21 +121,34 @@
     }
   },
   "pendingUserDecisions": [
-    "Apple App Privacy Publish confirmation",
-    "Disposable test-account deletion verification"
+    "Apple App Privacy Publish confirmation"
   ],
-  "scope": "Records saved-state evidence and the coordinator's live UI report. This agent made documentation-only changes; no forms, publication, legal acceptance or submission were executed by this agent. No passwords or account tokens are included. No current public-setup total is inferred.",
+  "scope": "Saved store state, deployed source and bounded verification evidence. Store drafts are not public approval. No passwords, account tokens or private customer identities are included.",
   "localAndHostedVerification": {
     "focusedSafetyChecks": "Passed18 bounded moderation/messaging/marketing checks; images and all-language classification are not claimed.",
     "authAndPrivacyChecks": "Passed16 focused auth/privacy/readiness regression checks.",
     "adminCoverRemoval": "Passed6 scoped management tests and portal build; no live merchant image was removed.",
     "liveRecovery": "Normal welcome/reset delivery worker, own-link verification/reset, revoked old access, replay protection and fresh login passed for a disposable account. Inbox receipt and physical-device reset UI were not established.",
-    "liveDeletion": "Password-confirmed disposable request is eligible with no blockers; permanent completion awaits the specific operator confirmation.",
+    "liveDeletion": {
+      "state": "COMPLETED_AND_VERIFIED",
+      "completedAt": "2026-11-08T18:39:32.291Z",
+      "scope": "Only the operator-approved disposable customer; no orders/payments or other customer work existed.",
+      "method": "Authorized existing Railway maintenance credential invoked the normal domain planner and transactional erasure, preserving enabled-admin, policy, eligibility and fresh-preview checks. This is not an observed admin HTTP/UI test.",
+      "sessionsAndLoginsRevoked": true,
+      "recoveryCredentialsRemoved": true,
+      "protectedAdminOwnerAndReviewerProfilesUnchanged": true,
+      "completionEmail": {
+        "status": "sent",
+        "attempts": 1,
+        "sentAt": "2026-11-08T18:39:26.804Z",
+        "inboxReceiptVerified": false
+      },
+      "invalidCurrentAccessPasswordRemoved": true
+    },
     "reviewLogin": "Dedicated email-verified customer created and signed in through the normal API; privileged endpoints denied. Credentials remain private and were not entered in either store."
   },
   "pendingOperatorConfirmations": [
-    "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration",
-    "Permanently complete only the identified disposable test-account deletion"
+    "Publish prepared Apple App Privacy answers under Apple accuracy/update declaration"
   ],
   "remainingPublicReleaseWork": [
     "Real provider/restaurant verification, bank onboarding and commercial acceptance",
