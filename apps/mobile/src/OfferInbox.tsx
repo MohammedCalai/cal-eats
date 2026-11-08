@@ -1,5 +1,7 @@
+import { SafeAreaView } from "react-native-safe-area-context";
+import { CustomerModal as Modal } from "./CustomerModal";
 import { useState } from "react";
-import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button, ErrorBanner } from "./components";
 import { CustomerIcon } from "./CustomerBrandBanner";
 import { money } from "./model";

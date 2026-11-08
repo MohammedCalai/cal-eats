@@ -8,6 +8,7 @@ import { completeThreadSend, createThreadRefresh, createThreadWindow } from "./t
 import type { ThreadCursor } from "./thread-refresh";
 import { useThreadScroll } from "./useThreadScroll";
 import { useForegroundRefresh } from "./useForegroundRefresh";
+import { useAndroidBack } from "./useAndroidBack";
 type Conversation = { restaurantId?:string; items: Array<{id:string; senderRole:string; message:string; createdAt:string}>; isOpen:boolean; restaurantPhone?:string|null; nextCursor?:ThreadCursor|null };
 export function OrderMessages({ token, orderId, phone, available=true,onOpenChange }: { token:string; orderId:string; phone?:string|null; available?:boolean;onOpenChange?:(open:boolean)=>void }) {
   const [contactBlocked,setContactBlocked]=useState(false);
@@ -16,6 +17,7 @@ export function OrderMessages({ token, orderId, phone, available=true,onOpenChan
   const threadScroll=useThreadScroll(active.current,open),refresh=useRef<ReturnType<typeof createThreadRefresh<Conversation>>|null>(null);
   const messageWindow=useRef<ReturnType<typeof createThreadWindow<Conversation["items"][number]>>|null>(null);
   const [cursor,setCursor]=useState<ThreadCursor|null|undefined>(),[loading,setLoading]=useState(false);
+  useAndroidBack(() => setOpen(false), { enabled: open, blocked: busy, priority: 20 });
   useEffect(()=>{onOpenChange?.(open);return()=>onOpenChange?.(false);},[open,onOpenChange]);
   useEffect(()=>{
     const scope=active.current;

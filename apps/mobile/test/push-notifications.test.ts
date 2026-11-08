@@ -2,11 +2,43 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createCustomerPushTapQueue, customerPushProject, parseCustomerPushTarget } from "../src/push-model.ts";
 import { createPushDeviceBinding, type PushDeviceRegistration, type PushDeviceResult } from "../src/push-binding.ts";
+import { CUSTOMER_QUIET_PUSH_CHANNEL, customerQuietPushChannelSettings, customerPushChannelAttention, customerPushChannelId, customerForegroundPushBehavior, type CustomerPushChannel } from "../src/push-presentation.ts";
 
 const target = { notificationId: "notification-one", recipientUserId: "customer-one", kind: "order", orderId: "order-one" };
 const device: PushDeviceRegistration = { installationId: "9b48e5c6-5e6a-47d2-bff2-1016ea9d6b41", expoPushToken: "ExponentPushToken[test-device]", platform: "android", projectId: "5bf59184-c670-44f4-be78-5229cbd02300", soundEnabled: true };
 const registered = (registration = device): PushDeviceResult => ({ registered: true, installationId: registration.installationId, expiresAt: "2026-12-01T00:00:00.000Z", pushEnabled: true });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
+
+test("Android heads-up requires a freshly verified silent channel; iOS and older Android remain silent", () => {
+  const channel: CustomerPushChannel = { id: CUSTOMER_QUIET_PUSH_CHANNEL, ...customerQuietPushChannelSettings };
+  assert.equal(channel.importance, 4, "The quiet channel still requests high visual importance");
+  assert.equal(channel.sound, null); assert.equal(channel.enableVibrate, false);
+  const behavior = (platform = "android", version: number | string = 36, proof: CustomerPushChannel | null = channel, id: string | null = channel.id) => customerForegroundPushBehavior(target, "customer-one", platform, version, id, proof);
+  assert.deepEqual(behavior(), { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false });
+  // In Expo Android8+, that flag permits heads-up; the verified OS channel
+  // supplies neither sound nor vibration. It must never apply to iOS/Android7.
+  assert.equal(behavior("ios", "26.0").shouldPlaySound, false);
+  assert.equal(behavior("android", 25).shouldPlaySound, false);
+  assert.equal(behavior("android", 36, null).shouldPlaySound, false);
+  assert.equal(behavior("android", 36, channel, null).shouldPlaySound, false);
+  assert.equal(behavior("android", 36, channel, "cal-eats-updates").shouldPlaySound, false);
+  for (const proof of [{ ...channel, sound: "default" }, { ...channel, sound: "custom" }, { ...channel, enableVibrate: true }, { ...channel, importance: 0 }, { ...channel, importance: NaN }, { ...channel, id: "legacy" }]) assert.equal(behavior("android", 36, proof).shouldPlaySound, false);
+  assert.deepEqual(customerForegroundPushBehavior(target, "another-customer", "android", 36, channel.id, channel), { shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false });
+  assert.equal(customerForegroundPushBehavior({}, "customer-one", "android", 36, channel.id, channel).shouldShowBanner, false);
+});
+
+test("Android channel lookup follows the native FCM trigger and detects blocked or changed channels", () => {
+  const channel: CustomerPushChannel = { id: CUSTOMER_QUIET_PUSH_CHANNEL, ...customerQuietPushChannelSettings };
+  assert.equal(customerPushChannelId({ type: "push", remoteMessage: { notification: { channelId: channel.id }, data: { channelId: "legacy" } } }), channel.id);
+  assert.equal(customerPushChannelId({ type: "push", remoteMessage: { notification: null, data: { channelId: channel.id } } }), channel.id);
+  assert.equal(customerPushChannelId({ type: "push", remoteMessage: { notification: { channelId: "legacy" }, data: { channelId: channel.id } } }), "legacy");
+  for (const trigger of [null, {}, { type: "push" }, { type: "date", channelId: channel.id }, { type: "push", remoteMessage: { data: { channelId: false } } }]) assert.equal(customerPushChannelId(trigger), null);
+  assert.equal(customerPushChannelAttention(channel), null);
+  assert.equal(customerPushChannelAttention(null), "missing");
+  assert.equal(customerPushChannelAttention({ ...channel, importance: 0 }), "disabled");
+  assert.equal(customerPushChannelAttention({ ...channel, sound: "default" }), "audible");
+  assert.equal(customerPushChannelAttention({ ...channel, enableVibrate: true }), "audible");
+});
 
 test("push payloads select known screens and never expose a supplied URL for navigation", () => {
   assert.deepEqual(parseCustomerPushTarget({ ...target, url: "https://unexpected.invalid/steal" }), target);

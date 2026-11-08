@@ -6,6 +6,7 @@ import { getInstallationId } from "./installation-id";
 import { api } from "./api";
 import { createPushDeviceBinding, type PushDeviceResult } from "./push-binding";
 import { createCustomerPushTapQueue, customerPushProject, parseCustomerPushTarget, type CustomerPushTarget } from "./push-model";
+import { CUSTOMER_QUIET_PUSH_CHANNEL, customerQuietPushChannelSettings, customerPushChannelAttention, customerPushChannelId, customerForegroundPushBehavior } from "./push-presentation";
 
 export type CustomerPushState = { status: "checking" | "enabled" | "pending" | "permission_needed" | "blocked" | "unavailable" | "error"; message: string };
 type Options = { token: string | null; userId: string | null; booting: boolean; blocked: boolean; unreadCount: number; onOpen: (target: CustomerPushTarget) => void; onReceived: () => Promise<unknown>; onSignIn: () => void };
@@ -14,12 +15,22 @@ let foregroundCustomer: string | null = null;
 let lastResponse: Notifications.NotificationResponse | null = null;
 const responseListeners = new Set<(response: Notifications.NotificationResponse) => void>();
 
-// Register before App mounts so a tap that launches a closed iPhone app is kept.
+// Register before App mounts so a tap that launches a closed customer app is kept.
 if (native) {
   Notifications.setNotificationHandler({ handleNotification: async notification => {
-    const target = parseCustomerPushTarget(notification.request.content.data);
-    const visible = Boolean(target && target.recipientUserId === foregroundCustomer);
-    return { shouldShowBanner: visible, shouldShowList: visible, shouldPlaySound: false, shouldSetBadge: false };
+    const data = notification.request.content.data, channelId = customerPushChannelId(notification.request.trigger);
+    let channel: Notifications.NotificationChannel | null = null;
+    if (Platform.OS === "android" && Number(Platform.Version) >= 26 && channelId === CUSTOMER_QUIET_PUSH_CHANNEL) {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        channel = await Promise.race([
+          Notifications.getNotificationChannelAsync(channelId),
+          new Promise<null>(resolve => { timeout = setTimeout(() => resolve(null), 600); })
+        ]);
+      } catch { /* An unknown channel must never enable the Android visual/audio flag. */ }
+      finally { clearTimeout(timeout); }
+    }
+    return customerForegroundPushBehavior(data, foregroundCustomer, Platform.OS, Platform.Version, channelId, channel);
   } });
   Notifications.addNotificationResponseReceivedListener(response => { lastResponse = response; responseListeners.forEach(listener => listener(response)); });
   try { lastResponse = Notifications.getLastNotificationResponse(); } catch { /* A browser preview has no native notification response. */ }
@@ -86,9 +97,7 @@ export function useCustomerPush(options: Options) {
       const projectId = customerPushProject(Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId, Platform.OS);
       if (!projectId) { if (current()) setState({ status: "unavailable", message: "Phone notifications are not configured in this build yet." }); return; }
       if (current()) setState({ status: "checking", message: "Connecting phone notifications…" });
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("cal-eats-updates-quiet", { name: "Cal-Eats updates (silent)", importance: Notifications.AndroidImportance.HIGH, sound: null, enableVibrate: false, lightColor: "#2865E9" });
-      }
+      const channel = Platform.OS === "android" ? await Notifications.setNotificationChannelAsync(CUSTOMER_QUIET_PUSH_CHANNEL, customerQuietPushChannelSettings) : null;
       if (!current()) return;
       let permission = await Notifications.getPermissionsAsync();
       if (current() && permission.canAskAgain && (permission.status === "undetermined" || ask && permission.status !== "granted")) permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: false } });
@@ -96,6 +105,13 @@ export function useCustomerPush(options: Options) {
       if (!permission.granted && permission.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) {
         await getInstallationId().then(id => binding.unbind(token, id)).catch(() => undefined); if (!current()) return;
         setState({ status: permission.canAskAgain ? "permission_needed" : "blocked", message: "Allow Cal-Eats notifications in your phone settings to receive order updates, messages and offers when the app is closed." }); return;
+      }
+      if (Platform.OS === "android" && Number(Platform.Version) >= 26) {
+        const attention = customerPushChannelAttention(channel);
+        if (attention) {
+          await getInstallationId().then(id => binding.unbind(token, id)).catch(() => undefined); if (!current()) return;
+          setState(attention === "missing" ? { status: "error", message: "Cal-Eats could not create its silent notification channel. Try connecting phone notifications again." } : { status: "blocked", message: attention === "disabled" ? "Cal-Eats updates are switched off in your phone settings. Allow the Cal-Eats updates (silent) channel to receive order updates and messages." : "Set the Cal-Eats updates (silent) channel to no sound and no vibration in your phone settings, then return to Cal-Eats to connect quiet updates." }); return;
+        }
       }
       const installationId = await getInstallationId();
       let timeout: ReturnType<typeof setTimeout> | undefined;

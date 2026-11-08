@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { fork, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { openDatabase, migrateDatabase, closeDatabase, withTransaction } from '../apps/api/src/db/index.js';
 import { createSession } from '../apps/api/src/auth/sessions.js';
 import { seedDirectoryFixture, directoryId, DIRECTORY_NOW } from './load-restaurant-directory.js';
@@ -65,8 +66,11 @@ async function worker() {
   });
 }
 
-function seedActors(db) {
+async function seedActors(db, nativeCustomers) {
   const stamp = clock().toISOString(), config = { now: clock, sessionHours: 24 }, restaurants = [], customers = [];
+  // A random, unrecorded password is used only to obtain real native sessions in this isolated fixture.
+  const fixturePassword = nativeCustomers ? randomBytes(32).toString('base64url') : null;
+  const customerHash = nativeCustomers ? await (await import('../apps/api/src/auth/passwords.js')).hashPassword(fixturePassword) : 'invalid-synthetic-hash';
   const insert = db.prepare('INSERT INTO users(id,name,email,password_hash,role,created_at,email_verified_at) VALUES(?,?,?,?,?,?,?)');
   const cookie = id => `calai_session=${createSession(db, id, config).token}`;
   let adminCookie;
@@ -81,15 +85,17 @@ function seedActors(db) {
       db.prepare('INSERT INTO contracts VALUES(?,?,?,?,?,?,?,?,?)').run(`order-load-contract-${i}`, id, 700, 24, 'development-load-fixture', 1, null, null, stamp);
       restaurants.push({ id, itemId: `${id}-item-0`, cookie: cookie(user) });
       const customer = `order-load-customer-${i}`;
-      insert.run(customer, `Synthetic customer ${i}`, `customer${i}@order-load.invalid`, 'invalid-synthetic-hash', 'customer', stamp, stamp);
-      customers.push({ id: customer, cookie: cookie(customer) });
+      const email = `customer${i}@order-load.invalid`;
+      insert.run(customer, `Synthetic customer ${i}`, email, customerHash, 'customer', stamp, stamp);
+      customers.push({ id: customer, email, ...(nativeCustomers ? {} : { cookie: cookie(customer) }) });
     }
   });
-  return { restaurants, customers, adminCookie };
+  return { restaurants, customers, adminCookie, fixturePassword };
 }
 
 async function run() {
-  assert.ok(process.argv.slice(2).every(arg => arg === '--smoke'), 'Only the bounded --smoke option is supported');
+  assert.ok(process.argv.slice(2).every(arg => ['--smoke', '--native-customers'].includes(arg)), 'Only bounded --smoke / --native-customers options are supported');
+  const nativeCustomers = process.argv.includes('--native-customers');
   const started = new Date(), directory = path.resolve('artifacts', `order-capacity-${started.toISOString().replaceAll(':', '-')}`);
   await fs.mkdir(directory, { recursive: true });
   const databasePath = path.join(directory, 'synthetic.sqlite');
@@ -97,18 +103,43 @@ async function run() {
   const trackedDirtyPaths = execFileSync('git', ['diff', 'HEAD', '--name-only', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
   await fs.writeFile(path.join(directory, 'source-state-start.json'), JSON.stringify({ observedAt: new Date().toISOString(), parentCommit: sourceCommit, trackedDirtyPaths, note: 'The parent commit is a reference, not a claim of a clean checkout. Untracked harness/output files are not included in trackedDirtyPaths.' }, null, 2));
   const harnessSha256 = createHash('sha256').update(await fs.readFile(filename)).digest('hex');
+  const nativeClientSha256 = nativeCustomers ? createHash('sha256').update(await fs.readFile(new URL('../apps/mobile/src/api.ts', import.meta.url))).digest('hex') : null;
   const initialDb = openDatabase(databasePath); migrateDatabase(initialDb);
-  const seedStart = performance.now(), dataset = seedDirectoryFixture(initialDb), actors = seedActors(initialDb), seedMs = performance.now() - seedStart;
+  const seedStart = performance.now(), dataset = seedDirectoryFixture(initialDb), actors = await seedActors(initialDb, nativeCustomers), seedMs = performance.now() - seedStart;
   initialDb.exec('ANALYZE'); closeDatabase(initialDb);
   const smoke = process.argv.includes('--smoke'), workerIntervalMs = smoke ? 500 : 60_000, printerEmptyPollMs = 3000;
   const children = [], origins = [], workerErrors = [], processMetrics = [], allMeasurements = [], cases = [], workerCycles = [];
   let nextOrigin = 0, activeMeasurements = null, phase = 'setup', sqliteVersion;
+  const nativeClients = new Map(), nativeContext = new AsyncLocalStorage(), originalFetch = globalThis.fetch;
+  let nativeTransportRequests = 0;
+  if (nativeCustomers) globalThis.fetch = async (input, options) => {
+    const context = nativeContext.getStore();
+    if (!context) return originalFetch(input, options);
+    const target = new URL(typeof input === 'string' || input instanceof URL ? input : input.url), headers = new Headers(options?.headers);
+    assert.equal(target.hostname, '127.0.0.1'); assert.equal(target.origin, context.origin);
+    assert.equal(headers.has('Cookie'), false); assert.equal(headers.get('Accept'), 'application/json');
+    assert.equal(headers.get('Authorization'), context.token ? `Bearer ${context.token}` : null);
+    assert.equal(headers.get('Origin'), ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options?.method ?? 'GET') ? context.origin : null);
+    assert.equal(options?.credentials, 'omit'); assert.equal(options?.redirect, 'error');
+    const response = await originalFetch(input, options);
+    context.status = response.status; context.bytes = Number(response.headers.get('content-length') ?? 0); nativeTransportRequests++;
+    return response;
+  };
   const printObserved = new Map(), confirmationStarted = new Map();
-  async function request(route, { method = 'GET', body, cookie, token, key, label = route, maxRows } = {}) {
+  async function request(route, { method = 'GET', body, cookie, token, key, label = route, maxRows, nativeCustomer = false } = {}) {
     assert.ok(route.startsWith('/api/') && !route.startsWith('//'));
     const origin = origins[nextOrigin++ % origins.length]; assert.equal(new URL(origin).hostname, '127.0.0.1');
     const before = performance.now(); let status = 0, errorCode = null, bytes = 0;
     try {
+      if (nativeCustomer) {
+        assert.ok(nativeCustomers && !cookie, 'Native customer transport cannot use a browser cookie');
+        const context = { origin, token, status: 0, bytes: 0 };
+        try {
+          const result = await nativeContext.run(context, () => nativeClients.get(origin).api(route, { method, ...(token ? { token } : {}), ...(key ? { idempotencyKey: key } : {}), ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+          if (maxRows !== undefined) assert.ok(Array.isArray(result) && result.length <= maxRows, `${label} response exceeded its page bound`);
+          return result;
+        } finally { status = context.status; bytes = context.bytes; }
+      }
       const response = await fetch(origin + route, { method, redirect: 'error', signal: AbortSignal.timeout(20_000), headers: {
         ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json', Origin: origin }), ...(key ? { 'Idempotency-Key': key } : {})
@@ -121,7 +152,7 @@ async function run() {
       return result.data;
     } catch (error) { errorCode ??= error.code ?? error.name; throw error; }
     finally {
-      const sample = { phase, label, method, ms: rounded(performance.now() - before), status, errorCode, bytes };
+      const sample = { phase, label, method, ...(nativeCustomer ? { transport: 'actual-mobile-api-client-bearer' } : {}), ms: rounded(performance.now() - before), status, errorCode, bytes };
       allMeasurements.push(sample); activeMeasurements?.push(sample);
     }
   }
@@ -147,6 +178,22 @@ async function run() {
         child.once('error', reject); child.once('exit', code => { if (code) reject(new Error(`Local API worker exited ${code}`)); });
       }); origins.push(origin);
     }
+    if (nativeCustomers) {
+      const previousBase = process.env.EXPO_PUBLIC_API_BASE_URL;
+      try {
+        for (const origin of origins) {
+          process.env.EXPO_PUBLIC_API_BASE_URL = origin;
+          nativeClients.set(origin, await import(new URL(`../apps/mobile/src/api.ts?order-capacity=${encodeURIComponent(origin)}`, import.meta.url)));
+        }
+      } finally { if (previousBase === undefined) delete process.env.EXPO_PUBLIC_API_BASE_URL; else process.env.EXPO_PUBLIC_API_BASE_URL = previousBase; }
+      for (const customer of actors.customers) {
+        const session = await request('/api/native/auth/login', { method: 'POST', body: { email: customer.email, password: actors.fixturePassword }, nativeCustomer: true, label: 'setup native customer login' });
+        customer.token = session.token;
+        const me = await request('/api/native/auth/me', { token: customer.token, nativeCustomer: true, label: 'setup native customer identity' });
+        assert.equal(me.user.id, customer.id);
+      }
+      delete actors.fixturePassword;
+    }
     for (const restaurant of actors.restaurants) {
       const base = `/api/restaurant/restaurants/${restaurant.id}`;
       await request(`${base}/contract/accept`, { method: 'POST', cookie: restaurant.cookie, body: {}, label: 'setup agreement' });
@@ -156,7 +203,8 @@ async function run() {
       const device = await request('/api/devices/pair', { method: 'POST', body: { code: pairing.code, name: 'Synthetic loopback bridge' }, label: 'setup device' });
       restaurant.deviceToken = device.token;
     }
-    const levels = smoke ? [{ concurrentClients: 2, plannedOrders: 10 }] : [{ concurrentClients: 20, plannedOrders: 300 }, { concurrentClients: 50, plannedOrders: 300 }];
+    const plannedOrders = nativeCustomers ? 100 : 300;
+    const levels = smoke ? [{ concurrentClients: 2, plannedOrders: 10 }] : [{ concurrentClients: 20, plannedOrders }, { concurrentClients: 50, plannedOrders }];
     for (const level of levels) {
       phase = `clients-${level.concurrentClients}`;
       const samples = [], workflowMs = [], failures = [], orderIds = [], printLatencies = [], settlementBefore = printObserved.size;
@@ -187,14 +235,15 @@ async function run() {
       await Promise.all(Array.from({ length: level.concurrentClients }, (_, client) => (async () => {
         while (next < level.plannedOrders) {
           const index = next++, restaurant = actors.restaurants[index % actors.restaurants.length], customer = actors.customers[client], workflowStart = performance.now();
+          const customerAccess = nativeCustomers ? { nativeCustomer: true, token: customer.token } : { cookie: customer.cookie };
           try {
-            await request(`/api/restaurants?postcode=LU1%201AA&fulfillment=delivery&page=${1 + index % 100}&pageSize=50`, { label: 'browse page (50 maximum)', maxRows: 50 });
-            await request(`/api/restaurants/${restaurant.id}/menu`, { label: 'restaurant menu' });
+            await request(`/api/restaurants?postcode=LU1%201AA&fulfillment=delivery&page=${1 + index % 100}&pageSize=50`, { ...(nativeCustomers ? customerAccess : {}), label: 'browse page (50 maximum)', maxRows: 50 });
+            await request(`/api/restaurants/${restaurant.id}/menu`, { ...(nativeCustomers ? customerAccess : {}), label: 'restaurant menu' });
             const delivery = index % 2 === 0, paymentMethod = index % 3 ? 'mock_card' : 'cash';
             const draft = { restaurantId: restaurant.id, items: [{ menuItemId: restaurant.itemId, quantity: 1 }], paymentMethod, fulfillment: delivery ? 'delivery' : 'collection', ...(delivery ? { deliveryAddress: { line1: '1 Synthetic Road', city: 'Luton', postcode: 'LU1 1AA' } } : {}) };
-            const quote = await request('/api/orders/quote', { method: 'POST', cookie: customer.cookie, body: { ...draft, autoApplyOffers: true }, label: 'automatic price quote' });
+            const quote = await request('/api/orders/quote', { method: 'POST', ...customerAccess, body: { ...draft, autoApplyOffers: true }, label: 'automatic price quote' });
             assert.equal(quote.totalMinor, delivery ? 1250 : 1000); assert.equal(quote.commissionMinor, delivery ? 88 : 70);
-            const options = { method: 'POST', cookie: customer.cookie, body: { ...draft, expectedTotalMinor: quote.totalMinor }, key: `order-capacity-${phase}-${index}`, label: 'create order' };
+            const options = { method: 'POST', ...customerAccess, body: { ...draft, expectedTotalMinor: quote.totalMinor }, key: `order-capacity-${phase}-${index}`, label: 'create order' };
             const [order, replay] = await Promise.all([request('/api/orders', options), request('/api/orders', { ...options, label: 'simultaneous create replay' })]);
             assert.equal(order.id, replay.id, 'Duplicate checkout created different orders'); orderIds.push(order.id);
             confirmationStarted.set(order.id, performance.now());
@@ -204,7 +253,7 @@ async function run() {
               assert.equal(updated.status, status);
               if (status === 'accepted') assert.equal(updated.customerEtaAt, eta);
             }
-            const finished = await request(`/api/orders/${order.id}`, { cookie: customer.cookie, label: 'customer order detail' }); assert.equal(finished.status, 'completed');
+            const finished = await request(`/api/orders/${order.id}`, { ...customerAccess, label: 'customer order detail' }); assert.equal(finished.status, 'completed');
             await request(`/api/restaurant/restaurants/${restaurant.id}/finance/summary`, { cookie: restaurant.cookie, label: 'owner finance summary' });
             completedOrders++; workflowMs.push(performance.now() - workflowStart);
           } catch (error) { failures.push({ scenario: index, message: error.message }); }
@@ -216,7 +265,13 @@ async function run() {
       while (performance.now() < observationTarget) await pause(Math.min(1000, observationTarget - performance.now()));
       clientsFinished = true; await Promise.all(printers);
       const check = openDatabase(databasePath), prefix = `order-capacity-${phase}-%`;
-      const correctness = inspect(check, prefix, level.plannedOrders, printObserved.size - settlementBefore); closeDatabase(check);
+      const correctness = inspect(check, prefix, level.plannedOrders, printObserved.size - settlementBefore);
+      if (nativeCustomers) {
+        correctness.nativeCustomerSessions = check.prepare("SELECT COUNT(*) count FROM native_sessions WHERE user_id LIKE 'order-load-customer-%'").get().count;
+        correctness.browserCustomerSessions = check.prepare("SELECT COUNT(*) count FROM sessions WHERE user_id LIKE 'order-load-customer-%'").get().count;
+        correctness.passed &&= correctness.nativeCustomerSessions === 50 && correctness.browserCustomerSessions === 0;
+      }
+      closeDatabase(check);
       if (!correctness.passed) failures.push({ scenario: 'database invariants', correctness });
       const labels = [...new Set(samples.map(row => row.label))];
       const result = { ...level, completedOrders, workflowElapsedMs: rounded(workflowElapsedMs), observationWindowMs: rounded(performance.now() - before), completedWorkflowsPerMinute: rounded(completedOrders * 60_000 / workflowElapsedMs), workflowLatencyMs: stats(workflowMs), http: { requests: samples.length, errors: samples.filter(row => row.status >= 400 || row.errorCode).length, latencyMs: stats(samples.map(row => row.ms)), byEndpoint: Object.fromEntries(labels.map(label => { const rows = samples.filter(row => row.label === label); return [label, { ...stats(rows.map(row => row.ms)), errors: rows.filter(row => row.status >= 400 || row.errorCode).length }]; })) }, confirmationToSimulatedPrintAckMs: stats(printLatencies), workerCyclesObserved: workerCycles.slice(cyclesBefore).map(row => ({ ...row, observedAfterStartMs: rounded(row.observedAt - before), observedAt: undefined })), correctness, failures };
@@ -226,7 +281,7 @@ async function run() {
       if (failures.length) break;
     }
     for (const child of children) child.send('metrics'); await pause(100);
-    const report = { createdAt: started.toISOString(), sourceCommit, harness: 'scripts/load-order-capacity.js', harnessSha256, smoke, environment: { node: process.version, sqlite: sqliteVersion, platform: process.platform, architecture: process.arch, cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, memoryGiB: rounded(os.totalmem() / 1024 ** 3), persistence: 'One isolated SQLite WAL file on the local disk', apiProcesses: 2, localWorkerIntervalMs: workerIntervalMs, jobsPerWorkerCycle: 25, printerEmptyPollMs, printerHeartbeatMs: 30_000, applicationClock: DIRECTORY_NOW.toISOString(), transport: 'Loopback HTTP only', providerCredentials: 'Not inherited; OS environment whitelist only', processMetrics }, dataset: { ...dataset, syntheticAccounts: 102, activeRestaurantsAndSimulatedPrinters: 50, seedMs: rounded(seedMs) }, cases, workerErrors, passed: cases.length === levels.length && cases.every(row => row.correctness.passed && !row.failures.length && !row.http.errors) && !workerErrors.length, queueDrainedWithinObservation: cases.every(row => row.correctness.dueWorkerJobs === 0), limitations: ['A bounded, warm local run with 20/50 virtual workflow clients, not 10,000 simultaneous users or active restaurants.', 'The 10,000 restaurants, 200,000 menu items, 50,000 historical browse orders and 20,000 ratings are synthetic. Historical orders have no financial ledger and are excluded from new-order invariant counts.', 'No real cards, Stripe calls, bank payouts, emails, push delivery, external network, image bytes, physical printers, native UI or password/login throughput tested.', 'Authentication sessions are synthetic and auth limits are raised in isolated children. This does not validate abuse resistance.', 'The application clock is fixed to avoid expiry/week rollover during the exercise. Latencies use monotonic wall time; future weekly payout jobs stay scheduled.', 'The final run uses the current 60-second marketplace/operations cadence with 25 jobs per process; --smoke accelerates it to 500ms. Only these local-safe workers are run, not every main.js maintenance/provider worker.', 'Simulated bridges use the example configuration idle poll (3s) and heartbeat (30s); no hardware execution or physical print time measured.', 'Two API processes share a single local WAL database; no multi-host, failover, backup restoration or sustained production capacity proven.'], rawMeasurements: 'measurements.json' };
+    const report = { createdAt: started.toISOString(), sourceCommit, harness: 'scripts/load-order-capacity.js', harnessSha256, smoke, nativeCustomers, nativeTransport: nativeCustomers ? { client: 'apps/mobile/src/api.ts', sha256: nativeClientSha256, requestsIncludingSetup: nativeTransportRequests, sessionIssuance: 'Real native login HTTP endpoint with an ephemeral synthetic password; setup excluded from load timings', assertions: ['Bearer authorization for signed-in customer requests', 'No Cookie header or customer browser sessions', 'Accept application/json', 'Origin for mutations', 'credentials omit', 'redirect error', 'Actual mobile-client 15-second timeout'] } : null, environment: { node: process.version, sqlite: sqliteVersion, platform: process.platform, architecture: process.arch, cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, memoryGiB: rounded(os.totalmem() / 1024 ** 3), persistence: 'One isolated SQLite WAL file on the local disk', apiProcesses: 2, localWorkerIntervalMs: workerIntervalMs, jobsPerWorkerCycle: 25, printerEmptyPollMs, printerHeartbeatMs: 30_000, applicationClock: DIRECTORY_NOW.toISOString(), transport: 'Loopback HTTP only', providerCredentials: 'Not inherited; OS environment whitelist only', processMetrics }, dataset: { ...dataset, syntheticAccounts: 102, activeRestaurantsAndSimulatedPrinters: 50, seedMs: rounded(seedMs) }, cases, workerErrors, passed: cases.length === levels.length && cases.every(row => row.correctness.passed && !row.failures.length && !row.http.errors) && !workerErrors.length, queueDrainedWithinObservation: cases.every(row => row.correctness.dueWorkerJobs === 0), limitations: ['A bounded, warm local run with 20/50 virtual workflow clients, not 10,000 simultaneous users or active restaurants.', 'The 10,000 restaurants, 200,000 menu items, 50,000 historical browse orders and 20,000 ratings are synthetic. Historical orders have no financial ledger and are excluded from new-order invariant counts.', 'No real cards, Stripe calls, bank payouts, emails, push delivery, external network, image bytes, physical printers, native UI or password/login throughput tested.', 'Authentication sessions are synthetic and auth limits are raised in isolated children. This does not validate abuse resistance.', 'The application clock is fixed to avoid expiry/week rollover during the exercise. Latencies use monotonic wall time; future weekly payout jobs stay scheduled.', 'The final run uses the current 60-second marketplace/operations cadence with 25 jobs per process; --smoke accelerates it to 500ms. Only these local-safe workers are run, not every main.js maintenance/provider worker.', 'Simulated bridges use the example configuration idle poll (3s) and heartbeat (30s); no hardware execution or physical print time measured.', 'Two API processes share a single local WAL database; no multi-host, failover, backup restoration or sustained production capacity proven.'], rawMeasurements: 'measurements.json' };
     await fs.writeFile(path.join(directory, 'measurements.json'), JSON.stringify(allMeasurements, null, 2));
     await fs.writeFile(path.join(directory, 'results.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ results: path.join(directory, 'results.json'), passed: report.passed, cases: cases.length, workerErrors }, null, 2));
@@ -235,7 +290,7 @@ async function run() {
   } catch (error) {
     await fs.writeFile(path.join(directory, 'measurements.json'), JSON.stringify(allMeasurements, null, 2));
     await fs.writeFile(path.join(directory, 'failure.json'), JSON.stringify({ message: error.message, stack: error.stack, workerErrors }, null, 2)); throw error;
-  } finally { await stopChildren(); }
+  } finally { globalThis.fetch = originalFetch; await stopChildren(); }
 }
 
 function inspect(db, prefix, expected, acknowledgedPrints) {
