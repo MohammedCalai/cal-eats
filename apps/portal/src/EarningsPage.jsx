@@ -5,7 +5,7 @@ import { pounds, shortDate } from "./model.js";
 import { useFinanceResource } from "./finance-resource.js";
 import { WorkspaceDialog } from "./CustomerWorkspace.jsx";
 import OrderFinancialBreakdown from "./OrderFinancialBreakdown.jsx";
-import { StripeRestaurantFinance } from "./StripePayments.jsx";
+import { RestaurantBankSetupSummary, StripeRestaurantFinance } from "./StripePayments.jsx";
 import "./EarningsFinance.css";
 
 const periods = [["today", "Today"], ["yesterday", "Yesterday"], ["this_week", "This week"], ["last_week", "Last week"]];
@@ -96,6 +96,7 @@ export default function EarningsPage({ restaurantId }) {
   return <div className="earnings-workspace">
     <header className="page-heading finance-section-heading"><div><p className="eyebrow">Your business finances</p><h1>Earnings & payouts</h1><p>Follow your earnings from each order to your bank.</p></div><span className="finance-currency-tag">GBP · UK time</span></header>
     <FinanceViews value={view} onChange={setView}/>
+    {view!=="payouts"&&<RestaurantBankSetupSummary key={restaurantId} restaurantId={restaurantId} onOpen={()=>setView("payouts")}/>}
     {view!=="payouts"&&<section className="finance-filter-bar"><div className="finance-periods" role="group" aria-label="Earnings period">{periods.map(([value,label])=><button type="button" key={value} className={period===value?"selected":""} aria-pressed={period===value} onClick={()=>choose(value)}>{label}</button>)}</div><button className="quiet" disabled={dashboard.loading} onClick={()=>void dashboard.reload()}>{dashboard.loading?"Refreshing…":"Refresh earnings"}</button>{data?.range&&<p className="fine">{data.range.fromDate} – {data.range.toDate} · Orders placed in this period{data.generatedAt?` · Updated ${shortDate(data.generatedAt)}`:""}</p>}</section>}
     {view!=="payouts"&&dashboard.error&&<p className="alert" role="alert">Earnings could not be loaded: {merchantCopy(dashboard.error)}</p>}
     {view!=="payouts"&&finance&&finance.balance.providerMode!=="stripe_live"&&<p className="finance-preview-note">{finance.balance.providerMode==="stripe_test"?"Card payment test mode":"Preview mode"} · Test earnings and balances are separate from real payments and bank payouts.</p>}
