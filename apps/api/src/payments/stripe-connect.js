@@ -130,7 +130,7 @@ function applyPaymentFacts(db, config, order, result) {
 
 export async function routeStripeConnect(ctx) {
   const { req, res, url, db, config, session } = ctx;
-  if (req.method === "GET" && url.pathname === "/api/payments/config") return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,cardAvailable:configured(config),stripeMode:stripeMode(config)?.replace("stripe_","") ?? null,payoutSchedule:schedule,commissionRateBasisPoints:700}});
+  if (req.method === "GET" && url.pathname === "/api/payments/config") return sendJson(res,200,{data:{providerMode:config.paymentProviderMode,cardAvailable:configured(config),cashAvailable:config.paymentProviderMode!=="stripe_live",stripeMode:stripeMode(config)?.replace("stripe_","") ?? null,payoutSchedule:schedule,commissionRateBasisPoints:700}});
   let match = url.pathname.match(/^\/api\/orders\/([^/]+)\/(checkout|payment\/refresh)$/);
   if (match && req.method === "POST") {
     const access = ownedCardOrder(db,session,match[1],config);

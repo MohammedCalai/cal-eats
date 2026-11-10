@@ -35,7 +35,7 @@ Live credentials require explicit approval of their permissions and storage. Kee
 ## Before activating real orders
 
 1. Confirm the restaurant bank-payout schedule. Weekly Monday is currently the development default, not a confirmed live instruction. Do not change Calai's own platform payout schedule.
-2. Decide how cash commission is collected. Real automatic cash collection is not connected; a card-only launch must be enforced at the platform if selected. Merely disabling cash on current restaurant records is insufficient because an owner can change that preference.
+2. Live mode enforces card-only checkout: the server rejects cash orders even when an older restaurant preference enables cash, and owners cannot enable cash while live mode is active. The business settings and customer payment choices reflect this restriction. Local simulator and sandbox cash testing remain available. Real automatic cash-commission collection is not connected; supporting live cash later requires a separately reviewed collection flow and policy change.
 3. Complete genuine restaurant business/bank onboarding and accepted non-demo terms, using the correct commission base. Do not relabel demo agreements as accepted real terms.
 4. Design the test-to-live data handover. The current restaurant account table has one active account per restaurant and rejects switching an existing sandbox binding to live. Preserve old account references and pending history, or isolate live data in a separately reviewed environment.
 5. Review the launch catalogue and audience. Current testing apps use the same public API; changing that API to live affects those apps too. Fictional demonstration restaurants must not become real checkout destinations.
