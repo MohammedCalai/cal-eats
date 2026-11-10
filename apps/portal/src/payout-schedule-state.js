@@ -20,5 +20,5 @@ export function describePayoutSchedule(schedule){
 export function payoutScheduleState(value){
   const plan=describePayoutSchedule(value?.plannedPayoutSchedule)||"Weekly on Monday";
   const description=describePayoutSchedule(value?.payoutSchedule),verified=value?.payoutScheduleStatus==="verified"&&Boolean(description)&&Number.isFinite(Date.parse(value?.payoutScheduleVerifiedAt));
-  return {plan,verified,actual:verified?description:null,verifiedAt:verified?value.payoutScheduleVerifiedAt:null,mismatch:verified&&description!==plan,message:verified?null:typeof value?.payoutScheduleMessage==="string"?value.payoutScheduleMessage:"The current provider schedule has not been verified. Refresh after bank setup to check it."};
+  return {plan,verified,actual:verified?description:null,verifiedAt:verified?value.payoutScheduleVerifiedAt:null,mismatch:verified&&description!==plan,message:verified?null:typeof value?.payoutScheduleMessage==="string"?value.payoutScheduleMessage:"Your bank payout schedule has not been verified. Refresh after bank setup to check it."};
 }

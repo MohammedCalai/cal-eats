@@ -32,6 +32,7 @@ import { cancelUnsentOrderConfirmationAlert, defaultCustomerEtaMinutes, orderCon
 import { normalizeScheduledFor, validateOrderSchedule } from "./scheduled-orders.js";
 import { orderShopRating, restaurantRatingSummary } from "./shop-ratings.js";
 import { assertCustomerContentAllowed } from "./content-moderation.js";
+import {createCustomerReceiptPdf,receiptPdfFilename} from "./customer-receipt-pdf.js";
 
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
@@ -284,6 +285,13 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   }
   match = url.pathname.match(/^\/api\/restaurant\/orders\/([^/]+)\/status$/);
   if (match && req.method === "PATCH") return updateStatus({ req, res, db, config, session, id: match[1] });
+  match = url.pathname.match(/^\/api\/orders\/([^/]+)\/receipt\.pdf$/);
+  if (match && req.method === "GET") {
+    const access=authorizedOrder(db,session,match[1]);
+    if(access.row.status!=="completed")throw new HttpError(409,"RECEIPT_NOT_READY","Your PDF receipt will be available when this order is completed.");
+    const pdf=await createCustomerReceiptPdf(orderDto(db,access.row,false,false,config));
+    res.writeHead(200,{"Content-Type":"application/pdf","Content-Length":pdf.length,"Content-Disposition":`attachment; filename="${receiptPdfFilename(access.row.id)}"`,"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"});res.end(pdf);return true;
+  }
   match = url.pathname.match(/^\/api\/orders\/([^/]+)\/receipt$/);
   if (match && req.method === "GET") {
     const access = authorizedOrder(db, session, match[1]);

@@ -1,6 +1,6 @@
 import { RestaurantMenu } from "./RestaurantMenu";
 import { DiscoveryBrowse, type BrowsingFilters } from "./DiscoveryBrowse";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import type {ServiceArea} from "../LocationPicker";
@@ -12,13 +12,14 @@ import { refreshCart } from "../model";
 import type { Address, CartEntry, Fulfillment, MenuItem, Restaurant, Offer } from "../types";
 
 interface Props {
+  browseHomeRequest?:number;
   onScrollOffset?:(offset:number)=>void;userId:string;address:Address|null;onAddress:(address:Address)=>void;
   token: string; onSignIn: () => void; onUseOffer?: (restaurantId:string,offerId:string)=>void; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
   restaurant: Restaurant | null; cart: CartEntry[]; onRestaurant: (restaurant: Restaurant | null) => void;
   onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
 export function DiscoverScreen(props: Props) {
-  const [browsing,setBrowsing]=useState(!props.restaurant);
+  const [browsing,setBrowsing]=useState(Boolean(props.browseHomeRequest)||!props.restaurant);
   const [offers,setOffers]=useState<Offer[]>([]); const [browsingFilters,setBrowsingFilters]=useState<BrowsingFilters>({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});
   const [postcode, setPostcode] = useState(props.address?.postcode||""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);const [serviceArea,setServiceArea]=useState<ServiceArea|null>(null);
   const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
@@ -32,6 +33,7 @@ export function DiscoverScreen(props: Props) {
 
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; discoveryRequest.current++; menuRequest.current++; }; }, []);
+  useLayoutEffect(()=>{if(!props.browseHomeRequest)return;menuRequest.current++;setBrowsing(true);setQuery("");setBrowsingFilters({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});setMenuLoading(false);setError("");setNotice("");props.onScrollOffset?.(0);},[props.browseHomeRequest]);
   useEffect(()=>{let active=true;if(!props.address)void SecureStore.getItemAsync(`cal-eats-postcode-${props.userId}`).then(value=>{if(active&&value)setPostcode(value);}).catch(()=>{});return()=>{active=false;};},[props.userId]);
   useEffect(() => { if (props.address) setPostcode(props.address.postcode); }, [props.address?.postcode]);
   function selectLocation(address:Address){setPostcode(address.postcode);props.onAddress(address);void SecureStore.setItemAsync(`cal-eats-postcode-${props.userId}`,address.postcode).catch(()=>{});}
@@ -105,5 +107,5 @@ export function DiscoverScreen(props: Props) {
   }
   if (props.restaurant && !browsing) return <RestaurantMenu token={props.token} onSignIn={props.onSignIn} onPromotionClaim={claimedPromotion} onScrollOffset={props.onScrollOffset} key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false);props.onScrollOffset?.(0); setBrowsing(true); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
 
-  return <DiscoveryBrowse onScrollOffset={props.onScrollOffset} token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} hasMore={hasMoreRestaurants} loadingMore={loadingMoreRestaurants} onLoadMore={()=>void loadRestaurants(true)} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
+  return <DiscoveryBrowse key={props.browseHomeRequest||0} onScrollOffset={props.onScrollOffset} token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} hasMore={hasMoreRestaurants} loadingMore={loadingMoreRestaurants} onLoadMore={()=>void loadRestaurants(true)} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
 }

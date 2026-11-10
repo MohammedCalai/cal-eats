@@ -29,21 +29,21 @@ export function RestaurantSafetyControls({ token, restaurantId, orderId, convers
     return () => { if (activeScope.current === renderedScope) activeScope.current = null; };
   }, [token, restaurantId, orderId, conversationId, messageId, menu, reportOnly]);
   if (!restaurantId) return null;
-  if (!token) return <View style={styles.container}>{onSignIn ? <Button tone="quiet" onPress={onSignIn}>{reportOnly ? "Sign in to report this message" : "Sign in to report or block"}</Button> : <Text style={styles.notice}>Sign in to use reporting and blocking.</Text>}</View>;
+  if (!token) return <View style={styles.container}>{onSignIn ? <Button tone="quiet" onPress={onSignIn}>{reportOnly ? "Sign in to report this message" : "Sign in to report"}</Button> : <Text style={styles.notice}>Sign in to report.</Text>}</View>;
   if (stateScope !== renderedScope) return null;
-  async function toggle() {
-    if (!token || busy || !current()) return;
+  async function unblock() {
+    if (!token || !blocked || busy || !current()) return;
     setBusy(true); setError("");
     try {
-      const value = await api<{ blocked: boolean }>(`/api/customer-safety/restaurants/${encodeURIComponent(restaurantId!)}`, { token, method: "PUT", body: JSON.stringify({ blocked: !blocked }) });
+      const value = await api<{ blocked: boolean }>(`/api/customer-safety/restaurants/${encodeURIComponent(restaurantId!)}`, { token, method: "PUT", body: JSON.stringify({ blocked: false }) });
       if (current()) { setBlocked(value.blocked); onBlockedChange?.(value.blocked); }
     } catch (cause) { if (current()) setError((cause as Error).message); }
     finally { if (current()) setBusy(false); }
   }
-  function confirmBlock() {
-    if (!token || busy || !current()) return;
-    Alert.alert(blocked ? "Unblock this restaurant?" : "Block this restaurant?", blocked ? "You can exchange messages and receive eligible offers again. Your marketing preferences still apply." : "Restaurant messages and personalised offers will stop. Your order status updates and Cal-Eats support remain available. Existing conversation history is kept.", [
-      { text: "Cancel", style: "cancel" }, { text: blocked ? "Unblock" : "Block restaurant", style: blocked ? "default" : "destructive", onPress: () => void toggle() }
+  function confirmUnblock() {
+    if (!token || !blocked || busy || !current()) return;
+    Alert.alert("Unblock this restaurant?", "You can exchange messages and receive eligible offers again. Your marketing preferences still apply.", [
+      { text: "Cancel", style: "cancel" }, { text: "Unblock", onPress: () => void unblock() }
     ]);
   }
   async function sendReport() {
@@ -57,7 +57,7 @@ export function RestaurantSafetyControls({ token, restaurantId, orderId, convers
     } catch (cause) { if (current()) setError((cause as Error).message); }
     finally { if (current()) setBusy(false); }
   }
-  return <View style={styles.container}><View style={styles.actions}><Button tone="quiet" disabled={busy} onPress={() => { setOpen(true); setError(""); setReference(""); }}>{reportOnly ? "Report message" : menu ? "Report restaurant or menu" : "Report conversation"}</Button>{!reportOnly?<Button tone="quiet" disabled={busy} onPress={confirmBlock}>{blocked ? "Unblock restaurant" : "Block restaurant"}</Button>:null}</View>{blocked ? <Text style={styles.notice}>Restaurant contact is blocked. Order updates and Cal-Eats support remain available.</Text> : null}{!open ? <ErrorBanner message={error}/> : null}
+  return <View style={styles.container}><View style={styles.actions}><Button tone="quiet" disabled={busy} onPress={() => { setOpen(true); setError(""); setReference(""); }}>{reportOnly ? "Report message" : menu ? "Report restaurant or menu" : "Report conversation"}</Button>{!reportOnly&&blocked?<Button tone="quiet" disabled={busy} onPress={confirmUnblock}>Unblock restaurant</Button>:null}</View>{blocked ? <Text style={styles.notice}>Restaurant contact is blocked. Order updates and Cal-Eats support remain available.</Text> : null}{!open ? <ErrorBanner message={error}/> : null}
     <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><SafeAreaView style={styles.backdrop}><View accessibilityViewIsModal style={styles.sheet}><View style={styles.heading}><Text accessibilityRole="header" style={styles.title}>Report to Cal-Eats</Text><Pressable accessibilityRole="button" accessibilityLabel="Close report" onPress={() => setOpen(false)} style={styles.close}><CustomerIcon name="close" size={22}/></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}><ErrorBanner message={error}/>{reference ? <><Text style={styles.title}>Your report was received</Text><Text style={styles.copy}>Cal-Eats support will review your report. The restaurant does not receive it. You can follow replies in Account → Help requests.</Text><Text style={styles.notice}>Reference {reference}</Text><Button onPress={() => { setOpen(false); setDetails(""); }}>Done</Button></> : <><Text style={styles.copy}>This goes privately to Cal-Eats support, rather than the restaurant.</Text><Text style={styles.label}>What would you like us to review?</Text>{choices.map(([value, label]) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: reason === value }} onPress={() => setReason(value)} style={[styles.choice, reason === value && styles.selected]}><Text style={styles.copy}>{reason === value ? "● " : "○ "}{label}</Text></Pressable>)}<Field label="Details" value={details} onChangeText={setDetails} multiline maxLength={1200}/><Text style={styles.notice}>Please include only information relevant to the report.</Text><Button busy={busy} onPress={() => void sendReport()}>Send report to Cal-Eats</Button></>}</ScrollView></View></SafeAreaView></Modal>
   </View>;
 }

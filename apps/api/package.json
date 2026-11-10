@@ -7,6 +7,10 @@
     "@aws-sdk/client-s3": "3.1164.0",
     "@azure/msal-node": "7.1.2",
     "@calai/contracts": "0.1.0",
-    "nodemailer": "10.2.1"
+    "nodemailer": "10.2.1",
+    "pdfkit": "0.20.2"
+  },
+  "devDependencies": {
+    "pdf-parse": "2.4.5"
   }
 }

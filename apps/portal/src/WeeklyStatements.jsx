@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api, json } from "./api.js";
 import { shortDate } from "./model.js";
 
-const statusLabel = value => ({ queued: "Queued", generated: "Ready", local_saved: "Preview saved", sent: "Email provider accepted", failed: "Needs attention", unknown: "Delivery uncertain", sending: "Sending" })[value] || String(value || "Pending").replaceAll("_", " ");
+const statusLabel = value => ({ queued: "Queued", generated: "Ready", local_saved: "Preview saved", sent: "Email accepted for delivery", failed: "Needs attention", unknown: "Delivery uncertain", sending: "Sending" })[value] || String(value || "Pending").replaceAll("_", " ");
 async function statementApi(path, options = {}) {
   const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 15000);
   try { return await api(path, { ...options, signal: controller.signal }); }

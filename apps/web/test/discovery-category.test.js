@@ -3,9 +3,21 @@ import test from "node:test";
 import { discoveryFeedHtml, discoveryHeroHtml } from "../discovery-ui.js";
 import { discoveryCollections } from "../discovery-model.js";
 import { canPreviewDiscoveryRestaurant,restaurantBrowseFulfillment } from "../discovery-model.js";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 const restaurant = {id:"one",name:"Blue Kitchen",profile:{cuisine:"British",estimatedDeliveryMinutes:25},delivery:{enabled:true,deliveryFeeMinor:0},acceptingOrders:true};
 const state = {restaurants:[restaurant],offers:[],search:"",postcode:"",fulfillment:"delivery",discoverCollection:"free-delivery"};
+test("Browse returns restaurant/category views to the full homepage and scrolls up without replacing the basket or location", async () => {
+ const source=readFileSync(new URL("../app.js",import.meta.url),"utf8"),start=source.indexOf("async function navigate("),end=source.indexOf("\n}",start)+2;
+ const basket={meal:2},selected={id:"shop"},address={postcode:"LU1 2BT"},scrolls=[],loads=[];
+ const live={view:"menu",user:{role:"customer"},cart:basket,selected,address,postcode:"LU1 2BT",fulfillment:"collection",generation:1,navigationVersion:0,search:"curry",cuisine:"Indian",discoverCollection:"popular",discoverOffersOnly:true,discoverSort:"quick",locationSelectorOpen:true};
+ const noop=()=>{},context={state:live,checkoutAttempt:{pending:false},restaurantMenuController:null,message:noop,renderCustomerAccountRequired:noop,renderCustomerNotificationPrompt:noop,closeDialog:noop,stopOrderPolling:noop,updateBasketAccess:noop,clearTimeout:noop,clearInterval:noop,window:{scrollTo:value=>scrolls.push(value)},document:{querySelectorAll:()=>[]},loadDiscover:()=>{loads.push({collection:live.discoverCollection,search:live.search,cuisine:live.cuisine,sort:live.discoverSort,offers:live.discoverOffersOnly});},module:{exports:null}};
+ vm.runInNewContext(source.slice(start,end)+";module.exports=navigate",context);const navigate=context.module.exports;
+ await navigate("discover",{resetBrowse:true});live.discoverCollection="offers";await navigate("discover",{resetBrowse:true});
+ assert.equal(loads.length,2);for(const row of loads)assert.deepEqual(row,{collection:"home",search:"",cuisine:"",sort:"recommended",offers:false});assert.equal(scrolls.length,2);assert.ok(scrolls.every(value=>value.top===0));assert.equal(live.locationSelectorOpen,false);assert.equal(live.cart,basket);assert.equal(live.selected,selected);assert.equal(live.address,address);assert.equal(live.postcode,"LU1 2BT");assert.equal(live.fulfillment,"collection");
+ live.submitting=true;live.discoverCollection="popular";await navigate("discover",{resetBrowse:true});assert.equal(live.discoverCollection,"popular");assert.equal(loads.length,2,"Pending checkout is protected");
+});
 test("a category has its own page heading and back control, with discovery tools hidden", () => {
   assert.equal(discoveryHeroHtml(state), "");
   const html = discoveryFeedHtml(state);

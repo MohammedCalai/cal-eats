@@ -206,12 +206,13 @@ async function boot() {
   else {const requested=entry.get("view");await navigate(["account","orders","offers","messages"].includes(requested)?requested:"discover");}
 }
 
-async function navigate(view, {resumeCheckout=false} = {}) {
+async function navigate(view, {resumeCheckout=false,resetBrowse=false} = {}) {
   if (state.submitting || checkoutAttempt.pending) { message("Resolve the original checkout or choose Check Orders before changing your basket."); return; }
   if (state.user && state.user.role !== "customer") return renderCustomerAccountRequired();
   state.emailVerificationPanel?.close(); state.emailConfirmationPanel?.close();
   restaurantMenuController?.close();restaurantMenuController=null;state.navigationVersion++;state.inboxPanel?.close();state.inboxPanel=null;closeDialog();clearTimeout(state.searchTimer);state.quoteController?.close();state.quoteController=null;if (view !== "orders") stopOrderPolling();state.schedulePicker?.close();state.schedulePicker=null;
   state.view = view;
+  if(view==="discover"&&resetBrowse){state.search="";state.cuisine="";state.discoverCollection="home";state.discoverOffersOnly=false;state.discoverSort="recommended";state.locationSelectorOpen=false;}
   state.healthCheckout?.close();state.healthCheckout=null;
   renderCustomerNotificationPrompt();
   if(view!=="offers"){clearInterval(state.offerExpiryTimer);state.offerExpiryTimer=null;}
@@ -663,7 +664,7 @@ async function printReceipt(id) {
 
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button,[data-view]"); if (!button) return;
-  if (button.dataset.view) { state.accessFlow=null; return navigate(button.dataset.view); }
+  if (button.dataset.view) { state.accessFlow=null; return navigate(button.dataset.view,{resetBrowse:button.dataset.view==="discover"}); }
   const action = button.dataset.action;
   if (action === "dismiss-notification-prompt") { notificationAlert.acknowledge(state.notifications); saveNotificationAcknowledgements(); return; }
   if(action==="discovery-more")return loadDiscover({append:state.discoverLoadError?Boolean(state.discoverRetryAppend):true,quiet:true});

@@ -2,6 +2,7 @@ import React from "react";
 import { pounds, shortDate } from "./model.js";
 import { useFinanceResource } from "./finance-resource.js";
 import "./EarningsFinance.css";
+import { merchantFinanceCopy, merchantSettlementLabel } from "./merchant-finance-copy.js";
 
 const readable = value => String(value || "").replaceAll("_", " ");
 function Amount({ label, value, negative, strong }) { return <div className={`finance-amount${strong ? " strong" : ""}`}><span>{label}</span><strong>{negative && value ? "−" : ""}{pounds(value)}</strong></div>; }
@@ -11,7 +12,7 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
   const value = result.value;
   return <section className="order-financial-breakdown" aria-label="Order financial breakdown">
     <div className="finance-section-heading"><div><p className="eyebrow">Order statement</p><h3>Financial breakdown</h3></div><button type="button" className="quiet" disabled={result.loading} onClick={() => void result.reload()}>{result.loading && value ? "Refreshing…" : "Refresh breakdown"}</button></div>
-    {result.error && <p className="alert" role="alert">The breakdown could not be loaded: {result.error}</p>}
+    {result.error && <p className="alert" role="alert">The breakdown could not be loaded: {merchantFinanceCopy(result.error)}</p>}
     {!value ? <p role="status">{result.loading ? "Loading the order statement…" : "The financial statement is unavailable. Use Refresh to try again."}</p> : <>
       <p className="fine">Order #{value.orderId.slice(0, 8).toUpperCase()} · {shortDate(value.createdAt)}. Prices, commission and offers follow the order’s saved details.</p>
       {value.providerMode !== "stripe_live" && <p className="finance-preview-note">{value.providerMode === "stripe_test" ? "Test payment" : "Preview payment"} · These figures do not establish a real charge or bank payout.</p>}
@@ -52,7 +53,7 @@ export default function OrderFinancialBreakdown({ restaurantId, orderId }) {
         {value.promotion.freeItems.length > 0 && <><div className="finance-item-list">{value.promotion.freeItems.map((item, index) => <article key={`${item.name}:${index}`}><div><strong>{item.quantity} × {item.name}</strong><span>{pounds(item.retailValueMinor)} retail value</span></div></article>)}</div><Amount label="Free-item retail value" value={value.promotion.freeItemRetailValueMinor}/><p className="fine">Free items were charged at £0. Their retail value is shown for reference; it is not your food cost and is not deducted from earnings again.</p></>}
         {value.promotion.allocations.length > 0 && <details><summary>Discount by item</summary><div className="finance-item-list">{value.promotion.allocations.map((item, index) => <article key={`${item.menuItemId}:${index}`}><strong>{item.name}</strong><small>Before discount {pounds(item.grossMinor)} · discount {pounds(item.discountMinor)} · charged {pounds(item.netMinor)}</small></article>)}</div></details>}
       </>}</section>
-      <section className="finance-breakdown-card"><h4>Payout and transfer status</h4><p><strong>{value.settlement.label}</strong></p><Amount label="Transferred to connected Stripe balance" value={value.settlement.transferredMinor}/><Amount label="Transfers reversed" value={value.settlement.reversedTransferMinor}/><p className="fine">{value.settlement.note || "Order earnings and transfers are separate from Stripe’s aggregated bank payouts."}</p></section>
+      <section className="finance-breakdown-card"><h4>Your order earnings</h4><p><strong>{merchantSettlementLabel(value.settlement.state,value.settlement.label)}</strong></p><Amount label="Earnings allocated for payout" value={value.settlement.transferredMinor}/><Amount label="Earnings allocation reversed" value={value.settlement.reversedTransferMinor}/><p className="fine">Automatically included in a weekly bank payout once funds have cleared. This is not a confirmed bank deposit. View Bank &amp; payouts for your verified schedule, confirmed payout status and estimated arrival.</p></section>
       {value.refunds.length > 0 && <section className="finance-breakdown-card"><h4>Refund activity</h4><div className="finance-item-list">{value.refunds.map(refund => <article key={refund.id}><strong>{shortDate(refund.createdAt)}</strong><small>Food {pounds(refund.foodMinor)} · delivery {pounds(refund.deliveryMinor)} · commission reversed {pounds(refund.commissionReversalMinor)}</small></article>)}</div></section>}
     </>}
   </section>;

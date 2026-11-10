@@ -26,7 +26,7 @@ export async function journeyFixture(configOverrides = {}) {
       const res = { headersSent: false, statusCode: 200,
         setHeader(key, value) { responseHeaders.set(key.toLowerCase(), value); },
         writeHead(status, values = {}) { this.statusCode = status; this.headersSent = true; for (const [key, value] of Object.entries(values)) responseHeaders.set(key.toLowerCase(), value); },
-        end(chunk) { if (chunk) chunks.push(Buffer.from(chunk)); resolve({ status: this.statusCode, headers: responseHeaders, text: Buffer.concat(chunks).toString("utf8") }); },
+        end(chunk) { if (chunk) chunks.push(Buffer.from(chunk)); const bodyBuffer=Buffer.concat(chunks); resolve({ status: this.statusCode, headers: responseHeaders, text: bodyBuffer.toString("utf8"), bodyBuffer }); },
         destroy() { resolve({ status: this.statusCode, headers: responseHeaders, text: "" }); }
       };
       app(req, res);
