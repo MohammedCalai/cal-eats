@@ -207,6 +207,29 @@ test("live banking requires genuine owner access, verifies platform identity and
   }finally{await s.f.close();}
 });
 
+test("a failed payout setup preserves the created account and retry resumes that same account",async()=>{
+  const s=await setup();try{
+    await credential(s);
+    let failSchedule=true;
+    const liveProvider={...adapter("stripe_live",s.liveCalls),configureWeeklyPayouts:async input=>{s.liveCalls.push({name:"schedule",input});return failSchedule?{ok:false,status:"failed",errorCode:"invalid_request_error"}:{ok:true,status:"confirmed"};}};
+    s.config.liveOnboarding=loadLiveOnboardingConfig({...staged,liveOnboardingRestaurantIds:[s.selected.id],liveOnboardingPaymentProvider:liveProvider},hosting);
+    const first=await s.call(`${s.root}/onboarding`,{method:"POST"});
+    assert.equal(first.status,503);assert.equal(first.body.error.code,"STRIPE_PAYOUT_POLICY_PENDING");
+    const refreshed=await s.call(s.root);
+    assert.equal(refreshed.status,200);assert.equal(refreshed.body.data.account.status,"pending");
+    assert.equal(s.f.db.prepare("SELECT provider_reference FROM provider_accounts WHERE restaurant_id=?").get(s.selected.id).provider_reference,"acct_liverestaurant");
+    assert.equal(s.liveCalls.filter(call=>call.name==="createAccount").length,1);
+    failSchedule=false;
+    const retry=await s.call(`${s.root}/onboarding`,{method:"POST"});
+    assert.equal(retry.status,200);assert.match(retry.body.data.url,/connect\.stripe\.com/);
+    assert.equal(s.liveCalls.filter(call=>call.name==="createAccount").length,1,"No duplicate restaurant account after partial setup");
+    const scheduleCalls=s.liveCalls.filter(call=>call.name==="schedule");
+    assert.equal(scheduleCalls.length,2);assert.equal(scheduleCalls[0].input.idempotencyKey,scheduleCalls[1].input.idempotencyKey);
+    assert.equal(scheduleCalls[0].input.idempotencyKey,`connect-schedule-anchor-v1:stripe_live:${s.selected.id}`);
+    assert.equal(s.f.db.prepare("SELECT COUNT(*) n FROM orders").get().n,0);
+  }finally{await s.f.close();}
+});
+
 test("archived restaurant orders cannot start or reuse Checkout but can refresh existing payment history",async()=>{
   const s=await setup();try{
     const stamp=s.config.now().toISOString();

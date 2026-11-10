@@ -205,7 +205,7 @@ async function accountAction({ req, res, db, config, owner, restaurantId, action
   if (action === "onboarding") {
     const retryKey = key(req);
     if (!row?.provider_reference) row=await createRestaurantAccount(db,config,{restaurantId,owner,adapter});
-    const payoutPolicy = await adapter.configureWeeklyPayouts({accountId:row.provider_reference,weeklyAnchor:"monday",idempotencyKey:`connect-schedule:${mode}:${restaurantId}`});
+    const payoutPolicy = await adapter.configureWeeklyPayouts({accountId:row.provider_reference,weeklyAnchor:"monday",idempotencyKey:`connect-schedule-anchor-v1:${mode}:${restaurantId}`});
     if (payoutPolicy?.status !== "confirmed" || payoutPolicy?.ok === false) throw new HttpError(503,"STRIPE_PAYOUT_POLICY_PENDING","Weekly payout settings could not be confirmed. Retry setup");
     const result = await adapter.createAccountLink({accountId:row.provider_reference,refreshUrl:new URL("/business/owner/stripe",config.origin).href,returnUrl:new URL("/business/owner/stripe",config.origin).href,idempotencyKey:`connect-link:${mode}:${restaurantId}:${retryKey}`});
     if (!result?.actionUrl || result.ok === false) throw new HttpError(503,"STRIPE_LINK_UNAVAILABLE","Stripe verification link is unavailable. Try again");

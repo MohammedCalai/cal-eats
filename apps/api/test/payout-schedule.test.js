@@ -13,11 +13,14 @@ function adapterFor(schedule,{httpStatus=200,body}={}){
 
 test("authoritative Basil readback reports weekly, changed daily/manual/monthly schedules without writing provider settings",async()=>{
   for(const [input,expected]of [
+    [{interval:"weekly",weekly_anchor:"monday"},{interval:"weekly",weeklyPayoutDays:["monday"],weeklyAnchor:"monday"}],
+    [{interval:"weekly",weekly_anchor:"friday",weekly_payout_days:null},{interval:"weekly",weeklyPayoutDays:["friday"],weeklyAnchor:"friday"}],
     [{interval:"weekly",weekly_payout_days:["monday"]},{interval:"weekly",weeklyPayoutDays:["monday"],weeklyAnchor:"monday"}],
     [{interval:"weekly",weekly_payout_days:["wednesday","friday"]},{interval:"weekly",weeklyPayoutDays:["wednesday","friday"]}],
     [{interval:"daily"},{interval:"daily",weeklyPayoutDays:[]}],
     [{interval:"manual"},{interval:"manual",weeklyPayoutDays:[]}],
-    [{interval:"monthly",monthly_payout_days:[1,15]},{interval:"monthly",weeklyPayoutDays:[],monthlyPayoutDays:[1,15]}]
+    [{interval:"monthly",monthly_payout_days:[1,15]},{interval:"monthly",weeklyPayoutDays:[],monthlyPayoutDays:[1,15]}],
+    [{interval:"monthly",monthly_anchor:31},{interval:"monthly",weeklyPayoutDays:[],monthlyPayoutDays:[31]}]
   ]){
     const {adapter,calls}=adapterFor(input),result=await adapter.retrievePayoutSchedule({accountId:"acct_connected"});
     assert.equal(result.ok,true);assert.equal(result.status,"confirmed");assert.equal(result.providerReference,"acct_connected");assert.deepEqual(result.payoutSchedule,expected);
@@ -29,7 +32,7 @@ test("authoritative Basil readback reports weekly, changed daily/manual/monthly 
 test("permission denial or malformed readback remains unverified and never invents weekly Monday",async()=>{
   const denied=adapterFor(null,{httpStatus:403,body:{error:{code:"permission_denied",message:"private provider internals must not leak"}}});
   const rejected=await denied.adapter.retrievePayoutSchedule({accountId:"acct_connected"});assert.equal(rejected.ok,false);assert.equal(rejected.payoutSchedule,undefined);assert.equal(JSON.stringify(rejected).includes("private provider"),false);
-  for(const raw of [null,{}, {interval:"weekly"},{interval:"weekly",weekly_payout_days:["monday","monday"]},{interval:"weekly",weekly_payout_days:["unknown"]},{interval:"monthly",monthly_payout_days:[32]},{interval:"monthly"},{interval:"unexpected"}]){
+  for(const raw of [null,{}, {interval:"weekly"},{interval:"weekly",weekly_anchor:"unknown"},{interval:"weekly",weekly_anchor:"monday",weekly_payout_days:["friday"]},{interval:"weekly",weekly_payout_days:["monday","monday"]},{interval:"weekly",weekly_payout_days:["unknown"]},{interval:"monthly",monthly_anchor:32},{interval:"monthly",monthly_anchor:1,monthly_payout_days:[2]},{interval:"monthly",monthly_payout_days:[32]},{interval:"monthly"},{interval:"unexpected"}]){
     const {adapter}=adapterFor(raw),result=await adapter.retrievePayoutSchedule({accountId:"acct_connected"});assert.equal(result.ok,false);assert.equal(result.payoutSchedule,undefined);assert.equal(result.errorCode,"STRIPE_PAYOUT_SCHEDULE_UNAVAILABLE");
   }
 });

@@ -198,11 +198,12 @@ test("connected account result exposes capability and requirement state", async 
   assert.deepEqual(result.requirements, ["company.tax_id"]);
 });
 
-test("weekly payout schedule uses exact Monday days supported by the pinned Basil API", async () => {
+test("weekly payout schedule uses the singular Monday anchor without requiring a newer API version", async () => {
   let call;
   const adapter = createStripeTestAdapter({ secretKey: KEY, fetchImpl: async (url, init) => {
     call = { url: String(url), init };
-    return jsonResponse({ object: "balance_settings", payouts: { schedule: { interval: "weekly", weekly_payout_days: ["monday"] } } });
+    if(new URLSearchParams(init.body).has("payouts[schedule][weekly_payout_days][]"))return jsonResponse({error:{type:"invalid_request_error",message:"To use `weekly_payout_days or monthly_payout_days`, your API version must be on 2025-07-30.preview or newer."}},404);
+    return jsonResponse({ object: "balance_settings", payouts: { schedule: { interval: "weekly", weekly_anchor: "monday" } } });
   } });
   const result=await adapter.configureWeeklyPayouts({ accountId: "acct_test123", weeklyAnchor: "monday", idempotencyKey: "weekly-payouts-1" });
   assert.equal(result.status,"confirmed");
@@ -211,7 +212,7 @@ test("weekly payout schedule uses exact Monday days supported by the pinned Basi
   assert.equal(call.init.headers["Stripe-Version"], "2025-06-30.basil");
   assert.equal(call.init.headers["Stripe-Account"], "acct_test123");
   assert.deepEqual(Object.fromEntries(new URLSearchParams(call.init.body)), {
-    "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_payout_days][]": "monday",
+    "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_anchor]": "monday",
   });
 });
 
@@ -221,7 +222,8 @@ test("weekly payout schedule refuses missing or mismatched saved settings",async
     {},
     {object:"account",payouts:{schedule:{interval:"weekly",weekly_payout_days:["monday"]}}},
     {object:"balance_settings"},
-    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_anchor:"monday"}}},
+    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_anchor:"friday"}}},
+    {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_anchor:"monday",weekly_payout_days:["friday"]}}},
     {object:"balance_settings",payouts:{schedule:{interval:"daily",weekly_payout_days:["monday"]}}},
     {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:[]}}},
     {object:"balance_settings",payouts:{schedule:{interval:"weekly",weekly_payout_days:["friday"]}}},

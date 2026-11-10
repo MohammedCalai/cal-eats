@@ -38,7 +38,13 @@ function StripeRestaurantWorkspace({ restaurantId }) {
       if (!active.current) return;
       if (value.url) window.location.assign(hosted(value.url, hosts));
       else { await result.reload(); if (active.current) setBankVersion(version => version + 1); }
-    } catch (caught) { if (active.current) setError(caught.message); }
+    } catch (caught) {
+      if (active.current) {
+        setError(caught.message);
+        // Account creation may have succeeded before a later setup step failed.
+        if (kind === "onboarding") { await result.reload(); if (active.current) setBankVersion(version => version + 1); }
+      }
+    }
     finally { pending.current = false; if (active.current) setBusy(""); }
   }
   const stripe = result.value, account = stripe?.account || {}, onboardingOnly=stripe?.onboardingOnly===true, setup=bankSetupState(result), passwordRequired=setup.passwordRequired,schedule=payoutScheduleState(stripe);

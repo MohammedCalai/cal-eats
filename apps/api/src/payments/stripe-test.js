@@ -77,29 +77,20 @@ export function createStripeAdapter(config = {}) {
     async createAccountLoginLink(input){const accountId=ref(input.accountId,"acct"),result=await request("POST",`/v1/accounts/${accountId}/login_links`,{},{idempotencyKey:input.idempotencyKey});return result.ok?normalized(result.body,{status:"confirmed",providerReference:accountId,actionUrl:httpsUrl(result.body.url)}):result;},
     async configureWeeklyPayouts(input) {
       const accountId=ref(input.accountId,"acct"),weeklyAnchor=weekday(input.weeklyAnchor || "monday");
-      const result = await request("POST", "/v1/balance_settings", { "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_payout_days][]": weeklyAnchor }, { idempotencyKey: input.idempotencyKey, stripeAccount: accountId });
+      // The pinned Basil API accepts the singular anchor. Live Stripe rejects
+      // weekly_payout_days on this version even when generated docs show it.
+      const result = await request("POST", "/v1/balance_settings", { "payouts[schedule][interval]": "weekly", "payouts[schedule][weekly_anchor]": weeklyAnchor }, { idempotencyKey: input.idempotencyKey, stripeAccount: accountId });
       if (!result.ok) return result;
-      const schedule=result.body?.payouts?.schedule;
-      if(result.body?.object!=="balance_settings"||schedule?.interval!=="weekly"||!Array.isArray(schedule.weekly_payout_days)||schedule.weekly_payout_days.length!==1||schedule.weekly_payout_days[0]!==weeklyAnchor)return {ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_SCHEDULE_MISMATCH"};
+      const schedule=normalizedPayoutSchedule(result.body?.payouts?.schedule);
+      if(result.body?.object!=="balance_settings"||schedule?.interval!=="weekly"||schedule.weeklyPayoutDays.length!==1||schedule.weeklyPayoutDays[0]!==weeklyAnchor)return {ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_SCHEDULE_MISMATCH"};
       return normalized(result.body, { status: "confirmed", providerReference: accountId });
     },
     async retrievePayoutSchedule(input) {
       const accountId=ref(input.accountId,"acct"),result=await request("GET","/v1/balance_settings",null,{stripeAccount:accountId,requireTestObject:true,allowModeOmissionForObject:"balance_settings"});
       if(!result.ok)return result;
-      const schedule=result.body?.payouts?.schedule,days=new Set(["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]);
+      const normalizedSchedule=normalizedPayoutSchedule(result.body?.payouts?.schedule);
       const invalid=()=>({ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_SCHEDULE_UNAVAILABLE"});
-      if(result.body?.object!=="balance_settings"||!schedule||!["daily","weekly","monthly","manual"].includes(schedule.interval))return invalid();
-      const normalizedSchedule={interval:schedule.interval,weeklyPayoutDays:[]};
-      if(schedule.interval==="weekly"){
-        const weekly=schedule.weekly_payout_days;
-        if(!Array.isArray(weekly)||!weekly.length||weekly.length>7||new Set(weekly).size!==weekly.length||weekly.some(day=>!days.has(day)))return invalid();
-        normalizedSchedule.weeklyPayoutDays=[...weekly];if(weekly.length===1)normalizedSchedule.weeklyAnchor=weekly[0];
-      }
-      if(schedule.interval==="monthly"){
-        const monthly=schedule.monthly_payout_days;
-        if(!Array.isArray(monthly)||!monthly.length||monthly.length>31||new Set(monthly).size!==monthly.length||monthly.some(day=>!Number.isSafeInteger(day)||day<1||day>31))return invalid();
-        normalizedSchedule.monthlyPayoutDays=[...monthly];
-      }
+      if(result.body?.object!=="balance_settings"||!normalizedSchedule)return invalid();
       return {ok:true,status:"confirmed",providerReference:accountId,payoutSchedule:normalizedSchedule};
     },
     async authorizePayment(input) {
@@ -169,6 +160,21 @@ export function parseStripeWebhook(input) {
 }
 
 function encodeFields(value,prefix){const out=[];for(const[key,item]of Object.entries(value||{})){if(item===undefined||item===null)continue;const name=prefix?`${prefix}[${key}]`:key;if(Array.isArray(item))item.forEach(v=>out.push([name.endsWith("[]")?name:`${name}[]`,String(v)]));else if(typeof item==="object")out.push(...encodeFields(item,name));else out.push([name,String(item)])}return out}
+function normalizedPayoutSchedule(schedule){
+  if(!schedule||!["daily","weekly","monthly","manual"].includes(schedule.interval))return null;
+  const result={interval:schedule.interval,weeklyPayoutDays:[]};
+  if(schedule.interval==="weekly"){
+    const anchor=schedule.weekly_anchor,days=schedule.weekly_payout_days??(anchor==null?null:[anchor]),valid=new Set(["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]);
+    if(!Array.isArray(days)||!days.length||days.length>7||new Set(days).size!==days.length||days.some(day=>!valid.has(day))||(anchor!=null&&(!valid.has(anchor)||days.length!==1||days[0]!==anchor)))return null;
+    result.weeklyPayoutDays=[...days];if(days.length===1)result.weeklyAnchor=days[0];
+  }
+  if(schedule.interval==="monthly"){
+    const anchor=schedule.monthly_anchor,days=schedule.monthly_payout_days??(anchor==null?null:[anchor]);
+    if(!Array.isArray(days)||!days.length||days.length>31||new Set(days).size!==days.length||days.some(day=>!Number.isSafeInteger(day)||day<1||day>31)||(anchor!=null&&(!Number.isSafeInteger(anchor)||anchor<1||anchor>31||days.length!==1||days[0]!==anchor)))return null;
+    result.monthlyPayoutDays=[...days];
+  }
+  return result;
+}
 function normalized(body,extra){return{ok:true,providerCostMinor:cost(body),...extra}}
 function bankAccountResult(bank){return{id:typeof bank.id==="string"&&/^ba_[A-Za-z0-9_]+$/.test(bank.id)?bank.id:null,bankName:typeof bank.bank_name==="string"?bank.bank_name.slice(0,150):"Bank account",last4:typeof bank.last4==="string"&&/^\d{4}$/.test(bank.last4)?bank.last4:null,country:typeof bank.country==="string"&&/^[A-Z]{2}$/.test(bank.country)?bank.country:null,currency:typeof bank.currency==="string"&&/^[a-zA-Z]{3}$/.test(bank.currency)?bank.currency.toUpperCase():null,status:typeof bank.status==="string"?bank.status.slice(0,60):"unknown",defaultForCurrency:Boolean(bank.default_for_currency)};}
 function accountResult(r){if(!r.ok)return r;const a=r.body,status=a.charges_enabled&&a.payouts_enabled?"confirmed":a.requirements?.disabled_reason?"failed":"pending";return normalized(a,{status,providerReference:a.id,chargesEnabled:Boolean(a.charges_enabled),payoutsEnabled:Boolean(a.payouts_enabled),capabilities:Object.entries(a.capabilities||{}).filter(([,v])=>v==="active").map(([k])=>k),requirements:[...(a.requirements?.currently_due||[]),...(a.requirements?.past_due||[])],bankDetailsAvailable:Array.isArray(a.external_accounts?.data),bankAccounts:(a.external_accounts?.data||[]).filter(bank=>bank.object==="bank_account").map(bankAccountResult)})}
