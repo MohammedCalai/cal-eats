@@ -68,7 +68,7 @@ export function CustomerConversation({restaurantId,customerId,customerName,onCha
     void api(`${path}/read`,json("POST",{lastMessageId:id})).then(read=>{
       if(!mounted.current||currentPath.current!==requestedPath)return;
       if(document.hidden){if(lastRead.current===id)lastRead.current=null;return;}
-      window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,customerId}}));
+      window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,unreadCount:read.unreadCount,customerId}}));
       window.dispatchEvent(new Event("cal-eats-notifications-read"));onChange?.();
     }).catch(()=>{if(currentPath.current===requestedPath&&lastRead.current===id)lastRead.current=null;});
   },[result.value,path,visible]);

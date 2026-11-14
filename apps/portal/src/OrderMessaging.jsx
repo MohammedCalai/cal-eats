@@ -30,7 +30,7 @@ export function OrderConversation({ orderId, onClose }) {
         const read=await api(`/api/orders/${encodeURIComponent(orderId)}/messages/read`,json("POST",{lastMessageId:last.id}));
         if(!mounted.current||request!==loadSequence.current||document.hidden)return;
         lastRead.current=last.id;
-        window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,orderId}}));
+        window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,unreadCount:read.unreadCount,orderId}}));
         window.dispatchEvent(new CustomEvent("cal-eats-notifications-read",{detail:{orderId}}));
       }
     }catch(e){if(!mounted.current||request!==loadSequence.current)return;if(e.status===410||e.code==="MESSAGING_CLOSED")setConversation({items:[],isOpen:false,closedAt:null});setError(e.message);}

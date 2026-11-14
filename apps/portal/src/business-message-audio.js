@@ -2,25 +2,26 @@ export const BUSINESS_MESSAGE_REPEAT_MS = 10_000;
 const numericRevision = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
 const validScope = value => typeof value === "string" ? value.trim() : "";
 
-/** A short message melody repeats while the server still reports unread messages.
- * Reading one conversation must never acknowledge another conversation's backlog. */
+/** Sound prompts attention until a conversation is successfully read. Acknowledging
+ * attention never changes any conversation's unread badge or server read cursor. */
 export function createBusinessMessageAudio(player, {
   schedule = (callback, delay) => setTimeout(callback, delay),
   cancel = handle => clearTimeout(handle)
 } = {}) {
   if (typeof player?.play !== "function" || typeof player?.pause !== "function") throw new TypeError("A message melody player is required");
   const listeners = new Set();
+  const acknowledged = new Map();
   let current = { scope: "", enabled: false, pending: false, revision: 0, orderAlarmActive: false };
   let timer = null, active = null, generation = 0, repeatDue = false;
-  let state = Object.freeze({ ...current, playing: false, blocked: false, error: "" });
+  let state = Object.freeze({ ...current, acknowledgedRevision: -1, playing: false, blocked: false, error: "" });
   function publish(patch = {}) {
-    const next = { ...state, ...current, ...patch };
+    const next = { ...state, ...current, acknowledgedRevision: acknowledged.get(current.scope) ?? -1, ...patch };
     if (Object.keys(next).every(key => next[key] === state[key])) return;
     state = Object.freeze(next);
     for (const listener of listeners) listener(state);
   }
   function eligible() {
-    return Boolean(current.scope && current.enabled && current.pending && !current.orderAlarmActive);
+    return Boolean(current.scope && current.enabled && current.pending && current.revision > (acknowledged.get(current.scope) ?? -1) && !current.orderAlarmActive);
   }
   function clearRepeat() {
     if (timer !== null) cancel(timer);
@@ -86,6 +87,14 @@ export function createBusinessMessageAudio(player, {
       if (!eligible()) { silence(); return; }
       // Repeated polls, route renders and count changes do not restart an active melody/cadence.
       if (!active && timer === null && !state.blocked) start();
+    },
+    acknowledge({ scope, revision, unreadCount } = {}) {
+      // This is called only with the successful server read response for the
+      // conversation the user opened. A racing newer arrival must keep ringing.
+      if (validScope(scope) !== current.scope || !current.scope || unreadCount !== 0 || !Number.isSafeInteger(revision) || revision < current.revision || revision < 0) return false;
+      acknowledged.set(current.scope, Math.max(acknowledged.get(current.scope) ?? -1, revision));
+      silence();
+      return true;
     },
     // Call synchronously from the shell's trusted click/key handler.
     interact() {

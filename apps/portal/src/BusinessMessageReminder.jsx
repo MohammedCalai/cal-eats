@@ -5,7 +5,7 @@ import {createBusinessMessageAudio} from "./business-message-audio.js";
 import {createBusinessMessageMelody} from "./business-message-melody.js";
 
 export const MESSAGE_OPENED_EVENT="cal-eats-business-message-opened";
-/** The server's conversation read cursors govern sound across every business page. */
+/** A verified conversation read acknowledges attention; other unread badges stay. */
 export function useBusinessMessageReminder({enabled,userId,restaurantId,soundEnabled,orderAlarmActive}){
   const [player]=useState(()=>createBusinessMessageMelody());
   const [controller]=useState(()=>createBusinessMessageAudio(player));
@@ -35,7 +35,12 @@ export function useBusinessMessageReminder({enabled,userId,restaurantId,soundEna
     // another device can stop reminders. Idle background tabs do not keep polling.
     const poll=()=>{if(!document.hidden||attention.current.pending>0)void load();};
     const timer=setInterval(poll,5000);
-    const opened=event=>{if(event.detail?.restaurantId!==restaurantId||event.detail?.viewerUserId!==userId)return;void load();};
+    const opened=event=>{
+      const detail=event.detail;
+      if(detail?.restaurantId!==restaurantId||detail?.viewerUserId!==userId)return;
+      controller.acknowledge({scope,revision:detail.messageAttentionRevision,unreadCount:detail.unreadCount});
+      void load();
+    };
     window.addEventListener(MESSAGE_OPENED_EVENT,opened);
     window.addEventListener("cal-eats-notifications-read",poll);
     window.addEventListener("focus",poll);

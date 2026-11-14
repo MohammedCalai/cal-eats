@@ -55,14 +55,26 @@ test("message reminders play once and preserve a ten-second cadence across five-
   update(audio, { pending: false }); await advance(60000); assert.equal(player.plays, 2); assert.equal(timers.size, 0);
 });
 
-test("reading one thread keeps reminding for another thread; reading every message stops and a new message re-arms", async () => {
+test("reading one conversation acknowledges attention without clearing other unread messages and a new arrival re-arms", async () => {
   const { player, audio, advance, timers } = setup();
-  update(audio,{pending:2,revision:10});await settled();assert.equal(player.plays,1);
-  update(audio,{pending:1,revision:10});await advance(10000);assert.equal(player.plays,2);
-  update(audio,{pending:0,revision:10});await advance(60000);assert.equal(player.plays,2);assert.equal(timers.size,0);
-  audio.stop();update(audio,{pending:0,revision:10});audio.interact();await advance(10000);assert.equal(player.plays,2);
-  update(audio,{pending:1,revision:11});await settled();assert.equal(player.plays,3);
+  update(audio,{pending:1000,revision:10});await settled();assert.equal(player.plays,1);
+  assert.equal(audio.acknowledge({scope:"owner-a:restaurant-a",revision:10,unreadCount:0}),true);
+  update(audio,{pending:999,revision:10});await advance(60000);assert.equal(player.plays,1);assert.equal(timers.size,0);
+  assert.equal(audio.getSnapshot().pending,true);assert.equal(audio.getSnapshot().acknowledgedRevision,10);
+  audio.stop();update(audio,{pending:999,revision:10});audio.interact();await advance(10000);assert.equal(player.plays,1);
+  update(audio,{pending:1000,revision:11});await settled();assert.equal(player.plays,2);
   update(audio,{pending:0,revision:11});audio.stop();
+});
+
+test("attention acknowledgement stays scoped to each restaurant and user through dashboard returns", async () => {
+  const {player,audio,advance}=setup();
+  update(audio);await settled();audio.acknowledge({scope:"owner-a:restaurant-a",revision:10,unreadCount:0});
+  update(audio,{scope:"owner-a:restaurant-b",revision:10});await settled();assert.equal(player.plays,2);
+  audio.acknowledge({scope:"owner-a:restaurant-b",revision:10,unreadCount:0});
+  update(audio);await advance(20000);assert.equal(player.plays,2);
+  update(audio,{scope:"owner-b:restaurant-a",revision:10});await settled();assert.equal(player.plays,3);
+  audio.stop();update(audio,{pending:1000,revision:10});await advance(20000);assert.equal(player.plays,3);
+  update(audio,{revision:11});await settled();assert.equal(player.plays,4);audio.stop();
 });
 
 test("restaurant/account changes cancel the old scope; legacy browser acknowledgements cannot suppress unread messages", async () => {
@@ -105,15 +117,37 @@ test("slow melody never overlaps and successful conversation reads cancel its ou
   const snapshots = [], unsubscribe = audio.subscribe(snapshot => snapshots.push(snapshot));
   update(audio); await advance(10000); assert.equal(player.plays, 1); assert.equal(player.active, 1);
   player.finish(); await settled(); assert.equal(player.plays, 2); assert.equal(player.maxActive, 1);
-  update(audio,{pending:0}); await settled(); assert.equal(player.active, 0);
-  update(audio,{pending:0}); await advance(60000); assert.equal(player.plays, 2); assert.equal(timers.size, 0);
+  assert.equal(audio.acknowledge({scope:"owner-a:restaurant-a",revision:10,unreadCount:0}),true);await settled();assert.equal(player.active,0);
+  update(audio,{pending:1}); await advance(60000); assert.equal(player.plays, 2); assert.equal(timers.size, 0);
   unsubscribe(); const count = snapshots.length; audio.stop(); assert.equal(snapshots.length, count);
 });
 
 test("an unrelated read or a stale read barrier cannot silence pending messages", async () => {
   const {player,audio,advance}=setup();
   update(audio,{pending:2,revision:120});await settled();
+  for(const detail of [
+    {scope:"owner-b:restaurant-a",revision:120,unreadCount:0},
+    {scope:"owner-a:restaurant-b",revision:120,unreadCount:0},
+    {scope:"owner-a:restaurant-a",revision:120},
+    {scope:"owner-a:restaurant-a",revision:120,unreadCount:1},
+    {scope:"owner-a:restaurant-a",revision:119,unreadCount:0},
+    {scope:"owner-a:restaurant-a",revision:"120",unreadCount:0}
+  ])assert.equal(audio.acknowledge(detail),false);
   update(audio,{pending:1,revision:120});await advance(10000);assert.equal(player.plays,2);
-  update(audio,{pending:1,revision:121});await advance(10000);assert.equal(player.plays,3);
-  update(audio,{pending:0,revision:121});await advance(10000);assert.equal(player.plays,3);audio.stop();
+  update(audio,{pending:2,revision:121});
+  assert.equal(audio.acknowledge({scope:"owner-a:restaurant-a",revision:120,unreadCount:0}),false);
+  await advance(10000);assert.equal(player.plays,3);
+  assert.equal(audio.acknowledge({scope:"owner-a:restaurant-a",revision:121,unreadCount:1}),false);
+  await advance(10000);assert.equal(player.plays,4);
+  assert.equal(audio.acknowledge({scope:"owner-a:restaurant-a",revision:121,unreadCount:0}),true);
+  update(audio,{pending:1,revision:121});await advance(20000);assert.equal(player.plays,4);
+  update(audio,{pending:2,revision:122});await settled();assert.equal(player.plays,5);audio.stop();
+});
+
+test("a server read ahead of the last poll covers only its exact revision and never a later arrival", async () => {
+  const {player,audio,advance}=setup();
+  update(audio,{revision:120});await settled();
+  assert.equal(audio.acknowledge({scope:"owner-a:restaurant-a",revision:121,unreadCount:0}),true);
+  update(audio,{revision:120});update(audio,{revision:121});await advance(20000);assert.equal(player.plays,1);
+  update(audio,{revision:122});await settled();assert.equal(player.plays,2);audio.stop();
 });
