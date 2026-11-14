@@ -1,4 +1,5 @@
 const transient = error => error instanceof TypeError || error?.name === "TimeoutError" || [408, 429].includes(error?.status) || error?.status >= 500;
+export { transient as isTemporaryPrinterFailure };
 
 function pause(milliseconds, signal) {
   return new Promise((resolve, reject) => {
