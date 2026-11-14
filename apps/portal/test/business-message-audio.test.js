@@ -151,3 +151,47 @@ test("a server read ahead of the last poll covers only its exact revision and ne
   update(audio,{revision:120});update(audio,{revision:121});await advance(20000);assert.equal(player.plays,1);
   update(audio,{revision:122});await settled();assert.equal(player.plays,2);audio.stop();
 });
+
+test("message sound sample plays once without a pending chat, survives polling and never acknowledges messages",async()=>{
+  const {player,audio,advance,timers}=setup({autoFinish:false});
+  update(audio,{pending:0,revision:10});
+  assert.equal(audio.test(),true);assert.equal(audio.getSnapshot().testing,true);assert.equal(player.active,1);
+  update(audio,{pending:0,revision:10});assert.equal(player.active,1);assert.equal(timers.size,0);
+  player.finish();await settled();assert.equal(audio.getSnapshot().testing,false);
+  await advance(30000);assert.equal(player.plays,1);assert.equal(audio.getSnapshot().acknowledgedRevision,-1);
+  update(audio,{pending:1,revision:11});assert.equal(player.plays,2);
+  assert.equal(audio.getSnapshot().testing,false);assert.equal(timers.size,1);audio.stop();
+});
+
+test("a pending message keeps its ten-second reminder after a deliberate test and order alarms still take priority",async()=>{
+  const {player,audio,advance}=setup();
+  update(audio);await settled();assert.equal(player.plays,1);
+  assert.equal(audio.test(),true);await settled();assert.equal(player.plays,2);
+  audio.stopTest();await advance(10000);assert.equal(player.plays,3);
+  update(audio,{orderAlarmActive:true});assert.equal(audio.test(),false);
+  await advance(20000);assert.equal(player.plays,3);
+  update(audio,{enabled:false,orderAlarmActive:false});assert.equal(audio.test(),false);
+  audio.stop();assert.equal(audio.test(),false);
+});
+
+test("a new message during a sample is not lost and a stopped sample cannot start a late reminder",async()=>{
+  const {player,audio,advance}=setup({autoFinish:false});
+  update(audio,{pending:0,revision:1});audio.test();
+  update(audio,{pending:1,revision:2});assert.equal(player.plays,1);
+  player.finish();await settled();assert.equal(player.plays,2);assert.equal(player.maxActive,1);
+  assert.equal(audio.acknowledge({scope:'owner-a:restaurant-a',revision:2,unreadCount:0}),true);
+  update(audio,{pending:0,revision:2});audio.test();assert.equal(player.plays,3);
+  audio.stopTest();await advance(30000);assert.equal(player.plays,3);assert.equal(player.active,0);
+  update(audio,{scope:'owner-b:restaurant-a',pending:0,revision:1});audio.test();
+  audio.stop();await advance(30000);assert.equal(player.active,0);
+});
+
+test("a blocked sample stays visible across idle polls and can be retried without unmuting another account",async()=>{
+  const {player,audio,advance}=setup();
+  update(audio,{pending:0,revision:1});player.blocked=true;
+  audio.test();await settled();assert.equal(audio.getSnapshot().blocked,true);
+  update(audio,{pending:0,revision:1});await advance(10000);assert.equal(audio.getSnapshot().blocked,true);
+  player.blocked=false;audio.test();await settled();assert.equal(audio.getSnapshot().blocked,false);
+  update(audio,{enabled:false});assert.equal(audio.test(),false);
+  audio.stop();
+});

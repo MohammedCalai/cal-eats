@@ -1,1 +1,125 @@
-.topbar .business-home-link{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:44px;min-height:44px;flex:none;padding:9px 12px;border:1px solid #3a5682;border-radius:11px;background:#192a45;color:#b8d5ff;text-decoration:none;font-size:12px;font-weight:650}.topbar .business-home-link svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.topbar .business-home-link:hover,.topbar .business-home-link.active{background:#213e69;color:#e4efff;border-color:#5989cf}.topbar .business-home-link:focus-visible{outline:3px solid #85b5ff;outline-offset:3px}.topbar:has(.business-home-link) .topbar-title{min-width:0;flex:1}@media(max-width:700px){.topbar .business-home-link{padding:9px;width:44px}.topbar .business-home-link span{display:none}}@media(max-width:430px){.topbar:has(.business-home-link) .user-avatar{display:none}}
+.calai-theme .topbar.business-header{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:"identity account";
+  align-items:center;
+  column-gap:20px;
+  min-height:80px;
+  height:auto;
+  padding:12px 24px;
+}
+.calai-theme .topbar.business-header--with-shortcuts{
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  grid-template-areas:"identity navigation account";
+}
+.business-header .business-header-identity{
+  grid-area:identity;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-width:0;
+}
+.business-header .business-header-identity .menu-button{flex:none}
+.calai-theme .business-header .topbar-title{min-width:0;flex:1}
+.calai-theme .business-header .topbar-title .eyebrow{
+  font-size:22px;
+  line-height:1.25;
+  max-width:100%;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.business-header .top-actions{grid-area:account;justify-self:end;min-width:0}
+.business-header-navigation{
+  grid-area:navigation;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  justify-self:center;
+  gap:12px;
+  min-width:0;
+}
+.business-header-navigation[hidden]{display:none}
+.calai-theme .business-header-navigation .business-home-link,
+.calai-theme .business-header-navigation .bell{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  min-width:108px;
+  width:auto;
+  min-height:50px;
+  height:auto;
+  padding:12px 16px;
+  border:1px solid #456ba4;
+  border-radius:13px;
+  background:#182b48;
+  color:#e0edff;
+  text-decoration:none;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.25;
+  white-space:nowrap;
+  box-shadow:0 2px 10px #12274744;
+}
+.calai-theme .business-header-navigation .business-home-link svg,
+.calai-theme .business-header-navigation .bell svg{
+  width:23px;
+  height:23px;
+  flex:none;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.calai-theme .business-header-navigation .business-home-link:hover,
+.calai-theme .business-header-navigation .bell:hover,
+.calai-theme .business-header-navigation .bell[aria-expanded=true]{
+  background:#224371;
+  border-color:#79aaff;
+  color:#fff;
+}
+.calai-theme .business-header-navigation .business-home-link:focus-visible,
+.calai-theme .business-header-navigation .bell:focus-visible{
+  outline:3px solid #96c2ff;
+  outline-offset:3px;
+}
+.business-header .notifications{position:static}
+.calai-theme .business-header .notification-panel{
+  position:absolute;
+  top:calc(100% + 8px);
+  left:50%;
+  right:auto;
+  transform:translateX(-50%);
+  width:min(420px,calc(100vw - 24px));
+  max-height:min(70dvh,calc(100dvh - 180px));
+}
+.calai-theme .business-header-navigation .bell b{right:-6px;top:-7px}
+@media(max-width:1100px){
+  .calai-theme .topbar.business-header{
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:"identity account";
+    column-gap:14px;
+    padding:12px 18px;
+  }
+  .calai-theme .topbar.business-header--with-shortcuts{
+    grid-template-areas:"identity account" "navigation navigation";
+    row-gap:12px;
+  }
+  .business-header .topbar-signout{display:none}
+}
+@media(max-width:700px){
+  .calai-theme .topbar.business-header{padding:12px}
+  .business-header .business-header-identity{gap:12px}
+  .calai-theme .business-header .topbar-title .eyebrow{font-size:18px}
+  .calai-theme .business-header .user-avatar{display:grid;width:38px;height:38px;flex:none}
+  .business-header-navigation{gap:10px}
+  .calai-theme .business-header-navigation .business-home-link,
+  .calai-theme .business-header-navigation .bell{
+    min-width:94px;
+    min-height:48px;
+    padding:11px 14px;
+    font-size:13px;
+  }
+}

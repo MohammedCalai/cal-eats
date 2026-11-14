@@ -74,7 +74,8 @@ test("business message attention uses actual scoped read cursors and a recipient
     assert.equal((await attention(staff)).unreadCount,0,"A closed support window cannot prompt for an unread chat that can no longer be opened");
     const closedRead=await f.json(`/api/orders/${order.id}/messages/read`,{method:"POST",cookie:staff,body:{lastMessageId:second.id}});assert.equal(closedRead.status,410);
     const historical=(await f.json(`${base}/dashboard?view=operations`,{cookie:staff})).body.data;
-    assert.equal(historical.operations.unreadMessages,2,"Operational/history badges keep their existing unread semantics");
+    assert.equal(historical.operations.unreadMessages,0,"The dashboard action count excludes closed order chats, matching the reminder");
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE user_id=? AND order_id=? AND type='order_message' AND read_at IS NULL").get(staffUser.id,order.id).n,2,"Closed historical notifications are preserved without marking their messages read");
     f.db.prepare("UPDATE order_messages SET expires_at=? WHERE order_id=?").run(new Date(clock-1).toISOString(),order.id);
     assert.equal((await attention(staff)).unreadCount,0,"Expired message notifications must not keep the reminder active");
     const dashboard=(await f.json(`${base}/dashboard?view=operations`,{cookie:owner})).body.data;
@@ -85,6 +86,54 @@ test("business message attention uses actual scoped read cursors and a recipient
     f.db.exec("VACUUM");
     notice(ownerUser.id,restaurant.id,"order_message");
     assert.ok((await attention()).revision>highWater,"Deletion and VACUUM must not reuse an acknowledged arrival sequence");
+  }finally{await f.close();}
+});
+
+test("dashboard message actions match reminder counts for active and closed order chats and owner-only customer conversations",async()=>{
+  let clock=Date.parse("2026-01-01T01:00:00.000Z");
+  const f=await journeyFixture({now:()=>new Date(clock),rateLimit:{attempts:120,windowMs:60000}});
+  try{
+    const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
+    const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],base=`/api/restaurant/restaurants/${restaurant.id}`;
+    const staffCreated=await f.json(`${base}/staff`,{method:"POST",cookie:owner,body:{name:"Dashboard message staff",email:"dashboard-message-staff@example.invalid",password:"MessageStaff!4310"}});
+    assert.equal(staffCreated.status,201,staffCreated.text);
+    const staff=await f.login("dashboard-message-staff@example.invalid","MessageStaff!4310"),item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0],orders=[];
+    for(let index=0;index<2;index++){
+      clock+=1000;
+      const placed=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`dashboard-attention-order-${index}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],fulfillment:"collection",paymentMethod:"mock_card"}});
+      assert.equal(placed.status,201,placed.text);clock+=1000;
+      const sent=await f.json(`/api/orders/${placed.body.data.id}/messages`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":`dashboard-attention-message-${index}`},body:{message:`Please check order ${index+1}.`}});
+      assert.equal(sent.status,201,sent.text);orders.push({order:placed.body.data,message:sent.body.data});
+    }
+    const [active,closed]=orders;
+    for(const status of ["accepted","preparing","ready","completed"]){
+      const changed=await f.json(`/api/restaurant/orders/${closed.order.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(changed.status,200,changed.text);
+    }
+    const crmPath=`${base}/customers/${active.order.customerId}/conversation`;
+    const opened=await f.json(crmPath,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"dashboard-attention-crm-open"},body:{message:"How can we help?"}});
+    assert.equal(opened.status,201,opened.text);clock+=1000;
+    const crmReply=await f.json(`/api/customer/conversations/${opened.body.data.threadId}/messages`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"dashboard-attention-crm-reply"},body:{message:"Please follow up with me."}});
+    assert.equal(crmReply.status,201,crmReply.text);
+    const counts=async(expectedOwner,expectedStaff)=>{
+      for(const[cookie,expected]of [[owner,expectedOwner],[staff,expectedStaff]]){
+        const attention=await f.json(`${base}/message-attention`,{cookie}),dashboard=await f.json(`${base}/dashboard?view=operations`,{cookie});
+        assert.equal(attention.status,200,attention.text);assert.equal(dashboard.status,200,dashboard.text);
+        assert.equal(attention.body.data.unreadCount,expected);
+        assert.equal(dashboard.body.data.operations.unreadMessages,expected,"The dashboard must show the same actionable message count as its sound reminder");
+      }
+    };
+    await counts(3,2);
+    clock+=3*60*60*1000;
+    await counts(2,1);
+    const readActive=await f.json(`/api/orders/${active.order.id}/messages/read`,{method:"POST",cookie:owner,body:{lastMessageId:active.message.id}});assert.equal(readActive.status,200,readActive.text);
+    await counts(1,1);
+    const readCrm=await f.json(`${crmPath}/read`,{method:"POST",cookie:owner,body:{lastMessageId:crmReply.body.data.id}});assert.equal(readCrm.status,200,readCrm.text);
+    await counts(0,1);
+    const staffRead=await f.json(`/api/orders/${active.order.id}/messages/read`,{method:"POST",cookie:staff,body:{lastMessageId:active.message.id}});assert.equal(staffRead.status,200,staffRead.text);
+    await counts(0,0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM order_messages WHERE order_id=?").get(closed.order.id).n,1,"Closing a chat does not delete its history");
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM order_message_reads WHERE order_id=?").get(closed.order.id).n,0,"Counting action items does not advance anyone's read cursor");
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE order_id=? AND type='order_message' AND read_at IS NULL").get(closed.order.id).n,2,"Both business accounts retain the historical unread notification");
   }finally{await f.close();}
 });
 
