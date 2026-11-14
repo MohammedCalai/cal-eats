@@ -40,6 +40,10 @@
         "CAL_EATS_PUBLIC_RELEASE_BUILD": "false"
       }
     },
+    "ios-store-test-local": {
+      "extends": "store-test",
+      "credentialsSource": "local"
+    },
     "android-store-test": {
       "extends": "store-test",
       "credentialsSource": "local",
