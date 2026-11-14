@@ -53,6 +53,7 @@ const assets = new Map([
   ["/model.js", ["model.js", "text/javascript; charset=utf-8"]],
   ["/live-notifications.js", ["live-notifications.js", "text/javascript; charset=utf-8"]],
   ["/order-messaging.js", ["order-messaging.js", "text/javascript; charset=utf-8"]],
+  ["/restaurant-contact-control.js", ["restaurant-contact-control.js", "text/javascript; charset=utf-8"]],
   ["/dispute-resolution.js", ["dispute-resolution.js", "text/javascript; charset=utf-8"]],
   ["/loyalty-ui.js", ["loyalty-ui.js", "text/javascript; charset=utf-8"]],
   ["/customer-additions.js", ["customer-additions.js", "text/javascript; charset=utf-8"]],

@@ -2,6 +2,7 @@ import {routeAdminRestaurantWorkspace} from "./admin-restaurant-workspace.js";
 import {routeRestaurantCommission} from "./restaurant-commission.js";
 import {routePaymentLaunch} from "./payment-launch.js";
 import {routePasswordChange} from "./auth/password-change.js";
+import {assertCustomerPasswordReady} from "./auth/customer-password-quarantine.js";
 import {routeAdminWorkspace} from "./admin-workspace.js";
 import {routePlatformVouchers} from "./platform-vouchers.js";
 import {routeBusinessDirectResolution} from "./business-direct-resolution.js";
@@ -168,11 +169,13 @@ export function createApp({ db, config, logger = console }) {
         for (let verificationAttempt = 0; verificationAttempt < 2; verificationAttempt += 1) {
           const row = db.prepare("SELECT * FROM users WHERE email=? AND account_enabled=1").get(email);
           if (!(await verifyPassword(password, row?.password_hash)) || !row) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+          assertCustomerPasswordReady(row);
           const verifiedHash = row.password_hash;
           const upgradedHash = passwordNeedsRehash(verifiedHash) ? await hashPassword(password) : null;
           const created = withTransaction(db, () => {
-            const current = db.prepare("SELECT password_hash,account_enabled FROM users WHERE id=?").get(row.id);
+            const current = db.prepare("SELECT password_hash,account_enabled,role,password_reset_required FROM users WHERE id=?").get(row.id);
             if (!current || current.password_hash !== verifiedHash || !current.account_enabled) return null;
+            assertCustomerPasswordReady(current);
             if (upgradedHash) db.prepare("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?").run(upgradedHash, row.id, verifiedHash);
             return createSession(db, row.id, config);
           });

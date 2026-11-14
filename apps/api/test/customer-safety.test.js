@@ -98,6 +98,12 @@ test("restaurant block cancels queued contact, blocks new contact and offer read
     assert.equal(notificationRecipientAllowed(f.db, notification), true);
     const blocked = await f.json(blockPath, { cookie: s.customer, method: "PUT", body: { blocked: true } });
     assert.equal(blocked.status, 200, blocked.text); assert.equal(blocked.body.data.blocked, true);
+    const controls = await f.request("/restaurant-contact-control.js");
+    assert.equal(controls.status, 200); assert.match(controls.text, /Stop restaurant messages/);
+    const stillBrowsable = await f.json(`/api/restaurants/${s.shop.id}/menu`);
+    assert.equal(stillBrowsable.status, 200);
+    const stillOrderable = await f.json("/api/orders", { cookie: s.customer, method: "POST", headers: { "Idempotency-Key": "safety-order-with-contact-stopped" }, body: { restaurantId: s.shop.id, items: [{ menuItemId: stillBrowsable.body.data.items[0].id, quantity: 1 }], fulfillment: "collection", paymentMethod: "mock_card" } });
+    assert.equal(stillOrderable.status, 201, stillOrderable.text);
     assert.equal(notificationRecipientAllowed(f.db, notification), false);
     assert.equal(f.db.prepare("SELECT status FROM customer_transactional_email_outbox WHERE notification_id=?").get(notification.id).status, "cancelled");
     assert.equal((await f.json(s.conversation, { cookie: s.owner, method: "POST", headers: { "Idempotency-Key": "blocked-new-contact" }, body: { message: "This must not arrive" } })).status, 409);

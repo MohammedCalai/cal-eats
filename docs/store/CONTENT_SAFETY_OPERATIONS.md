@@ -33,3 +33,9 @@ For a cover image, open **Administrator → Restaurants → the restaurant → O
 For wider unresolved merchant abuse, the existing administrator restaurant-suspension control can stop public restaurant/media access while the case is resolved. There is no automatic per-message takedown queue introduced by this patch.
 
 Assign and verify the manual image-review process before public submission. If reliable manual coverage or prevention of unreviewed image publication is required, add and validate that control rather than describing the current report-and-intervene tools as a prepublication approval system.
+
+## Chat contact controls — 14 November 2026 source update
+
+Customer restaurant conversations and order chat now offer **Stop restaurant messages** and **Resume messages**. These controls affect that customer's human restaurant contact and personalised offers, using the existing scoped suppression. They preserve browsing, ordering, status/ETA/payment updates and Cal-Eats support. The restaurant menu and Browse have no restaurant-block action; reporting remains available separately.
+
+The client requires a verified current preference before changing it, confirms the customer's intent and rejects stale-account actions or late responses. An uncertain update requires a fresh status check before another change. This is a source update requiring a new native binary and deployment; it is not evidence that existing Android23 or iPhone21 installations contain these controls. Timely human report handling and image-review coverage remain operational responsibilities.

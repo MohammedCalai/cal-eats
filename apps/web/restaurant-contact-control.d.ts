@@ -1,0 +1,5 @@
+export type RestaurantContactState = Readonly<{ loaded: boolean; blocked: boolean; busy: boolean; error: string }>;
+export type RestaurantContactController = { snapshot(): RestaurantContactState; refresh(): Promise<boolean>; change(blocked: boolean): Promise<boolean>; close(): void };
+export function restaurantContactCopy(blocked: boolean): { action: string; title: string; confirm: string; explanation: string; status: string };
+export function createRestaurantContactControl(options: { api: (path: string, options?: { method: string; body: string }) => Promise<unknown>; restaurantId: string; isCurrent?: () => boolean; onState?: (state: RestaurantContactState) => void; onChanged?: (blocked: boolean) => void }): RestaurantContactController;
+export function mountRestaurantContactControls(options: { api: (path: string, options?: { method: string; body: string }) => Promise<unknown>; container: HTMLElement; restaurantId: string; isCurrent?: () => boolean; onChanged?: (blocked: boolean) => void; confirm?: (message: string) => boolean | Promise<boolean> }): RestaurantContactController;

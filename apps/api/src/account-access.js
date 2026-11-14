@@ -7,6 +7,7 @@ import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { VALIDATION } from "../../../packages/contracts/src/index.js";
 import {accountAccessEmailDelivery,enqueueAccountAccessEmail} from "./account-access-email.js";
 import {businessInitialPasswordPending} from "./business-application-access.js";
+import {validateQuarantinedCustomerReset,recordCustomerPasswordResetCompletion} from "./auth/customer-password-quarantine.js";
 
 const RESET_MS = 30 * 60_000;
 const VERIFY_MS = 24 * 60 * 60_000;
@@ -82,11 +83,13 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
     if (password.length < VALIDATION.passwordMin || password.length > VALIDATION.passwordMax) throw new HttpError(400, "VALIDATION_ERROR", "Password is invalid");
     const passwordHash = await hashPassword(password); const now = config.now().toISOString();
     withTransaction(db, () => {
-      const row = db.prepare("SELECT t.* FROM account_access_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.purpose='password_reset' AND t.consumed_at IS NULL AND t.expires_at>? AND u.account_enabled=1 AND u.email=t.issued_email COLLATE NOCASE").get(tokenHash(token), now);
+      const row = db.prepare("SELECT t.*,u.role,u.password_reset_required FROM account_access_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.purpose='password_reset' AND t.consumed_at IS NULL AND t.expires_at>? AND u.account_enabled=1 AND u.email=t.issued_email COLLATE NOCASE").get(tokenHash(token), now);
       if (!row) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
       if(businessInitialPasswordPending(db,row.user_id))throw new HttpError(400,"TOKEN_INVALID","Token is invalid or expired");
+      validateQuarantinedCustomerReset(row,password);
       const consumed = db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE id=? AND consumed_at IS NULL").run(now, row.id); if (consumed.changes !== 1) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
-      db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, row.user_id);
+      db.prepare("UPDATE users SET password_hash=?,password_reset_required=0 WHERE id=?").run(passwordHash, row.user_id);
+      recordCustomerPasswordResetCompletion(db,row,now);
       db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE user_id=? AND purpose='password_reset' AND consumed_at IS NULL").run(now, row.user_id);
       db.prepare("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL").run(now, row.user_id);
       revokeUserSessions(db, row.user_id, now);

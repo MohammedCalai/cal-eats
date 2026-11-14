@@ -6,13 +6,14 @@ import { publicUser, VALIDATION } from "../../../packages/contracts/src/index.js
 import { isDemoEmail } from "./seed.js";
 import { recordCustomerLegalSubmission, validateCustomerLegalSubmission } from "./customer-legal.js";
 import { assertCustomerSignupEmailReady, issueCustomerSignupVerification } from "./account-access.js";
+import { assertCustomerPasswordReady } from "./auth/customer-password-quarantine.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const rawBearer = (req) => typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ") ? req.headers.authorization.slice(7) : "";
 
 export function readNativeSession(db, req, config) {
   const token = rawBearer(req); if (!token) return null;
-  const row = db.prepare("SELECT s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,u.* FROM native_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.account_enabled=1").get(hash(token),config.now().toISOString());
+  const row = db.prepare("SELECT s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,u.* FROM native_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.account_enabled=1 AND u.password_reset_required=0").get(hash(token),config.now().toISOString());
   if (row?.role === "customer") return { sessionId:row.session_id, native:true, nativeAudience:"customer", user:publicUser(row), createdAt:row.session_created_at, expiresAt:row.session_expires_at };
   const business = db.prepare("SELECT s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,u.* FROM native_business_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.account_enabled=1 AND u.role='restaurant' AND EXISTS(SELECT 1 FROM restaurant_memberships m WHERE m.user_id=u.id)").get(hash(token),config.now().toISOString());
   return business ? { sessionId:business.session_id, native:true, nativeAudience:"business", user:publicUser(business), createdAt:business.session_created_at, expiresAt:business.session_expires_at } : null;
@@ -29,8 +30,9 @@ export async function routeNativeAuth({req,res,url,db,config,session,checkRate})
       if(!(await verifyPassword(password,verifiedHash))||!user)throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
       // Explain the account boundary only after its password has been verified.
       if(user.role!==role)throw new HttpError(401,business?"BUSINESS_ACCOUNT_REQUIRED":"CUSTOMER_ACCOUNT_REQUIRED",business?"Use a restaurant account to sign in to the business platform.":"Use a customer account to sign in to the Cal-Eats app. Business and administrator accounts use the business platform.");
+      assertCustomerPasswordReady(user);
       if(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id))throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
-      const created=withTransaction(db,()=>{const current=db.prepare("SELECT password_hash,role,account_enabled FROM users WHERE id=?").get(user.id);if(!current||current.password_hash!==verifiedHash||current.role!==role||!current.account_enabled||(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id)))return null;return create(db,user.id,config,business?"business":"customer");});
+      const created=withTransaction(db,()=>{const current=db.prepare("SELECT password_hash,role,account_enabled,password_reset_required FROM users WHERE id=?").get(user.id);if(!current||current.password_hash!==verifiedHash||current.role!==role||!current.account_enabled||(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id)))return null;assertCustomerPasswordReady(current);return create(db,user.id,config,business?"business":"customer");});
       if(created)return sendJson(res,200,{data:{user:publicUser(user),token:created.token,expiresAt:created.expiresAt}});
     }
     throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
