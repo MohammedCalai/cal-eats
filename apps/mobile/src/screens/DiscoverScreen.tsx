@@ -13,13 +13,14 @@ import type { Address, CartEntry, Fulfillment, MenuItem, Restaurant, Offer } fro
 
 interface Props {
   browseHomeRequest?:number;
+  browseHomePending?:boolean; onBrowseHomeHandled?:(request:number)=>void;
   onScrollOffset?:(offset:number)=>void;userId:string;address:Address|null;onAddress:(address:Address)=>void;
   token: string; onSignIn: () => void; onUseOffer?: (restaurantId:string,offerId:string)=>void; fulfillment: Fulfillment; onFulfillment: (value: Fulfillment) => void;
   restaurant: Restaurant | null; cart: CartEntry[]; onRestaurant: (restaurant: Restaurant | null) => void;
   onCart: (entries: CartEntry[]) => void; onCheckout: () => void; focusRestaurantId?: string | null; onRestaurantFocused?: () => void;
 }
 export function DiscoverScreen(props: Props) {
-  const [browsing,setBrowsing]=useState(Boolean(props.browseHomeRequest)||!props.restaurant);
+  const [browsing,setBrowsing]=useState(Boolean(props.browseHomePending)||!props.restaurant);
   const [offers,setOffers]=useState<Offer[]>([]); const [browsingFilters,setBrowsingFilters]=useState<BrowsingFilters>({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});
   const [postcode, setPostcode] = useState(props.address?.postcode||""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);const [serviceArea,setServiceArea]=useState<ServiceArea|null>(null);
   const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
@@ -33,7 +34,7 @@ export function DiscoverScreen(props: Props) {
 
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; discoveryRequest.current++; menuRequest.current++; }; }, []);
-  useLayoutEffect(()=>{if(!props.browseHomeRequest)return;menuRequest.current++;setBrowsing(true);setQuery("");setBrowsingFilters({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});setMenuLoading(false);setError("");setNotice("");props.onScrollOffset?.(0);},[props.browseHomeRequest]);
+  useLayoutEffect(()=>{if(!props.browseHomePending)return;menuRequest.current++;setBrowsing(true);setQuery("");setBrowsingFilters({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});setMenuLoading(false);setError("");setNotice("");props.onScrollOffset?.(0);props.onBrowseHomeHandled?.(props.browseHomeRequest??0);},[props.browseHomeRequest,props.browseHomePending]);
   useEffect(()=>{let active=true;if(!props.address)void SecureStore.getItemAsync(`cal-eats-postcode-${props.userId}`).then(value=>{if(active&&value)setPostcode(value);}).catch(()=>{});return()=>{active=false;};},[props.userId]);
   useEffect(() => { if (props.address) setPostcode(props.address.postcode); }, [props.address?.postcode]);
   function selectLocation(address:Address){setPostcode(address.postcode);props.onAddress(address);void SecureStore.setItemAsync(`cal-eats-postcode-${props.userId}`,address.postcode).catch(()=>{});}
@@ -80,6 +81,7 @@ export function DiscoverScreen(props: Props) {
   useEffect(() => { if (!browsing && !props.focusRestaurantId && props.restaurant && !menu.length) void chooseRestaurant(props.restaurant, true); }, [props.restaurant?.id, props.focusRestaurantId]);
 
   async function chooseRestaurant(restaurant: Pick<Restaurant, "id">, refresh = false, replacementConfirmed = false) {
+    if(!mounted.current)return;
     if(!refresh && !replacementConfirmed && latestCart.current.length && latest.current.restaurant?.id !== restaurant.id){const itemCount=latestCart.current.reduce((sum,entry)=>sum+entry.quantity,0), nextRestaurant=restaurants.find(candidate=>candidate.id===restaurant.id)?.name||"this restaurant";Alert.alert("Start a new basket?",`Your basket from ${latest.current.restaurant?.name||"another restaurant"} has ${itemCount} ${itemCount===1?"item":"items"}. Starting a new basket with ${nextRestaurant} will remove those items.`,[{text:"Keep my basket",style:"cancel"},{text:"Clear & start new",style:"destructive",onPress:()=>void chooseRestaurant(restaurant,false,true)}]);return;}
     if(latest.current.restaurant?.id===restaurant.id && latestCart.current.length)refresh=true;
     const request = ++menuRequest.current, token = props.token;

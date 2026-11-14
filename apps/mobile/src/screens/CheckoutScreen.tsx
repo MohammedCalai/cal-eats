@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { Alert, AppState, BackHandler, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { ApiError, api } from "../api";
 import { Button, Card, ErrorBanner, Field, Pill, SectionTitle } from "../components";
@@ -34,7 +34,7 @@ function transientQuoteError(error:unknown) { return error instanceof ApiError &
 type PaymentConfig = { providerMode:string; cardAvailable:boolean; stripeMode:"test"|"live"|null };
 function stripeCheckoutUrl(value:string){const url=new URL(value);if(url.protocol!=="https:"||url.hostname!=="checkout.stripe.com"||url.username||url.password)throw Error("Secure checkout returned an unexpected destination.");return url.toString();}
 
-export function CheckoutScreen({ emailVerification, initialPhone, token, restaurant, cart, fulfillment, onBack, onCheckOrders, onOrdered, initialAddress, onOfferResolved, onAddress, onScrollOffset, initialSchedule, onScheduleChange }: { emailVerification:CustomerEmailVerificationReview;initialPhone?:string|null; initialSchedule?:ScheduleChoice|null; onScheduleChange?:(choice:ScheduleChoice)=>void; onScrollOffset?:(offset:number)=>void; initialAddress?:Address|null; onOfferResolved?:(offerId?:string)=>void; onAddress?:(address:Address)=>void; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onCheckOrders: () => void; onOrdered: (order: Order) => void }) {
+export function CheckoutScreen({ emailVerification, initialPhone, token, restaurant, cart, fulfillment, onBack, onBrowse, onBrowseAction, onCheckOrders, onOrdered, initialAddress, onOfferResolved, onAddress, onScrollOffset, initialSchedule, onScheduleChange }: { emailVerification:CustomerEmailVerificationReview;initialPhone?:string|null; initialSchedule?:ScheduleChoice|null; onScheduleChange?:(choice:ScheduleChoice)=>void; onScrollOffset?:(offset:number)=>void; initialAddress?:Address|null; onOfferResolved?:(offerId?:string)=>void; onAddress?:(address:Address)=>void; token: string; restaurant: Restaurant; cart: CartEntry[]; fulfillment: Fulfillment; onBack: () => void; onBrowse:()=>void;onBrowseAction:(action:(()=>void)|null)=>void;onCheckOrders: () => void; onOrdered: (order: Order) => void }) {
   const [firstOffers,setFirstOffers]=useState<Offer[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]),[claimingOffer,setClaimingOffer]=useState(false);
   const [address, setAddress] = useState<Address>(initialAddress?{...initialAddress}:{ label: "Home", line1: "", line2: "", city: "", postcode: "" }); const [saveAddress, setSaveAddress] = useState(false);
@@ -50,6 +50,7 @@ export function CheckoutScreen({ emailVerification, initialPhone, token, restaur
   const setScheduledFor=(value:string|null)=>changeSchedule({scheduledFor:value});
   const targetTime=scheduleMode==="scheduled"?scheduledFor:null;
   const recovering = Boolean(attempt.pending), locked = busy || recovering || claimingOffer;
+  useLayoutEffect(()=>{onBrowseAction(()=>{if(submitting.current||attempt.pending||claimingOffer){Alert.alert("Check your order first","Your checkout is still being processed. Finish checking the original order before browsing again.");return;}onBrowse();});return()=>onBrowseAction(null);},[onBrowseAction,onBrowse,busy,recovering,claimingOffer,attempt]);
   const legal = useCustomerLegal(token, !recovering);
   const healthConsent = useOrderHealthConsent(token, allergyNotes);
   const [paymentConfig,setPaymentConfig]=useState<PaymentConfig>({providerMode:"unknown",cardAvailable:false,stripeMode:null});
