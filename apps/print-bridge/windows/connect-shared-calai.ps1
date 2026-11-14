@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$ConfigPath, [string]$SetupPath, [string]$CalaiBridgePath = '', [string]$NodePath = '')
+param([string]$ConfigPath, [string]$SetupPath, [string]$CalaiBridgePath = '', [string]$NodePath = '', [string]$SearchDownloadsPath = '')
 $ErrorActionPreference = 'Stop'
 $SourceDir = Split-Path -Parent $PSScriptRoot
 $Config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
@@ -7,6 +7,9 @@ $Setup = Get-Content -LiteralPath $SetupPath -Raw | ConvertFrom-Json
 if ($Config.product -ne 'cal-eats' -or $Setup.product -ne 'cal-eats' -or $Config.apiBaseUrl -ne 'https://eats.calai.info') { throw 'The Cal-Eats printer setup identity is invalid.' }
 if ($Config.transport.kind -ne 'tcp-escpos') { return $false }
 $Candidates = @('C:\Calai\PrinterBridge\printer-bridge\print-bridge.js', 'C:\Calai\PrinterBridge\print-bridge.js', 'C:\ProgramData\CalaiPrintBridge\print-bridge.js')
+if ($SearchDownloadsPath -and (Test-Path -LiteralPath $SearchDownloadsPath -PathType Container)) {
+    $Candidates += @(Get-ChildItem -LiteralPath $SearchDownloadsPath -Directory -Filter 'printer-bridge*' | ForEach-Object { Join-Path $_.FullName 'print-bridge.js' })
+}
 if ($CalaiBridgePath) { $Candidates = @([IO.Path]::GetFullPath($CalaiBridgePath)) }
 $SharedCandidates = @()
 foreach ($Candidate in $Candidates) {

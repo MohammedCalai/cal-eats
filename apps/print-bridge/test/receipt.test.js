@@ -24,3 +24,15 @@ test("prints an optional scheduled customer target using the London date and tim
   assert.doesNotMatch(formatReceipt(receipt()).text, /SCHEDULED/);
   assert.throws(() => formatReceipt(receipt({ scheduledFor: "invalid" })), /scheduledFor is invalid/);
 });
+
+test("Calai-style receipts have a spaced header, separate address, totals and support footer", () => {
+  const result = formatReceipt(receipt({ deliveryAddress: "10 Sample Street, Sample Town, TE57 1NG" }));
+  const lines = result.text.split("\n");
+  assert.ok(lines.length >= 60, "The standard receipt should retain the longer Calai layout");
+  assert.ok(lines.every(line => line.length <= 40));
+  assert.match(result.text, /CUSTOMER\n\nCustomer:/);
+  assert.match(result.text, /DELIVERY ADDRESS\n\n10 Sample Street\nSample Town\nTE57 1NG/);
+  assert.match(result.text, /Food subtotal[^\n]*\n\nDelivery[^\n]*\n\nTOTAL/);
+  assert.match(result.text, /Need help\?\n[^\n]*hello@calai\.info/);
+  assert.ok(result.text.endsWith("\n\n\n\n\n"));
+});

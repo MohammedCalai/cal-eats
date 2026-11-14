@@ -73,7 +73,9 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   const subtotal = money(receipt.subtotalMinor, "receipt.subtotalMinor");
   const delivery = money(receipt.deliveryFeeMinor, "receipt.deliveryFeeMinor");
   const total = money(receipt.totalMinor, "receipt.totalMinor");
-  const lines = ["", "=".repeat(WIDTH), ...center("CAL-EATS"), ...center(restaurantName), "=".repeat(WIDTH)];
+  const rule = "-".repeat(WIDTH);
+  const logo = ["   .---.        ", "  / ... \\       ", "  \\   __/       ", "   `.__)        "];
+  const lines = ["", "=".repeat(WIDTH), "", ...logo.flatMap(center), ...center("CAL-EATS"), "", ...center(restaurantName), "", rule, ""];
   if(receipt.testReceipt===true)lines.push("",...center("*** PRINTER TEST - SAMPLE ONLY ***"),...center("DO NOT PREPARE OR DELIVER"),"");
   if (manualReprint) lines.push("", ...center("*** MANUAL REPRINT ***"), "");
   lines.push(...columns(`Order: ${orderNumber}`, stamp.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false })), `Date: ${stamp.toLocaleDateString("en-GB", { timeZone: "Europe/London" })}`, `Fulfilment: ${receipt.fulfillment.toUpperCase()}`);
@@ -83,6 +85,7 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
     const display = scheduled.toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
     lines.push("", ...wrap(`SCHEDULED ${receipt.fulfillment.toUpperCase()}: ${display}`), "");
   }
+  lines.push("", rule, "", "CUSTOMER", "");
   const customerName = clean(receipt.customerName, "receipt.customerName", 120);
   const customerPhone = clean(receipt.customerPhone, "receipt.customerPhone", 60);
   const suppliedAddress=receipt.deliveryAddress;
@@ -90,18 +93,21 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   const deliveryAddress = clean(addressText, "receipt.deliveryAddress", 500);
   if (customerName) lines.push(...wrap(`Customer: ${customerName}`));
   if (customerPhone) lines.push(...wrap(`Phone: ${customerPhone}`));
-  if (receipt.fulfillment === "delivery" && deliveryAddress) lines.push(...wrap(`Address: ${deliveryAddress}`));
+  if (receipt.fulfillment === "delivery" && deliveryAddress) {
+    lines.push("", "DELIVERY ADDRESS", "");
+    for (const part of deliveryAddress.split(/,\s*/).filter(Boolean)) lines.push(...wrap(part));
+  }
   const allergyNotes = clean(receipt.allergyNotes, "receipt.allergyNotes", 500);
   const orderNotes = clean(receipt.orderNotes, "receipt.orderNotes", 500);
   if (allergyNotes) lines.push("", "!".repeat(WIDTH), ...wrap(`ALLERGY NOTE: ${allergyNotes}`), "!".repeat(WIDTH));
-  if (orderNotes) lines.push("", ...wrap(`ORDER NOTE: ${orderNotes}`));
-  lines.push("", "-".repeat(WIDTH), "ITEMS", "");
+  if (orderNotes) lines.push("", rule, "", "ORDER NOTES", "", ...wrap(orderNotes));
+  lines.push("", rule, "", "ITEMS", "");
   for (const [index, item] of items.entries()) lines.push(...itemLines(item, index), "");
-  lines.push("-".repeat(WIDTH), ...columns("Food subtotal", subtotal), ...columns("Delivery", delivery), ...columns("TOTAL", total));
+  lines.push(rule, "", ...columns("Food subtotal", subtotal), "", ...columns("Delivery", delivery), "", ...columns("TOTAL", total), "");
   if(receipt.platformVoucherMinor){const credit=money(receipt.platformVoucherMinor,"receipt.platformVoucherMinor"),due=money(receipt.customerPayableMinor,"receipt.customerPayableMinor");lines.push(...columns("Cal-Eats voucher",credit),...columns("Customer pays",due),...wrap("Voucher funded by Cal-Eats"));}
   const paymentStatus = clean(receipt.paymentStatus, "receipt.paymentStatus", 80);
   if (!paymentStatus) throw new Error("receipt.paymentStatus is required");
-  lines.push(...wrap(`Payment: ${paymentStatus}`), "", ...center(receipt.testReceipt===true?"PRINTER TEST - NO ORDER OR PAYMENT":"Thank you for ordering with Cal-Eats"), "", "", "");
+  lines.push(...wrap(`Payment: ${paymentStatus}`), "", rule, "", ...center(receipt.testReceipt===true?"PRINTER TEST - NO ORDER OR PAYMENT":"Thank you for ordering with Cal-Eats"), "", rule, "", ...center("Need help?"), ...center("hello@calai.info"), "", rule, "", "", "", "", "");
   const text = lines.join("\n");
   return { text, sha256: createHash("sha256").update(text, "utf8").digest("hex") };
 }
