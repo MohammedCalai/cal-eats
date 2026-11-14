@@ -55,7 +55,7 @@ export default function CalaiPrinters({restaurant,permission}) {
       if(!response.ok){const body=await response.json().catch(()=>null);throw Error(body?.error?.message||"The printer setup download is unavailable. Please try again.");}
       if(!response.headers.get("Content-Type")?.includes("application/zip"))throw Error("The printer setup package is unavailable. Please try again.");
       const blob=await response.blob();if(!alive.current||controller.signal.aborted)return;
-      const objectUrl=URL.createObjectURL(blob),link=document.createElement("a");link.href=objectUrl;link.download="Cal-Eats-Printer-Setup.zip";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setNotice("Windows setup downloaded. Extract it on the connected Windows device and run install.ps1. It connects automatically; then use Test print here.");
+      const objectUrl=URL.createObjectURL(blob),link=document.createElement("a");link.href=objectUrl;link.download="Cal-Eats-Printer-Setup.zip";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setNotice("Windows setup downloaded. On an updated Calai-managed Surface, leave the ZIP in the Business User’s Downloads and restart its bridge. On other Windows devices, extract it and run start.bat. Then use Test print here.");
     }catch(caught){if(caught.name==="AbortError"&&alive.current)throw Error("The printer setup download took too long. Please try again.");throw caught;}finally{clearTimeout(timeout);downloads.current.delete(controller);}
   });}
   async function testPrint(printer){await run('test:'+printer.id,async()=>{

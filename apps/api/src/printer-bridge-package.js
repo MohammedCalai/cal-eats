@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { HttpError } from "./http.js";
 
 const bridgeRoot = new URL("../../print-bridge/", import.meta.url);
-const files = ["package.json", "src/index.js", "src/api-client.js", "src/bridge.js", "src/config.js", "src/credential-store.js", "src/journal.js", "src/logger.js", "src/receipt.js", "src/transports.js", "src/setup.js", "windows/install.ps1", "windows/status.ps1", "windows/uninstall.ps1"];
+const files = ["package.json", "src/index.js", "src/api-client.js", "src/bridge.js", "src/config.js", "src/credential-store.js", "src/journal.js", "src/logger.js", "src/receipt.js", "src/transports.js", "src/setup.js", "src/shared-calai.js", "src/patch-calai.js", "src/instance-lock.js", "calai-native/shared-prefix.txt", "calai-native/shared-suffix.txt", "calai-native/supported-hashes.json", "windows/connect-shared-calai.ps1", "windows/install.ps1", "windows/status.ps1", "windows/uninstall.ps1"];
 
 const automaticInstaller=String.raw`param([string]$NodePath = "")
 $ErrorActionPreference = "Stop"
@@ -53,7 +53,17 @@ export async function buildPrinterBridgePackage(printer, origin, {setup=null} = 
     entries.push(["config.json",JSON.stringify(configuration,null,2)+"\n"],["setup.json",JSON.stringify(setup,null,2)+"\n"]);
     entries.push(["install.ps1",automaticInstaller.replace(/\r?\n/g,"\r\n")]);
     entries.push(["start.bat",'@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"\r\nif errorlevel 1 pause\r\n']);
-    entries.push(["README.txt",`CAL-EATS PRINTER SETUP\r\n\r\nPrinter: ${String(printer.name).replace(/[\r\n\x00-\x1f]/g," ")}\r\nPrinter address: ${printer.ip_address}:9100\r\n\r\n1. Extract this complete ZIP on the Windows device connected to your printer.\r\n2. Double-click start.bat and allow the Windows administrator prompt, or deploy install.ps1 as SYSTEM through Microsoft Intune. It configures this printer automatically and starts the background connection.\r\n3. Return to Cal-Eats > Printers. When Connected appears, select Test print and check the sample receipt.\r\n\r\nThe setup code is private, works once for this printer only, and must first be used before ${setup.expiresAt}. It is consumed automatically. No manual pairing code or customer/order/payment is needed. Download a fresh setup if it expires or you install on another device.\r\n\r\nThe installed connection starts with Windows, keeps its saved credentials and print journal through updates, and is independent of the original Calai installation. Internet access to eats.calai.info and local network access to the printer are required. If Node.js 24 is missing, the installer obtains a verified official runtime.\r\n\r\nAfter setup, confirmed orders are queued automatically. Do not run multiple copies for the same printer. A lost connection during printing is shown as uncertain; check paper before requesting a labelled reprint. Connected means the printer network port was recently reachable, not proof of paper output.\r\n`]);
+    entries.push(["README.txt",[
+      "CAL-EATS PRINTER SETUP", "", `Printer: ${String(printer.name).replace(/[\r\n\x00-\x1f]/g," ")}`, "",
+      "CALAI-MANAGED SURFACE WITH THE SHARED-BRIDGE UPDATE:",
+      "Download this ZIP while signed in as the Business User and leave it in Downloads. The managed setup connects Cal-Eats to that Surface's existing Calai bridge. Restart the bridge or Surface once to load the update.", "",
+      "OTHER WINDOWS DEVICES:",
+      "Extract the complete ZIP and run start.bat with administrator approval. An existing supported Calai bridge is reused with its printer settings and runtime; restart that bridge once. If no Calai bridge is present, the standard Cal-Eats background connection is installed.", "",
+      "Return to Cal-Eats > Printers. When Connected appears, select Test print and check the sample receipt.", "",
+      `This private setup works once for this printer and must first be used before ${setup.expiresAt}. Download a fresh setup for another device or after expiry. No manual pairing code or customer payment is needed.`, "",
+      "Calai and Cal-Eats keep their own order queues and credentials. Shared printing uses the existing Calai printer routine, printer address and startup. Confirmed Cal-Eats orders queue automatically. Do not start extra copies for the same printer.", "",
+      "Connected means the printer network port was recently reachable. Check paper output before requesting a labelled reprint after an uncertain result.", "",
+    ].join("\r\n")]);
     return printerZip(entries);
   }
   throw new HttpError(410,"PRINTER_SETUP_UPDATED","Download automatic printer setup from the Cal-Eats printer settings.");

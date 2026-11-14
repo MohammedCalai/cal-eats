@@ -1,0 +1,21 @@
+
+// Optional second order source in this same process, with the same printer.
+// Failure to connect Cal-Eats never stops the existing Calai polling loop.
+const calEatsStop = new AbortController();
+process.once("SIGINT", () => calEatsStop.abort());
+process.once("SIGTERM", () => calEatsStop.abort());
+async function connectCalEats() {
+  try {
+    const [{ startSharedCalai }, { acquireLock }, { fileURLToPath }] = await Promise.all([
+      import("./cal-eats/runtime/src/shared-calai.js"),
+      import("./cal-eats/runtime/src/instance-lock.js"),
+      import("node:url"),
+    ]);
+    await startSharedCalai({ configPath: fileURLToPath(new URL("./cal-eats/config.json", import.meta.url)),
+      calaiConfig: config, sendToNetworkPrinter, signal: calEatsStop.signal, acquireLock });
+  } catch {
+    console.warn("Cal-Eats connection is waiting; the original Calai bridge remains running.");
+    if (!calEatsStop.signal.aborted) setTimeout(connectCalEats, 30000);
+  }
+}
+connectCalEats();

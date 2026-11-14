@@ -1,6 +1,16 @@
 # Cal-Eats print bridge
 
-The Cal-Eats bridge is an independent Node.js device client under `apps/print-bridge`. Its default and verified transport is a **local file-sink simulator**. Nothing in this package has been installed on Windows or connected to a printer. Raw TCP ESC/POS exists only as an explicit, separately gated transport and remains physically unverified.
+The Cal-Eats device client under `apps/print-bridge` supports standalone installation and sharing an existing native Calai bridge. The file-sink simulator remains the default development transport.
+
+## Shared native bridge — 14 November 2026
+
+The owner explicitly requested reuse of the working Windows Calai bridge. Shared mode adds the Cal-Eats device client inside that existing Node process and dispatches through its original network-printer routine. Calai polling, configuration, credentials, runtime and startup are preserved. Both queues share a dispatch chain so their receipt bytes cannot interleave. Cal-Eats keeps its scoped credential and durable journal; no Calai credential is sent to Cal-Eats. Device reachability and uncertain physical outcomes remain explicit.
+
+Only three reviewed native source hashes are supported (`calai-native/supported-hashes.json`). The installer preserves an original-source backup, refuses ambiguous or unknown installations, and derives the printer address from the existing Calai configuration. It does not start another task or download another runtime in shared mode. The managed SYSTEM installer reads native files as data and does not execute code from user-writable bridge folders.
+
+The exact native bridge started by the owner on the laptop (`printer-bridge (2)`) was inspected and extended. Cal-Eats showed **Connected**, the printer port was reachable, and a sample receipt was dispatched and acknowledged as uncertain. The owner deferred checking paper output. This does not verify printing on a Surface.
+
+The managed Surface installer includes the same extension. Its existing maintenance task reads only `config.json` and `setup.json` from a fresh Cal-Eats setup ZIP in the Business User's Downloads; it never extracts or runs downloaded code. The native bridge loads the change on its next restart. Printer-specific bootstrap data is not embedded in the group-wide Intune script. The standalone installation remains available when no supported native Calai bridge is present.
 
 ## Provenance and isolation
 

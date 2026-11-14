@@ -1,0 +1,7 @@
+// Cal-Eats shared Calai bridge v1
+let calaiSharedDispatch = Promise.resolve();
+function sendToNetworkPrinter(ip, port, textContent) {
+  const dispatched = calaiSharedDispatch.then(() => calaiOriginalNetworkPrinter(ip, port, textContent));
+  calaiSharedDispatch = dispatched.catch(() => {});
+  return dispatched;
+}

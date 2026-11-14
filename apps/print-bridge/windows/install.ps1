@@ -28,6 +28,10 @@ if ($Setup.printerId -notmatch $UuidPattern -or $Setup.restaurantId -notmatch $U
     throw "The downloaded printer identity is invalid. Download a fresh printer setup."
 }
 $PrinterId = ([guid]$Setup.printerId).ToString()
+# Prefer the already-working Calai bridge when its printer matches this setup.
+# Its original config, runtime, launcher and Calai queue remain in use.
+$SharedConnection = & (Join-Path $PSScriptRoot 'connect-shared-calai.ps1') -ConfigPath $ConfigPath -SetupPath $SetupPath
+if ($SharedConnection -eq $true) { return }
 $TaskName = "CalEatsPrinter-$PrinterId"
 $ProgramDataRoot = [IO.Path]::GetFullPath($env:ProgramData)
 $PrintersRoot = [IO.Path]::GetFullPath((Join-Path $ProgramDataRoot "CalEats\Printers"))
