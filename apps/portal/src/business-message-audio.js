@@ -13,7 +13,7 @@ export function createBusinessMessageAudio(player, {
   const acknowledged = new Map();
   let current = { scope: "", enabled: false, pending: false, revision: 0, orderAlarmActive: false };
   let timer = null, active = null, generation = 0, repeatDue = false;
-  let state = Object.freeze({ ...current, acknowledgedRevision: -1, playing: false, testing: false, blocked: false, error: "" });
+  let state = Object.freeze({ ...current, acknowledgedRevision: -1, playing: false, blocked: false, error: "" });
   function publish(patch = {}) {
     const next = { ...state, ...current, acknowledgedRevision: acknowledged.get(current.scope) ?? -1, ...patch };
     if (Object.keys(next).every(key => next[key] === state[key])) return;
@@ -36,16 +36,16 @@ export function createBusinessMessageAudio(player, {
     if (hadActive || alwaysPause) {
       try { player.pause(); } catch { /* Playback must remain disabled even if the underlying player fails to stop. */ }
     }
-    publish({ playing: false, testing: false, blocked: false, error: "" });
+    publish({ playing: false, blocked: false, error: "" });
   }
-  function start({ sample = false } = {}) {
-    if ((sample ? !current.scope || !current.enabled || current.orderAlarmActive : !eligible()) || active || state.blocked) return;
+  function start() {
+    if (!eligible() || active || state.blocked) return;
     clearRepeat();
     const attempt = ++generation;
-    active = { attempt, scope: current.scope, sample };
-    publish({ playing: true, testing: sample, blocked: false, error: "" });
+    active = { attempt, scope: current.scope };
+    publish({ playing: true, blocked: false, error: "" });
     // The cadence is measured from each start. A longer melody must finish before another can start.
-    if (!sample) timer = schedule(() => {
+    timer = schedule(() => {
       timer = null;
       if (!eligible()) return;
       if (active) repeatDue = true;
@@ -56,13 +56,13 @@ export function createBusinessMessageAudio(player, {
       active = null;
       if (error) {
         clearRepeat();
-        publish({ playing: false, testing: false, blocked: true, error: error?.name === "NotAllowedError"
+        publish({ playing: false, blocked: true, error: error?.name === "NotAllowedError"
           ? "Tap anywhere in the business platform to allow message sounds."
           : "Message sound could not play. Check device volume and audio permissions." });
         return;
       }
-      publish({ playing: false, testing: false, blocked: false, error: "" });
-      if ((repeatDue || sample) && eligible()) start();
+      publish({ playing: false, blocked: false, error: "" });
+      if (repeatDue && eligible()) start();
     };
     try { Promise.resolve(player.play()).then(() => complete(), complete); }
     catch (error) { complete(error); }
@@ -78,18 +78,13 @@ export function createBusinessMessageAudio(player, {
     update(next) {
       const scope = validScope(next?.scope), revision = numericRevision(next?.revision);
       const scopeChanged = scope !== current.scope;
-      const previouslyPending = current.pending;
       if (scopeChanged) silence();
       current = {
         scope, enabled: Boolean(next?.enabled), pending: typeof next?.pending === "number" ? next.pending > 0 : Boolean(next?.pending),
         revision, orderAlarmActive: Boolean(next?.orderAlarmActive)
       };
       publish(scopeChanged ? { blocked: false, error: "" } : {});
-      if (!eligible()) {
-        if (active?.sample && !scopeChanged && current.enabled && !current.orderAlarmActive) return;
-        if (!scopeChanged && current.enabled && !current.pending && !previouslyPending && !current.orderAlarmActive && state.blocked) return;
-        silence(); return;
-      }
+      if (!eligible()) { silence(); return; }
       // Repeated polls, route renders and count changes do not restart an active melody/cadence.
       if (!active && timer === null && !state.blocked) start();
     },
@@ -107,14 +102,6 @@ export function createBusinessMessageAudio(player, {
       if (state.blocked) publish({ blocked: false, error: "" });
       if (!active && timer === null) start();
     },
-    // A deliberate sample never marks messages read or suppresses a new arrival.
-    test() {
-      if (!current.scope || !current.enabled || current.orderAlarmActive) return false;
-      silence({ alwaysPause: true });
-      start({ sample: !eligible() });
-      return true;
-    },
-    stopTest() { if (active?.sample) silence({ alwaysPause: true }); },
     stop() {
       current = { scope: "", enabled: false, pending: false, revision: 0, orderAlarmActive: false };
       silence({ alwaysPause: true });

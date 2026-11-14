@@ -65,7 +65,7 @@ export function useBusinessMessageReminder({enabled,userId,restaurantId,soundEna
     document.addEventListener("pointerdown",interact,true);document.addEventListener("keydown",interact,true);
     return()=>{document.removeEventListener("pointerdown",interact,true);document.removeEventListener("keydown",interact,true);controller.stop();};
   },[controller,player]);
-  return {...state,available:Boolean(scope),soundEnabled:Boolean(soundEnabled),orderAlarmActive:Boolean(orderAlarmActive),feedChecked:feed.scope===scope&&feed.checked,feedError:feed.scope===scope?feed.error:"",testSound:()=>controller.test(),stopTest:()=>controller.stopTest()};
+  return {...state,available:Boolean(scope),feedChecked:feed.scope===scope&&feed.checked,feedError:feed.scope===scope?feed.error:""};
 }
 
 export function BusinessMessageReminderProvider({enabled,userId,restaurantId,children}){
@@ -77,9 +77,8 @@ export function BusinessMessageReminderProvider({enabled,userId,restaurantId,chi
 }
 export const useBusinessMessageAlerts=()=>useContext(MessageSoundContext);
 
-export function BusinessMessageSoundControls({compact=false}){
+export function BusinessMessageSoundStatus({compact=false}){
   const sound=useBusinessMessageAlerts();if(!sound?.available)return null;
-  const needsAction=sound.pending&&sound.acknowledgedRevision<sound.revision;
-  const detail=!sound.soundEnabled?"Message sound is muted in Settings.":sound.orderAlarmActive?"Confirm waiting orders first. Message reminders resume afterwards.":needsAction?"A short melody repeats every 10 seconds until you open a customer conversation.":"Automatic message alerts are on. Keep this platform open and your device volume audible.";
-  return <section className={`business-message-sound${compact?" compact":""}${sound.blocked||sound.feedError?" needs-attention":""}`} aria-label="Customer message sound"><div>{!compact&&<strong>Customer message alerts</strong>}<p>{detail}</p>{sound.feedError&&<p className="message-sound-error" role="status">{sound.feedError}</p>}{sound.error&&<p className="message-sound-error" role="alert">{sound.error}</p>}{sound.testing&&<p role="status">Playing message sound…</p>}</div><div className="button-row"><button type="button" className="quiet" disabled={!sound.soundEnabled||sound.orderAlarmActive} onClick={sound.testSound}>Test message sound</button>{sound.testing&&<button type="button" className="quiet" onClick={sound.stopTest}>Stop sample</button>}</div></section>;
+  if(!sound.error&&!sound.feedError)return null;
+  return <div className={`business-message-sound${compact?" compact":""}`} role="status">{sound.error&&<p>{sound.error}</p>}{sound.feedError&&<p>{sound.feedError}</p>}</div>;
 }
