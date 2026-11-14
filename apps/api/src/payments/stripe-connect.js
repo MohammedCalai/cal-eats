@@ -11,6 +11,7 @@ import { restaurantBankingConfig,bankingPaymentScope } from "./live-onboarding.j
 import { hasLiveBankingCredential,requireLiveBankingCredential } from "../auth/password-change.js";
 import {orderFinancialEnvironment,requireOrderFinancialEnvironment,recordVerifiedPayoutApiRead} from "../financial-environment.js";
 import {claimAccountSetupAttempt,recordAccountSetupFailure,completeAccountSetupAttempt} from "./account-setup-attempts.js";
+import {validateSettlementAdjustment,applySettlementAdjustments,assertAdjustedSettlementDispatch} from "../business-payment-adjustments.js";
 
 const stripeMode = config => ["stripe_test", "stripe_live"].includes(config.paymentProviderMode) ? config.paymentProviderMode : null;
 const provider = config => config.stripeProvider ?? config.paymentProvider;
@@ -294,6 +295,7 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
         if (ready?.providerReference !== binding.account.provider_reference || !ready.chargesEnabled || !ready.payoutsEnabled || ready.ok === false) throw Object.assign(Error("Restaurant account is not ready"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
         saveAccount(db,config,binding.order.restaurant_id,ready);
         assertCurrentTransfer(db,config,payload,binding);
+        assertAdjustedSettlementDispatch(db,config,payload,job.operation_key,job,workerId);
         result = await adapter.createTransfer({amountMinor:payload.amountMinor,destinationAccountId:payload.accountId,sourceTransactionId:payload.sourceCharge,platformFunded:payload.fundingSource==="platform_balance",transferGroup:`order:${payload.orderId}`,operationKey:job.operation_key,idempotencyKey:job.operation_key});
       } else if (job.kind === "stripe_refund") {
         if(config.financialRemediesEnabled!==true)throw Object.assign(Error("Business review is required"),{code:"BUSINESS_DIRECT_RESOLUTION"});
@@ -314,6 +316,7 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
         }
         if (confirmed && job.kind === "stripe_transfer") {
           recordStripeMovement(db,fresh,"merchant_available","connected_account_funds",updated);
+          applySettlementAdjustments(db,payload,updated);
           for (const row of db.prepare("SELECT id FROM refund_cases WHERE order_id=? AND execution_status='confirmed'").all(binding.order.id)) queueStripeTransferReversal(db,{caseId:row.id,now:updated});
         }
         if (confirmed && job.kind === "stripe_transfer_reversal") recordStripeMovement(db,fresh,"connected_account_funds","merchant_recovery",updated);
@@ -327,7 +330,7 @@ export async function runStripeConnectWorker(db, config, { workerId = randomUUID
         db.prepare("UPDATE marketplace_worker_jobs SET status='queued',attempts=MAX(0,attempts-1),lease_owner=NULL,lease_expires_at=NULL,error=?,updated_at=? WHERE id=? AND lease_owner=?").run(code,updated,job.id,workerId);
         continue;
       }
-      const held = ["STRIPE_TRANSFER_INELIGIBLE","STRIPE_RESULT_MISMATCH","STRIPE_MODE_MISMATCH"].includes(code), permanent = held || job.attempts >= 5;
+      const held = ["STRIPE_TRANSFER_INELIGIBLE","STRIPE_RESULT_MISMATCH","STRIPE_MODE_MISMATCH","STRIPE_TRANSFER_RECONCILIATION_REQUIRED"].includes(code), permanent = held || job.attempts >= 5;
       const saved = withTransaction(db, () => {
         if (!hasWorkerLease(db,job,workerId,updated)) return false;
         db.prepare("UPDATE marketplace_operations SET status=?,error=?,updated_at=? WHERE operation_key=? AND status<>'confirmed'").run(held?"held":permanent?"failed":"unknown",code,updated,job.operation_key);
@@ -351,6 +354,11 @@ function movementBinding(db,config,job,payload) {
   if (!Number.isSafeInteger(payload.amountMinor) || payload.amountMinor < 1 || payload.amountMinor > order.total_minor) throw Object.assign(Error("Amount binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
   const account = accountForMode(db,order.restaurant_id,config);
   if (job.kind === "stripe_transfer" && (!account || payload.accountId !== account.provider_reference || payload.platformAccountId !== config.stripePlatformAccountId || (payload.sourceCharge??null) !== (platformVoucherMinor(order)?null:payment.latest_charge_id) || (payload.paymentIntentId??null) !== (payment.payment_intent_id??null))) throw Object.assign(Error("Transfer binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
+  if(job.kind==="stripe_transfer"){
+    validateSettlementAdjustment(db,payload);
+    const operation=db.prepare("SELECT amount_minor,metadata,restaurant_id,order_id,provider_mode FROM marketplace_operations WHERE operation_key=? AND kind='merchant_transfer'").get(job.operation_key);
+    if(!operation||operation.amount_minor!==payload.amountMinor||operation.restaurant_id!==order.restaurant_id||operation.order_id!==order.id||operation.provider_mode!==payment.provider_mode||operation.metadata!==job.payload)throw Object.assign(Error("Transfer operation snapshot differs from its job"),{code:"STRIPE_RESULT_MISMATCH"});
+  }
   if (job.kind === "stripe_refund" && (!dispute || dispute.provider_mode !== config.paymentProviderMode || payload.paymentIntentId !== payment.payment_intent_id || payload.amountMinor !== dispute.approved_amount_minor)) throw Object.assign(Error("Refund binding failed"),{code:"STRIPE_RESULT_MISMATCH"});
   if (job.kind === "stripe_transfer_reversal") {
     const transfer = db.prepare("SELECT * FROM marketplace_operations WHERE order_id=? AND kind='merchant_transfer' AND provider_reference=? AND provider_mode=? AND status='confirmed'").get(order.id,payload.transferId,config.paymentProviderMode);
@@ -367,7 +375,8 @@ function assertCurrentTransfer(db,config,payload,binding) {
   const net = order.total_minor - refunds.total - Math.max(0,order.commission_minor-refunds.reversal);
   if(platformVoucherMinor(order)&&(!assertVoucherFunding(db,order)||!voucherProviderBinding(order,config)||payload.fundingSource!=="platform_balance"||payload.platformVoucherMinor!==platformVoucherMinor(order)||payload.customerPayableMinor!==customerPayableMinor(order)))throw Object.assign(Error("Voucher settlement snapshot is invalid"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
   if(!platformVoucherMinor(order)&&payload.fundingSource==="platform_balance")throw Object.assign(Error("Platform funding is not authorized"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
-  if (order.status !== "completed" || binding.payment.status !== "captured" || !ready?.charges_enabled || !ready?.payouts_enabled || active || payload.amountMinor !== net || payload.totalMinor !== order.total_minor || payload.policyVersion !== order.contract_policy_version) throw Object.assign(Error("Transfer snapshot is no longer eligible"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
+  const withheld=validateSettlementAdjustment(db,payload);
+  if (order.status !== "completed" || binding.payment.status !== "captured" || !ready?.charges_enabled || !ready?.payouts_enabled || active || payload.amountMinor+withheld !== net || payload.totalMinor !== order.total_minor || payload.policyVersion !== order.contract_policy_version) throw Object.assign(Error("Transfer snapshot is no longer eligible"),{code:"STRIPE_TRANSFER_INELIGIBLE"});
 }
 function assertCurrentRefund(db,payload,binding) {
   const dispute = db.prepare("SELECT * FROM refund_cases WHERE id=?").get(payload.caseId), refunded = db.prepare("SELECT COALESCE(SUM(food_amount_minor+delivery_amount_minor),0) n FROM refunds WHERE order_id=?").get(binding.order.id).n;

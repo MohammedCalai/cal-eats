@@ -5,15 +5,10 @@ import {createBusinessMessageAudio} from "./business-message-audio.js";
 import {createBusinessMessageMelody} from "./business-message-melody.js";
 
 export const MESSAGE_OPENED_EVENT="cal-eats-business-message-opened";
-const storageKey=scope=>`cal-eats-message-ack:${scope}`;
-
-/** Mounted in the business shell, so visiting Dashboard cannot restart an acknowledged backlog. */
+/** The server's conversation read cursors govern sound across every business page. */
 export function useBusinessMessageReminder({enabled,userId,restaurantId,soundEnabled,orderAlarmActive}){
   const [player]=useState(()=>createBusinessMessageMelody());
-  const [controller]=useState(()=>createBusinessMessageAudio(player,{
-    readAcknowledged:scope=>Number(sessionStorage.getItem(storageKey(scope)))||0,
-    writeAcknowledged:(scope,revision)=>sessionStorage.setItem(storageKey(scope),String(revision))
-  }));
+  const [controller]=useState(()=>createBusinessMessageAudio(player));
   const [state,setState]=useState(()=>controller.getSnapshot());
   const scope=enabled&&userId&&restaurantId?`${userId}:${restaurantId}`:"";
   const settings=useRef(null),attention=useRef({scope:"",pending:0,revision:0}),sequence=useRef(0);
@@ -36,9 +31,11 @@ export function useBusinessMessageReminder({enabled,userId,restaurantId,soundEna
     if(!scope){controller.stop();return;}
     void load();
     const disconnect=connectLiveNotifications({onRefresh:load});
-    const poll=()=>{if(!document.hidden)void load();};
-    const timer=setInterval(poll,15000);
-    const opened=event=>{if(event.detail?.restaurantId!==restaurantId||event.detail?.viewerUserId!==userId)return;controller.acknowledge(scope,event.detail.messageAttentionRevision);void load();};
+    // Refresh ringing backlogs even in a background tab so a successful read on
+    // another device can stop reminders. Idle background tabs do not keep polling.
+    const poll=()=>{if(!document.hidden||attention.current.pending>0)void load();};
+    const timer=setInterval(poll,5000);
+    const opened=event=>{if(event.detail?.restaurantId!==restaurantId||event.detail?.viewerUserId!==userId)return;void load();};
     window.addEventListener(MESSAGE_OPENED_EVENT,opened);
     window.addEventListener("cal-eats-notifications-read",poll);
     window.addEventListener("focus",poll);

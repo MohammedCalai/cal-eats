@@ -86,25 +86,29 @@ test("printer management preserves old fields, normalises metadata and isolates 
     const duplicateOther=await f.json(`/api/restaurant/restaurants/${otherRestaurant.id}/printers`,{method:"POST",cookie:other,body:{name:"Own printer",enabled:true,macAddress:"AABBCCDDEEFF",ipAddress:"192.0.2.13"}});assert.equal(duplicateOther.status,201,duplicateOther.text);
     const kit=`${root}/${printer.id}/bridge-package`;
     assert.equal((await f.request(kit)).status,401);assert.equal((await f.request(kit,{cookie:other})).status,404);
-    const download=await f.request(kit,{cookie:owner});assert.equal(download.status,200);assert.equal(download.headers.get("content-type"),"application/zip");assert.equal(download.headers.get("cache-control"),"private, no-store");
+    const retired=await f.json(kit,{cookie:owner});assert.equal(retired.status,410);
+    const download=await f.request(`${root}/${printer.id}/setup-package`,{method:"POST",cookie:owner,body:{}});assert.equal(download.status,200);assert.equal(download.headers.get("content-type"),"application/zip");assert.equal(download.headers.get("cache-control"),"private, no-store");
     assert.equal((await f.json(`${root}/${printer.id}`,{method:"PATCH",cookie:owner,body:{revoked:true,enabled:false}})).status,200);
     assert.ok(f.db.prepare("SELECT revoked_at FROM restaurant_printers WHERE id=?").get(printer.id).revoked_at);assert.equal((await f.json(kit,{cookie:owner})).status,404);
-    const replacement=await f.json(root,{method:"POST",cookie:owner,body:{name:"Replacement",enabled:true,macAddress:"AABBCCDDEEFF"}});assert.equal(replacement.status,201,replacement.text);assert.equal((await f.json(`${root}/${replacement.body.data.id}/bridge-package`,{cookie:owner})).body.error.code,"PRINTER_IP_REQUIRED");
+    const replacement=await f.json(root,{method:"POST",cookie:owner,body:{name:"Replacement",enabled:true,macAddress:"AABBCCDDEEFF"}});assert.equal(replacement.status,201,replacement.text);assert.equal((await f.json(`${root}/${replacement.body.data.id}/setup-package`,{method:"POST",cookie:owner,body:{}})).body.error.code,"PRINTER_IP_REQUIRED");
   }finally{await f.close();}
 });
 
-test("downloaded ZIP contains only Cal-Eats bridge files, validated per-printer config and no credentials",async()=>{
+test("automatic setup ZIP contains scoped bootstrap, validated config and no device credentials",async()=>{
   const f=await journeyFixture();
   try{
-    const bytes=await buildPrinterBridgePackage({name:"Kitchen café",mac_address:"AA:BB:CC:DD:EE:FF",ip_address:"192.0.2.24"},"https://eats.calai.info");
+    const printer={id:"b2222222-2222-4222-8222-222222222222",restaurant_id:"a1111111-1111-4111-8111-111111111111",name:"Kitchen café",mac_address:"AA:BB:CC:DD:EE:FF",ip_address:"192.0.2.24"};
+    const setup={schemaVersion:1,product:"cal-eats",printerId:printer.id,restaurantId:printer.restaurant_id,code:"one-use-printer-code",expiresAt:"2026-11-21T12:00:00Z"};
+    const bytes=await buildPrinterBridgePackage(printer,"https://eats.calai.info",{setup});
     const files=unzipStored(bytes),config=JSON.parse(files.get("config.json").toString("utf8"));
     assert.equal(config.apiBaseUrl,"https://eats.calai.info");assert.equal(config.transport.host,"192.0.2.24");assert.equal(config.transport.kind,"tcp-escpos");assert.equal(config.deviceName,"Kitchen café");
     assert.equal(config.product,"cal-eats");assert.ok(files.has("windows/install.ps1"));assert.ok(files.has("src/index.js"));assert.ok(files.has("README.txt"));
     assert.ok(![...files.keys()].some(name=>/credential\.json|\.env|node_modules|^\.\./.test(name)));
     assert.ok(!Object.hasOwn(config,"token"));assert.ok(!Object.hasOwn(config,"pairingCode"));
+    assert.deepEqual(JSON.parse(files.get("setup.json").toString("utf8")),setup);assert.ok(files.has("src/setup.js"));assert.ok(files.has("install.ps1"));assert.ok(files.has("start.bat"));
     const filename=path.join(f.directory,"download-config.json");await writeFile(filename,files.get("config.json"));const parsed=await loadConfig(filename);assert.equal(parsed.apiBaseUrl,"https://eats.calai.info");
     config.apiBaseUrl="https://api.calai.info";await writeFile(filename,JSON.stringify(config));await assert.rejects(loadConfig(filename),/forbidden/);
-    const installer=files.get("windows/install.ps1").toString("utf8");assert.match(installer,/EnablePhysicalPrinting/);assert.match(installer,/CalEatsPrintBridge/);assert.match(installer,/installed but not started/);
+    const installer=files.get("windows/install.ps1").toString("utf8");assert.match(installer,/allow-physical-transport/);assert.match(installer,/CalEatsPrinter-/);assert.match(installer,/Start-ScheduledTask/);assert.match(installer,/SetAccessRuleProtection/);
     assert.equal(files.get("src/index.js").toString("utf8"),await readFile(new URL("../../print-bridge/src/index.js",import.meta.url),"utf8"));
   }finally{await f.close();}
 });

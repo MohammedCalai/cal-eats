@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { migrateDatabase, openDatabase } from "../src/db/index.js";
 import { queueEligibleStripeTransfers } from "../src/payments/stripe-settlement.js";
 import { runStripeConnectWorker } from "../src/payments/stripe-connect.js";
+import {recordOrderFinancialEnvironment} from "../src/financial-environment.js";
 
 const stamp = "2026-10-27T12:00:00.000Z";
 
@@ -28,6 +29,7 @@ function fixture(adapter) {
     orderExpiryMinutes: 15,
     now: () => new Date(stamp),
   };
+  recordOrderFinancialEnvironment(db,{id:"order",created_at:stamp},config);
   return { db, config };
 }
 

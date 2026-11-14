@@ -12,6 +12,7 @@ import { runCustomerMessageRetention } from "./customer-relationships.js";
 import { runPromotionMaintenance } from "./loyalty.js";
 import { notificationStreamHub } from "./notification-stream.js";
 import { runStripeConnectWorker } from "./payments/stripe-connect.js";
+import {runBusinessAdjustmentCredits} from "./payments/business-adjustment-worker.js";
 import { runOrderConfirmationAlerts } from "./order-confirmation.js";
 import { initializeCustomerEmailDelivery, runCustomerTransactionalEmails } from "./customer-emails.js";
 import { initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "./business-weekly-statements.js";
@@ -94,6 +95,7 @@ async function runWorkers() {
     runCustomerPrivacyRetention(db,config);
     await runProviderEventReconciliation(db, config);
     await runStripeConnectWorker(db, config);
+    await runBusinessAdjustmentCredits(db,config);
     await runBusinessWeeklyStatements(db, config);
   } catch (error) {
     console.error("Background worker cycle failed", error instanceof Error ? error.message : "unknown error");

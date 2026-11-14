@@ -4,6 +4,7 @@ import { HttpError, sendJson } from "../http.js";
 import { withTransaction } from "../db/index.js";
 import { parseStripeWebhook, StripeTestConfigurationError } from "./stripe-test.js";
 import { notifyNewOrder } from "../offers.js";
+import {validateSettlementAdjustment,applySettlementAdjustments,assertBusinessCreditResult,confirmBusinessCredit} from "../business-payment-adjustments.js";
 
 export const PROVIDER_EVENT_WEBHOOK_PATH = "/api/provider-events/stripe-test";
 const DEFAULT_BODY_LIMIT = 256 * 1024;
@@ -112,7 +113,7 @@ export async function runProviderEventReconciliation(db, config, options = {}) {
       continue;
     }
 
-    const outcome = withTransaction(db, () => finalizeReconciliation(db, event, workerId, normalized, mapping, result, finishedAt.toISOString()));
+    const outcome = withTransaction(db, () => finalizeReconciliation(db, event, workerId, normalized, mapping, result, finishedAt.toISOString(),config));
     summary[outcome] += 1;
   }
   return summary;
@@ -155,7 +156,7 @@ function claimNext(db, provider, workerId, nowDate, leaseMs, maxAttempts) {
   return changed ? db.prepare("SELECT * FROM provider_events WHERE id=?").get(row.id) : null;
 }
 
-function finalizeReconciliation(db, event, workerId, normalized, originalMapping, result, now) {
+function finalizeReconciliation(db, event, workerId, normalized, originalMapping, result, now,config) {
   const current = db.prepare("SELECT * FROM provider_events WHERE id=? AND status='claimed' AND lease_owner=?").get(event.id, workerId);
   if (!current) return "ignored";
   const mapping = resolveMapping(db, normalized);
@@ -172,7 +173,7 @@ function finalizeReconciliation(db, event, workerId, normalized, originalMapping
     db.prepare("UPDATE provider_events SET status='completed',error='STALE_EVENT_IGNORED',lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?").run(now, event.id);
     return "ignored";
   }
-  const applied = applyProviderResult(db, normalized, mapping, result, now);
+  const applied = applyProviderResult(db, normalized, mapping, result, now,config);
   if (!applied.ok) {
     db.prepare("UPDATE provider_events SET status='failed',error=?,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?").run(applied.error, now, event.id);
     return "failed";
@@ -189,7 +190,7 @@ function finalizeReconciliation(db, event, workerId, normalized, originalMapping
   return "completed";
 }
 
-function applyProviderResult(db, event, mapping, result, now) {
+function applyProviderResult(db, event, mapping, result, now,config) {
   if (event.kind === "account") {
     if(result.providerReference!==event.objectId)return{ok:false,error:"ACCOUNT_REFERENCE_MISMATCH"};
     if(typeof result.chargesEnabled!=="boolean"||typeof result.payoutsEnabled!=="boolean")return{ok:false,error:"ACCOUNT_READINESS_INVALID"};
@@ -230,17 +231,29 @@ function applyProviderResult(db, event, mapping, result, now) {
   }
   if (event.kind === "transfer") {
     if(result.providerReference!==event.objectId||result.amountMinor!==mapping.row.amount_minor||String(result.currency||"").toUpperCase()!==String(mapping.row.currency||"").toUpperCase())return{ok:false,error:"TRANSFER_FINANCIAL_BINDING_MISMATCH"};
+    if(mapping.source==="transfer_metadata"&&result.operationKey!==mapping.row.operation_key)return{ok:false,error:"TRANSFER_OPERATION_BINDING_MISMATCH"};
     const metadata=safeJson(mapping.row.metadata,{});
+    if(mapping.row.kind==="business_adjustment_credit"){
+      const adjustment=db.prepare("SELECT * FROM business_payment_adjustments WHERE id=?").get(metadata.adjustmentId),job=adjustment&&db.prepare("SELECT * FROM business_payment_credit_jobs WHERE adjustment_id=?").get(adjustment.id);
+      if(!job||job.operation_key!==mapping.row.operation_key)return{ok:false,error:"ADJUSTMENT_TRANSFER_BINDING_MISMATCH"};
+      try{assertBusinessCreditResult(db,config,adjustment,job,result);confirmBusinessCredit(db,adjustment,job,result,now);}catch{return{ok:false,error:"ADJUSTMENT_TRANSFER_BINDING_MISMATCH"};}
+      return{ok:true};
+    }
     if(mapping.row.kind==="merchant_transfer"){
+      try{validateSettlementAdjustment(db,metadata);}catch{return{ok:false,error:"TRANSFER_SETTLEMENT_BINDING_MISMATCH"};}
       const order=mapping.row.order_id&&db.prepare("SELECT * FROM orders WHERE id=?").get(mapping.row.order_id);
       const payment=order&&(fullyVoucherFunded(order)&&assertVoucherFunding(db,order)?{payment_intent_id:null,latest_charge_id:null,provider_mode:event.provider}:db.prepare("SELECT payment_intent_id,latest_charge_id,provider_mode FROM stripe_order_payments WHERE order_id=?").get(order.id));
       const account=order&&db.prepare("SELECT provider_reference,provider_mode FROM provider_accounts WHERE restaurant_id=?").get(order.restaurant_id);
       if(!order||!payment||!account||(platformVoucherMinor(order)&&(!assertVoucherFunding(db,order)||!voucherProviderBinding(order,{paymentProviderMode:event.provider,stripePlatformAccountId:metadata.platformAccountId})||metadata.fundingSource!=="platform_balance"||metadata.platformVoucherMinor!==platformVoucherMinor(order)||metadata.customerPayableMinor!==customerPayableMinor(order)))||(!platformVoucherMinor(order)&&metadata.fundingSource==="platform_balance")||metadata.orderId!==order.id||metadata.restaurantId!==order.restaurant_id||metadata.amountMinor!==mapping.row.amount_minor||metadata.providerMode!==event.provider||metadata.paymentIntentId!==payment.payment_intent_id||(metadata.sourceCharge??null)!==(platformVoucherMinor(order)?null:payment.latest_charge_id)||metadata.accountId!==account.provider_reference||payment.provider_mode!==event.provider||account.provider_mode!==event.provider||result.destinationAccountId!==metadata.accountId||(result.sourceTransactionId??null)!==(metadata.sourceCharge??null)||result.transferGroup!==`order:${order.id}`)return{ok:false,error:"TRANSFER_SETTLEMENT_BINDING_MISMATCH"};
     }else if((metadata.transferGroup&&result.transferGroup!==metadata.transferGroup)||(metadata.accountId&&result.destinationAccountId!==metadata.accountId)||(metadata.sourceCharge&&(result.sourceTransactionId??null)!==(metadata.sourceCharge??null)))return{ok:false,error:"TRANSFER_METADATA_BINDING_MISMATCH"};
+    if(result.status==="confirmed"&&mapping.row.kind==="merchant_transfer"){
+      if(db.prepare("SELECT 1 FROM business_payment_settlement_cancellations WHERE operation_key=?").get(mapping.row.operation_key))return{ok:false,error:"CANCELLED_SETTLEMENT_TRANSFER_FOUND"};
+      applySettlementAdjustments(db,metadata,now);
+    }
     if (mapping.row.status === "confirmed" && result.status !== "confirmed") return { ok: true };
     const status = result.status === "confirmed" ? "confirmed" : result.status === "failed" ? "failed" : "delayed";
-    db.prepare("UPDATE marketplace_operations SET status=?,error=?,updated_at=? WHERE id=? AND provider_mode=?")
-      .run(status, status === "failed" ? safeCode(result.errorCode, "PROVIDER_TRANSFER_FAILED") : null, now, mapping.row.id,event.provider);
+    db.prepare("UPDATE marketplace_operations SET status=?,provider_reference=COALESCE(?,provider_reference),error=?,updated_at=? WHERE id=? AND provider_mode=?")
+      .run(status,result.providerReference,status === "failed" ? safeCode(result.errorCode, "PROVIDER_TRANSFER_FAILED") : null, now, mapping.row.id,event.provider);
     return { ok: true };
   }
   if (event.kind === "payout") {
@@ -297,7 +310,19 @@ function resolveMapping(db, event) {
     rows=payments.length?payments:legacy;
     if(payments.length&&legacy.some(row=>row.restaurant_id!==payments[0].restaurant_id||(row.order_id&&row.order_id!==payments[0].order_id)))return{state:"conflict"};
   }
-  else if (event.kind === "transfer") rows = db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+  else if (event.kind === "transfer") {
+    rows=db.prepare("SELECT * FROM marketplace_operations WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
+    if(event.transferOperationKey){
+      const identity=db.prepare("SELECT * FROM marketplace_operations WHERE operation_key=? AND provider_mode=? AND kind IN ('merchant_transfer','business_adjustment_credit')").get(event.transferOperationKey,event.provider);
+      if(identity){
+        if(identity.provider_reference&&identity.provider_reference!==event.objectId||rows.some(x=>x.id!==identity.id))return{state:"conflict"};
+        if(identity.kind==="business_adjustment_credit"){
+          const meta=safeJson(identity.metadata,{});if(event.adjustmentId!==meta.adjustmentId||event.adjustmentRestaurantId!==identity.restaurant_id)return{state:"conflict"};
+        }
+        if(!rows.length)rows=[{...identity,mapping_source:"transfer_metadata"}];
+      }
+    }
+  }
   else if (event.kind === "payout") {
     if(tableExists(db,"stripe_connected_payouts")) rows=db.prepare("SELECT *, 'connected' AS mapping_source FROM stripe_connected_payouts WHERE id=?").all(event.objectId);
     if(!rows.length)rows=db.prepare("SELECT *, 'legacy' AS mapping_source FROM payout_batches WHERE provider_mode=? AND provider_reference=?").all(event.provider,event.objectId);
@@ -382,7 +407,12 @@ function normalizeEvent(event) {
   else if (eventType.startsWith("setup_intent.")) { kind = "setup"; objectId = requiredReference(object.id, "seti"); }
   else if (eventType.startsWith("mandate.")) { kind = "mandate"; objectId = requiredReference(object.id, "mandate"); }
   const objectType = boundedText(String(object.object || kind), 1, 80, "object.type");
-  return { eventId, eventType, objectType, objectId, providerAccountReference, providerCreatedAt: new Date(event.created * 1000).toISOString(), kind };
+  const transferMetadata={};
+  if(kind==="transfer"&&typeof object.metadata?.operation_key==="string"&&/^business-adjustment:stripe_(?:live|test):[A-Za-z0-9-]{1,100}$|^stripe-transfer:stripe_(?:live|test):[A-Za-z0-9-]{1,100}(?::revision:[0-9]{1,6})?$/.test(object.metadata.operation_key)&&object.metadata.operation_key.length<=100){
+    transferMetadata.transferOperationKey=object.metadata.operation_key;
+    for(const [source,target]of[["adjustment_id","adjustmentId"],["restaurant_id","adjustmentRestaurantId"]])if(typeof object.metadata[source]==="string"&&/^[A-Za-z0-9-]{1,100}$/.test(object.metadata[source]))transferMetadata[target]=object.metadata[source];
+  }
+  return { eventId, eventType, objectType, objectId, providerAccountReference, providerCreatedAt: new Date(event.created * 1000).toISOString(), kind,...transferMetadata };
 }
 
 async function readRawBody(req, limit) {

@@ -116,6 +116,17 @@ export function createStripeAdapter(config = {}) {
       const result = await request("POST", "/v1/transfers", { amount: money(input.amountMinor), currency: "gbp", destination: ref(input.destinationAccountId,"acct"), ...(sourceTransactionId?{source_transaction:sourceTransactionId}:{}), transfer_group: bounded(input.transferGroup,1,100,"transferGroup"), "metadata[operation_key]": bounded(input.operationKey,1,100,"operationKey") }, { idempotencyKey: input.idempotencyKey, requireTestObject:true });
       return result.ok ? transferResult(result,sourceTransactionId) : result;
     },
+    async retrieveAvailableBalance(){
+      const result=await request("GET","/v1/balance",null,{requireTestObject:true});if(!result.ok)return result;
+      if(result.body.object!=="balance"||!Array.isArray(result.body.available))throw new StripeTestConfigurationError("Available platform funds could not be verified");
+      const gbp=result.body.available.filter(x=>x.currency==="gbp");if(gbp.some(x=>!Number.isSafeInteger(x.amount)))throw new StripeTestConfigurationError("Available platform balance is invalid");
+      return {ok:true,status:"confirmed",mode:mode==="live"?"stripe_live":"stripe_test",currency:"GBP",availableMinor:gbp.reduce((n,x)=>n+x.amount,0)};
+    },
+    async createAdjustmentTransfer(input){
+      if(input.transferGroup!==`adjustment:${input.adjustmentId}`||input.operationKey!==`business-adjustment:${mode==="live"?"stripe_live":"stripe_test"}:${input.adjustmentId}`)throw new TypeError("Adjustment credit binding is invalid");
+      const fields={amount:money(input.amountMinor),currency:"gbp",destination:ref(input.accountId,"acct"),transfer_group:bounded(input.transferGroup,1,100,"transferGroup"),"metadata[operation_key]":bounded(input.operationKey,1,100,"operationKey"),"metadata[adjustment_id]":bounded(input.adjustmentId,1,100,"adjustmentId"),"metadata[restaurant_id]":bounded(input.restaurantId,1,100,"restaurantId"),"metadata[purpose]":"business_adjustment_credit"};
+      const result=await request("POST","/v1/transfers",fields,{idempotencyKey:input.idempotencyKey,requireTestObject:true});return result.ok?transferResult(result):result;
+    },
     async retrieveTransfer(input) { const result = await request("GET", `/v1/transfers/${ref(input.transferId,"tr")}`, null, {requireTestObject:true}); return result.ok ? transferResult(result):result; },
     async reverseTransfer(input) {
       const transferId = ref(input.transferId,"tr"); const result = await request("POST", `/v1/transfers/${transferId}/reversals`, input.amountMinor == null ? {} : { amount: money(input.amountMinor) }, { idempotencyKey: input.idempotencyKey, providerReference: transferId, requireTestObject:true });
@@ -193,7 +204,7 @@ function safeError(body,status,method,path){
 }
 function retryable(status,body){return status===409||status===429||status>=500||body?.error?.type==="api_error"}
 function payoutResult(r){if(!r.ok)return r;const p=r.body,status=p.status==="paid"?"confirmed":p.status==="failed"||p.status==="canceled"?"failed":["pending","in_transit"].includes(p.status)?"pending":"unknown";return normalized(p,{status,paymentState:p.status,providerReference:p.id,amountMinor:p.amount,currency:typeof p.currency==="string"?p.currency.toUpperCase():null,createdAt:isoSeconds(p.created),arrivalAt:isoSeconds(p.arrival_date),errorCode:p.failure_code})}
-function transferResult(r,fallbackSource){const t=r.body;return normalized(t,{status:t.reversed?"failed":"confirmed",providerReference:t.id,transferId:t.id,amountMinor:safeAmount(t.amount),currency:safeCurrency(t.currency),destinationAccountId:typeof t.destination==="string"?t.destination:t.destination?.id,sourceTransactionId:typeof t.source_transaction==="string"?t.source_transaction:t.source_transaction?.id??fallbackSource,transferGroup:typeof t.transfer_group==="string"?t.transfer_group:undefined})}
+function transferResult(r,fallbackSource){const t=r.body;return normalized(t,{status:t.reversed?"failed":"confirmed",providerReference:t.id,transferId:t.id,amountMinor:safeAmount(t.amount),currency:safeCurrency(t.currency),destinationAccountId:typeof t.destination==="string"?t.destination:t.destination?.id,sourceTransactionId:typeof t.source_transaction==="string"?t.source_transaction:t.source_transaction?.id??fallbackSource,transferGroup:typeof t.transfer_group==="string"?t.transfer_group:undefined,operationKey:metadataValue(t.metadata,"operation_key"),adjustmentId:metadataValue(t.metadata,"adjustment_id"),restaurantId:metadataValue(t.metadata,"restaurant_id")})}
 function reversalResult(r,transferId){const reversal=r.body,resolvedTransfer=typeof reversal.transfer==="string"?reversal.transfer:reversal.transfer?.id??transferId;return normalized(reversal,{status:"confirmed",providerReference:reversal.id,reversalId:reversal.id,transferId:resolvedTransfer,amountMinor:safeAmount(reversal.amount),currency:safeCurrency(reversal.currency)})}
 function cost(body){const transaction=typeof body?.latest_charge?.balance_transaction==="object"?body.latest_charge.balance_transaction:body?.balance_transaction;const fee=transaction?.fee;return Number.isSafeInteger(fee)&&fee>=0?fee:undefined}
 function ref(value,prefix){value=String(value||"");if(!value.startsWith(`${prefix}_`)||!REFERENCE.test(value))throw new TypeError(`Invalid ${prefix} reference`);return value}

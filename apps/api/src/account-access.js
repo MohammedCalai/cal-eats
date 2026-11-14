@@ -6,6 +6,7 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { VALIDATION } from "../../../packages/contracts/src/index.js";
 import {accountAccessEmailDelivery,enqueueAccountAccessEmail} from "./account-access-email.js";
+import {businessInitialPasswordPending} from "./business-application-access.js";
 
 const RESET_MS = 30 * 60_000;
 const VERIFY_MS = 24 * 60 * 60_000;
@@ -72,7 +73,7 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
     if (!validEmail(email)) throw new HttpError(400, "VALIDATION_ERROR", "Email is invalid");
     checkRate(req, email); const user = db.prepare("SELECT id,email FROM users WHERE email=? AND account_enabled=1").get(email),delivery=accountAccessEmailDelivery(config);
     // Delivery/configuration errors must never reveal whether an address exists.
-    if(user&&delivery!=="unavailable")try{withTransaction(db, () => issue(db, config, user, "password_reset", RESET_MS));}catch{}
+    if(user&&!businessInitialPasswordPending(db,user.id)&&delivery!=="unavailable")try{withTransaction(db, () => issue(db, config, user, "password_reset", RESET_MS));}catch{}
     return sendJson(res, 202, { data: { accepted: true,delivery } });
   }
   if (req.method === "POST" && ["/api/auth/password/reset", "/api/native/auth/reset-password"].includes(url.pathname)) {
@@ -83,6 +84,7 @@ export async function routeAccountAccess({ req, res, url, db, config, session, c
     withTransaction(db, () => {
       const row = db.prepare("SELECT t.* FROM account_access_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.purpose='password_reset' AND t.consumed_at IS NULL AND t.expires_at>? AND u.account_enabled=1 AND u.email=t.issued_email COLLATE NOCASE").get(tokenHash(token), now);
       if (!row) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
+      if(businessInitialPasswordPending(db,row.user_id))throw new HttpError(400,"TOKEN_INVALID","Token is invalid or expired");
       const consumed = db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE id=? AND consumed_at IS NULL").run(now, row.id); if (consumed.changes !== 1) throw new HttpError(400, "TOKEN_INVALID", "Token is invalid or expired");
       db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, row.user_id);
       db.prepare("UPDATE account_access_tokens SET consumed_at=? WHERE user_id=? AND purpose='password_reset' AND consumed_at IS NULL").run(now, row.user_id);

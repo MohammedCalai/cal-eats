@@ -74,6 +74,7 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   const delivery = money(receipt.deliveryFeeMinor, "receipt.deliveryFeeMinor");
   const total = money(receipt.totalMinor, "receipt.totalMinor");
   const lines = ["", "=".repeat(WIDTH), ...center("CAL-EATS"), ...center(restaurantName), "=".repeat(WIDTH)];
+  if(receipt.testReceipt===true)lines.push("",...center("*** PRINTER TEST - SAMPLE ONLY ***"),...center("DO NOT PREPARE OR DELIVER"),"");
   if (manualReprint) lines.push("", ...center("*** MANUAL REPRINT ***"), "");
   lines.push(...columns(`Order: ${orderNumber}`, stamp.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false })), `Date: ${stamp.toLocaleDateString("en-GB", { timeZone: "Europe/London" })}`, `Fulfilment: ${receipt.fulfillment.toUpperCase()}`);
   if (receipt.scheduledFor !== undefined && receipt.scheduledFor !== null) {
@@ -84,7 +85,9 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   }
   const customerName = clean(receipt.customerName, "receipt.customerName", 120);
   const customerPhone = clean(receipt.customerPhone, "receipt.customerPhone", 60);
-  const deliveryAddress = clean(receipt.deliveryAddress, "receipt.deliveryAddress", 300);
+  const suppliedAddress=receipt.deliveryAddress;
+  const addressText=suppliedAddress&&typeof suppliedAddress==="object"&&!Array.isArray(suppliedAddress)?["line1","line2","city","postcode"].map(key=>clean(suppliedAddress[key],`receipt.deliveryAddress.${key}`,120)).filter(Boolean).join(", "):suppliedAddress;
+  const deliveryAddress = clean(addressText, "receipt.deliveryAddress", 500);
   if (customerName) lines.push(...wrap(`Customer: ${customerName}`));
   if (customerPhone) lines.push(...wrap(`Phone: ${customerPhone}`));
   if (receipt.fulfillment === "delivery" && deliveryAddress) lines.push(...wrap(`Address: ${deliveryAddress}`));
@@ -98,7 +101,7 @@ export function formatReceipt(receipt, { manualReprint = false } = {}) {
   if(receipt.platformVoucherMinor){const credit=money(receipt.platformVoucherMinor,"receipt.platformVoucherMinor"),due=money(receipt.customerPayableMinor,"receipt.customerPayableMinor");lines.push(...columns("Cal-Eats voucher",credit),...columns("Customer pays",due),...wrap("Voucher funded by Cal-Eats"));}
   const paymentStatus = clean(receipt.paymentStatus, "receipt.paymentStatus", 80);
   if (!paymentStatus) throw new Error("receipt.paymentStatus is required");
-  lines.push(...wrap(`Payment: ${paymentStatus}`), "", ...center("Thank you for ordering with Cal-Eats"), "", "", "");
+  lines.push(...wrap(`Payment: ${paymentStatus}`), "", ...center(receipt.testReceipt===true?"PRINTER TEST - NO ORDER OR PAYMENT":"Thank you for ordering with Cal-Eats"), "", "", "");
   const text = lines.join("\n");
   return { text, sha256: createHash("sha256").update(text, "utf8").digest("hex") };
 }

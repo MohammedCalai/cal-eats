@@ -57,8 +57,10 @@ export class PrintBridge {
   }
 
   async _dispatch(entry) {
+    if (await this._expiredPhysicalClaim(entry)) return false;
     await this.journal.update(entry.id, { state: "dispatching", dispatchStartedAt: this.clock().toISOString() });
     await this.hooks.afterDispatchMarked?.(entry);
+    if (await this._expiredPhysicalClaim(entry)) return false;
     let result;
     try {
       result = await this.transport.send(entry);
@@ -76,6 +78,13 @@ export class PrintBridge {
     entry = await this._queueAcknowledgement(entry, result.outcome, result.detail);
     await this.hooks.afterAcknowledgementQueued?.(entry);
     return this._ack(entry);
+  }
+
+  async _expiredPhysicalClaim(entry) {
+    if (this.transport.recovery === "deterministic" || Date.parse(entry.leaseExpiresAt) > this.clock().valueOf()) return false;
+    const pending = await this._queueAcknowledgement(entry, "uncertain", "Print claim expired before dispatch; physical output was not attempted or retried. Check the receipt before requesting a labelled reprint.");
+    await this._ack(pending);
+    return true;
   }
 
   async _recoverEntry(entry) {
@@ -97,9 +106,10 @@ export class PrintBridge {
     return false;
   }
 
-  async recoverOne() {
-    const entry = this.journal.entries().find((candidate) => new Set(["claimed", "dispatching", "ack_pending"]).has(candidate.state));
+  async recoverOne({ allowDispatch = true } = {}) {
+    const entry = this.journal.entries().find((candidate) => new Set(["claimed", "dispatching", "ack_pending"]).has(candidate.state) && (allowDispatch || candidate.state !== "claimed" || Date.parse(candidate.leaseExpiresAt) <= this.clock().valueOf()));
     if (!entry) return false;
+    if (!allowDispatch && entry.state === "claimed") return this._expiredPhysicalClaim(entry);
     await this._recoverEntry(entry);
     return true;
   }
@@ -120,6 +130,11 @@ export class PrintBridge {
       return { failed: true };
     }
     const entry = await this.journal.recordClaim(job, formatted);
+    if (entry.state !== "claimed") {
+      // A repeated claim response must not dispatch a completed journal entry.
+      await this._recoverEntry(entry);
+      return { recovered: true };
+    }
     await this.hooks.afterClaimPersisted?.(entry);
     await this._dispatch(entry);
     await this.journal.prune();
@@ -129,18 +144,28 @@ export class PrintBridge {
   async start({ signal, heartbeatIntervalMs, idlePollMs }) {
     let nextHeartbeat = 0;
     let errorDelay = 500;
+    let printerReachable = false;
     while (!signal.aborted) {
       try {
         if (Date.now() >= nextHeartbeat) {
-          await this.api.heartbeat();
+          printerReachable = await this.transport.probe();
+          await this.api.heartbeat({ printerReachable, transport: this.transport.kind });
           nextHeartbeat = Date.now() + Math.round(heartbeatIntervalMs * (0.9 + this.random() * 0.2));
-          await this.logger.info("heartbeat_ok", { transport: this.transport.kind });
+          await this.logger.info("heartbeat_ok", { transport: this.transport.kind, printerReachable });
+        }
+        if (!printerReachable) {
+          await this.recoverOne({ allowDispatch: false });
+          await this.sleep(Math.round(idlePollMs * (0.9 + this.random() * 0.2)));
+          continue;
         }
         const result = await this.runOnce();
         errorDelay = 500;
         if (result.idle) await this.sleep(Math.round(idlePollMs * (0.9 + this.random() * 0.2)));
       } catch (error) {
         if (signal.aborted) break;
+        if (error instanceof ApiError && [401, 403].includes(error.status)) {
+          throw new Error("This printer connection is no longer authorised. Download and install a fresh setup from Cal-Eats printer settings.");
+        }
         await this.logger.warn("bridge_cycle_failed", { code: error.code || error.name });
         await this.sleep(Math.round(errorDelay * (0.8 + this.random() * 0.4)));
         errorDelay = Math.min(30_000, errorDelay * 2);

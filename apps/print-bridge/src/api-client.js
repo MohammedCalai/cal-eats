@@ -81,12 +81,14 @@ export class ApiClient {
     throw lastError;
   }
 
-  pair(code, name) {
-    return this._request("/api/devices/pair", { code, name }, { authenticated: false, retry: false });
+  pair(code, name, clientToken = null) {
+    if (clientToken !== null && !/^[A-Za-z0-9_-]{43,64}$/.test(clientToken)) throw new Error("Client pairing token is invalid");
+    // A persisted client token makes a lost pairing response safe to replay.
+    return this._request("/api/devices/pair", { code, name, ...(clientToken ? { clientToken } : {}) }, { authenticated: false, retry: Boolean(clientToken) });
   }
 
-  heartbeat() {
-    return this._request("/api/devices/heartbeat", {});
+  heartbeat(body = {}) {
+    return this._request("/api/devices/heartbeat", body);
   }
 
   async claim() {

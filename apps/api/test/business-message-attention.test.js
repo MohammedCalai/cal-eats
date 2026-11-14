@@ -7,6 +7,29 @@ import {migrateDatabase,openDatabase} from "../src/db/index.js";
 import {migrations} from "../src/db/migrations.js";
 import {restaurantMessageArrivalRevision} from "../src/business-message-attention.js";
 
+test("reading one customer order conversation leaves the other conversation actionable",async()=>{
+  let clock=Date.parse("2026-01-01T01:00:00.000Z");
+  const f=await journeyFixture({now:()=>new Date(clock)});
+  try{
+    const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
+    const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0];
+    const item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0],threads=[];
+    for(let index=0;index<2;index++){
+      const placed=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`separate-message-order-${index}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],fulfillment:"collection",paymentMethod:"mock_card"}});
+      assert.equal(placed.status,201,placed.text);clock+=1000;
+      const sent=await f.json(`/api/orders/${placed.body.data.id}/messages`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":`separate-message-${index}`},body:{message:`Please check message ${index+1}.`}});
+      assert.equal(sent.status,201,sent.text);threads.push({orderId:placed.body.data.id,messageId:sent.body.data.id});
+    }
+    const attention=async()=>{const result=await f.json(`/api/restaurant/restaurants/${restaurant.id}/message-attention`,{cookie:owner});assert.equal(result.status,200,result.text);return result.body.data;};
+    const initial=await attention();assert.equal(initial.unreadCount,2);
+    const read=async thread=>{const result=await f.json(`/api/orders/${thread.orderId}/messages/read`,{method:"POST",cookie:owner,body:{lastMessageId:thread.messageId}});assert.equal(result.status,200,result.text);};
+    await read(threads[0]);
+    assert.deepEqual(await attention(),{...initial,unreadCount:1},"The global arrival revision does not mean the second thread was viewed");
+    await read(threads[0]);assert.equal((await attention()).unreadCount,1,"Reopening the first thread cannot silence the other thread");
+    await read(threads[1]);assert.equal((await attention()).unreadCount,0);
+  }finally{await f.close();}
+});
+
 test("business message attention uses actual scoped read cursors and a recipient arrival revision",async()=>{
   let clock=Date.parse("2026-01-01T01:00:00.000Z");
   const f=await journeyFixture({now:()=>new Date(clock),rateLimit:{attempts:120,windowMs:60000}});
@@ -80,7 +103,9 @@ test("message arrival migration backfills business recipients in original arriva
     for(const [user,role]of [[owner,"restaurant"],[customer,"customer"]])db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(user.id,role,`${role}@example.invalid`,"unused-fixture-hash",role,"2026-01-01T00:00:00.000Z");
     db.prepare("INSERT INTO restaurants(id,name,status,created_at) VALUES(?,?,'approved',?)").run(restaurant,"Legacy restaurant","2026-01-01T00:00:00.000Z");
     db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at) VALUES(?,?,?)").run(restaurant,owner.id,"2026-01-01T00:00:00.000Z");
-    const insert=(userId,type,key)=>addNotification(db,{userId,restaurantId:restaurant,type,title:"Historical message",message:"Existing notification",eventKey:key,now:"2026-01-01T00:00:00.000Z"});
+    // Historical schema fixtures must not call today's notification helper,
+    // which also consults customer-safety tables added after this release.
+    const insert=(userId,type,key)=>db.prepare("INSERT INTO user_notifications(id,user_id,restaurant_id,type,title,message,event_key,created_at) VALUES(?,?,?,?,?,?,?,?)").run(randomUUID(),userId,restaurant,type,"Historical message","Existing notification",key,"2026-01-01T00:00:00.000Z");
     insert(owner.id,"customer_message","arrival-history-first");insert(customer.id,"order_message","arrival-customer-excluded");insert(owner.id,"support_request","arrival-support-excluded");insert(owner.id,"order_message","arrival-history-second");
     db.prepare("UPDATE user_notifications SET read_at='2026-01-01T01:00:00.000Z' WHERE event_key='arrival-history-first'").run();
     migrateDatabase(db);

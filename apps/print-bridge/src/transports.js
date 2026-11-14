@@ -37,6 +37,14 @@ export class FileSinkTransport {
     this.recovery = "deterministic";
   }
 
+  async probe() {
+    try {
+      await fs.mkdir(this.outputDirectory, { recursive: true, mode: 0o700 });
+      await fs.access(this.outputDirectory, fs.constants.W_OK);
+      return true;
+    } catch { return false; }
+  }
+
   paths(entry) {
     const stem = artifactStem(entry);
     return {
@@ -88,6 +96,24 @@ export class TcpEscPosTransport {
   }
 
   inspect() { return Promise.resolve(null); }
+
+  probe() {
+    // A zero-byte connection checks network reachability, never paper output.
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      let settled = false;
+      const finish = (reachable) => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        resolve(reachable);
+      };
+      socket.setTimeout(this.connectTimeoutMs);
+      socket.once("error", () => finish(false));
+      socket.once("timeout", () => finish(false));
+      socket.connect(this.port, this.host, () => finish(true));
+    });
+  }
 
   async send(entry) {
     const payload = escPosBytes(entry.receiptText);

@@ -1,6 +1,7 @@
 import {customerPayableMinor,platformVoucherMinor,assertVoucherFunding,voucherProviderBinding} from "../platform-vouchers.js";
 import { randomUUID } from "node:crypto";
 import { withTransaction } from "../db/index.js";
+import {reserveSettlementAdjustments,applySettlementAdjustments} from "../business-payment-adjustments.js";
 
 // Queueing records eligibility only. The Stripe worker independently rechecks it
 // after claiming the job and before making any provider request.
@@ -23,7 +24,7 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
       WHERE o.status='completed' AND o.payment_method='card' AND o.payment_status IN ('stripe_captured','stripe_partially_refunded')
         AND p.payment_intent_id IS NOT NULL AND p.latest_charge_id IS NOT NULL AND a.provider_reference IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM refund_cases c WHERE c.order_id=o.id AND c.resolved_at IS NULL AND c.status NOT IN ('rejected','refunded'))
-        AND NOT EXISTS (SELECT 1 FROM marketplace_operations t WHERE t.order_id=o.id AND t.kind='merchant_transfer' AND t.provider_mode=p.provider_mode)
+        AND NOT EXISTS (SELECT 1 FROM marketplace_operations t WHERE t.order_id=o.id AND t.kind IN ('merchant_transfer','merchant_settlement_withheld') AND t.provider_mode=p.provider_mode AND NOT EXISTS(SELECT 1 FROM business_payment_settlement_cancellations c WHERE c.operation_key=t.operation_key))
       ORDER BY o.updated_at,o.id LIMIT ?`).all(mode, limit);
     // Orders entirely funded by Cal-Eats have no card charge or PaymentIntent.
     // Their verified voucher redemption is the independent entitlement to payout.
@@ -33,7 +34,7 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
       JOIN stripe_account_readiness ready ON ready.restaurant_id=a.restaurant_id AND ready.provider_mode=a.provider_mode AND ready.provider_account_id=a.provider_reference AND ready.charges_enabled=1 AND ready.payouts_enabled=1
       JOIN marketplace_operations eligible ON eligible.order_id=o.id AND eligible.operation_key='order:'||o.id||':settlement-eligible' AND eligible.status='confirmed' AND eligible.provider_mode=a.provider_mode
       WHERE o.payment_method='voucher' AND o.payment_status='voucher_redeemed' AND o.status='completed'
-        AND NOT EXISTS(SELECT 1 FROM marketplace_operations t WHERE t.order_id=o.id AND t.kind='merchant_transfer' AND t.provider_mode=a.provider_mode)
+        AND NOT EXISTS(SELECT 1 FROM marketplace_operations t WHERE t.order_id=o.id AND t.kind IN ('merchant_transfer','merchant_settlement_withheld') AND t.provider_mode=a.provider_mode AND NOT EXISTS(SELECT 1 FROM business_payment_settlement_cancellations c WHERE c.operation_key=t.operation_key))
         AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.order_id=o.id AND c.resolved_at IS NULL AND c.status NOT IN ('rejected','refunded'))
       ORDER BY o.updated_at,o.id LIMIT ?`).all(mode,Math.max(0,limit-rows.length));
     rows.push(...funded);
@@ -48,18 +49,24 @@ export function queueEligibleStripeTransfers(db, config, { limit = 25 } = {}) {
       const commissionMinor = Math.max(0, order.commission_minor - refunds.reversal);
       const amountMinor = order.total_minor - refunds.total - commissionMinor;
       if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > order.total_minor || refunds.total > order.total_minor) continue;
-      const operationKey = `stripe-transfer:${mode}:${order.id}`;
-      const snapshot = { orderId: order.id, restaurantId: order.restaurant_id, amountMinor,
+      let operationKey = `stripe-transfer:${mode}:${order.id}`;
+      let snapshot = { orderId: order.id, restaurantId: order.restaurant_id, amountMinor,
         totalMinor: order.total_minor, refundsMinor: refunds.total, commissionMinor,
         sourceCharge: platformVoucherMinor(order)?null:order.latest_charge_id, paymentIntentId: order.payment_intent_id,
         fundingSource:platformVoucherMinor(order)?"platform_balance":"source_charge",platformVoucherMinor:platformVoucherMinor(order),customerPayableMinor:customerPayableMinor(order),
         accountId: order.destination_account_id, platformAccountId: config.stripePlatformAccountId,
         providerMode: mode, policyVersion: order.contract_policy_version, verifiedCompletedAt: stamp,
         refundIds: db.prepare("SELECT id FROM refunds WHERE order_id=? ORDER BY id").all(order.id).map(row=>row.id) };
+      snapshot=reserveSettlementAdjustments(db,config,snapshot);
+      operationKey=snapshot.settlementOperationKey??operationKey;
+      if(snapshot.amountMinor===0){
+        db.prepare("INSERT INTO marketplace_operations VALUES(?,?,?,?,'merchant_settlement_withheld','confirmed',?,'GBP',?,NULL,NULL,?,?,?)").run(randomUUID(),operationKey,order.restaurant_id,order.id,snapshot.deductionMinor,mode,JSON.stringify(snapshot),stamp,stamp);
+        applySettlementAdjustments(db,snapshot,stamp);queued++;continue;
+      }
       const inserted = db.prepare(`INSERT OR IGNORE INTO marketplace_operations
         (id,operation_key,restaurant_id,order_id,kind,status,amount_minor,currency,provider_mode,provider_reference,error,metadata,created_at,updated_at)
         VALUES(?,?,?,?,'merchant_transfer','pending',?,'GBP',?,NULL,NULL,?,?,?)`)
-        .run(randomUUID(), operationKey, order.restaurant_id, order.id, amountMinor, mode, JSON.stringify(snapshot), stamp, stamp);
+        .run(randomUUID(), operationKey, order.restaurant_id, order.id, snapshot.amountMinor, mode, JSON.stringify(snapshot), stamp, stamp);
       if (!inserted.changes) continue;
       db.prepare(`INSERT INTO marketplace_worker_jobs
         (id,kind,entity_id,operation_key,status,lease_owner,lease_expires_at,attempts,payload,error,available_at,created_at,updated_at)

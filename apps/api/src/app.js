@@ -37,6 +37,7 @@ import { routeSupportCases } from "./support-cases.js";
 import { initializeCustomerEmailDelivery } from "./customer-emails.js";
 import { routeBusinessDashboard } from "./business-dashboard.js";
 import { handleBusinessStatementRoutes } from "./business-weekly-statements.js";
+import {routeBusinessPaymentAdjustments} from "./business-payment-adjustments.js";
 import { routeFinanceDetails } from "./finance-details.js";
 import { routeServiceAreas } from "./service-areas.js";
 import { enforceCustomerOrderHistory } from "./customer-order-history.js";
@@ -197,7 +198,7 @@ export function createApp({ db, config, logger = console }) {
       if(scheduledHandled||res.writableEnded||res.headersSent)return;
       const ratingHandled=await routeShopRatings({req,res,url,db,config,session});
       if(ratingHandled||res.writableEnded||res.headersSent)return;
-      for(const route of [routeServiceAreas,routeDashboardExports,routeBusinessDashboard,handleBusinessStatementRoutes,routeOrderMessaging,routeLoyalty,routeDisputeResolution,routeStripeConnect,routeFinanceDetails]){
+      for(const route of [routeServiceAreas,routeDashboardExports,routeBusinessDashboard,handleBusinessStatementRoutes,routeBusinessPaymentAdjustments,routeOrderMessaging,routeLoyalty,routeDisputeResolution,routeStripeConnect,routeFinanceDetails]){
         const routed=await route({req,res,url,db,config,session,checkRate});
         if(routed||res.writableEnded||res.headersSent)return;
       }

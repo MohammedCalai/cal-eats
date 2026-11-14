@@ -15,6 +15,9 @@ import {payoutApiProvenanceMigration55} from "../payout-api-provenance-migration
 import {mediaObjectMigration56} from "../media-object-migration.js";
 import {accountSetupAttemptMigration57} from "../payments/account-setup-attempt-migration.js";
 import {customerPushChannelMigration58} from "../customer-push-channel-migration.js";
+import {businessApplicationAccessMigration59} from "../business-application-access.js";
+import {printerConnectionMigration60} from "../printer-test-receipts-migration.js";
+import {businessPaymentAdjustmentMigration61} from "../business-payment-adjustments-migration.js";
 import {restaurantCommissionEmailMigration40} from "../restaurant-commission-email-migration.js";
 import {businessMessageAttentionMigration41} from "../business-message-attention-migration.js";
 import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
@@ -327,5 +330,8 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   payoutApiProvenanceMigration55,
   mediaObjectMigration56,
   accountSetupAttemptMigration57,
-  customerPushChannelMigration58
+  customerPushChannelMigration58,
+  businessApplicationAccessMigration59,
+  printerConnectionMigration60,
+  businessPaymentAdjustmentMigration61
 ];

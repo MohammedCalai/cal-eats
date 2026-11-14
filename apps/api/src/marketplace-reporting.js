@@ -1,5 +1,6 @@
 import { HttpError } from "./http.js";
 import { financialEnvironmentScope, orderEnvironmentPredicate } from "./financial-environment.js";
+import { paymentAdjustmentBalanceTotals } from "./business-payment-adjustment-reporting.js";
 
 export function resolveFinanceScope(config, url = null) {
   const current = financialEnvironmentScope(config), requested = url?.searchParams?.get("scope");
@@ -18,10 +19,14 @@ const scoped = (live, scope) => {
 };
 export function operationFinancePredicate(alias, scope) {
   const a = aliasFor(alias);
-  return scoped(`${a}.provider_mode='stripe_live' AND EXISTS(SELECT 1 FROM orders finance_order WHERE finance_order.id=${a}.order_id AND ${orderEnvironmentPredicate("finance_order", "live")})`, scope);
+  // Standalone platform credits have their own immutable adjustment provenance.
+  // They never enter order-based reports or fall through into testing history.
+  return `(${a}.kind<>'business_adjustment_credit' AND ${scoped(`${a}.provider_mode='stripe_live' AND EXISTS(SELECT 1 FROM orders finance_order WHERE finance_order.id=${a}.order_id AND ${orderEnvironmentPredicate("finance_order", "live")})`, scope)})`;
 }
 export function journalFinancePredicate(alias, scope) {
-  return operationFinancePredicate(alias, scope);
+  const a = aliasFor(alias);
+  // Journal rows use source_type rather than marketplace operation kind.
+  return `(${a}.source_type<>'business_adjustment_credit' AND ${scoped(`${a}.provider_mode='stripe_live' AND EXISTS(SELECT 1 FROM orders finance_order WHERE finance_order.id=${a}.order_id AND ${orderEnvironmentPredicate("finance_order", "live")})`, scope)})`;
 }
 export function payoutFinancePredicate(alias, scope) {
   const a = aliasFor(alias), liveOperation = operationFinancePredicate("finance_op", "live");
@@ -139,6 +144,7 @@ export function buildFinanceSummary(db, restaurantId, url = null, config = null)
     return !ready||Boolean(db.prepare("SELECT 1 FROM refund_cases WHERE order_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(row.id))||Boolean(db.prepare("SELECT 1 FROM marketplace_operations WHERE order_id=? AND kind='merchant_transfer' AND status='held'").get(row.id));
   });
   const heldMinor=heldOrders.reduce((n,row)=>n+orderNet(db,row).net,0),heldCardMinor=heldOrders.filter(row=>row.payment_method!=="cash").reduce((n,row)=>n+orderNet(db,row).net,0);
+  const paymentAdjustments=paymentAdjustmentBalanceTotals(db,{restaurantId,scope,...range,excludedOrderIds:heldOrders.map(row=>row.id)});
   const next=payouts.filter(row=>["scheduled","pending"].includes(row.status)).sort((a,b)=>a.scheduled_for.localeCompare(b.scheduled_for))[0];
   const providerModes=[...new Set(operations.filter(row=>row.amount_minor>0).map(row=>row.provider_mode))];
   const hasBankPayouts=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='stripe_connected_payouts'").get());
@@ -150,9 +156,10 @@ export function buildFinanceSummary(db, restaurantId, url = null, config = null)
     restaurantId,currency:"GBP",scope,historyLabel:scope==="live"?"Live financial activity":"Testing and unclassified history",simulation:scope!=="live",
     providerMode:providerModes.length>1?"mixed":providerModes[0]??(scope==="live"?"stripe_live":"local_simulator"),providerModes,
     grossSalesMinor,commissionMinor,historicalGrossSalesMinor,historicalCommissionMinor,historicalNetEarningsMinor:historicalGrossSalesMinor-historicalRefundsMinor-historicalCommissionMinor,
-    refundsMinor,adjustmentsMinor:0,netEarningsMinor:grossSalesMinor-refundsMinor-commissionMinor,
+    refundsMinor,adjustmentsMinor:paymentAdjustments.adjustmentsMinor,netEarningsMinor:grossSalesMinor-refundsMinor-commissionMinor,
     cashCollectedMinor:sum(rangedOperations.filter(row=>row.kind==="cash_sale_recorded"&&row.status==="held")),cashCommissionOutstandingMinor:Math.max(0,cashCommission-successfulCollectionsMinor),
-    pendingMinor,availableMinor:Math.max(0,completedCardNet-heldCardMinor-paidTransfersMinor-inTransitTransfersMinor-pendingTransfersMinor),heldMinor,
+    pendingMinor,availableMinor:Math.max(0,completedCardNet-heldCardMinor-paidTransfersMinor-inTransitTransfersMinor-pendingTransfersMinor-paymentAdjustments.unheldWithholdingMinor),heldMinor,
+    paymentAdjustments,
     platformVoucherCreditMinor:sum(rangedOperations.filter(row=>row.kind==="platform_voucher_credit"&&row.status==="confirmed")),providerCostMinor,providerCostsPendingCount,
     paidTransfersMinor,inTransitTransfersMinor,pendingTransfersMinor,bankPaidMinor,bankPendingMinor,bankPayoutUnverifiedCount,
     bankPayoutBasis:"Completed provider payout events or immutable verified API-read evidence must prove the recorded environment; unverified history is excluded.",

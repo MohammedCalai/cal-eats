@@ -4,10 +4,11 @@ import process from "node:process";
 import { ApiClient } from "./api-client.js";
 import { PrintBridge } from "./bridge.js";
 import { loadConfig } from "./config.js";
-import { readCredential, writeCredential } from "./credential-store.js";
+import { writeCredential } from "./credential-store.js";
 import { Journal } from "./journal.js";
 import { Logger } from "./logger.js";
 import { createTransport } from "./transports.js";
+import { ensureCredential } from "./setup.js";
 
 function argumentsFor(argv) {
   const result = { command: argv[0] || "start", config: process.env.CAL_EATS_PRINT_BRIDGE_CONFIG || null, allowPhysicalTransport: false };
@@ -74,10 +75,15 @@ async function main() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
-    const credential = await readCredential(config.credentialPath);
     const journal = await new Journal(config.journalPath).load();
     const logger = new Logger(config.logPath);
     const transport = createTransport(config.transport, { allowPhysicalTransport: args.allowPhysicalTransport });
+    const credential = await ensureCredential({
+      config,
+      setupPath: path.join(path.dirname(path.resolve(args.config)), "setup.json"),
+      api: apiFor(config),
+      verify: async (saved) => apiFor(config, saved.token).heartbeat({ printerReachable: await transport.probe(), transport: transport.kind }),
+    });
     const bridge = new PrintBridge({ api: apiFor(config, credential.token), journal, transport, logger });
     await logger.info("bridge_started", { deviceId: credential.deviceId, transport: transport.kind });
     if (args.command === "once") await bridge.runOnce();

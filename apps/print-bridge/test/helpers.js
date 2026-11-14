@@ -45,7 +45,7 @@ export function claimedJob(overrides = {}) {
   return {
     id: "job_test_00000001",
     claimToken: "claim_token_abcdefghijklmnopqrstuvwxyz",
-    leaseExpiresAt: "2026-10-25T12:35:00.000Z",
+    leaseExpiresAt: new Date(Date.now() + 300_000).toISOString(),
     attempt: 1,
     receipt: receipt(),
     manualReprint: false,

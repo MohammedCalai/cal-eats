@@ -11,8 +11,10 @@ test("restaurant onboarding stays pending and owner/staff permissions are isolat
   const f = await journeyFixture();
   try {
     const a = await auth(f);
-    const onboarded = await f.json("/api/auth/restaurant-register", { method: "POST", body: { name: "New Owner", email: "new-owner@example.test", password: "long local password", restaurantName: "Pending Place", address: "12 Market Street, London E1 1AA", mobile: "07700 900123" } });
-    assert.equal(onboarded.status, 201); const newCookie = onboarded.headers.get("set-cookie").split(";", 1)[0];
+    const onboarded = await f.json("/api/auth/restaurant-register", { method: "POST", body: { name: "New Owner", email: "new-owner@example.test", restaurantName: "Pending Place", address: "12 Market Street, London E1 1AA", mobile: "07700 900123" } });
+    assert.equal(onboarded.status, 201);assert.equal(onboarded.headers.has("set-cookie"),false);
+    assert.equal((await f.json(`/api/admin/restaurants/${onboarded.body.data.restaurantId}/application/password`,{method:"POST",cookie:a.admin,headers:{"Idempotency-Key":"initial-owner-access-001"},body:{password:"InitialOwner!4321",passwordConfirmation:"InitialOwner!4321",reason:"Prepare reviewed application access"}})).status,200);
+    const newCookie=await f.login("new-owner@example.test","InitialOwner!4321");
     const pending = (await f.json("/api/restaurant/restaurants", { cookie: newCookie })).body.data[0];
     assert.equal(pending.status, "pending"); assert.equal(pending.acceptingOrders, false);
     assert.equal((await f.json("/api/restaurants")).body.data.some((row) => row.id === pending.id), false);

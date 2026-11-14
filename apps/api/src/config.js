@@ -57,6 +57,8 @@ export function loadConfig(overrides = {}) {
   const statementSendEnabled = overrides.businessStatements?.sendEnabled ?? process.env.CALAI_BUSINESS_STATEMENTS_SEND_ENABLED === "true";
   if (typeof statementSendEnabled !== "boolean") throw new Error("Business statement send enablement must be a boolean");
   const financialRemediesEnabled = overrides.financialRemediesEnabled ?? false;
+  const businessPaymentAdjustmentsEnabled=overrides.businessPaymentAdjustmentsEnabled??(process.env.CALAI_BUSINESS_PAYMENT_ADJUSTMENTS_ENABLED==="true");
+  if(typeof businessPaymentAdjustmentsEnabled!=="boolean")throw new Error("Business payment adjustment activation must be a boolean");
   if (typeof financialRemediesEnabled !== "boolean" || (financialRemediesEnabled && runMode !== "local")) throw new Error("Financial remedies are disabled for hosted Cal-Eats; legacy simulation requires an explicit local override");
   const legalEnabled = process.env.CALAI_CUSTOMER_LEGAL_ENABLED === "true";
   let legalInput = overrides.customerLegal;
@@ -95,6 +97,7 @@ export function loadConfig(overrides = {}) {
     customerPush: overrides.customerPush ?? loadCustomerPushConfig(),
     orderLiveActivities: overrides.orderLiveActivities ?? loadOrderLiveActivityConfig(),
     financialRemediesEnabled,
+    businessPaymentAdjustmentsEnabled,
     customerLegal,
     customerPrivacy,
     merchantCommercial,

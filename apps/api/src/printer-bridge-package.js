@@ -2,7 +2,27 @@ import { readFile } from "node:fs/promises";
 import { HttpError } from "./http.js";
 
 const bridgeRoot = new URL("../../print-bridge/", import.meta.url);
-const files = ["package.json", "src/index.js", "src/api-client.js", "src/bridge.js", "src/config.js", "src/credential-store.js", "src/journal.js", "src/logger.js", "src/receipt.js", "src/transports.js", "windows/install.ps1", "windows/status.ps1", "windows/uninstall.ps1"];
+const files = ["package.json", "src/index.js", "src/api-client.js", "src/bridge.js", "src/config.js", "src/credential-store.js", "src/journal.js", "src/logger.js", "src/receipt.js", "src/transports.js", "src/setup.js", "windows/install.ps1", "windows/status.ps1", "windows/uninstall.ps1"];
+
+const automaticInstaller=String.raw`param([string]$NodePath = "")
+$ErrorActionPreference = "Stop"
+$Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$PrincipalCheck = New-Object Security.Principal.WindowsPrincipal($Identity)
+if (-not $PrincipalCheck.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if ($NodePath -match '["\r\n]') { throw "The selected runtime path is invalid." }
+    $Arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSCommandPath + '"'))
+    if ($NodePath) { $Arguments += @('-NodePath', ('"' + $NodePath + '"')) }
+    Write-Host "Allow the Windows administrator prompt to install Cal-Eats printer setup."
+    try {
+        $Installer = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -Verb RunAs -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+        if ($Installer.ExitCode -ne 0) { throw "Printer setup was not completed. Run install.ps1 as administrator to see the details." }
+        exit 0
+    } catch { throw "Windows administrator approval is needed to finish printer setup. $($_.Exception.Message)" }
+}
+$InstallArguments = @{ ConfigPath = (Join-Path $PSScriptRoot "config.json") }
+if ($NodePath) { $InstallArguments.NodePath = $NodePath }
+& (Join-Path $PSScriptRoot "windows\install.ps1") @InstallArguments
+`;
 
 function crc32(bytes) {
   let value = 0xffffffff;
@@ -24,10 +44,17 @@ export function printerZip(entries) {
   return Buffer.concat([...local,directory,end]);
 }
 
-export async function buildPrinterBridgePackage(printer, origin) {
-  if(!printer.ip_address)throw new HttpError(409,"PRINTER_IP_REQUIRED","Add this printer’s IP address before downloading its network bridge.");
-  const configuration={schemaVersion:1,product:"cal-eats",deviceName:printer.name,apiBaseUrl:origin,credentialPath:"./var/device-credential.json",journalPath:"./var/print-journal.json",logPath:"./var/print-bridge.log",transport:{kind:"tcp-escpos",enabled:true,host:printer.ip_address,port:9100,connectTimeoutMs:5000},requestTimeoutMs:5000,heartbeatIntervalMs:30000,idlePollMs:3000,retry:{maxAttempts:3,baseDelayMs:250,maxDelayMs:3000,jitterRatio:0.2}};
+export async function buildPrinterBridgePackage(printer, origin, {setup=null} = {}) {
+  if(!printer.ip_address)throw new HttpError(409,"PRINTER_IP_REQUIRED","Add this printer’s IP address before downloading printer setup.");
+  const configuration={schemaVersion:1,product:"cal-eats",deviceName:printer.name,apiBaseUrl:origin,credentialPath:"./var/device-credential.json",journalPath:"./var/print-journal.json",logPath:"./var/print-bridge.log",transport:{kind:"tcp-escpos",enabled:true,host:printer.ip_address,port:9100,connectTimeoutMs:5000},requestTimeoutMs:5000,heartbeatIntervalMs:15000,idlePollMs:3000,retry:{maxAttempts:3,baseDelayMs:250,maxDelayMs:3000,jitterRatio:0.2}};
   const entries=await Promise.all(files.map(async file=>[file,await readFile(new URL(file,bridgeRoot))]));
-  entries.push(["config.json",JSON.stringify(configuration,null,2)+"\n"],["README.txt",`Cal-Eats network printer bridge\r\n\r\nPrinter: ${printer.name}\r\nMAC: ${printer.mac_address||"Not provided"}\r\nIP: ${printer.ip_address}:9100\r\n\r\nThis separate Cal-Eats package never installs or changes the original Calai bridge. No device credential or pairing code is included. The MAC is a display identifier, not authentication. Requires an approved Node.js 24 runtime and Windows administrator setup. One Cal-Eats network-printer bridge per Windows tablet.\r\n\r\n1. Extract this ZIP to a local folder. In an elevated PowerShell window run:\r\n   .\\windows\\install.ps1 -ConfigPath .\\config.json -EnablePhysicalPrinting\r\n   This explicitly permits physical receipt output. It installs but does not start the task.\r\n2. In the Cal-Eats Printers page select Pair device for this printer. On this tablet run:\r\n   Set-Location \"$env:ProgramData\\CalEats\\PrintBridge\"\r\n   $env:CAL_EATS_PAIRING_CODE = Read-Host 'Enter the short-lived pairing code'\r\n   node src/index.js pair --config config.json\r\n   Remove-Item Env:CAL_EATS_PAIRING_CODE\r\n3. Start the separately named task after pairing:\r\n   Start-ScheduledTask -TaskName CalEatsPrintBridge\r\n4. Confirm the authenticated heartbeat on the Printers page, then test a confirmed test order against the actual printer. Online means bridge contact, not proof of paper output.\r\n\r\nThe queue prints new orders only after business confirmation. Failed or uncertain jobs require review before a labelled manual reprint. Never run two bridges against the same device credential. No paid order is created by downloading this package.\r\n`]);
-  return printerZip(entries);
+  if(setup){
+    if(setup.product!=="cal-eats"||setup.printerId!==printer.id||setup.restaurantId!==printer.restaurant_id||typeof setup.code!=="string")throw new Error("Printer setup binding is invalid");
+    entries.push(["config.json",JSON.stringify(configuration,null,2)+"\n"],["setup.json",JSON.stringify(setup,null,2)+"\n"]);
+    entries.push(["install.ps1",automaticInstaller.replace(/\r?\n/g,"\r\n")]);
+    entries.push(["start.bat",'@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"\r\nif errorlevel 1 pause\r\n']);
+    entries.push(["README.txt",`CAL-EATS PRINTER SETUP\r\n\r\nPrinter: ${String(printer.name).replace(/[\r\n\x00-\x1f]/g," ")}\r\nPrinter address: ${printer.ip_address}:9100\r\n\r\n1. Extract this complete ZIP on the Windows device connected to your printer.\r\n2. Double-click start.bat and allow the Windows administrator prompt, or deploy install.ps1 as SYSTEM through Microsoft Intune. It configures this printer automatically and starts the background connection.\r\n3. Return to Cal-Eats > Printers. When Connected appears, select Test print and check the sample receipt.\r\n\r\nThe setup code is private, works once for this printer only, and must first be used before ${setup.expiresAt}. It is consumed automatically. No manual pairing code or customer/order/payment is needed. Download a fresh setup if it expires or you install on another device.\r\n\r\nThe installed connection starts with Windows, keeps its saved credentials and print journal through updates, and is independent of the original Calai installation. Internet access to eats.calai.info and local network access to the printer are required. If Node.js 24 is missing, the installer obtains a verified official runtime.\r\n\r\nAfter setup, confirmed orders are queued automatically. Do not run multiple copies for the same printer. A lost connection during printing is shown as uncertain; check paper before requesting a labelled reprint. Connected means the printer network port was recently reachable, not proof of paper output.\r\n`]);
+    return printerZip(entries);
+  }
+  throw new HttpError(410,"PRINTER_SETUP_UPDATED","Download automatic printer setup from the Cal-Eats printer settings.");
 }

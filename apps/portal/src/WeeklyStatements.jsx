@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api, json } from "./api.js";
 import { shortDate } from "./model.js";
+import { NavLink } from "react-router-dom";
 
 const statusLabel = value => ({ queued: "Queued", generated: "Ready", local_saved: "Preview saved", sent: "Email accepted for delivery", failed: "Needs attention", unknown: "Delivery uncertain", sending: "Sending" })[value] || String(value || "Pending").replaceAll("_", " ");
 async function statementApi(path, options = {}) {
@@ -53,6 +54,7 @@ export default function WeeklyStatements({ restaurantId }) {
       <div className={`dashboard-statement-delivery${settings.email?.realDeliveryEnabled && settings.email?.configured ? " enabled" : ""}`}><strong>{settings.email?.realDeliveryEnabled && settings.email?.configured ? "Email delivery enabled" : "Email delivery not active"}</strong><p>{settings.email?.note || "Statements can be generated for download. External weekly emails require the delivery connection to be activated."}</p></div>
     </>}
     <h3>Recent statements</h3>
+    <p className="fine">Statements include recorded Cal-Eats credits, future earnings deductions and remaining carry-forward balances. Applied adjustments are separate from confirmed bank deposits. <NavLink to="/owner/earnings?view=adjustments">View payment adjustments</NavLink>.</p>
     {history.length ? <ul className="dashboard-statement-history">{history.map(statement => <li key={statement.id}><div><strong>{statement.weekFrom} – {statement.weekTo}</strong><small>{statusLabel(statement.status)}{statement.sentAt ? ` · ${shortDate(statement.sentAt)}` : ""}</small>{statement.errorCode && <small>Delivery needs review: {statement.errorCode.replaceAll("_", " ")}</small>}</div><a className="button-link" href={`${root}/${encodeURIComponent(statement.id)}.csv`}>Download CSV</a></li>)}</ul> : <p className="fine">No weekly statements yet. Enabling this schedule starts with the next weekly run; it does not email past weeks.</p>}
   </section>;
 }

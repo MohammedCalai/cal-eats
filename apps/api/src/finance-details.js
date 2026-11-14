@@ -3,6 +3,7 @@ import { orderEnvironmentPredicate, orderFinancialEnvironment } from "./financia
 import {customerPayableMinor,platformVoucherMinor} from "./platform-vouchers.js";
 import { requireRestaurantOwner } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
+import { buildOrderPaymentAdjustmentBreakdown } from "./business-payment-adjustment-reporting.js";
 
 const confirmedStates = new Set(["accepted", "preparing", "ready", "out_for_delivery", "completed"]);
 const parse = value => { try { const result = JSON.parse(value || "null"); return result && typeof result === "object" ? result : null; } catch { return null; } };
@@ -31,6 +32,7 @@ export function buildOrderFinancialBreakdown(db, order) {
   const environment=orderFinancialEnvironment(db,order.id),scope=environment==="stripe_live"?"live":"testing";
   const transfers = db.prepare(`SELECT m.kind,m.status,m.amount_minor FROM marketplace_operations m WHERE m.restaurant_id=? AND m.order_id=? AND m.kind IN ('merchant_transfer','transfer_reversal') AND ${operationFinancePredicate("m",scope)}`).all(order.restaurant_id, order.id);
   const transferredMinor = transfers.filter(row => row.kind === "merchant_transfer" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0), reversedTransferMinor = transfers.filter(row => row.kind === "transfer_reversal" && row.status === "confirmed").reduce((sum, row) => sum + row.amount_minor, 0);
+  const paymentAdjustments=buildOrderPaymentAdjustmentBreakdown(db,order);
   let state = "not_confirmed", label = "No earnings confirmed";
   if (confirmed) {
     if (!currentEarnings) { state = "no_net_earnings"; label = "No net earnings remaining"; }
@@ -40,6 +42,7 @@ export function buildOrderFinancialBreakdown(db, order) {
     else if (transferredMinor > reversedTransferMinor) { state = "transferred_to_balance"; label = "Transferred to Stripe balance"; }
     else if (transfers.some(row => row.status === "held")) { state = "held"; label = "Transfer on hold"; }
     else if (transfers.some(row => ["pending", "delayed"].includes(row.status))) { state = "processing"; label = "Transfer processing"; }
+    else if (paymentAdjustments.fullyWithheld && paymentAdjustments.appliedMinor > 0) { state = "adjusted_from_earnings"; label = "Allocated to a payment adjustment"; }
     else { state = order.status === "completed" ? "pending_transfer" : "awaiting_completion"; label = state === "pending_transfer" ? "Awaiting transfer" : "Awaiting order completion"; }
   }
   const base = order.commission_base === "food_plus_delivery" ? "food_plus_delivery" : "food";
@@ -49,7 +52,8 @@ export function buildOrderFinancialBreakdown(db, order) {
     commission: { rateBasisPoints: order.contract_rate_bps, base, commissionableMinor: order.subtotal_minor + (base === "food_plus_delivery" ? order.delivery_fee_minor : 0), originalMinor: originalCommission, reversedMinor, retainedMinor: retainedCommission, policyVersion: order.contract_policy_version, developmentAssumption: Boolean(order.contract_demo_only), recognised: confirmed }, promotion,
     earnings: { originalMinor: originalEarnings, refundImpactMinor: originalEarnings - currentEarnings, currentMinor: currentEarnings, providerFeeChargedToRestaurantMinor: 0, providerFeeBorneBy: "platform", confirmed },
     refunds: refunds.map(row => ({ id: row.id, foodMinor: row.food_amount_minor, deliveryMinor: row.delivery_amount_minor, commissionReversalMinor: row.commission_reversal_minor, createdAt: row.created_at })),
-    settlement: { state, label, transferredMinor, reversedTransferMinor, bankPayoutAttributed: false, note: "Transfers to a connected Stripe balance are separate from bank payouts. This order is not attributed to a bank payout without Stripe reconciliation evidence." }
+    paymentAdjustments,
+    settlement: { state, label, transferredMinor, reversedTransferMinor, bankPayoutAttributed: false, note: "Earnings allocated for payout and payment adjustments are separate from a confirmed bank deposit. View Bank & payouts for the verified payout schedule and confirmed bank payout records." }
   };
 }
 

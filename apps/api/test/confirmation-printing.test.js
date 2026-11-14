@@ -89,6 +89,8 @@ test("printer connection and queue summaries stay scoped and never expose device
     const headers = { authorization: `Bearer ${paired.token}` };
     assert.equal((await state()).status, "offline"); assert.equal((await state()).pairedDeviceCount, 1);
     await f.json("/api/devices/heartbeat", { method: "POST", headers, body: {} });
+    assert.equal((await state()).status, "connection_unverified");
+    await f.json("/api/devices/heartbeat", { method: "POST", headers, body: { printerReachable: true, transport: "tcp-escpos" } });
     assert.equal((await state()).status, "online");
     now += 60001; assert.equal((await state()).status, "offline");
     const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
