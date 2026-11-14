@@ -24,7 +24,11 @@ test("public deletion requests remain accessible without sign-in or the app and 
       assert.match(page.text, /one-calendar-month legal deadline/);
       const links = [...page.text.matchAll(/(?:href|src)="([^"]+)"/g)].map(match => match[1]);
       for (const link of new Set(links.filter(link => link.startsWith("/")))) {
-        assert.equal((await f.request(link)).status, 200, `Public resource unavailable: ${link}`);
+        const resource = await f.request(new URL(link, f.config.origin).pathname);
+        if (/^\/legal\/(terms|privacy)$/.test(link)) {
+          assert.equal(resource.status, 302, `Current-policy link unavailable: ${link}`);
+          assert.equal(resource.headers.get("location"), `${link}/${version}`);
+        } else assert.equal(resource.status, 200, `Public resource unavailable: ${link}`);
       }
       const email = links.find(link => link.startsWith("mailto:") && link.includes("?subject="));
       assert.ok(email, "Deletion must be requestable without logging in");

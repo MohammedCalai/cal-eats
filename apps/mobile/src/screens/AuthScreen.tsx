@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { api, ApiError } from "../api";
+import { api, ApiError, API_BASE_URL } from "../api";
 import { requestKey } from "../model";
 import { businessApplicationPayload } from "../business-application";
 import { Button, Card, ErrorBanner, Field } from "../components";
@@ -70,6 +70,7 @@ export function AuthScreen({ onAuthenticated, onContinueBrowsing }: { onAuthenti
         <ErrorBanner message={error}/>
         {mode === "register" ? <CustomerLegalReview review={legal}/> : mode === "login" ? <CustomerLegalDocuments review={legal}/> : null}
         {mode === "register" ? <Text style={styles.sub}>We’ll send a welcome email with a secure link to verify your email address before your first order. You can keep browsing while you verify.</Text> : null}
+        {mode === "apply" ? <Text style={styles.sub}>We use your contact and business details to review your application and arrange next steps. <Text accessibilityRole="link" accessibilityState={{disabled:busy}} style={{color:colours.blueDark,textDecorationLine:"underline"}} onPress={()=>{if(!busy)void openLink(`${API_BASE_URL}/business-applicant-privacy/`);}}>Read the business applicant privacy notice</Text>.</Text> : null}
         <Button busy={busy} disabled={mode === "register" && !legal.ready} onPress={submit}>{mode === "apply" ? "Submit application" : mode === "register" ? "Create account" : "Sign in"}</Button>
         {mode === "apply" ? <Text style={styles.sub}>The Calai team will contact you within 72 hours and prepare your business login. Your restaurant stays private until reviewed and approved.</Text> : null}
         {mode === "login" ? <><Button disabled={busy} tone="quiet" onPress={() => { setMode("register"); setError(""); }}>New here? Create an account</Button><Button disabled={busy} tone="quiet" onPress={() => { setMode("forgot"); setRecoveryDelivery(null); setError(""); }}>Forgot password</Button><Button disabled={busy} tone="quiet" onPress={() => { applicationKey.current = null; setMode("apply"); setError(""); }}>List your restaurant</Button></> : <Button disabled={busy} tone="quiet" onPress={() => { setMode("login"); setError(""); }}>Back to sign in</Button>}
