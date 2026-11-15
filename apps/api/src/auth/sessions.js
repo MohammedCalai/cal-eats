@@ -19,7 +19,10 @@ export function readSession(db, token, config) {
     FROM sessions s JOIN users u ON u.id=s.user_id
     WHERE s.token_hash=? AND s.revoked_at IS NULL AND u.account_enabled=1 AND (u.role<>'customer' OR u.password_reset_required=0)`).get(tokenHash(token));
   if (!row || Date.parse(row.expires_at) <= config.now().getTime()) return null;
-  return { sessionId: row.session_id, user: publicUser(row) };
+  const platformTable=db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_admin_sessions'").get();
+  const platform=platformTable?db.prepare("SELECT encrypted_tokens,revoked_at,absolute_expires_at FROM platform_admin_sessions WHERE session_id=?").get(row.session_id):null;
+  if(platform&&(platform.revoked_at||!platform.encrypted_tokens||Date.parse(platform.absolute_expires_at)<=config.now().getTime()))return null;
+  return { sessionId: row.session_id, user: publicUser(row),...(platform?{platformFederated:true}:{}) };
 }
 
 export function revokeSession(db, token, now) {

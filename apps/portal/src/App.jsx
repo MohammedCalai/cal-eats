@@ -1,5 +1,6 @@
 import StaffCapabilities from "./StaffCapabilities.jsx";
 import "./AdminShell.css";
+import {PlatformAdminLogin,PlatformAdminShell,PlatformConnection} from "./CalaiPlatform.jsx";
 import {OrderingTerminalProvider, OrderingDevices, TabletHealthWarning, TabletOrderReadOnly, useOrderingTerminal} from "./OrderingTerminal.jsx";
 import {AdminResolutionHistory} from "./ResolutionHistory.jsx";
 import BusinessSoundSetting from "./BusinessSoundSetting.jsx";
@@ -44,6 +45,7 @@ const AdminOrdersWorkspace=React.lazy(()=>import("./AdminOrdersWorkspace.jsx"));
 const AdminFinanceWorkspace=React.lazy(()=>import("./AdminFinanceWorkspace.jsx"));
 const AdminOperationsWorkspace=React.lazy(()=>import("./AdminOperationsWorkspace.jsx"));
 const AdminAccessWorkspace=React.lazy(()=>import("./AdminOperationsWorkspace.jsx").then(module=>({default:module.AdminAccessWorkspace})));
+const CalaiPlatformPage=React.lazy(()=>import("./CalaiPlatformPages.jsx").then(module=>({default:module.CalaiPlatformPage})));
 const SessionContext = React.createContext(null);
 const RestaurantContext = React.createContext(null);
 const BUSINESS_ROLES = new Set(["admin", "restaurant", "owner", "staff"]);
@@ -80,6 +82,7 @@ function App() {
   if (session.loading) return <PageState text="Opening business platform…" />;
   return <SessionContext.Provider value={{ ...session, refresh, setSession }}><Routes>
     <Route path="/login" element={<Login />} />
+    <Route path="/admin/login" element={<PlatformAdminLogin user={session.user} onSignedIn={refresh}/>} />
     <Route element={<RequireSession />}>
       <Route path="/" element={<PortalHome />} />
       <Route path="/owner" element={<OwnerBootstrap />}>
@@ -101,7 +104,15 @@ function App() {
         </Route>
       </Route>
       <Route path="/admin" element={<React.Suspense fallback={<PageState text="Opening admin tools…"/>}><RequireRole role="admin" /></React.Suspense>}>
-        <Route element={<Shell kind="admin" />}>
+        <Route element={<PlatformAdminShell user={session.user} onRefresh={refresh}/>}>
+          <Route path="connection" element={<PlatformConnection/>}/>
+          <Route path="calai/dashboard" element={<CalaiPlatformPage section="dashboard"/>}/>
+          <Route path="calai/ai-training" element={<CalaiPlatformPage section="training"/>}/>
+          <Route path="calai/tenants" element={<CalaiPlatformPage section="tenants"/>}/>
+          <Route path="calai/tenants/:tenantId" element={<CalaiPlatformPage section="tenant"/>}/>
+          <Route path="calai/telephony" element={<CalaiPlatformPage section="telephony"/>}/>
+          <Route path="calai/billing" element={<CalaiPlatformPage section="billing"/>}/>
+          <Route path="calai/settings" element={<CalaiPlatformPage section="settings"/>}/>
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="restaurants" element={<AdminRestaurants />} />
           <Route path="customers" element={<AdminCustomers />} />
@@ -120,7 +131,7 @@ function App() {
   </Routes></SessionContext.Provider>;
 }
 
-function RequireSession() { const { user } = React.useContext(SessionContext); const location=useLocation(); return user ? <Outlet /> : <Navigate to="/login" state={{returnTo:`${location.pathname}${location.search}`}} replace />; }
+function RequireSession() { const { user } = React.useContext(SessionContext); const location=useLocation(); return user ? <Outlet /> : <Navigate to={location.pathname.startsWith("/admin/")?"/admin/login":"/login"} state={{returnTo:`${location.pathname}${location.search}`}} replace />; }
 function PortalHome() { const { user } = React.useContext(SessionContext); return BUSINESS_ROLES.has(user?.role) ? <Navigate to={roleHome(user.role)} replace /> : <BusinessAccessUnavailable />; }
 function RequireRole({ role }) { const { user } = React.useContext(SessionContext); return user?.role === role ? <Outlet /> : BUSINESS_ROLES.has(user?.role) ? <Denied /> : <BusinessAccessUnavailable />; }
 function OwnerOnly({ children }) { const { permission } = React.useContext(RestaurantContext); return permission === "owner" ? children : <Denied message="Owner permission is required." />; }

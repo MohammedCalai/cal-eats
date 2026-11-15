@@ -55,6 +55,14 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
     // Formal order/dispute records and delivery revisions retain their policies.
     const copy = new DatabaseSync(destinationPath);
     try {
+      // A restored backup must never turn a federated session into an ordinary
+      // local session or restore provider tokens/link authority.
+      const platformSanitized=Boolean(copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_admin_sessions'").get());
+      if(platformSanitized){
+        copy.exec("PRAGMA secure_delete=ON");
+        copy.exec("UPDATE sessions SET revoked_at=COALESCE(revoked_at,created_at) WHERE id IN(SELECT session_id FROM platform_admin_sessions); DELETE FROM platform_admin_sessions;");
+        copy.exec("UPDATE platform_admin_links SET revoked_at=COALESCE(revoked_at,updated_at)");
+      }
       // Delete delivery dependants before registrations, and registrations before
       // the native session they reference. This also works with older schemas.
       const temporaryTables = ["business_incident_push_outbox", "business_push_devices", "business_device_health", "native_business_sessions", "ordering_terminal_screen_challenges", "ordering_terminal_handoffs", "ordering_terminal_sessions", "ordering_terminal_pair_codes", "business_report_email_outbox", "customer_safety_reports", "customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
@@ -73,6 +81,7 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
         // must not make later messages reuse an earlier ingestion sequence.
         copy.exec("VACUUM;");
       }
+      if(platformSanitized&&!present.length)copy.exec("VACUUM");
       if (copy.prepare("PRAGMA foreign_key_check").get()) throw new Error("Sanitized backup has a foreign key violation");
       const integrity = copy.prepare("PRAGMA integrity_check").all();
       if (integrity.length !== 1 || integrity[0].integrity_check !== "ok") throw new Error("Sanitized backup failed its integrity check");

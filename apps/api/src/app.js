@@ -52,6 +52,7 @@ import { initializeCustomerLegal, recordCustomerLegalSubmission, routeCustomerLe
 import {routeCustomerPrivacy} from "./customer-privacy.js";
 import {routeCustomerSafety} from "./customer-safety.js";
 import {initializeMerchantCommercial, routeMerchantCommercial} from "./merchant-commercial.js";
+import {routePlatformAdmin,enforcePlatformAdminAuthority} from "./platform-admin.js";
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -127,6 +128,8 @@ export function createApp({ db, config, logger = console }) {
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute || terminalDeviceRoute || Boolean(session?.terminalDelegation);
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((req.headers.origin && req.headers.origin !== config.origin) || (config.runMode === "hosted-preview" && !originExempt && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       await authorizeTerminalRequest({req,url,db,config,session});
+      await enforcePlatformAdminAuthority({req,res,url,db,config,session});
+      if(await routePlatformAdmin({req,res,url,db,config,session,checkRate}))return;
       for (const route of [routeOrderingTerminals,routeMembershipCapabilities,routeBusinessDeviceHealth,routeBusinessDevicePush]) {
         const handled=await route({req,res,url,db,config,session,checkRate});
         if(handled||res.writableEnded||res.headersSent)return;

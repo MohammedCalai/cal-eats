@@ -108,6 +108,6 @@ test('populated 63 to 65 migration preserves old print rows/tokens/payloads and 
     migrateDatabase(db);migrateDatabase(db);
     for(const table of tables){const columns=Object.keys(before[table][0]);assert.deepEqual(db.prepare(`SELECT ${columns.join(',')} FROM ${table} ORDER BY rowid`).all(),before[table],table);}
     assert.deepEqual({...db.prepare('SELECT total_minor,commission_minor FROM orders WHERE id=?').get('synthetic-paid')},{total_minor:400,commission_minor:28});assert.equal(db.prepare('SELECT amount_minor FROM marketplace_operations WHERE id=?').get('synthetic-transfer').amount_minor,372);
-    assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');assert.equal(db.prepare('SELECT MAX(version) version FROM schema_migrations').get().version,65);
+    assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');assert.equal(db.prepare('SELECT MAX(version) version FROM schema_migrations').get().version,migrations.at(-1).version);
   }finally{db.close();}
 });

@@ -10,6 +10,7 @@ import { loadMerchantCommercialConfig } from "./merchant-commercial.js";
 import {loadMediaObjectStore} from "./media-object-store.js";
 import {loadBusinessDeviceConfig} from "./business-device-health.js";
 import {loadBusinessPushConfig} from "./business-device-push.js";
+import {loadPlatformAdminConfig} from "./platform-admin-config.js";
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -83,6 +84,7 @@ export function loadConfig(overrides = {}) {
   const merchantCommercial=loadMerchantCommercialConfig(merchantInput);
   if(runMode==="hosted-preview"&&(customerLegal.enabled||customerPrivacy.enabled)&&(!customerLegal.enabled||!customerPrivacy.enabled||customerPrivacy.version!==customerLegal.documents.privacy.version))throw new Error("Hosted customer legal and privacy controls must be activated together with the same Privacy Notice version");
   return {
+    platformAdmin:loadPlatformAdminConfig(overrides.platformAdmin,{runMode}),
     mediaObjectStore:loadMediaObjectStore(overrides.mediaObjectStore),
     hostname,
     runMode,
