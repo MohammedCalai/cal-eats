@@ -1,23 +1,23 @@
-/* Adapted from Calai OwnerLiveActivity at ab138fd: identical banner proportions. */
+/* Calai-inspired live activity for the business dashboard. */
 .live-orders-panel{position:relative;isolation:isolate;overflow:hidden;border:1px solid #1f293780;border-radius:16px;background:#18181a;color:#fff}
 .business-dashboard .live-orders-panel{border-radius:16px;background:#18181a}
-.business-dashboard .live-order-banner{display:flex;align-items:center;gap:40px;padding:32px;position:relative;text-align:left}
-.business-dashboard .live-order-orbit{isolation:isolate;overflow:visible;box-sizing:border-box;flex:none;width:144px;height:144px;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;position:relative;background:transparent}
+.business-dashboard .live-order-banner{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:28px 32px;position:relative;text-align:center}
+.business-dashboard .live-order-orbit{isolation:isolate;overflow:visible;box-sizing:border-box;flex:none;width:200px;height:200px;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;position:relative;background:transparent}
 .business-dashboard .live-order-orbit>.live-order-orbit-art{position:absolute;inset:0;width:100%;height:100%;z-index:-1;margin:0;fill:none;stroke:none;filter:drop-shadow(0 6px 7px #03091255)}
-.business-dashboard .live-order-orbit strong{position:relative;font-size:36px;font-weight:700;line-height:1;letter-spacing:-.025em;color:#fff;margin:2px 0;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #02091588}
-.business-dashboard .live-order-orbit small{position:relative;font-size:10px;font-weight:600;letter-spacing:2px;color:#91a8c4;margin-top:4px}
-.business-dashboard .live-order-content{flex:1;min-width:0}
-.business-dashboard .live-order-content h2{font-size:24px;font-weight:600;line-height:32px;margin:0 0 4px;letter-spacing:normal}
-.business-dashboard .live-order-content>p:not(.live-order-label){color:#9ca3af;font-size:14px;line-height:20px;margin:0 0 24px;max-width:none}
-.business-dashboard .live-order-content .live-order-label{font-size:12px;font-weight:600;letter-spacing:.05em;color:#9ca3af;display:flex;align-items:center;justify-content:flex-start;gap:8px;margin:0 0 8px}
+.business-dashboard .live-order-orbit strong{position:relative;font-size:56px;font-weight:700;line-height:1;letter-spacing:-.025em;color:#fff;margin:2px 0;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #02091588}
+.business-dashboard .live-order-orbit small{position:relative;font-size:11px;font-weight:600;letter-spacing:2px;color:#91a8c4;margin-top:4px}
+.business-dashboard .live-order-content{width:100%;max-width:560px;min-width:0}
+.business-dashboard .live-order-content h2{font-size:32px;font-weight:600;line-height:40px;margin:0 0 6px;letter-spacing:normal}
+.business-dashboard .live-order-content>p:not(.live-order-label){color:#b0bbc9;font-size:16px;line-height:24px;margin:0 0 18px;max-width:none}
+.business-dashboard .live-order-content .live-order-label{font-size:12px;font-weight:600;letter-spacing:.05em;color:#9ca3af;display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 8px}
 .live-order-label>span{width:6px;height:6px;flex:none;border-radius:50%;background:#0f42ff}
-.business-dashboard .live-order-stages{display:flex;justify-content:flex-start;gap:24px;flex-wrap:wrap;color:#d1d5db;font-size:14px;line-height:20px}
+.business-dashboard .live-order-stages{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;color:#d1d5db;font-size:15px;line-height:22px}
 .business-dashboard .live-order-stages>span{display:flex;align-items:center;gap:8px;padding:0;border:0;border-radius:0;background:transparent;color:#d1d5db}
 .business-dashboard .live-order-stages svg{width:16px;height:16px;stroke:#6b7280;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.business-dashboard .live-order-banner>.button-link{flex:none;display:inline-flex;justify-content:center;gap:8px;min-height:44px;align-items:center;text-decoration:none;border:1px solid #374151;border-radius:12px;padding:10px 20px;background:transparent;color:#fff;font-size:14px;font-weight:500;white-space:nowrap;margin:0}
+.business-dashboard .live-order-banner>.button-link{flex:none;display:inline-flex;justify-content:center;gap:8px;min-width:200px;min-height:44px;align-items:center;text-decoration:none;border:1px solid #374151;border-radius:12px;padding:10px 20px;background:transparent;color:#fff;font-size:14px;font-weight:500;white-space:nowrap;margin:0}
 .business-dashboard .live-order-banner>.button-link:hover{background:#1f2937}
 .live-order-banner>.button-link>svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.business-dashboard .live-order-footnote{position:relative;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 32px;border-top:1px solid #1f293780;color:#6b7280;font-size:12px;font-weight:500;line-height:16px;font-variant-numeric:tabular-nums}
+.business-dashboard .live-order-footnote{position:relative;display:flex;justify-content:center;padding:12px 32px;border-top:1px solid #1f293780;color:#9ca3af;font-size:12px;font-weight:500;line-height:16px;font-variant-numeric:tabular-nums}
 .order-energy{display:none;position:absolute;inset:0;z-index:-1;pointer-events:none}
 .is-live.live-orders-panel{border-color:#2563eb80;box-shadow:0 0 25px #2563eb14}
 .business-dashboard .is-live .live-order-orbit>.live-order-orbit-art{filter:drop-shadow(0 0 9px #387aff25) drop-shadow(0 6px 7px #03091277);animation:live-order-orbit-breathe 5s ease-in-out infinite}
@@ -29,6 +29,5 @@
 .order-energy>i:nth-child(2){top:8%;transform:rotate(9deg);animation-delay:-2s;animation-duration:7s;opacity:.35}
 .order-energy>i:nth-child(3){display:none}
 @keyframes order-energy-flow{from{translate:0 -12px;opacity:.15}to{translate:0 16px;opacity:.45}}
-@media(max-width:1023px){.business-dashboard .live-order-banner{flex-direction:column;text-align:center;gap:32px}.business-dashboard .live-order-content{width:100%}.business-dashboard .live-order-content .live-order-label,.business-dashboard .live-order-stages{justify-content:center}.business-dashboard .live-order-banner>.button-link{margin-top:16px}}
-@media(max-width:639px){.business-dashboard .live-order-banner{padding:24px}.business-dashboard .live-order-footnote{padding:12px 24px}.business-dashboard .live-order-stages{gap:24px}}
+@media(max-width:639px){.business-dashboard .live-order-banner{padding:24px 20px}.business-dashboard .live-order-orbit{width:176px;height:176px}.business-dashboard .live-order-orbit strong{font-size:48px}.business-dashboard .live-order-content h2{font-size:28px;line-height:36px}.business-dashboard .live-order-footnote{padding:12px 20px}.business-dashboard .live-order-stages{gap:12px 20px}}
 @media(prefers-reduced-motion:reduce){.order-energy>i{animation:none;opacity:.25}.business-dashboard .is-live .live-order-orbit>.live-order-orbit-art{animation:none}}

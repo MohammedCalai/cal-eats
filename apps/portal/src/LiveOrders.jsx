@@ -40,6 +40,6 @@ export default function LiveOrders({ operations, unavailable, generatedAt }) {
       </div>
       <NavLink to="/owner/orders" className="button-link">Order summary <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></NavLink>
     </div>
-    <footer className="live-order-footnote"><span>Updates every 5 seconds · your restaurant only</span><span>{known && generatedAt ? `Last update ${new Date(generatedAt).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Reconnecting…"}</span></footer>
+    <footer className="live-order-footnote"><span>{known && generatedAt ? `Last update ${new Date(generatedAt).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Reconnecting…"}</span></footer>
   </section>;
 }
