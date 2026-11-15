@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { api,ApiError } from "./api";
 import type { PageInfo } from "./model";
 
@@ -18,7 +18,11 @@ export function Title({ title, children }: { title: string; children?: ReactNode
 export function Chip({ children, selected, onPress }: { children: ReactNode; selected?: boolean; onPress: () => void }) { return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}><Text style={{ color: selected ? colour.text : colour.muted, fontWeight: "700" }}>{children}</Text></Pressable>; }
 export function Chips({ children }: { children: ReactNode }) { return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>{children}</ScrollView>; }
 export function Page({ children, loading, onRefresh }: { children: ReactNode; loading?: boolean; onRefresh?: () => void }) { return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page} refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(loading)} onRefresh={onRefresh} tintColor={colour.cyan}/> : undefined}>{children}</ScrollView>; }
-export function Sheet({ title, children, onClose, visible = true }: { title: string; children: ReactNode; onClose: () => void; visible?: boolean }) { return <Modal visible={visible} animationType="slide" onRequestClose={onClose}><SafeAreaView style={{ flex: 1, backgroundColor: colour.background }}><View style={styles.sheetHeader}><Text style={[styles.heading, { flex: 1 }]}>{title}</Text><Button quiet onPress={onClose}>Close</Button></View><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>{children}</KeyboardAvoidingView></SafeAreaView></Modal>; }
+export function Sheet({ title, children, onClose, visible = true }: { title: string; children: ReactNode; onClose: () => void; visible?: boolean }) {
+  // A native Modal has its own screen root. Measure its safe area here rather
+  // than relying on the provider in the underlying business screen.
+  return <Modal visible={visible} presentationStyle="fullScreen" animationType="slide" onRequestClose={onClose}><SafeAreaProvider style={{ flex: 1, backgroundColor: colour.background }}><SafeAreaView edges={["top","right","bottom","left"]} style={{ flex: 1, backgroundColor: colour.background }}><View style={styles.sheetHeader}><Text style={[styles.heading, { flex: 1 }]}>{title}</Text><Button quiet onPress={onClose}>Close</Button></View><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>{children}</KeyboardAvoidingView></SafeAreaView></SafeAreaProvider></Modal>;
+}
 export function Pagination({ value, page, onPage, busy }: { value?: PageInfo; page: number; onPage: (page: number) => void; busy?: boolean }) { const hasNext = value?.hasNext ?? value?.hasMore ?? (value?.totalPages ? page < value.totalPages : false); return <View style={styles.row}><Button quiet disabled={page <= 1 || busy} onPress={() => onPage(page - 1)}>Previous</Button><Text style={styles.muted}>Page {page}{value?.totalPages ? ` of ${value.totalPages}` : ""}</Text><Button quiet disabled={!hasNext || busy} onPress={() => onPage(page + 1)}>Next</Button></View>; }
 export function useRemote<T>(path: string, token: string) {
   const [value, setValue] = useState<T | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(""), [receivedAt,setReceivedAt]=useState<string|null>(null); const sequence = useRef(0);
