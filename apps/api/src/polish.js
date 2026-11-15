@@ -124,7 +124,7 @@ function removeMedia({ res, db, config, session, restaurantId, itemId }) {
 function visibleMedia(db,session,id){
   const row=db.prepare("SELECT m.id,m.restaurant_id,m.mime_type,m.byte_length,r.status,r.suspended,r.archived_at FROM media_assets m JOIN restaurants r ON r.id=m.restaurant_id WHERE m.id=?").get(id);
   if(!row)throw new HttpError(404,"NOT_FOUND","Resource not found");
-  const user=session?.user,owner=user?.role==="restaurant"&&db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(row.restaurant_id,user.id);
+  const user=session?.user,owner=user?.role==="restaurant"&&db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND (permission='owner' OR can_manage_menu=1)").get(row.restaurant_id,user.id);
   if(!(row.status==="approved"&&!row.suspended&&!row.archived_at)&&user?.role!=="admin"&&!owner)throw new HttpError(404,"NOT_FOUND","Resource not found");
   return row;
 }

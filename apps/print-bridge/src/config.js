@@ -14,6 +14,7 @@ const TOP_LEVEL_KEYS = new Set([
   "heartbeatIntervalMs",
   "idlePollMs",
   "retry",
+  "terminal",
 ]);
 
 function exactKeys(value, allowed, label) {
@@ -93,7 +94,23 @@ function validateTransport(value, baseDirectory) {
       connectTimeoutMs: integer(value.connectTimeoutMs ?? 5000, 500, 30_000, "transport.connectTimeoutMs"),
     };
   }
-  throw new Error("transport.kind must be file-sink or tcp-escpos");
+  if (value.kind === "windows-spooler") {
+    exactKeys(value, new Set(["kind", "enabled", "printerName", "timeoutMs"]), "transport");
+    if (value.enabled !== true || typeof value.printerName !== "string" || !value.printerName.trim() || value.printerName.length > 200 || /[\x00-\x1f]/.test(value.printerName)) throw new Error("Windows printing requires an explicit enabled printer name");
+    return { kind: value.kind, enabled: true, printerName: value.printerName, timeoutMs: integer(value.timeoutMs ?? 10_000, 1000, 30_000, "transport.timeoutMs") };
+  }
+  throw new Error("transport.kind must be file-sink, tcp-escpos or windows-spooler");
+}
+
+function terminalConfig(value, baseDirectory) {
+  if (value === undefined || value === null) return null; // old local simulators
+  exactKeys(value, new Set(["enabled", "port", "identityPath", "allowedOrigins", "heartbeatIntervalMs", "printerId", "keyProvider"]), "terminal");
+  if (value.enabled !== true) throw new Error("terminal.enabled must be true when configured");
+  const allowedOrigins = value.allowedOrigins ?? ["https://eats.calai.info"];
+  if (!Array.isArray(allowedOrigins) || allowedOrigins.length < 1 || allowedOrigins.length > 3 || allowedOrigins.some(origin => typeof origin !== "string" || !(/^https:\/\/eats\.calai\.info$/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin)))) throw new Error("terminal.allowedOrigins must contain exact Cal-Eats or loopback origins");
+  if (value.printerId != null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.printerId)) throw new Error("Invalid terminal.printerId");
+  if (value.keyProvider !== undefined && !["software", "tpm"].includes(value.keyProvider)) throw new Error("Invalid terminal.keyProvider");
+  return { enabled: true, port: integer(value.port ?? 17863, 1024, 65535, "terminal.port"), identityPath: relativeFile(baseDirectory, value.identityPath ?? "./var/terminal-identity.json", "terminal.identityPath"), allowedOrigins, heartbeatIntervalMs: integer(value.heartbeatIntervalMs ?? 15_000, 5000, 30_000, "terminal.heartbeatIntervalMs"), printerId: value.printerId ?? null, keyProvider: value.keyProvider ?? "software" };
 }
 
 export async function loadConfig(configPath) {
@@ -126,5 +143,6 @@ export async function loadConfig(configPath) {
     heartbeatIntervalMs: integer(input.heartbeatIntervalMs, 5000, 300_000, "heartbeatIntervalMs"),
     idlePollMs: integer(input.idlePollMs, 500, 60_000, "idlePollMs"),
     retry: validateRetry(input.retry),
+    terminal: terminalConfig(input.terminal, baseDirectory),
   });
 }

@@ -1,107 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
-import { api, dashboardCsv, json } from "./api";
-import { shareDashboardCsvFile } from "./share-dashboard-csv";
-import { readable, type PageInfo } from "./model";
-import { Button, Card, Chip, Chips, colour, ErrorText, Page, Pagination, styles, Title, useForegroundRefresh, useRemote } from "./ui";
-import { LiveOrders } from "./LiveOrders";
-
-type Period = "today" | "yesterday" | "this_week" | "last_week";
-type Destination = "orders" | "menu" | "messages" | "customers" | "offers" | "cases";
-type OperationalOrder = { id: string; createdAt: string; status: string; fulfillment: string };
-type Dashboard = {
- generatedAt?: string;
-  range: { period: Period; label: string; fromDate: string; toDate: string };
-  summary: { ordersPlaced: number; confirmedOrders: number; completedOrders: number; cancelledOrders: number };
-  operations: { liveOrders: number; confirmedInKitchen: number; readyForHandover: number; pendingConfirmation: number; overdueConfirmation: number; activeOrders: number; unreadMessages: number; openRefundCases: number };
-  topItems: Array<{ name: string; quantity: number }>;
-  orders: { items: OperationalOrder[]; pagination: PageInfo };
-};
-const periods: Array<[Period, string]> = [["yesterday", "Yesterday"], ["today", "Today"], ["this_week", "This week"], ["last_week", "Last week"]];
-
-export function DashboardScreen({ token, restaurantId, canManage, onNavigate, onOrder, onFinance }: { token: string; restaurantId: string; canManage: boolean; onNavigate: (screen: Destination) => void; onOrder: (id: string) => void; onFinance: () => void }) {
-  const [period, setPeriod] = useState<Period>("today"), [page, setPage] = useState(1);
-  const result = useRemote<Dashboard>(`/api/restaurant/restaurants/${restaurantId}/dashboard?period=${period}&view=operations&page=${page}&pageSize=20`, token);
-  useForegroundRefresh(result.reload, 5000);
-  const current = result.value?.range.period === period && result.value?.orders.pagination.page === page && !result.error ? result.value : null;
-
-  const [sharing, setSharing] = useState<"metrics" | "orders" | null>(null), [shareError, setShareError] = useState("");
-  const exportRequest = useRef<AbortController | null>(null), context = useRef({ restaurantId, period, token, canManage });
-  context.current = { restaurantId, period, token, canManage };
-  useEffect(() => { setShareError(""); setSharing(null); return () => { exportRequest.current?.abort(); exportRequest.current = null; }; }, [restaurantId, period, token, canManage]);
-  async function shareCsv(kind: "metrics" | "orders") {
-    if (!canManage || exportRequest.current) return;
-    const requested = { restaurantId, period, token }, controller = new AbortController();
-    exportRequest.current = controller; setSharing(kind); setShareError("");
-    try {
-      const result = await dashboardCsv({ ...requested, kind, signal: controller.signal });
-      const isCurrent = () => !controller.signal.aborted && exportRequest.current === controller && context.current.canManage && context.current.restaurantId === requested.restaurantId && context.current.period === requested.period && context.current.token === requested.token;
-      await shareDashboardCsvFile(result.csv, result.filename, isCurrent);
-    } catch (error) { if (exportRequest.current === controller && !controller.signal.aborted) setShareError((error as Error).message); }
-    finally { if (exportRequest.current === controller) { exportRequest.current = null; setSharing(null); } }
-  }
-  function choose(value: Period) { setPeriod(value); setPage(1); }
-  return <Page loading={result.loading} onRefresh={() => void result.reload()}>
-    <Title title="Dashboard">Your restaurant at a glance</Title>
-    {canManage&&current&&<View style={[styles.card,{borderColor:current.operations.unreadMessages?colour.blue:colour.border}]}><Text style={styles.heading}>Customer messages</Text><Text style={styles.muted}>{current.operations.unreadMessages} unread message{current.operations.unreadMessages===1?"":"s"}</Text><Button onPress={()=>onNavigate("messages")}>Open customer inbox</Button></View>}
-    {current && <LiveOrders operations={current.operations} onOpen={() => onNavigate("orders")}/>}
-    <Chips>{periods.map(([value, label]) => <Chip key={value} selected={value === period} onPress={() => choose(value)}>{label}</Chip>)}</Chips>
-    {canManage && <Card><Text style={styles.heading}>Export {periods.find(([value]) => value === period)?.[1].toLowerCase()}</Text><Text style={styles.hint}>Save a CSV file or share it with another app. Exports use the selected period.</Text><ErrorText message={shareError}/><Button quiet disabled={Boolean(sharing)} busy={sharing === "metrics"} onPress={() => void shareCsv("metrics")}>Save or share statistics CSV</Button><Button quiet disabled={Boolean(sharing)} busy={sharing === "orders"} onPress={() => void shareCsv("orders")}>Save or share orders CSV</Button></Card>}
-    <ErrorText message={result.error}/>
-    {!current && result.loading && <ActivityIndicator color={colour.cyan}/>}
-    {current && <>
-      <View style={{flexDirection:"row",gap:12,alignItems:"stretch"}}><Hero title="Orders placed" value={String(current.summary.ordersPlaced)} hint="Confirmed orders" detail={String(current.summary.confirmedOrders)}/><Hero title="Completed orders" value={String(current.summary.completedOrders)} hint="Preparing now" detail={String(current.operations.confirmedInKitchen)}/></View>
-<Text style={styles.hint}>{current.range.fromDate} – {current.range.toDate} · UK time · weeks start Monday</Text>
-      <Card><Text style={styles.heading}>Needs attention now</Text>
-        <Button quiet onPress={() => onNavigate("orders")}>{current.operations.pendingConfirmation} orders to confirm{current.operations.overdueConfirmation ? ` · ${current.operations.overdueConfirmation} overdue` : ""}</Button>
-        <Text style={styles.text}>{current.operations.activeOrders} active orders</Text>
-        {canManage && <><Button quiet onPress={() => onNavigate("messages")}>{current.operations.unreadMessages} unread messages</Button><Button quiet onPress={() => onNavigate("cases")}>{current.operations.openRefundCases} open refund cases</Button></>}
-      </Card>
-      <Card><Text style={styles.heading}>{current.range.label}</Text>
-        <Metric label="Orders placed" value={String(current.summary.ordersPlaced)}/>
-        <Metric label="Confirmed orders" value={String(current.summary.confirmedOrders)}/>
-        <Metric label="Completed orders" value={String(current.summary.completedOrders)}/>
-        <Metric label="Cancelled orders" value={String(current.summary.cancelledOrders)}/>
-        <Text style={styles.hint}>Orders placed in this period. Live order counts show the current state across all dates.</Text>
-      </Card>
-      {canManage && <WeeklyStatement token={token} restaurantId={restaurantId}/>}
-      {current.topItems.length > 0 && <Card><Text style={styles.heading}>Popular items</Text>{current.topItems.slice(0, 5).map(item => <Metric key={item.name} label={item.name} value={`${item.quantity} sold`}/>)}</Card>}
-      <Text style={styles.heading}>Orders in this period</Text>
-      {!current.orders.items.length && <Text style={styles.muted}>No orders in this period.</Text>}
-      {current.orders.items.map(order => <Card key={order.id}>
-        <Text style={styles.heading}>#{order.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.muted}>{new Date(order.createdAt).toLocaleString("en-GB", { timeZone: "Europe/London" })} · {readable(order.status)} · {readable(order.fulfillment)}</Text>
-        <Button quiet onPress={() => onOrder(order.id)}>View order</Button>
-      </Card>)}
-      <Pagination value={current.orders.pagination} page={page} onPage={setPage} busy={result.loading}/>
-      <Button quiet onPress={() => onNavigate("menu")}>Update menu and availability</Button>
-    </>}
-  </Page>;
+import {useState} from "react";
+import {Text,View} from "react-native";
+import {money,readable,type Restaurant} from "./model";
+import {Button,Card,Chip,Chips,ErrorText,Page,styles,Title,useForegroundRefresh,useRemote} from "./ui";
+import {BusinessReportEmail} from "./BusinessReportEmail";
+import {healthLabel,type OperationsHealth} from "./operations-health";
+type Period="today"|"yesterday"|"this_week"|"last_week";
+type Dashboard={restaurantId:string;generatedAt:string;range:{period:Period;label:string;fromDate:string;toDate:string};summary:{ordersPlaced:number;confirmedOrders:number;completedOrders:number};operations:{liveOrders:number;pendingConfirmation:number;confirmedInKitchen:number;readyForHandover:number;unreadMessages:number};finance:null|{period:{grossSalesMinor:number;commissionMinor:number;netEarningsMinor:number}}};
+const periods:Array<[Period,string]>=[["today","Today"],["yesterday","Yesterday"],["this_week","This week"],["last_week","Last week"]];
+export function DashboardScreen({token,restaurant,canManage,canViewFinance,canManageCustomers,canViewDevices,onNavigate,onFinance}:{token:string;restaurant:Restaurant;canManage:boolean;canViewFinance:boolean;canManageCustomers:boolean;canViewDevices:boolean;onNavigate:(screen:"orders"|"messages"|"menu"|"devices")=>void;onFinance:()=>void}){
+ const [period,setPeriod]=useState<Period>("today"),root=`/api/restaurant/restaurants/${encodeURIComponent(restaurant.id)}`;
+ const result=useRemote<Dashboard>(`${root}/dashboard?period=${period}${canViewFinance?"":"&view=operations"}&pageSize=5`,token),health=useRemote<OperationsHealth>(canViewDevices?`${root}/operations-health`:"",token);useForegroundRefresh(()=>{void result.reload();void health.reload();},15000);
+ const value=result.value?.restaurantId===restaurant.id&&result.value.range.period===period?result.value:null,current=!health.error&&health.value?.restaurantId===restaurant.id?health.value:null;
+ const payouts=useRemote<{items:Array<{id:string;status:string;amountMinor:number;expectedArrivalAt?:string|null}>}>(canViewFinance?`${root}/finance/stripe/payouts?pageSize=5`:"",token);
+ const next=payouts.value?.items.find(row=>["pending","in_transit"].includes(row.status));
+ return <Page loading={result.loading} onRefresh={()=>{void result.reload();void health.reload();if(canViewFinance)void payouts.reload();}}><Title title="Overview">Keep an eye on your restaurant, wherever you are.</Title><Card><Text style={styles.badge}>{restaurant.suspended?"Restaurant suspended":restaurant.profile?.paused?"New orders paused":restaurant.acceptingOrders?"Open for orders":restaurant.closedReason||"Availability not confirmed"}</Text><Text style={styles.heading}>{restaurant.name}</Text><Text style={styles.hint}>Cal Eats Admin manages your business. Your restaurant tablet processes orders and printing.</Text></Card><Chips>{periods.map(([id,label])=><Chip key={id} selected={period===id} onPress={()=>setPeriod(id)}>{label}</Chip>)}</Chips><ErrorText message={result.error}/>{result.error&&value&&<Text style={styles.badge}>Previously loaded figures · {new Date(value.generatedAt).toLocaleString("en-GB")} · Refresh when connected.</Text>}{value&&<><View style={styles.row}>{canViewFinance&&<Metric label="Sales" value={value.finance?money(value.finance.period.grossSalesMinor):"—"}/>}<Metric label="Orders" value={String(value.summary.ordersPlaced)}/><Metric label="Live now" value={String(value.operations.liveOrders)}/></View><Card><Text style={styles.heading}>Order activity</Text><View style={styles.row}><Text style={styles.text}>{value.operations.pendingConfirmation} awaiting confirmation</Text><Text style={styles.text}>{value.operations.confirmedInKitchen} preparing</Text><Text style={styles.text}>{value.operations.readyForHandover} ready</Text></View><Button quiet onPress={()=>onNavigate("orders")}>View live & past orders</Button><Text style={styles.hint}>Status changes are made on the restaurant tablet.</Text></Card>{canManageCustomers&&<Card><Text style={styles.heading}>Your customers</Text><Text style={styles.text}>{value.operations.unreadMessages} unread messages</Text><Button quiet onPress={()=>onNavigate("messages")}>Open customer inbox</Button></Card>}<Text style={styles.hint}>{value.range.fromDate} – {value.range.toDate} · UK time · Updated {new Date(value.generatedAt).toLocaleTimeString("en-GB",{timeZone:"Europe/London"})}</Text></>}
+ {canViewDevices&&<Card><Text style={styles.heading}>Restaurant devices</Text><ErrorText message={health.error}/><Text style={styles.text}>Tablet · {healthLabel(current?.tablet.status)}</Text><Text style={styles.text}>Printer · {current?.printer.label||healthLabel(current?.printer.state)}</Text>{current?.incidents.filter(row=>row.status==="active").map(row=><Text key={row.id} style={styles.badge}>{row.title}</Text>)}<Button quiet onPress={()=>onNavigate("devices")}>View devices & incidents</Button></Card>}
+ {canViewFinance&&<><Card><Text style={styles.heading}>Next bank payout</Text><ErrorText message={payouts.error}/>{payouts.error&&next&&<Text style={styles.badge}>Previously loaded payout · {payouts.receivedAt?new Date(payouts.receivedAt).toLocaleString("en-GB"):"Time unavailable"} · May have changed.</Text>}{next?<><Text style={styles.title}>{money(next.amountMinor)}</Text><Text style={styles.text}>{readable(next.status)}</Text><Text style={styles.hint}>{next.expectedArrivalAt?`Estimated arrival ${new Date(next.expectedArrivalAt).toLocaleDateString("en-GB")}`:"Arrival date not yet reported"}</Text></>:<Text style={styles.muted}>No upcoming bank payout reported. Payout timing depends on cleared funds and your verified schedule.</Text>}<Button quiet onPress={onFinance}>View earnings & payouts</Button></Card>{canManage&&<Card><Text style={styles.heading}>Email reports</Text><Text style={styles.hint}>Attachments go to your registered owner email.</Text><BusinessReportEmail token={token} reportPath={`${root}/dashboard/metrics.csv?period=${period}`} label="Email statistics CSV"/><BusinessReportEmail token={token} reportPath={`${root}/dashboard/orders.csv?period=${period}`} label="Email orders CSV"/></Card>}</>}
+ </Page>;
 }
-
-function Metric({ label, value }: { label: string; value: string }) { return <View style={[styles.row, { justifyContent: "space-between" }]}><Text style={[styles.muted, { flex: 1 }]}>{label}</Text><Text style={styles.text}>{value}</Text></View>; }
-
-type StatementSettings = { enabled: boolean; recipient: string; nextScheduledAt: string | null; email: { realDeliveryEnabled: boolean; configured: boolean } };
-function WeeklyStatement({ token, restaurantId }: { token: string; restaurantId: string }) {
-  const route = `/api/restaurant/restaurants/${restaurantId}/weekly-statements/settings`;
-  const settings = useRemote<StatementSettings>(route, token);
-  const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  async function toggle() {
-    if (!settings.value || busy) return;
-    setBusy(true); setError("");
-    try { settings.setValue(await api<StatementSettings>(route, json(token, "PATCH", { enabled: !settings.value.enabled }))); }
-    catch (caught) { setError((caught as Error).message); }
-    finally { setBusy(false); }
-  }
-  return <Card><Text style={styles.heading}>Your weekly statement</Text>
-    <Text style={styles.muted}>Monday at 9 a.m. UK time, covering the previous Monday–Sunday.</Text>
-    <ErrorText message={error || settings.error}/>
-    {settings.value && <><Text style={styles.text}>{settings.value.recipient}</Text><Text style={styles.text}>{settings.value.enabled ? "Weekly schedule on" : "Weekly schedule paused"}</Text>
-      {settings.value.nextScheduledAt && <Text style={styles.hint}>Next statement: {new Date(settings.value.nextScheduledAt).toLocaleString("en-GB", { timeZone: "Europe/London" })}</Text>}
-      <Text style={styles.hint}>{settings.value.email.realDeliveryEnabled && settings.value.email.configured ? "Email delivery is enabled." : "Email delivery is not active yet. Statements are saved as previews until sending is connected."}</Text>
-      <Button quiet busy={busy} disabled={settings.loading} onPress={() => void toggle()}>{settings.value.enabled ? "Pause weekly statements" : "Enable weekly statements"}</Button>
-    </>}
-    {!settings.value && settings.loading && <ActivityIndicator color={colour.cyan}/>}
-  </Card>;
-}
-
-function Hero({title,value,change,hint,detail}:{title:string;value:string;change?:number|null;hint:string;detail:string}){return <View style={[styles.card,{flex:1,minWidth:0,gap:12,padding:16}]}><Text style={styles.muted}>{title}</Text><Text adjustsFontSizeToFit numberOfLines={1} style={{color:colour.text,fontSize:32,fontWeight:"800"}}>{value}</Text>{change!==undefined&&<Text style={{color:change!==null&&change<0?colour.danger:colour.success,fontSize:13}}>{change===null?"New":`${change>0?"↑ ":change<0?"↓ ":""}${Math.abs(change)}%`}</Text>}<View style={{borderTopWidth:1,borderTopColor:colour.border,paddingTop:10,gap:5}}><Text style={styles.hint}>{hint}</Text><Text style={styles.text}>{detail}</Text></View></View>;}
+function Metric({label,value}:{label:string;value:string}){return <View style={[styles.card,{flex:1,minWidth:90}]}><Text style={styles.hint}>{label}</Text><Text style={[styles.heading,{fontSize:25}]}>{value}</Text></View>;}

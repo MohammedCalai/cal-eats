@@ -15,7 +15,7 @@ function unwrap(body) {
 }
 
 export class ApiClient {
-  constructor({ baseUrl, token = null, timeoutMs, retry, fetchImpl = globalThis.fetch, sleep = sleepDefault, random = Math.random }) {
+  constructor({ baseUrl, token = null, timeoutMs, retry, fetchImpl = globalThis.fetch, sleep = sleepDefault, random = Math.random, terminal = null }) {
     if (typeof fetchImpl !== "function") throw new Error("A fetch implementation is required");
     this.baseUrl = baseUrl;
     this.token = token;
@@ -24,6 +24,7 @@ export class ApiClient {
     this.fetchImpl = fetchImpl;
     this.sleep = sleep;
     this.random = random;
+    this.terminal = terminal;
   }
 
   _delay(attempt) {
@@ -33,6 +34,7 @@ export class ApiClient {
   }
 
   async _once(pathname, body, authenticated) {
+    if (this.terminal) return this.terminal.service(pathname, body, authenticated ? this.token : null);
     const headers = { "content-type": "application/json", accept: "application/json", "user-agent": "cal-eats-print-bridge/0.1.0" };
     if (authenticated) {
       if (!this.token) throw new ApiError("Device is not paired", { code: "NOT_PAIRED" });
@@ -99,5 +101,9 @@ export class ApiClient {
 
   ack(jobId, acknowledgement) {
     return this._request(`/api/devices/jobs/${encodeURIComponent(jobId)}/ack`, acknowledgement);
+  }
+
+  submitting(jobId, claimToken) {
+    return this._request(`/api/devices/jobs/${encodeURIComponent(jobId)}/submitting`, { claimToken });
   }
 }

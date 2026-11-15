@@ -1,41 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
+import {randomUUID} from "node:crypto";
 import { journeyFixture } from "./helpers.js";
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import { runOrderConfirmationAlerts } from "../src/order-confirmation.js";
 import { notifyNewOrder } from "../src/offers.js";
 import { createOrderAlertEmailAdapter, loadOrderAlertEmailConfig } from "../src/order-alert-email.js";
 import { openDatabase, closeDatabase } from "../src/db/index.js";
 import { runExpiryWorker } from "../src/operations.js";
+import {recordOrderFinancialEnvironment} from "../src/financial-environment.js";
 
-async function setup() {
+async function setup({terminal=false}={}) {
   let stamp=Date.parse("2026-01-01T01:00:00.000Z");
-  const f=await journeyFixture({now:()=>new Date(stamp),sessionHours:24*60,orderAlertEmail:{mode:"local",recipient:"owner@example.invalid"}});
+  const options={now:()=>new Date(stamp),sessionHours:24*60,orderAlertEmail:{mode:"local",recipient:"owner@example.invalid"}},f=await (terminal?businessDeviceFixture({withPrinter:false,...options}):journeyFixture(options));
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310"),restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
   let index=0;
-  return {...f,owner,customer,admin,restaurant,set(value){stamp=value;},get stamp(){return stamp;},async place(delivery=false){const result=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`confirmation-fixture-${index++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:delivery?"delivery":"collection",...(delivery?{deliveryAddress:{line1:"10 Fictional Demo Street",city:"Luton",postcode:"LU1 2AB"}}:{})}});assert.equal(result.status,201,result.text);return result.body.data;}};
+  return {...f,owner,customer,admin,restaurant,set(value){stamp=value;},get stamp(){return stamp;},async place(delivery=false){if(terminal)await f.pulse();const result=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`confirmation-fixture-${index++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:delivery?"delivery":"collection",...(delivery?{deliveryAddress:{line1:"10 Fictional Demo Street",city:"Luton",postcode:"LU1 2AB"}}:{})}});assert.equal(result.status,201,result.text);return result.body.data;}};
 }
 
 test("confirmation commits the customer ETA once and emits confirmed/out-for-delivery updates",async()=>{
-  const f=await setup();try{
+  const f=await setup({terminal:true});try{
     const order=await f.place(true),visible=f.stamp,eta=new Date(visible+45*60000).toISOString(),route=`/api/restaurant/orders/${order.id}/status`;
     assert.equal(order.customerEtaAt,null);assert.equal(order.merchantVisibleAt,new Date(visible).toISOString());assert.equal(order.confirmationDueAt,new Date(visible+180000).toISOString());
     const pending=await f.json(`/api/restaurant/orders/pending-confirmation?restaurantId=${f.restaurant.id}`,{cookie:f.owner});assert.equal(pending.body.data.total,1);
-    const invalid=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"2025-12-31T00:00:00.000Z"}});assert.equal(invalid.status,400);assert.equal(f.db.prepare("SELECT status FROM orders WHERE id=?").get(order.id).status,"placed");
-    const confirmed=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:eta}});assert.equal(confirmed.status,200,confirmed.text);assert.equal(confirmed.body.data.customerEtaAt,eta);assert.equal(confirmed.body.data.customerEtaType,"delivery_arrival");assert.equal(confirmed.body.data.confirmedAt,new Date(visible).toISOString());
-    const replay=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:new Date(visible+90*60000).toISOString()}});assert.equal(replay.body.data.customerEtaAt,eta);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE order_id=? AND title='Order confirmed'").get(order.id).n,1);
-    const changed=new Date(visible+60*60000).toISOString(),changedResponse=await f.json(`/api/restaurant/orders/${order.id}/preparation`,{method:"PATCH",cookie:f.owner,body:{estimatedReadyAt:changed}});assert.equal(changedResponse.body.data.customerEtaAt,changed);
-    for(const status of["preparing","ready","out_for_delivery"])assert.equal((await f.json(route,{method:"PATCH",cookie:f.owner,body:{status}})).status,200);
+    const invalid=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"2025-12-31T00:00:00.000Z"}});assert.equal(invalid.status,403);assert.equal(invalid.body.error.code,"PAIRED_TERMINAL_REQUIRED");assert.equal((await f.signed(route,{status:"accepted",estimatedReadyAt:"2025-12-31T00:00:00.000Z"},{method:"PATCH"})).status,400);assert.equal(f.db.prepare("SELECT status FROM orders WHERE id=?").get(order.id).status,"placed");
+    const confirmed=await f.signed(route,{status:"accepted",estimatedReadyAt:eta},{method:"PATCH"});assert.equal(confirmed.status,200,confirmed.text);assert.equal(confirmed.body.data.customerEtaAt,eta);assert.equal(confirmed.body.data.customerEtaType,"delivery_arrival");assert.equal(confirmed.body.data.confirmedAt,new Date(visible).toISOString());
+    const replay=await f.signed(route,{status:"accepted",estimatedReadyAt:new Date(visible+90*60000).toISOString()},{method:"PATCH"});assert.equal(replay.body.data.customerEtaAt,eta);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE order_id=? AND title='Order confirmed'").get(order.id).n,1);
+    const changed=new Date(visible+60*60000).toISOString(),changedResponse=await f.signed(`/api/restaurant/orders/${order.id}/preparation`,{estimatedReadyAt:changed},{method:"PATCH"});assert.equal(changedResponse.body.data.customerEtaAt,changed);
+    for(const status of["preparing","ready","out_for_delivery"])assert.equal((await f.signed(route,{status},{method:"PATCH"})).status,200);
     const notifications=(await f.json("/api/notifications",{cookie:f.customer})).body.data.items;assert.ok(notifications.some(n=>n.title==="Order confirmed"&&n.message.includes("Estimated delivery")));assert.ok(notifications.some(n=>n.title==="Out for delivery"));assert.ok(notifications.some(n=>n.type==="order_eta"));
-    const collection=await f.place(),legacy=await f.json(`/api/restaurant/orders/${collection.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}});assert.equal(legacy.body.data.customerEtaType,"collection_ready");assert.ok(Date.parse(legacy.body.data.customerEtaAt)>visible);
+    const collection=await f.place(),legacy=await f.signed(`/api/restaurant/orders/${collection.id}/status`,{status:"accepted"},{method:"PATCH"});assert.equal(legacy.body.data.customerEtaType,"collection_ready");assert.ok(Date.parse(legacy.body.data.customerEtaAt)>visible);
     const paged=await f.json(`/api/restaurant/restaurants/${f.restaurant.id}/orders?page=1&pageSize=1&status=accepted`,{cookie:f.owner});assert.equal(paged.body.data.items.length,1);assert.equal(paged.body.data.pagination.total,1);
-    const card=await f.place();f.db.prepare("UPDATE orders SET payment_method='card',payment_status='stripe_authorized' WHERE id=?").run(card.id);
-    const badCard=await f.json(`/api/restaurant/orders/${card.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"not-a-date"}});assert.equal(badCard.status,400);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stripe_order_decisions WHERE order_id=?").get(card.id).n,0);
+    const template=await f.place(),card={...f.db.prepare("SELECT * FROM orders WHERE id=?").get(template.id),id:randomUUID(),idempotency_key:"invalid-card-eta-fixture",payment_method:"card",payment_status:"stripe_authorized"},columns=Object.keys(card);
+    f.db.prepare(`INSERT INTO orders(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...columns.map(column=>card[column]));recordOrderFinancialEnvironment(f.db,card,{...f.config,paymentProviderMode:"stripe_test"});
+    f.db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,status,created_at,updated_at) VALUES(?,'stripe_test','authorized',?,?)").run(card.id,card.created_at,card.updated_at);
+    const badCard=await f.signed(`/api/restaurant/orders/${card.id}/status`,{status:"accepted",estimatedReadyAt:"not-a-date"},{method:"PATCH"});assert.equal(badCard.status,400);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stripe_order_decisions WHERE order_id=?").get(card.id).n,0);
   }finally{await f.close();}
 });
 
 test("3-minute escalation starts at merchant visibility, waits through 179 seconds, and deduplicates",async()=>{
-  const f=await setup();try{
+  const f=await setup({terminal:true});try{
     const order=await f.place(),start=f.stamp,unpaid=await f.place();
     f.db.prepare("UPDATE orders SET payment_method='card',payment_status='stripe_pending',merchant_visible_at=NULL,confirmation_due_at=NULL,created_at=? WHERE id=?").run(new Date(start-3600000).toISOString(),unpaid.id);
     notifyNewOrder(f.db,f.db.prepare("SELECT * FROM orders WHERE id=?").get(unpaid.id),new Date(start).toISOString());assert.equal(f.db.prepare("SELECT merchant_visible_at FROM orders WHERE id=?").get(unpaid.id).merchant_visible_at,null);
@@ -51,11 +56,11 @@ test("3-minute escalation starts at merchant visibility, waits through 179 secon
 });
 
 test("confirmation, rejection and expiry after claim cancel an unsent escalation",async()=>{
-  const f=await setup();try{
+  const f=await setup({terminal:true});try{
     let sends=0;const adapter=async(_message,{beforeSend})=>{if(!beforeSend())return{status:"cancelled"};sends++;return{status:"sent"};};
     for(const target of["accepted","rejected","expired"]){
       const order=await f.place(),created=f.stamp;f.set(created+180000);
-      await runOrderConfirmationAlerts(f.db,f.config,{adapter,beforeDispatch:async row=>{assert.equal(row.order_id,order.id);if(target==="expired"){f.set(created+16*60000);runExpiryWorker(f.db,f.config);}else{const result=await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:target}});assert.equal(result.status,200,result.text);}}});
+      await runOrderConfirmationAlerts(f.db,f.config,{adapter,beforeDispatch:async row=>{assert.equal(row.order_id,order.id);if(target==="expired"){f.set(created+16*60000);runExpiryWorker(f.db,f.config);}else{const route=`/api/restaurant/orders/${order.id}/status`,unsigned=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:target}});assert.equal(unsigned.status,403,unsigned.text);assert.equal(unsigned.body.error.code,"PAIRED_TERMINAL_REQUIRED");await f.pulse();const result=await f.signed(route,{status:target},{method:"PATCH"});assert.equal(result.status,200,result.text);}}});
       assert.equal(f.db.prepare("SELECT status FROM order_confirmation_email_outbox WHERE order_id=?").get(order.id).status,"cancelled");
     }
     assert.equal(sends,0);
@@ -63,7 +68,7 @@ test("confirmation, rejection and expiry after claim cancel an unsent escalation
 });
 
 test("failed and ambiguous email outcomes remain visible without blind resend across lease recovery",async()=>{
-  const f=await setup();let recoveryDb;try{
+  const f=await setup({terminal:true});let recoveryDb;try{
     const failed=await f.place();f.set(f.stamp+180000);let failures=0;
     await runOrderConfirmationAlerts(f.db,f.config,{adapter:async()=>{failures++;return{status:"failed",errorCode:"EAUTH"};}});await runOrderConfirmationAlerts(f.db,f.config,{adapter:async()=>{failures++;return{status:"sent"};}});assert.equal(failures,1);assert.equal(f.db.prepare("SELECT status FROM order_confirmation_email_outbox WHERE order_id=?").get(failed.id).status,"failed");
     const ambiguous=await f.place();f.set(f.stamp+180000);let release,startedResolve;const started=new Promise(resolve=>{startedResolve=resolve;});

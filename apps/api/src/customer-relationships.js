@@ -186,7 +186,7 @@ async function sendMessage({ req, res, db, config, user, role, restaurantId, cus
     assertRestaurantContactAllowed(db, customerId, restaurantId);
     // Encryption may yield; recheck both the relationship and current membership before writing.
     relationship(db, restaurantId, customerId);
-    if (role === "restaurant" && !db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(restaurantId, user.id)) throw notFound();
+    if (role === "restaurant" && !db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND (permission='owner' OR can_manage_customers=1)").get(restaurantId, user.id)) throw notFound();
     const race = db.prepare("SELECT id FROM restaurant_customer_threads WHERE restaurant_id=? AND customer_id=?").get(restaurantId, customerId);
     if (race && race.id !== threadId) throw new HttpError(409, "CONVERSATION_CHANGED", "The conversation changed. Reload before sending again");
     if (!race) db.prepare("INSERT INTO restaurant_customer_threads VALUES(?,?,?,'open',?,?,?)").run(threadId, restaurantId, customerId, now, now, now);
@@ -209,7 +209,7 @@ async function sendMessage({ req, res, db, config, user, role, restaurantId, cus
     db.prepare("INSERT INTO restaurant_customer_messages(id,thread_id,sender_user_id,sender_role,idempotency_key,request_hash,ciphertext,nonce,auth_tag,key_version,created_at,expires_at,ingest_sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id, threadId, user.id, role, key, hash, encrypted.ciphertext, encrypted.nonce, encrypted.authTag, encrypted.keyVersion, now, expiresAt, sequence);
     const ingestedAt = new Date(stamp).toISOString();
     db.prepare("UPDATE restaurant_customer_threads SET status=?,last_message_at=?,updated_at=? WHERE id=?").run(role === "customer" ? "awaiting_restaurant" : "awaiting_customer", ingestedAt, ingestedAt, threadId);
-    const recipients = role === "customer" ? db.prepare("SELECT user_id FROM restaurant_memberships WHERE restaurant_id=? AND permission='owner'").all(restaurantId).map(r => r.user_id) : [customerId];
+    const recipients = role === "customer" ? db.prepare("SELECT m.user_id FROM restaurant_memberships m JOIN users u ON u.id=m.user_id WHERE m.restaurant_id=? AND (m.permission='owner' OR m.can_manage_customers=1) AND u.role='restaurant' AND u.account_enabled=1").all(restaurantId).map(r => r.user_id) : [customerId];
     for (const recipient of recipients) {
       const eventKey=`customer-message:${id}`,inserted=db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,restaurant_id,conversation_id,customer_id,event_key,created_at) VALUES(?,?,'customer_message','New customer conversation message','You have a new message in your restaurant conversation.',?,?,?,?,?)").run(randomUUID(), recipient, restaurantId, threadId, customerId,eventKey,ingestedAt);
       if(inserted.changes)queueCustomerEmailForNotification(db,recipient,eventKey);

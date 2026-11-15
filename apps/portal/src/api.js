@@ -1,3 +1,5 @@
+import {isTerminalOperation, terminalOperation} from "./ordering-terminal-client.js";
+
 export class ApiError extends Error {
   constructor(message, status, code) {
     super(message);
@@ -8,6 +10,7 @@ export class ApiError extends Error {
 }
 
 export async function api(path, options = {}) {
+  if (isTerminalOperation(path, options.method || "GET")) return terminalOperation(path, options);
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const response = await fetch(path, { ...options, headers, credentials: "include" });

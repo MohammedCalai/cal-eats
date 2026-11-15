@@ -1,3 +1,4 @@
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
@@ -30,7 +31,7 @@ test("privacy controls default off and only reviewed dates, retention and separa
 });
 
 test("new optional allergy notes require matching separate explicit consent and no notes are required to order", async () => {
-  const f = await journeyFixture({ customerPrivacy: healthApproved });
+  const f = await businessDeviceFixture({withPrinter:false, customerPrivacy: healthApproved });
   try {
     const cookie = await customerLogin(f), body = orderBody(f.db);
     const submit = (key, extra) => f.json("/api/orders", { method: "POST", cookie, headers: { "Idempotency-Key": key }, body: { ...body, ...extra } });
@@ -57,7 +58,7 @@ test("new optional allergy notes require matching separate explicit consent and 
 });
 
 test("provider coverage gate blocks new health data while ordinary checkout and successful old replay remain available", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const cookie = await customerLogin(f), body = orderBody(f.db);
     const old = { ...body, allergyNotes: "Legacy fictional note" };

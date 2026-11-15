@@ -9,6 +9,7 @@ import { Journal } from "./journal.js";
 import { Logger } from "./logger.js";
 import { createTransport } from "./transports.js";
 import { ensureCredential } from "./setup.js";
+import { startTerminalRuntime } from "./terminal-runtime.js";
 
 function argumentsFor(argv) {
   const result = { command: argv[0] || "start", config: process.env.CAL_EATS_PRINT_BRIDGE_CONFIG || null, allowPhysicalTransport: false };
@@ -49,8 +50,8 @@ async function acquireLock(journalPath) {
   throw new Error("Could not acquire the Cal-Eats print bridge lock");
 }
 
-function apiFor(config, token = null) {
-  return new ApiClient({ baseUrl: config.apiBaseUrl, token, timeoutMs: config.requestTimeoutMs, retry: config.retry });
+function apiFor(config, token = null, terminal = null) {
+  return new ApiClient({ baseUrl: config.apiBaseUrl, token, timeoutMs: config.requestTimeoutMs, retry: config.retry, terminal });
 }
 
 async function main() {
@@ -61,6 +62,7 @@ async function main() {
     return;
   }
   if (args.command === "pair") {
+    if (config.terminal) throw new Error("Enrol the ordering terminal through the signed-in business platform first. The printer's downloaded setup then completes automatically.");
     const code = process.env.CAL_EATS_PAIRING_CODE;
     if (!code || code.length < 6 || code.length > 200) throw new Error("Set the short-lived CAL_EATS_PAIRING_CODE environment variable");
     const paired = await apiFor(config).pair(code, config.deviceName);
@@ -74,21 +76,24 @@ async function main() {
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  let terminal;
   try {
     const journal = await new Journal(config.journalPath).load();
     const logger = new Logger(config.logPath);
     const transport = createTransport(config.transport, { allowPhysicalTransport: args.allowPhysicalTransport });
+    terminal = await startTerminalRuntime({ config, transport, journal, logger, signal: controller.signal });
     const credential = await ensureCredential({
       config,
       setupPath: path.join(path.dirname(path.resolve(args.config)), "setup.json"),
-      api: apiFor(config),
-      verify: async (saved) => apiFor(config, saved.token).heartbeat({ printerReachable: await transport.probe(), transport: transport.kind }),
+      api: apiFor(config, null, terminal),
+      verify: async (saved) => apiFor(config, saved.token, terminal).heartbeat({ printerReachable: await transport.probe(), transport: transport.kind }),
     });
-    const bridge = new PrintBridge({ api: apiFor(config, credential.token), journal, transport, logger });
+    const bridge = new PrintBridge({ api: apiFor(config, credential.token, terminal), journal, transport, logger });
     await logger.info("bridge_started", { deviceId: credential.deviceId, transport: transport.kind });
     if (args.command === "once") await bridge.runOnce();
     else await bridge.start({ signal: controller.signal, heartbeatIntervalMs: config.heartbeatIntervalMs, idlePollMs: config.idlePollMs });
   } finally {
+    terminal?.stop?.();
     await releaseLock();
   }
 }

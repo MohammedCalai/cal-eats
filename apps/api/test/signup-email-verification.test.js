@@ -1,3 +1,4 @@
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { journeyFixture } from "./helpers.js";
@@ -9,7 +10,7 @@ const localToken=(db,email)=>db.prepare("SELECT body FROM local_mail_sink WHERE 
 const financial=db=>Object.fromEntries(["orders","ledger_entries","journal_postings","marketplace_operations","stripe_order_payments","offer_grants","platform_voucher_redemptions"].map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
 
 test("every web/native customer signup welcomes once, verifies before a new order and preserves access, cooldown and existing recovery",async()=>{
-  let time=Date.parse("2026-01-01T01:00:00.000Z");const f=await journeyFixture({now:()=>new Date(time),rateLimit:{attempts:100,windowMs:60000}});
+  let time=Date.parse("2026-01-01T01:00:00.000Z");const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(time),rateLimit:{attempts:100,windowMs:60000}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),oldCustomer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
@@ -29,7 +30,7 @@ test("every web/native customer signup welcomes once, verifies before a new orde
       assert.equal((await f.json(confirmPath,{method:"POST",body:{token}})).body.error.code,"TOKEN_INVALID","A superseded welcome link cannot verify");
       const replacement=localToken(f.db,email);assert.equal((await f.json(confirmPath,{method:"POST",body:{token:replacement}})).status,200);assert.equal((await f.json(confirmPath,{method:"POST",body:{token:replacement}})).body.error.code,"TOKEN_INVALID");
       assert.equal((await f.json(statusPath,auth)).body.data.canOrder,true);assert.equal((await f.json(statusPath,auth)).body.data.verificationRequired,false);
-      const order=await f.json("/api/orders",{...auth,method:"POST",headers:{...auth.headers,"Idempotency-Key":`verified-${native}`},body:orderBody});assert.equal(order.status,201,order.text);
+      await f.pulse();const order=await f.json("/api/orders",{...auth,method:"POST",headers:{...auth.headers,"Idempotency-Key":`verified-${native}`},body:orderBody});assert.equal(order.status,201,order.text);
       // An existing successful order remains recoverable if the address is later changed.
       f.db.prepare("UPDATE users SET email=? WHERE id=?").run(`changed-${email}`,userId);assert.equal((await f.json(statusPath,auth)).body.data.canOrder,false);const beforeReplay=financial(f.db),replay=await f.json("/api/orders",{...auth,method:"POST",headers:{...auth.headers,"Idempotency-Key":`verified-${native}`},body:orderBody});assert.equal(replay.status,200,replay.text);assert.equal(replay.body.data.id,order.body.data.id);assert.deepEqual(financial(f.db),beforeReplay);
       assert.equal((await f.json("/api/orders",{...auth,method:"POST",headers:{...auth.headers,"Idempotency-Key":`changed-new-${native}`},body:orderBody})).body.error.code,"EMAIL_VERIFICATION_REQUIRED");

@@ -1,7 +1,7 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
 import { migrateDatabase, openDatabase } from "../src/db/index.js";
 import { migrations } from "../src/db/migrations.js";
 import { seedDemoData } from "../src/seed.js";
@@ -28,7 +28,7 @@ async function printerFixture(f) {
 }
 
 test("one-use setup package is owner scoped, private, hashed at rest and has no device token", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const p = await printerFixture(f);
     const other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310");
@@ -62,51 +62,51 @@ test("one-use setup package is owner scoped, private, hashed at rest and has no 
 
 test("consumed setup retries recover exactly the same generated credential after a lost response and reject other tokens", async () => {
   let now = Date.parse("2026-01-01T01:00:00Z");
-  const f = await journeyFixture({ now: () => new Date(now) });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date(now) });
   try {
     const p = await printerFixture(f), downloaded = await f.request(p.setupPath, { method: "POST", cookie: p.owner, body: {} });
     const setup = setupFromZip(downloaded.bodyBuffer), token = randomBytes(32).toString("base64url"), body = { code: setup.code, name: "Windows kitchen", clientToken: token };
-    const paired = await f.json("/api/devices/pair", { method: "POST", body });
+    const paired = await f.signed("/api/devices/pair", body, {method: "POST", deviceOnly:true});
     assert.equal(paired.status, 201, paired.text); assert.equal(paired.body.data.token, token);
     assert.equal(paired.body.data.printerId, p.printer.id); assert.equal(paired.body.data.restaurantId, p.restaurant.id);
     const row = f.db.prepare("SELECT * FROM printer_devices WHERE id=?").get(paired.body.data.deviceId);
     assert.equal(row.token_hash, hash(token)); assert.equal(JSON.stringify(row).includes(token), false);
     now += 8 * 86400000;
-    const replay = await f.json("/api/devices/pair", { method: "POST", body });
+    const replay = await f.signed("/api/devices/pair", body, {method: "POST", deviceOnly:true});
     assert.equal(replay.status, 201, replay.text); assert.deepEqual(replay.body.data, paired.body.data);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM printer_devices").get().n, 1);
-    assert.equal((await f.json("/api/devices/pair", { method: "POST", body: { ...body, clientToken: randomBytes(32).toString("base64url") } })).status, 401);
-    assert.equal((await f.json("/api/devices/pair", { method: "POST", body: { code: setup.code, name: "Legacy retry" } })).status, 401);
+    assert.equal((await f.signed("/api/devices/pair", { ...body, clientToken: randomBytes(32).toString("base64url") }, {method: "POST", deviceOnly:true})).status, 401);
+    assert.equal((await f.signed("/api/devices/pair", { code: setup.code, name: "Legacy retry" }, {method: "POST", deviceOnly:true})).status, 401);
     f.db.prepare("UPDATE printer_devices SET revoked_at=? WHERE id=?").run(f.config.now().toISOString(), paired.body.data.deviceId);
-    assert.equal((await f.json("/api/devices/pair", { method: "POST", body })).status, 401);
+    assert.equal((await f.signed("/api/devices/pair", body, {method: "POST", deviceOnly:true})).status, 401);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM printer_devices").get().n, 1);
   } finally { await f.close(); }
 });
 
 test("unconsumed expired setup cannot pair and heartbeat distinguishes network reachability from a computer heartbeat", async () => {
   let now = Date.parse("2026-01-01T01:00:00Z");
-  const f = await journeyFixture({ now: () => new Date(now) });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date(now) });
   try {
     const p = await printerFixture(f);
     let downloaded = await f.request(p.setupPath, { method: "POST", cookie: p.owner, body: {} }), setup = setupFromZip(downloaded.bodyBuffer);
     now += 8 * 86400000;
-    assert.equal((await f.json("/api/devices/pair", { method: "POST", body: { code: setup.code, name: "Expired setup", clientToken: randomBytes(32).toString("base64url") } })).status, 401);
+    assert.equal((await f.signed("/api/devices/pair", { code: setup.code, name: "Expired setup", clientToken: randomBytes(32).toString("base64url") }, {method: "POST", deviceOnly:true})).status, 401);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM printer_devices").get().n, 0);
     p.owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310");
     downloaded = await f.request(p.setupPath, { method: "POST", cookie: p.owner, body: {} }); setup = setupFromZip(downloaded.bodyBuffer);
-    const paired = await f.json("/api/devices/pair", { method: "POST", body: { code: setup.code, name: "Working device", clientToken: randomBytes(32).toString("base64url") } });
+    const paired = await f.signed("/api/devices/pair", { code: setup.code, name: "Working device", clientToken: randomBytes(32).toString("base64url") }, {method: "POST", deviceOnly:true});
     assert.equal(paired.status, 201, paired.text);
     const headers = { authorization: `Bearer ${paired.body.data.token}` };
     const state = async () => (await f.json(`${p.root}/printers`, { cookie: p.owner })).body.data.items.find((printer) => printer.id === p.printer.id);
     assert.equal((await state()).status, "offline");
-    await f.json("/api/devices/heartbeat", { method: "POST", headers, body: {} });
+    await f.signed("/api/devices/heartbeat", {}, {method: "POST", headers, deviceOnly:true});
     assert.equal((await state()).status, "connection_unverified");
-    await f.json("/api/devices/heartbeat", { method: "POST", headers, body: { printerReachable: false, transport: "tcp-escpos" } });
+    await f.signed("/api/devices/heartbeat", { printerReachable: false, transport: "tcp-escpos" }, {method: "POST", headers, deviceOnly:true});
     assert.equal((await state()).status, "printer_offline"); assert.equal((await state()).printerReachable, false);
-    assert.equal((await f.json("/api/devices/jobs/claim", { method: "POST", headers, body: {} })).body.data.job, null);
-    assert.equal((await f.json("/api/devices/heartbeat", { method: "POST", headers, body: { printerReachable: true } })).status, 400);
-    assert.equal((await f.json("/api/devices/heartbeat", { method: "POST", headers, body: { printerReachable: true, transport: "invalid" } })).status, 400);
-    await f.json("/api/devices/heartbeat", { method: "POST", headers, body: { printerReachable: true, transport: "tcp-escpos" } });
+    assert.equal((await f.signed("/api/devices/jobs/claim", {}, {method: "POST", headers, deviceOnly:true})).body.data.job, null);
+    assert.equal((await f.signed("/api/devices/heartbeat", { printerReachable: true }, {method: "POST", headers, deviceOnly:true})).status, 400);
+    assert.equal((await f.signed("/api/devices/heartbeat", { printerReachable: true, transport: "invalid" }, {method: "POST", headers, deviceOnly:true})).status, 400);
+    await f.signed("/api/devices/heartbeat", { printerReachable: true, transport: "tcp-escpos" }, {method: "POST", headers, deviceOnly:true});
     assert.equal((await state()).status, "online"); assert.equal((await state()).printerReachable, true);
     const visible = JSON.stringify(await state()); assert.equal(visible.includes(paired.body.data.token), false); assert.equal(visible.includes("token_hash"), false);
     now += 60001; assert.equal((await state()).status, "offline");

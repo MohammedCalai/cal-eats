@@ -8,6 +8,8 @@ import { loadCustomerLegalConfig } from "./customer-legal.js";
 import { loadCustomerPrivacyConfig } from "./customer-privacy.js";
 import { loadMerchantCommercialConfig } from "./merchant-commercial.js";
 import {loadMediaObjectStore} from "./media-object-store.js";
+import {loadBusinessDeviceConfig} from "./business-device-health.js";
+import {loadBusinessPushConfig} from "./business-device-push.js";
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -94,6 +96,8 @@ export function loadConfig(overrides = {}) {
     migrateOnStart,
     orderAlertEmail,
     businessStatements: { sendEnabled: statementSendEnabled },
+    businessDevices: loadBusinessDeviceConfig(overrides.businessDevices),
+    businessPush: loadBusinessPushConfig(overrides.businessPush),
     customerPush: overrides.customerPush ?? loadCustomerPushConfig(),
     orderLiveActivities: overrides.orderLiveActivities ?? loadOrderLiveActivityConfig(),
     financialRemediesEnabled,

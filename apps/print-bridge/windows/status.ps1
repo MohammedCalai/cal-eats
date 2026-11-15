@@ -14,4 +14,7 @@ $Run = if ($Task) { Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Silen
     ConnectionSaved = Test-Path -LiteralPath (Join-Path $InstallDir "var\device-credential.json")
     SetupPending = Test-Path -LiteralPath (Join-Path $InstallDir "setup.json")
     JournalPresent = Test-Path -LiteralPath (Join-Path $InstallDir "var\print-journal.json")
+    TerminalIdentitySaved = Test-Path -LiteralPath (Join-Path $InstallDir "var\terminal-identity.json")
+    TerminalLocalPort = 17863
+    PhysicalPaperVerified = $false
 }

@@ -1,14 +1,14 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
 import { campaignWeekStart } from "../src/promotion-mechanics.js";
 import { DatabaseSync } from "node:sqlite";
 import { marketingCampaignMigration32 } from "../src/marketing-campaign-migration.js";
 
 async function setup() {
   let stamp = Date.parse("2026-10-30T12:00:00.000Z"), sequence = 0;
-  const f = await journeyFixture({ now: () => new Date(stamp), sessionHours: 24 * 90, rateLimit: { attempts: 60, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date(stamp), sessionHours: 24 * 90, rateLimit: { attempts: 60, windowMs: 60000 } });
   const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310"), otherOwner = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310");
   const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], root = `/api/restaurant/restaurants/${restaurant.id}`;
   const items = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items;
@@ -21,7 +21,7 @@ async function setup() {
   const basket = (id = main.id, quantity = 1) => [{ menuItemId: id, quantity }];
   const payload = (offerId, cart = basket(), fulfillment = "collection") => ({ restaurantId: restaurant.id, items: cart, fulfillment, ...(fulfillment === "delivery" ? { deliveryAddress: { line1: "10 Fictional Road", city: "Luton", postcode: "LU1 2AB" } } : {}), ...(offerId ? { offerId } : {}) });
   async function place(offerId, cart, fulfillment, cookie = customer) { return f.json("/api/orders", { method: "POST", cookie, headers: { "Idempotency-Key": `marketing-order-${sequence++}` }, body: { ...payload(offerId, cart, fulfillment), paymentMethod: "cash" } }); }
-  async function complete(orderId, cookie = owner) { for (const status of ["accepted", "preparing", "ready", "completed"]) { const result = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie, body: { status } }); assert.equal(result.status, 200, result.text); } }
+  async function complete(orderId) { for (const status of ["accepted", "preparing", "ready", "completed"]) { const result = await f.signed(`/api/restaurant/orders/${orderId}/status`, {status}, {method:"PATCH"}); assert.equal(result.status, 200, result.text); } }
   async function consent(cookie) { const result = await f.json("/api/account/marketing-preferences", { method: "PATCH", cookie, body: { inAppPromotions: true, pushPromotions: false, source: "marketing-fixture" } }); assert.equal(result.status, 200, result.text); }
   async function newCustomer(email) {
     const response = await f.json("/api/auth/register", { method: "POST", body: { name: "Fictional second customer", email, password: "MarketingFixture!4310" } });
@@ -46,7 +46,7 @@ async function setup() {
   }
   const quote = (offerId, cart, fulfillment, cookie = customer) => f.json("/api/orders/quote", { method: "POST", cookie, body: payload(offerId, cart, fulfillment) });
   const history = await place(); assert.equal(history.status, 201, history.text); await complete(history.body.data.id); await consent(customer);
-  return { ...f, owner, otherOwner, customer, customerId, restaurant, root, main, gift, other, basket, payload, place, complete, consent, newCustomer, campaign, grant, quote, set(value) { stamp = Date.parse(value); } };
+  return { ...f, owner, otherOwner, customer, customerId, restaurant, root, main, gift, other, basket, payload, place, complete, consent, newCustomer, campaign, grant, quote, async set(value) { stamp = Date.parse(value); await f.pulse(); } };
 }
 
 test("all advertised marketing mechanics quote and redeem server prices without changing owner delivery configuration", async () => {
@@ -95,10 +95,10 @@ test("all advertised marketing mechanics quote and redeem server prices without 
 
     const happy = await f.grant(await f.campaign("happy_hour", { startsAt: "2026-10-30T12:01:00.000Z", expiresAt: "2026-10-30T12:02:00.000Z" }));
     assert.equal((await f.quote(happy.id)).body.error.code, "OFFER_NOT_STARTED");
-    f.set("2026-10-30T12:01:30.000Z"); assert.equal((await f.quote(happy.id)).body.data.restaurantDiscountMinor, 100);
+    await f.set("2026-10-30T12:01:30.000Z"); assert.equal((await f.quote(happy.id)).body.data.restaurantDiscountMinor, 100);
     const timedOrder=await f.place(happy.id);assert.equal(timedOrder.status,201,timedOrder.text);assert.equal(timedOrder.body.data.totalMinor,900);
-    await f.json(`/api/restaurant/orders/${timedOrder.body.data.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"rejected"}});
-    f.set("2026-10-30T12:02:00.000Z"); assert.equal((await f.quote(happy.id)).body.error.code, "OFFER_EXPIRED");
+    await f.signed(`/api/restaurant/orders/${timedOrder.body.data.id}/status`, {status:"rejected"}, {method:"PATCH"});
+    await f.set("2026-10-30T12:02:00.000Z"); assert.equal((await f.quote(happy.id)).body.error.code, "OFFER_EXPIRED");
 
     const all = await f.campaign("amount_order", { recipientSegment: "all", customerIds: [] }); assert.equal(all.status, 201, all.text); assert.equal(all.body.data.recipientSegment, "all");
     assert.equal((await f.campaign("percent_items", {}, f.otherOwner)).status, 404);
@@ -147,10 +147,10 @@ test("weekly spend caps reserve atomically, release rejected gifts and reset at 
     const before = f.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n;
     assert.equal((await f.place(secondGrant.id, undefined, undefined, second.cookie)).body.error.code, "PROMOTION_WEEKLY_BUDGET_EXHAUSTED");
     assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n, before);
-    await f.json(`/api/restaurant/orders/${held.body.data.id}/status`, { method: "PATCH", cookie: f.owner, body: { status: "rejected" } });
+    await f.signed(`/api/restaurant/orders/${held.body.data.id}/status`, { status: "rejected" }, {method: "PATCH"});
     const used = await f.place(secondGrant.id, undefined, undefined, second.cookie); assert.equal(used.status, 201, used.text); await f.complete(used.body.data.id);
     assert.equal((await f.quote(firstGrant.id)).body.error.code, "PROMOTION_WEEKLY_BUDGET_EXHAUSTED");
-    f.set("2026-11-02T00:00:00.000Z");
+    await f.set("2026-11-02T00:00:00.000Z");
     const nextWeek = await f.place(firstGrant.id); assert.equal(nextWeek.status, 201, nextWeek.text);
     const summary = (await f.json(`${f.root}/loyalty/promotions`, { cookie: f.owner })).body.data.find(row => row.id === created.body.data.id);
     assert.equal(summary.weeklyCommittedBudgetMinor, 300); assert.equal(summary.committedBudgetMinor, 600);

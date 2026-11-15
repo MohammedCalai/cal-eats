@@ -3,7 +3,8 @@ import test from "node:test";
 import {randomUUID,createHash} from "node:crypto";
 import {journeyFixture} from "./helpers.js";
 import {runBusinessReportEmails} from "../src/business-report-emails.js";
-import {migrateDatabase} from "../src/db/index.js";
+import {migrateDatabase,openDatabase} from "../src/db/index.js";
+import {migrations} from "../src/db/migrations.js";
 import {createOrderAlertEmailAdapter} from "../src/order-alert-email.js";
 
 async function setup(){
@@ -113,20 +114,25 @@ test("expired claims distinguish pre-dispatch recovery from uncertain sends and 
   }finally{await f.close();}
 });
 
-test("a populated contiguous schema62 upgrades to63 without changing customers or financial records",async()=>{
-  const f=await setup();try{
-    const item=(await f.json(`/api/restaurants/${f.restaurant.id}/menu`)).body.data.items[0];
-    const placed=await f.json("/api/orders",{cookie:f.customer,method:"POST",headers:{"Idempotency-Key":"migration63-existing-order"},body:{restaurantId:f.restaurant.id,items:[{menuItemId:item.id,quantity:1}],fulfillment:"collection",paymentMethod:"mock_card"}});assert.equal(placed.status,201,placed.text);
-    const stamp=f.config.now().toISOString();f.db.prepare("INSERT INTO marketplace_operations(id,operation_key,restaurant_id,order_id,kind,status,amount_minor,currency,provider_mode,metadata,created_at,updated_at) VALUES(?,?,?,?,'merchant_transfer','confirmed',372,'GBP','stripe_test','{}',?,?)").run(randomUUID(),"migration63-existing-transfer",f.restaurant.id,placed.body.data.id,stamp,stamp);
-    const before={users:f.db.prepare("SELECT * FROM users ORDER BY id").all(),orders:f.db.prepare("SELECT * FROM orders ORDER BY id").all(),operations:f.db.prepare("SELECT * FROM marketplace_operations ORDER BY id").all()};
-    assert.ok(before.orders.length>0);assert.ok(before.operations.length>0);
-    f.db.exec("DROP TABLE business_report_email_outbox; DELETE FROM schema_migrations WHERE version=63;");
-    assert.equal(f.db.prepare("SELECT MAX(version) n FROM schema_migrations").get().n,62);
-    migrateDatabase(f.db);migrateDatabase(f.db);
-    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM schema_migrations WHERE version=63").get().n,1);
-    for(const[table,key]of [["users","users"],["orders","orders"],["marketplace_operations","operations"]])assert.deepEqual(f.db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),before[key]);
-    assert.equal(f.db.prepare("PRAGMA foreign_key_check").get(),undefined);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM business_report_email_outbox").get().n,0);
-  }finally{await f.close();}
+test("a populated contiguous schema62 upgrades to the current schema without changing customers or financial records",()=>{
+  const db=openDatabase(":memory:");try{
+    db.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,applied_at TEXT NOT NULL)");
+    for(const migration of migrations.filter(value=>value.version<=62)){
+      if(migration.foreignKeysOff)db.exec("PRAGMA foreign_keys=OFF");
+      db.exec("BEGIN IMMEDIATE");db.exec(migration.sql);db.prepare("INSERT INTO schema_migrations VALUES(?,?,?)").run(migration.version,migration.name,"2026-01-01T00:00:00.000Z");db.exec("COMMIT");
+      if(migration.foreignKeysOff)db.exec("PRAGMA foreign_keys=ON");
+    }
+    db.exec(`INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES('historical-customer','Customer','report-history@example.invalid','unused','customer','2026-01-01');
+      INSERT INTO restaurants(id,name,status,created_at) VALUES('historical-restaurant','Historical kitchen','approved','2026-01-01');
+      INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at) VALUES('historical-order','historical-restaurant','Historical kitchen','historical-customer','completed',400,400,28,'card','stripe_captured','collection','report-history','original-hash','2026-01-01','2026-01-01');
+      INSERT INTO marketplace_operations(id,operation_key,restaurant_id,order_id,kind,status,amount_minor,currency,provider_mode,metadata,created_at,updated_at) VALUES('historical-transfer','migration63-existing-transfer','historical-restaurant','historical-order','merchant_transfer','confirmed',372,'GBP','stripe_test','{}','2026-01-01','2026-01-01');`);
+    const before={users:db.prepare("SELECT * FROM users ORDER BY id").all(),orders:db.prepare("SELECT * FROM orders ORDER BY id").all(),operations:db.prepare("SELECT * FROM marketplace_operations ORDER BY id").all()};
+    assert.equal(db.prepare("SELECT MAX(version) n FROM schema_migrations").get().n,62);assert.ok(before.orders.length);assert.ok(before.operations.length);
+    migrateDatabase(db);migrateDatabase(db);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM schema_migrations WHERE version=63").get().n,1);
+    for(const[table,key]of [["users","users"],["orders","orders"],["marketplace_operations","operations"]])assert.deepEqual(db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),before[key]);
+    assert.equal(db.prepare("PRAGMA foreign_key_check").get(),undefined);assert.equal(db.prepare("SELECT COUNT(*) n FROM business_report_email_outbox").get().n,0);
+  }finally{db.close();}
 });
 
 test("existing SMTP adapter carries requested CSV attachments with the server-generated statement identity",async()=>{

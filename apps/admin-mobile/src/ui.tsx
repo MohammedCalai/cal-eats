@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { api } from "./api";
+import { api,ApiError } from "./api";
 import type { PageInfo } from "./model";
 
-export const colour = { background: "#121212", panel: "#1b1b1f", elevated: "#242429", border: "#34343b", text: "#fafafa", muted: "#a1a1aa", blue: "#2563eb", cyan: "#38bdf8", success: "#86efac", danger: "#fca5a5" };
+export const colour = { background: "#081427", panel: "#11243d", elevated: "#18324f", border: "#29435f", text: "#f3f8ff", muted: "#a4bad1", blue: "#2563eb", cyan: "#65ceff", success: "#86efac", danger: "#fca5a5" };
 export function Button({ children, onPress, quiet, disabled, busy }: { children: ReactNode; onPress: () => void; quiet?: boolean; disabled?: boolean; busy?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(disabled || busy), busy }} disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [styles.button, quiet && styles.quiet, (disabled || busy) && { opacity: .5 }, pressed && { opacity: .75 }]}>{busy ? <ActivityIndicator color={colour.text}/> : <Text style={styles.buttonText}>{children}</Text>}</Pressable>;
 }
@@ -21,10 +21,10 @@ export function Page({ children, loading, onRefresh }: { children: ReactNode; lo
 export function Sheet({ title, children, onClose, visible = true }: { title: string; children: ReactNode; onClose: () => void; visible?: boolean }) { return <Modal visible={visible} animationType="slide" onRequestClose={onClose}><SafeAreaView style={{ flex: 1, backgroundColor: colour.background }}><View style={styles.sheetHeader}><Text style={[styles.heading, { flex: 1 }]}>{title}</Text><Button quiet onPress={onClose}>Close</Button></View><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>{children}</KeyboardAvoidingView></SafeAreaView></Modal>; }
 export function Pagination({ value, page, onPage, busy }: { value?: PageInfo; page: number; onPage: (page: number) => void; busy?: boolean }) { const hasNext = value?.hasNext ?? value?.hasMore ?? (value?.totalPages ? page < value.totalPages : false); return <View style={styles.row}><Button quiet disabled={page <= 1 || busy} onPress={() => onPage(page - 1)}>Previous</Button><Text style={styles.muted}>Page {page}{value?.totalPages ? ` of ${value.totalPages}` : ""}</Text><Button quiet disabled={!hasNext || busy} onPress={() => onPage(page + 1)}>Next</Button></View>; }
 export function useRemote<T>(path: string, token: string) {
-  const [value, setValue] = useState<T | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(""); const sequence = useRef(0);
-  const reload = useCallback(async () => { const call = ++sequence.current; setLoading(true); try { const result = await api<T>(path, { token }); if (call === sequence.current) { setValue(result); setError(""); } } catch (e) { if (call === sequence.current) setError((e as Error).message); } finally { if (call === sequence.current) setLoading(false); } }, [path, token]);
-  useEffect(() => { void reload(); return () => { sequence.current++; }; }, [reload]);
-  return { value, setValue, loading, error, reload };
+  const [value, setValue] = useState<T | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(""), [receivedAt,setReceivedAt]=useState<string|null>(null); const sequence = useRef(0);
+  const reload = useCallback(async () => { const call = ++sequence.current; if(!path||!token){setValue(null);setLoading(false);return;} setLoading(true); try { const result = await api<T>(path, { token }); if (call === sequence.current) { setValue(result); setReceivedAt(new Date().toISOString()); setError(""); } } catch (e) { if (call === sequence.current) {setError((e as Error).message);if(e instanceof ApiError&&[401,403,404].includes(e.status))setValue(null);} } finally { if (call === sequence.current) setLoading(false); } }, [path, token]);
+  useEffect(() => { setValue(null);setReceivedAt(null);setError("");void reload(); return () => { sequence.current++; }; }, [reload]);
+  return { value, setValue, loading, error, receivedAt, reload };
 }
 export function useForegroundRefresh(reload: () => unknown, interval = 15_000) { const fn = useRef(reload); fn.current = reload; useEffect(() => { const timer = setInterval(() => { if (AppState.currentState === "active") void fn.current(); }, interval); const subscription = AppState.addEventListener("change", state => { if (state === "active") void fn.current(); }); return () => { clearInterval(timer); subscription.remove(); }; }, [interval]); }
 export const styles = StyleSheet.create({

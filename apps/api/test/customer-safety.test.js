@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { notificationRecipientAllowed } from "../src/notification-stream.js";
 import { runCustomerTransactionalEmails } from "../src/customer-emails.js";
 import { applyCustomerErasure, planCustomerErasure } from "../src/customer-erasure.js";
@@ -26,7 +26,7 @@ async function setup(f) {
 
 test("verified erasure removes populated block and safety-report links without leaving foreign references", async () => {
   const policy = { enabled:true, version:"privacy-safety-fixture", approvedAt:"2026-01-01T00:00:00.000Z", approvalReference:"isolated-safety-review-only", deletionTargetDays:30, deletionTargetCalendarMonths:1, retention:{chatDays:30,allergyDays:30,orderContactDays:90,resolvedSupportDays:30,accountingYears:6} };
-  const f = await journeyFixture({ customerPrivacy:policy });
+  const f = await businessDeviceFixture({withPrinter:false, customerPrivacy:policy });
   try {
     const customer=await f.login("customer@calai.local","LocalCustomer!4310"), admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const restaurant=f.db.prepare("SELECT id FROM restaurants LIMIT 1").get(), user=f.db.prepare("SELECT id FROM users WHERE email='customer@calai.local'").get(), adminId=f.db.prepare("SELECT id FROM users WHERE email='admin@calai.local'").get().id;
@@ -48,7 +48,7 @@ test("verified erasure removes populated block and safety-report links without l
 });
 
 test("native safety reports validate ownership, retry once and stay privately in platform support with admin email", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const s = await setup(f), headers = { "Idempotency-Key": "safety-report-one" }, body = { restaurantId: s.shop.id, conversationId: s.thread.id, messageId: s.message.id, reason: "harassment", details: "Please review this message" };
     await f.json(s.conversation,{cookie:s.owner,method:"POST",headers:{"Idempotency-Key":"unreported-other-message"},body:{message:"Unreported private conversation text"}});
@@ -90,7 +90,7 @@ test("native safety reports validate ownership, retry once and stay privately in
 });
 
 test("restaurant block cancels queued contact, blocks new contact and offer reads, but retains history and system/support updates", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const s = await setup(f), blockPath = `/api/customer-safety/restaurants/${s.shop.id}`;
     assert.equal((await f.json(blockPath, { cookie: s.customer })).body.data.blocked, false);
@@ -111,7 +111,7 @@ test("restaurant block cancels queued contact, blocks new contact and offer read
     assert.equal(history.status, 200); assert.equal(history.body.data.items[0].message, "A restaurant message");
     const orderMessage = await f.json(`/api/orders/${s.order.id}/messages`, { cookie: s.owner, method: "POST", headers: { "Idempotency-Key": "blocked-order-contact" }, body: { message: "This must not arrive either" } });
     assert.equal(orderMessage.status, 409, orderMessage.text);
-    const accepted = await f.json(`/api/restaurant/orders/${s.order.id}/status`, { cookie: s.owner, method: "PATCH", body: { status: "accepted" } });
+    const accepted = await f.signed(`/api/restaurant/orders/${s.order.id}/status`, { status: "accepted" }, {method: "PATCH"});
     assert.equal(accepted.status, 200, accepted.text);
     const update = f.db.prepare("SELECT * FROM user_notifications WHERE user_id=? AND type='order_status'").get(s.order.customerId);
     assert.equal(notificationRecipientAllowed(f.db, update), true);

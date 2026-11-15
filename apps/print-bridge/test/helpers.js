@@ -60,8 +60,10 @@ export class FakeApi {
     this.acks = [];
     this.failClaim = null;
     this.ackHook = null;
+    this.submissions = [];
   }
   heartbeat() { return Promise.resolve({}); }
+  async submitting(id, claimToken) { this.submissions.push({ id, claimToken }); return { status: "dispatched" }; }
   async claim() {
     this.claimCalls += 1;
     if (this.failClaim) throw this.failClaim;

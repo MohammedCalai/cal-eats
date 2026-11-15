@@ -3,3 +3,7 @@ node_modules/
 dist/
 .env
 .env.*
+android/
+ios/
+google-services*.json
+GoogleService-Info*.plist

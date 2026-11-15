@@ -1,0 +1,15 @@
+import React,{useEffect,useMemo,useSyncExternalStore} from "react";
+import {api} from "./api.js";
+import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
+import {createStaffCapabilities,STAFF_CAPABILITIES} from "./staff-capabilities.js";
+
+export default function StaffCapabilities({restaurantId,member,owner,onSaved}){
+  const userId=member?.userId??member?.id,permission=member?.permission;
+  const model=useMemo(()=>createStaffCapabilities({restaurantId,userId,permission,owner,request:api}),[restaurantId,userId,permission,owner]);
+  const state=useSyncExternalStore(model.subscribe,model.getSnapshot,model.getSnapshot);
+  useEffect(()=>{model.activate();return()=>model.dispose();},[model]);
+  if(!model.allowed)return null;
+  const changed=Object.keys(model.changes()).length;
+  async function save(event){event.preventDefault();if(await model.save())onSaved?.();}
+  return <div className="settings-staff-access"><button type="button" className="quiet" onClick={()=>void model.open()} aria-label={`Manage access for ${member.name}`}>Manage access</button>{state.saved&&<p className="fine" role="status">Access updated for {member.name}.</p>}{state.open&&<WorkspaceDialog title="Staff access" onClose={()=>model.close()}><form className="settings-edit-form" onSubmit={save}><p><strong>{member.name}</strong><br/>{member.email}</p><p className="fine">Choose this person’s access to this restaurant. They remain a staff member. Team permissions, issuing staff credentials and restaurant bank setup stay owner-only.</p>{state.loading&&<p role="status">Loading current access…</p>}{state.error&&<p className="alert" role="alert">{state.error}</p>}{state.loaded&&<fieldset disabled={state.saving||state.requiresReload}><legend>Restaurant permissions</legend>{STAFF_CAPABILITIES.map(field=><label className="check-field" key={field.key} style={{display:"flex",alignItems:"flex-start",gap:12,marginBlock:16}}><input type="checkbox" style={{width:20,height:20,minHeight:20,flex:"0 0 20px",marginTop:2}} checked={state.draft[field.key]} onChange={event=>model.set(field.key,event.target.checked)}/><span><strong>{field.label}</strong><small className="fine" style={{display:"block",marginTop:4}}>{field.description}</small></span></label>)}</fieldset>}<p className="fine">Changing order permissions does not turn a phone or ordinary browser into an ordering terminal. An enrolled tablet and its current screen connection are always required. Each saved change is recorded.</p>{(!state.loaded||state.requiresReload)&&!state.loading&&<button className="quiet" type="button" disabled={state.saving} onClick={()=>void model.reload()}>Reload current access</button>}<div className="button-row"><button className="quiet" type="button" disabled={state.saving} onClick={()=>model.close()}>Cancel</button><button className="primary" disabled={!state.loaded||state.loading||state.saving||state.requiresReload||!changed}>{state.saving?"Saving access…":"Save access"}</button></div></form></WorkspaceDialog>}</div>;
+}

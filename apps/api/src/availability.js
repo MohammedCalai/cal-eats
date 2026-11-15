@@ -10,6 +10,7 @@ const clockMinutes = (value) => Number(value.slice(0, 2)) * 60 + Number(value.sl
 export function restaurantAvailability(row, now = new Date()) {
   if (row.suspended) return { acceptingOrders: false, closedReason: "Restaurant is suspended" };
   if (row.paused) return { acceptingOrders: false, closedReason: "Restaurant has paused new orders" };
+  if (row.tablet_offline_blocked_at) return { acceptingOrders: false, closedReason: "Restaurant is temporarily unavailable" };
   const local = londonParts(now);
   if (JSON.parse(row.holiday_dates ?? "[]").includes(local.date)) return { acceptingOrders: false, closedReason: "Restaurant is closed for a holiday" };
   if (row.always_open) return { acceptingOrders: true, closedReason: null };

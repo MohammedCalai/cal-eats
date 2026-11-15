@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { createApp } from "../src/app.js";
 
 test("support-verified customer login closure is guarded, idempotent and preserves history", async () => {
   let stamp = "2026-01-01T01:00:00.000Z";
-  const f = await journeyFixture({ now: () => new Date(stamp), rateLimit: { attempts: 100, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date(stamp), rateLimit: { attempts: 100, windowMs: 60000 } });
   try {
     const admin = await f.login("admin@calai.local", "LocalAdmin!4310"), owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310");
     const email = "customer@calai.local", password = "LocalCustomer!4310", customer = await f.login(email, password), otherBrowser = await f.login(email, password);
@@ -28,7 +28,7 @@ test("support-verified customer login closure is guarded, idempotent and preserv
     const orderId = placed.body.data.id;
     let blocked = await close(); assert.equal(blocked.status, 409, blocked.text); assert.equal(blocked.body.error.code, "ACCOUNT_CLOSURE_BLOCKED");
     assert.equal(f.db.prepare("SELECT account_enabled FROM users WHERE id=?").get(userId).account_enabled, 1);
-    for (const status of ["accepted", "preparing", "ready", "completed"]) { const changed = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } }); assert.equal(changed.status, 200, changed.text); }
+    for (const status of ["accepted", "preparing", "ready", "completed"]) { const changed = await f.signed(`/api/restaurant/orders/${orderId}/status`, { status }, {method: "PATCH"}); assert.equal(changed.status, 200, changed.text); }
     // A terminal order can still have unsettled payment work; no provider is called.
     const operationId = randomUUID();
     f.db.prepare("INSERT INTO marketplace_operations(id,operation_key,restaurant_id,order_id,kind,status,amount_minor,currency,provider_mode,metadata,created_at,updated_at) VALUES(?,?,?,?,?,'pending',100,'GBP','local_simulator','{}',?,?)").run(operationId, "closure-pending-payment", restaurant.id, orderId, "order_refund", stamp, stamp);
@@ -73,7 +73,7 @@ test("support-verified customer login closure is guarded, idempotent and preserv
 });
 
 test("an order authenticated before verified closure cannot commit after its delayed body arrives", async () => {
-  const stamp = "2026-01-01T01:00:00.000Z", f = await journeyFixture({ now: () => new Date(stamp), rateLimit: { attempts: 100, windowMs: 60000 } });
+  const stamp = "2026-01-01T01:00:00.000Z", f = await businessDeviceFixture({withPrinter:false, now: () => new Date(stamp), rateLimit: { attempts: 100, windowMs: 60000 } });
   let releaseBody;
   try {
     const customer = await f.login("customer@calai.local", "LocalCustomer!4310"), owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), admin = await f.login("admin@calai.local", "LocalAdmin!4310");
@@ -81,7 +81,7 @@ test("an order authenticated before verified closure cannot commit after its del
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const originalBody = { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "cash", fulfillment: "collection" };
     const original = await f.json("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "pre-closure-history" }, body: originalBody }); assert.equal(original.status, 201, original.text);
-    for (const status of ["accepted", "preparing", "ready", "completed"]) { const changed = await f.json(`/api/restaurant/orders/${original.body.data.id}/status`, { method: "PATCH", cookie: owner, body: { status } }); assert.equal(changed.status, 200, changed.text); }
+    for (const status of ["accepted", "preparing", "ready", "completed"]) { const changed = await f.signed(`/api/restaurant/orders/${original.body.data.id}/status`, { status }, {method: "PATCH"}); assert.equal(changed.status, 200, changed.text); }
     const campaignId = randomUUID(), offerId = randomUUID();
     f.db.prepare("INSERT INTO offer_campaigns(id,restaurant_id,created_by_user_id,idempotency_key,request_hash,title,message,menu_item_id,item_name,item_value_minor,min_subtotal_minor,expires_at,created_at,offer_type,offer_value) VALUES(?,?,?,?,?,?,?,?,?,?,0,'2026-02-01T01:00:00.000Z',?,'fixed_off',100)").run(campaignId, restaurant.id, ownerId, campaignId, campaignId, "Customer offer", "A pound off your next meal", item.id, item.name, item.priceMinor, stamp);
     f.db.prepare("INSERT INTO offer_grants(id,campaign_id,restaurant_id,customer_id,status,created_at,updated_at) VALUES(?,?,?,?,'available',?,?)").run(offerId, campaignId, restaurant.id, userId, stamp, stamp);

@@ -54,7 +54,7 @@ function unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, acti
   return orderMessages + customerMessages;
 }
 
-function operationalCounts(db, restaurantId, userId, owner, now, actionableConfig) {
+function operationalCounts(db, restaurantId, userId, owner, now, actionableConfig,customerAccess=owner) {
   if(db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(restaurantId)?.archived_at)return {pendingConfirmation:0,overdueConfirmation:0,activeOrders:0,liveOrders:0,confirmedInKitchen:0,readyForHandover:0,unreadMessages:0,openOrderHelp:owner?0:null,actionRequiredOrderHelp:owner?0:null,openRefundCases:owner?0:null,actionRequiredRefundCases:owner?0:null};
   const pending = db.prepare(`SELECT COUNT(*) AS pending,SUM(CASE WHEN o.confirmation_due_at<=? THEN 1 ELSE 0 END) AS overdue FROM orders o WHERE o.restaurant_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}`).get(now, restaurantId);
   const active = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready','out_for_delivery') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId).count;
@@ -63,7 +63,7 @@ function operationalCounts(db, restaurantId, userId, owner, now, actionableConfi
     pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active, ...kitchen,
     // This dashboard action count matches the reminder's open chat windows.
     // Historical messages and notification/read records remain unchanged.
-    unreadMessages: unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, actionableConfig),
+    unreadMessages: unreadRestaurantMessageCount(db, restaurantId, userId, customerAccess, now, actionableConfig),
     openOrderHelp: owner ? db.prepare("SELECT COUNT(*) count FROM support_cases s JOIN users u ON u.id=s.user_id WHERE s.restaurant_id=? AND s.order_id IS NOT NULL AND u.role='customer' AND s.status<>'resolved' AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.id=s.id)").get(restaurantId).count : null,
     actionRequiredOrderHelp: owner ? db.prepare("SELECT COUNT(*) count FROM support_cases s JOIN users u ON u.id=s.user_id WHERE s.restaurant_id=? AND s.order_id IS NOT NULL AND u.role='customer' AND s.status<>'resolved' AND s.waiting_for='team' AND NOT EXISTS(SELECT 1 FROM refund_cases c WHERE c.id=s.id)").get(restaurantId).count : null,
     openRefundCases: owner ? db.prepare("SELECT COUNT(*) AS count FROM refund_cases WHERE restaurant_id=? AND resolved_at IS NULL AND status NOT IN ('refunded','rejected')").get(restaurantId).count : null,
@@ -128,15 +128,15 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
   const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/(dashboard|message-attention)$/);
   if (req.method !== "GET" || !match) return false;
   const restaurantId = match[1], user = requireRestaurantMembership(db, session, restaurantId);
-  const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id).permission, owner = permission === "owner";
+  const membership = db.prepare("SELECT permission,can_view_finance,can_manage_customers FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id),permission=membership.permission, owner = permission === "owner",customerAccess=owner||membership.can_manage_customers===1;
   if (match[2] === "message-attention") {
     const now = config.now().toISOString();
     const revision = restaurantMessageArrivalRevision(db, restaurantId, user.id);
-    return sendJson(res, 200, { data: { restaurantId, unreadCount: unreadRestaurantMessageCount(db, restaurantId, user.id, owner, now, {...config,now:()=>new Date(now)}), revision } });
+    return sendJson(res, 200, { data: { restaurantId, unreadCount: unreadRestaurantMessageCount(db, restaurantId, user.id, customerAccess, now, {...config,now:()=>new Date(now)}), revision } });
   }
   const view = url.searchParams.get("view") ?? "full";
   if (!["full", "operations"].includes(view)) throw new HttpError(400, "VALIDATION_ERROR", "Dashboard view is invalid");
-  const includeFinance = owner && view === "full",scope=resolveFinanceScope(config,url),environmentSql=includeFinance?` AND ${orderEnvironmentPredicate("o",scope)}`:"";
+  const includeFinance = (owner||membership.can_view_finance===1) && view === "full",scope=resolveFinanceScope(config,url),environmentSql=includeFinance?` AND ${orderEnvironmentPredicate("o",scope)}`:"";
   const now = config.now(), range = dashboardRange(url.searchParams.get("period") ?? "today", now), page = pageValue(url.searchParams.get("page"), 1, 1000000), pageSize = pageValue(url.searchParams.get("pageSize"), 20, 100);
   const summary = db.prepare(`SELECT COUNT(*) AS ordersPlaced,COALESCE(SUM(CASE WHEN ${recognized()} THEN 1 ELSE 0 END),0) AS confirmedOrders,COALESCE(SUM(CASE WHEN o.status='completed' THEN 1 ELSE 0 END),0) AS completedOrders,COALESCE(SUM(CASE WHEN o.status IN ('rejected','cancelled','expired') THEN 1 ELSE 0 END),0) AS cancelledOrders FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?${environmentSql}`).get(restaurantId, range.from, range.toExclusive);
   const topItems = db.prepare(`SELECT i.name,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()}${environmentSql} GROUP BY i.name ORDER BY quantity DESC,i.name LIMIT 5`).all(restaurantId, range.from, range.toExclusive);
@@ -145,5 +145,5 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
     const balance = buildFinanceSummary(db, restaurantId,url,config);
     finance = { scope,historyLabel:balance.historyLabel,simulation:scope!=="live", period: periodFinance(db, restaurantId, range,scope), balance: { basis: "all_time", availableMinor: balance.availableMinor, pendingMinor: balance.pendingMinor, heldMinor: balance.heldMinor, bankPaidMinor: balance.bankPaidMinor, bankPendingMinor: balance.bankPendingMinor, nextPayout: balance.nextPayout, providerMode: balance.providerMode, cashCommissionOutstandingMinor: balance.cashCommissionOutstandingMinor } };
   }
-  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString(), {...config,now:()=>new Date(now)}), finance, ...(includeFinance ? dashboardInsights(db,restaurantId,range,now.toISOString(),scope) : {}), topItems, orders: orderRows(db, restaurantId, range, includeFinance, page, pageSize,scope) } });
+  return sendJson(res, 200, { data: { restaurantId, permission, currency: "GBP", generatedAt: now.toISOString(), range, summary, operations: operationalCounts(db, restaurantId, user.id, owner, now.toISOString(), {...config,now:()=>new Date(now)},customerAccess), finance, ...(includeFinance ? dashboardInsights(db,restaurantId,range,now.toISOString(),scope) : {}), topItems, orders: orderRows(db, restaurantId, range, includeFinance, page, pageSize,scope) } });
 }

@@ -1,10 +1,10 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {journeyFixture} from "./helpers.js";
 import {resolveRestaurantCommission} from "../src/restaurant-commission.js";
 
 const credentials={admin:["admin@calai.local","LocalAdmin!4310"],owner:["restaurant@calai.local","LocalRestaurant!4310"],customer:["customer@calai.local","LocalCustomer!4310"]};
-async function setup(options={}){const f=await journeyFixture({orderAlertEmail:{mode:"off"},businessStatements:{sendEnabled:false},rateLimit:{attempts:100,windowMs:60000},...options});const admin=await f.login(...credentials.admin),owner=await f.login(...credentials.owner),customer=await f.login(...credentials.customer),restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0];return{f,admin,owner,customer,restaurant,path:`/api/admin/restaurants/${restaurant.id}/commission`};}
+async function setup(options={}){const f=await businessDeviceFixture({withPrinter:false,orderAlertEmail:{mode:"off"},businessStatements:{sendEnabled:false},rateLimit:{attempts:100,windowMs:60000},...options});const admin=await f.login(...credentials.admin),owner=await f.login(...credentials.owner),customer=await f.login(...credentials.customer),restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0];return{f,admin,owner,customer,restaurant,path:`/api/admin/restaurants/${restaurant.id}/commission`};}
 
 test("commission controls require platform admin, validate exact periods and reject stale concurrent changes",async()=>{
   const {f,admin,owner,customer,restaurant,path}=await setup();
@@ -52,7 +52,7 @@ test("zero-rate orders snapshot after discounts plus delivery and retain histori
     const waived=(await quote(grant.body.data.id)).body.data;assert.equal(waived.commissionMinor,0);assert.notDeepEqual(waived.commission.control,before.commission.control);
     const free=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":"commission-during-control"},body:{...basket,paymentMethod:"mock_card",offerId:grant.body.data.id}});assert.equal(free.status,201,free.text);assert.equal(free.body.data.totalMinor,1300);assert.equal(free.body.data.commissionMinor,0);assert.equal(free.body.data.contract.rateBasisPoints,0);
     await f.json(path,{method:"PATCH",cookie:admin,body:{action:"enable",expectedRevision:1}});
-    for(const status of ["accepted","preparing","ready","out_for_delivery","completed"]){const advanced=await f.json(`/api/restaurant/orders/${free.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(advanced.status,200,advanced.text);assert.equal(advanced.body.data.commissionMinor,0);}
+    for(const status of ["accepted","preparing","ready","out_for_delivery","completed"]){const advanced=await f.signed(`/api/restaurant/orders/${free.body.data.id}/status`, {status}, {method:"PATCH"});assert.equal(advanced.status,200,advanced.text);assert.equal(advanced.body.data.commissionMinor,0);}
     assert.equal((await f.json(`/api/orders/${normal.body.data.id}`,{cookie:customer})).body.data.commissionMinor,119);
     const snapshot=JSON.parse(f.db.prepare("SELECT commission_control_snapshot FROM orders WHERE id=?").get(free.body.data.id).commission_control_snapshot);assert.equal(snapshot.mode,"disabled");assert.equal(snapshot.rateBasisPoints,0);
     assert.equal(f.db.prepare("SELECT commission_minor FROM orders WHERE id=?").get(free.body.data.id).commission_minor,0);

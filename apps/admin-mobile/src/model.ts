@@ -9,12 +9,12 @@ export function validateBase(raw: string): string {
   return value.origin;
 }
 
-export function minorUnits(value: string, label = "Amount"): number {
+export function minorUnits(value: string, label = "Amount", maximumMinor = 10_000_000): number {
   const input = value.trim().replace(",", ".");
   if (!/^\d+(?:\.\d{1,2})?$/.test(input)) throw new Error(`${label} must be a positive number with at most two decimal places.`);
   const [whole, fraction = ""] = input.split(".");
   const result = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  if (!Number.isSafeInteger(result) || result > 10_000_000) throw new Error(`${label} is too large.`);
+  if (!Number.isSafeInteger(result) || result > maximumMinor) throw new Error(`${label} is too large.`);
   return result;
 }
 
@@ -31,7 +31,8 @@ export function caseEvidencePath(caseId: string, evidence: { id: string; url: st
 }
 
 export type NativeUser = { id: string; name: string; email: string; role: "restaurant" | "admin" | "customer" };
-export type Restaurant = { id: string; name: string; status: string; suspended?: boolean; permission?: "owner" | "staff" };
+export type BusinessCapabilities={canProcessOrders:boolean;canPrint:boolean;canViewFinance:boolean;canManageMenu:boolean;canManageMarketing:boolean;canManageCustomers:boolean;canManageSettings:boolean;canManageStaff:boolean;canViewDevices:boolean};
+export type Restaurant = { capabilities?:BusinessCapabilities;orderingAuthority?:string; id: string; name: string; status: string; suspended?: boolean; permission?: "owner" | "staff";acceptingOrders?:boolean;closedReason?:string;profile?:{paused:boolean;alwaysOpen:boolean;collectionEnabled:boolean;openingHours:Array<{day:number;open:string;close:string}>;holidayDates:string[]} };
 export type Option = { id: string; name: string; priceMinor: number; available: boolean };
 export type Modifier = { id: string; name: string; minSelections: number; maxSelections: number; options: Option[] };
 export type MenuItem = { productType?: string; energyKcal?: number | null; energyKj?: number | null; id: string; name: string; description: string; category: string; priceMinor: number; available: boolean; photoUrl?: string | null; allergens: string[]; dietaryTags: string[]; modifierGroups: Modifier[] };

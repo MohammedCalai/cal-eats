@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -6,7 +7,6 @@ import { loadConfig } from "../src/config.js";
 import { loadLiveOnboardingConfig } from "../src/payments/live-onboarding.js";
 import { routeStripeConnect,runStripeConnectWorker } from "../src/payments/stripe-connect.js";
 import { scopedAdminRestaurantSession } from "../src/auth/admin-restaurant-scope.js";
-import { journeyFixture } from "./helpers.js";
 
 const hosting={runMode:"hosted-preview",nodeEnv:"production",origin:"https://eats.example.test"};
 const staged={liveOnboardingStripePlatformAccountId:"acct_liveplatform",liveOnboardingStripeSecretKey:"rk_live_fixture_only",liveOnboardingWebhookSecret:"whsec_live_platform_fixture",liveOnboardingConnectWebhookSecret:"whsec_live_connect_fixture"};
@@ -31,7 +31,7 @@ function adapter(mode,calls){
 
 async function setup(){
   const testCalls=[],liveCalls=[],testProvider=adapter("stripe_test",testCalls),liveProvider=adapter("stripe_live",liveCalls);
-  const f=await journeyFixture({paymentProviderMode:"stripe_test",paymentProvider:testProvider,stripePlatformAccountId:"acct_testplatform",paymentProviderWebhookSecret:"whsec_test_platform_fixture",paymentProviderConnectWebhookSecret:"whsec_test_connect_fixture",liveOnboardingRestaurantIds:[]});
+  const f=await businessDeviceFixture({withPrinter:false,paymentProviderMode:"stripe_test",paymentProvider:testProvider,stripePlatformAccountId:"acct_testplatform",paymentProviderWebhookSecret:"whsec_test_platform_fixture",paymentProviderConnectWebhookSecret:"whsec_test_connect_fixture",liveOnboardingRestaurantIds:[]});
   const selected=f.db.prepare("SELECT * FROM restaurants WHERE name='Calai Kitchen'").get(),other=f.db.prepare("SELECT * FROM restaurants WHERE name='Second Spoon'").get();
   const session=email=>({user:f.db.prepare("SELECT * FROM users WHERE email=?").get(email)});
   const owner=session("restaurant@calai.local"),otherOwner=session("restaurant2@calai.local"),customer=session("customer@calai.local"),admin=session("admin@calai.local");
@@ -54,6 +54,7 @@ async function credential(s){
     const cookie=await s.f.login(email,currentPassword);
     const changed=await s.f.json("/api/auth/password",{method:"POST",cookie,body:{currentPassword,newPassword:"FixtureBankAccess!2026"}});
     assert.equal(changed.status,200,changed.text);
+    if(email==='restaurant@calai.local')await s.f.connectUser(cookie);
   }
 }
 
@@ -170,7 +171,8 @@ test("concurrent bank setup clicks share one leased creation and never create co
 test("selected owner prepares live banking while other restaurants, customer checkout and workers stay in test mode",async()=>{
   const s=await setup();try{
     const initial=await s.call(s.root);assert.equal(initial.status,200);assert.equal(initial.body.data.providerMode,"stripe_live");assert.equal(initial.body.data.onboardingOnly,true);assert.equal(initial.body.data.customerPaymentsLive,false);assert.equal(initial.body.data.passwordChangeRequired,true);
-    for(const [suffix,method]of [["onboarding","POST"],["banking","GET"],["payouts","GET"]]){const denied=await s.call(`${s.root}/${suffix}`,{method});assert.equal(denied.status,403);assert.equal(denied.body.error.code,"LIVE_BANKING_PASSWORD_CHANGE_REQUIRED");}
+    for(const [suffix,method]of [["onboarding","POST"],["banking","GET"]]){const denied=await s.call(`${s.root}/${suffix}`,{method});assert.equal(denied.status,403);assert.equal(denied.body.error.code,"LIVE_BANKING_PASSWORD_CHANGE_REQUIRED");}
+    const readOnlyPayouts=await s.call(`${s.root}/payouts`);assert.equal(readOnlyPayouts.status,200);assert.deepEqual(readOnlyPayouts.body.data.items,[],'Reading an empty payout history does not grant banking or onboarding authority');
     assert.equal(s.liveCalls.filter(c=>c.name==="createAccount").length,0);
     await credential(s);
     const linked=await s.call(`${s.root}/onboarding`,{method:"POST"});assert.equal(linked.status,200,JSON.stringify(linked));assert.equal(linked.body.data.providerMode,"stripe_live");assert.equal(linked.body.data.onboardingOnly,true);assert.equal(linked.body.data.customerPaymentsLive,false);assert.match(linked.body.data.url,/acct_liverestaurant/);
@@ -191,7 +193,8 @@ test("live banking requires genuine owner access, verifies platform identity and
     await credential(s);
     for(const session of [s.customer,s.otherOwner,s.admin,null]){const denied=await s.call(`${s.root}/onboarding`,{session,method:"POST"});assert.ok([401,403,404].includes(denied.status));}
     const scopedAdmin=scopedAdminRestaurantSession(s.admin,s.selected.id);assert.equal((await s.call(s.root,{session:scopedAdmin})).status,200);
-    for(const [suffix,method]of [["onboarding","POST"],["refresh","POST"],["dashboard","POST"],["banking","GET"],["payouts","GET"]])assert.equal((await s.call(`${s.root}/${suffix}`,{session:scopedAdmin,method})).status,403);
+    for(const [suffix,method]of [["onboarding","POST"],["refresh","POST"],["dashboard","POST"],["banking","GET"]])assert.equal((await s.call(`${s.root}/${suffix}`,{session:scopedAdmin,method})).status,403);
+    assert.equal((await s.call(`${s.root}/payouts`,{session:scopedAdmin})).status,200,'Scoped administration can inspect payout history without bank-management access');
     s.f.db.prepare("UPDATE restaurant_memberships SET permission='staff' WHERE restaurant_id=? AND user_id=?").run(s.selected.id,s.owner.user.id);assert.equal((await s.call(s.root)).status,403);s.f.db.prepare("UPDATE restaurant_memberships SET permission='owner' WHERE restaurant_id=? AND user_id=?").run(s.selected.id,s.owner.user.id);
     const stamp=s.config.now().toISOString();s.f.db.prepare("INSERT INTO provider_accounts VALUES(?,?, 'stripe_test','pending','[]','[]','acct_savedtest',?,?)").run(randomUUID(),s.selected.id,stamp,stamp);
     const before={...s.f.db.prepare("SELECT * FROM provider_accounts WHERE restaurant_id=?").get(s.selected.id)};

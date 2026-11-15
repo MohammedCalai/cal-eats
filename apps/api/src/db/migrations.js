@@ -1,4 +1,6 @@
 import {restaurantCommissionMigration39} from "../restaurant-commission-migration.js";
+import {orderingTerminalMigration64} from "../ordering-terminal-migration.js";
+import {businessDeviceHealthMigration65} from "../business-device-health-migration.js";
 import {accountAccessEmailMigration43} from "../account-access-email.js";
 import {customerPushMigration44} from "../customer-push-migration.js";
 import {orderLiveActivityMigration45} from "../order-live-activity-migration.js";
@@ -337,5 +339,7 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   printerConnectionMigration60,
   businessPaymentAdjustmentMigration61,
   customerPasswordQuarantineMigration62,
-  businessReportEmailsMigration63
+  businessReportEmailsMigration63,
+  orderingTerminalMigration64,
+  businessDeviceHealthMigration65
 ];

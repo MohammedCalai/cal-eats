@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -6,7 +7,6 @@ import { merchantCommercialMigration } from "../src/merchant-commercial-migratio
 import { merchantCommercialTermMigration54 } from "../src/merchant-commercial-term-migration.js";
 import { legalContentSha256 } from "../src/customer-legal-archive.js";
 import { approvedMerchantCommission, initializeMerchantCommercial, loadMerchantCommercialConfig, merchantCommercialStatus, merchantTermEndsAt, resolveMerchantCommercialTerms, routeMerchantCommercial } from "../src/merchant-commercial.js";
-import { journeyFixture } from "./helpers.js";
 import { paymentLaunchReport } from "../src/payment-launch.js";
 
 // Fictional approval used only in an in-memory test. It is never activated.
@@ -90,7 +90,7 @@ test("genuine existing real pricing survives; development policies never become 
 });
 
 test("real owner acceptance feeds new-order snapshots and readiness while saved orders and commission-free controls stay intact",async()=>{
-  const f=await journeyFixture({merchantCommercial:merchantManifest(),orderAlertEmail:{mode:"off"}});
+  const f=await businessDeviceFixture({withPrinter:false,merchantCommercial:merchantManifest(),orderAlertEmail:{mode:"off"}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0],path=`/api/restaurant/restaurants/${restaurant.id}/merchant-agreement`;

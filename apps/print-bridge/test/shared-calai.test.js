@@ -15,7 +15,9 @@ test("shared printer uses the existing routine and refuses a different printer",
   const config = { transport: { kind: "tcp-escpos", host: native.PRINTER_IP, port: 9100, connectTimeoutMs: 500 } };
   const sent = [];
   const transport = sharedPrinterTransport(native, config, async (...args) => { sent.push(args); });
-  assert.equal((await transport.send({ receiptText: "Cal-Eats test £1.00" })).outcome, "uncertain");
+  const result = await transport.send({ receiptText: "Cal-Eats test £1.00" });
+  assert.equal(result.outcome, "submitted");
+  assert.match(result.detail, /physical paper output is unverified/);
   assert.deepEqual(sent, [[native.PRINTER_IP, 9100, "Cal-Eats test £1.00"]]);
   assert.throws(() => sharedPrinterTransport(native, { transport: { ...config.transport, host: "192.0.2.41" } }, () => {}), /same network printer/);
   const failed = sharedPrinterTransport(native, config, async () => { throw new Error("private error"); });
@@ -68,7 +70,7 @@ test("shared bridge refuses a second consumer using its journal", async () => {
   } finally { await removeWorkspace(directory); }
 });
 
-test("Windows managed installation produces the reviewed source without executing native code", { skip: process.platform !== "win32" }, async () => {
+test("Windows managed installation refuses a user-writable native source before changing it", { skip: process.platform !== "win32" }, async () => {
   const directory = await temporaryWorkspace("shared-windows-install");
   try {
     const source = await fs.readFile(new URL("fixtures/calai-native-current.js.txt", import.meta.url), "utf8");
@@ -80,12 +82,10 @@ test("Windows managed installation produces the reviewed source without executin
     const configPath = path.join(directory, "download.json"), setupPath = path.join(directory, "setup.json");
     await fs.writeFile(configPath, JSON.stringify(configuration));
     await fs.writeFile(setupPath, JSON.stringify({ schemaVersion: 1, product: "cal-eats", printerId: "11111111-1111-4111-8111-111111111111", restaurantId: "22222222-2222-4222-8222-222222222222", code: "synthetic-setup-code", expiresAt: "2099-01-01T00:00:00Z" }));
-    const installed = await promisify(execFile)(path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/powershell.exe"), ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("../windows/connect-shared-calai.ps1", import.meta.url)), "-ConfigPath", configPath, "-SetupPath", setupPath, "-CalaiBridgePath", native, "-NodePath", path.join(process.env.ProgramFiles, "nodejs/node.exe")], { timeout: 20000, env: { ...process.env, PSModulePath: [path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/Modules"), path.join(process.env.ProgramFiles, "WindowsPowerShell/Modules")].join(";") } });
-    assert.match(installed.stdout, /True/);
-    assert.equal(await fs.readFile(native, "utf8"), patchCalaiBridge(source));
-    assert.equal(await fs.readFile(`${native}.before-cal-eats`, "utf8"), source);
-    assert.equal(JSON.parse(await fs.readFile(path.join(directory, "cal-eats/config.json"), "utf8")).transport.host, "192.0.2.40");
+    await assert.rejects(promisify(execFile)(path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/powershell.exe"), ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("../windows/connect-shared-calai.ps1", import.meta.url)), "-ConfigPath", configPath, "-SetupPath", setupPath, "-CalaiBridgePath", native, "-NodePath", path.join(process.env.ProgramFiles, "nodejs/node.exe")], { timeout: 20000, env: { ...process.env, PSModulePath: [path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/Modules"), path.join(process.env.ProgramFiles, "WindowsPowerShell/Modules")].join(";") } }), /administrator|user-writable|SYSTEM-managed/);
+    assert.equal(await fs.readFile(native, "utf8"), source);
+    await assert.rejects(fs.access(`${native}.before-cal-eats`), { code: "ENOENT" });
     assert.equal(JSON.parse(await fs.readFile(path.join(directory, "config.json"), "utf8")).PRINTER_TOKEN, "synthetic-native-identity");
-    assert.equal(await fs.readFile(path.join(directory, "cal-eats/runtime/src/shared-calai.js"), "utf8"), await fs.readFile(new URL("../src/shared-calai.js", import.meta.url), "utf8"));
+    await assert.rejects(fs.access(path.join(directory, "cal-eats")), { code: "ENOENT" });
   } finally { await removeWorkspace(directory); }
 });

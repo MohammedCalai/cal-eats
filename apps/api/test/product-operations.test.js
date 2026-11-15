@@ -1,14 +1,14 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { restaurantAvailability } from "../src/availability.js";
-import { journeyFixture } from "./helpers.js";
 import { seedDemoData } from "../src/seed.js";
 
 const creds = { admin: ["admin@calai.local", "LocalAdmin!4310"], owner: ["restaurant@calai.local", "LocalRestaurant!4310"], owner2: ["restaurant2@calai.local", "LocalRestaurant2!4310"], customer: ["customer@calai.local", "LocalCustomer!4310"] };
 async function auth(f) { return { admin: await f.login(...creds.admin), owner: await f.login(...creds.owner), owner2: await f.login(...creds.owner2), customer: await f.login(...creds.customer) }; }
 
 test("restaurant onboarding stays pending and owner/staff permissions are isolated", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const a = await auth(f);
     const onboarded = await f.json("/api/auth/restaurant-register", { method: "POST", body: { name: "New Owner", email: "new-owner@example.test", restaurantName: "Pending Place", address: "12 Market Street, London E1 1AA", mobile: "07700 900123" } });
@@ -30,7 +30,10 @@ test("restaurant onboarding stays pending and owner/staff permissions are isolat
     const order = await f.json("/api/orders", { method: "POST", cookie: a.customer, headers: { "Idempotency-Key": "staff-privacy" }, body: { restaurantId: owned.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection" } });
     const staffOrder = (await f.json(`/api/restaurant/restaurants/${owned.id}/orders`, { cookie: staffCookie })).body.data[0];
     assert.equal(staffOrder.id, order.body.data.id); assert.equal("ledger" in staffOrder, false); assert.equal("contract" in staffOrder, false); assert.equal("commissionMinor" in staffOrder, false);
-    const staffProgress = await f.json(`/api/restaurant/orders/${staffOrder.id}/status`, { method: "PATCH", cookie: staffCookie, body: { status: "accepted" } }); assert.equal(staffProgress.status, 200); assert.equal("ledger" in staffProgress.body.data, false); assert.equal("contract" in staffProgress.body.data, false);
+    assert.equal((await f.json(`/api/restaurant/orders/${staffOrder.id}/status`, { method: "PATCH", cookie: staffCookie, body: { status: "accepted" } })).status,403,'An ordinary staff browser cannot operate the ordering tablet');
+    const permissions=await f.json(`/api/restaurant/restaurants/${owned.id}/staff/${staff.body.data.id}/capabilities`,{method:'PATCH',cookie:a.owner,body:{canProcessOrders:true}});assert.equal(permissions.status,200,permissions.text);
+    await f.connectUser(staffCookie);
+    const staffProgress = await f.signed(`/api/restaurant/orders/${staffOrder.id}/status`, { status: "accepted" }, { method: "PATCH" }); assert.equal(staffProgress.status, 200); assert.equal("ledger" in staffProgress.body.data, false); assert.equal("contract" in staffProgress.body.data, false);
     const other = (await f.json("/api/restaurant/restaurants", { cookie: a.owner2 })).body.data[0];
     assert.equal((await f.json(`/api/restaurant/restaurants/${other.id}/orders`, { cookie: staffCookie })).status, 404);
   } finally { await f.close(); }
@@ -41,7 +44,7 @@ test("opening, overnight, DST, holiday, pause, fulfillment and cash gates are se
   assert.equal(restaurantAvailability(base, new Date("2026-03-29T00:30:00Z")).acceptingOrders, true);
   assert.equal(restaurantAvailability(base, new Date("2026-03-29T01:30:00Z")).acceptingOrders, false);
   assert.equal(restaurantAvailability({ ...base, holiday_dates: JSON.stringify(["2026-03-29"]) }, new Date("2026-03-29T00:30:00Z")).acceptingOrders, false);
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const a = await auth(f); const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: a.owner })).body.data[0]; const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const place = (key, overrides = {}) => f.json("/api/orders", { method: "POST", cookie: a.customer, headers: { "Idempotency-Key": key }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection", ...overrides } });
@@ -60,7 +63,7 @@ test("opening, overnight, DST, holiday, pause, fulfillment and cash gates are se
 });
 
 test("required modifiers use server prices and preserve allergen/category/customer snapshots", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const a = await auth(f); const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: a.owner })).body.data[0];
     const created = await f.json(`/api/restaurant/restaurants/${restaurant.id}/menu`, { method: "POST", cookie: a.owner, body: { name: "Fictional wrap", description: "Demo", priceMinor: 1000, category: "Mains", allergens: ["gluten"], dietaryTags: ["fictional"], modifierGroups: [{ id: "size", name: "Size", minSelections: 1, maxSelections: 1, options: [{ id: "large", name: "Large", priceMinor: 200, available: true }] }] } });
@@ -78,10 +81,12 @@ test("required modifiers use server prices and preserve allergen/category/custom
 });
 
 test("account export, support and deletion review remain isolated and audited", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const a = await auth(f);
     const second = await f.json("/api/auth/register", { method: "POST", body: { name: "Other", email: "other-phaseb@example.test", password: "another long password" } }); const secondCookie = second.headers.get("set-cookie").split(";", 1)[0];
+    const verification=f.db.prepare("SELECT body FROM local_mail_sink WHERE recipient='other-phaseb@example.test' AND kind='email_verification' ORDER BY rowid DESC LIMIT 1").get()?.body.match(/#verify-email=([A-Za-z0-9_-]+)/)?.[1];assert.ok(verification);
+    assert.equal((await f.json('/api/auth/email-verification/confirm',{method:'POST',body:{token:verification}})).status,200,'The independent customer completes the real local verification flow before ordering');
     const restaurant = (await f.json("/api/restaurants")).body.data[0]; const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const ownOrder = await f.json("/api/orders", { method: "POST", cookie: a.customer, headers: { "Idempotency-Key": "export-own" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 Export Lane", city: "Luton", postcode: "LU1 1AA" }, allergyNotes: "Own note" } });
     const otherOrder = await f.json("/api/orders", { method: "POST", cookie: secondCookie, headers: { "Idempotency-Key": "export-other" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection" } });
@@ -98,7 +103,7 @@ test("account export, support and deletion review remain isolated and audited", 
 });
 
 test("demo food fixture is enriched once and reseeding preserves merchant customization", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const owner = await f.login(...creds.owner); const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0];
     const menu = (await f.json(`/api/restaurant/restaurants/${restaurant.id}/menu`, { cookie: owner })).body.data.items;

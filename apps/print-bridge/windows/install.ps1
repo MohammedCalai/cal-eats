@@ -167,10 +167,21 @@ Get-ChildItem -LiteralPath $SourceFiles -File -Filter '*.js' | ForEach-Object {
     $TargetFile = Assert-InstallPath (Join-Path $DestinationFiles $_.Name)
     Copy-Item -LiteralPath $_.FullName -Destination $TargetFile -Force
 }
+$WindowsFiles = Assert-InstallPath (Join-Path $InstallDir "windows")
+New-Item -ItemType Directory -Path $WindowsFiles -Force | Out-Null
+foreach ($HelperName in @('terminal-key.ps1', 'printer-adapter.ps1')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $HelperName) -Destination (Assert-InstallPath (Join-Path $WindowsFiles $HelperName)) -Force
+}
 # Credentials, pending pairing token and durable journal remain in var/.
 $Config.credentialPath = "./var/device-credential.json"
 $Config.journalPath = "./var/print-journal.json"
 $Config.logPath = "./var/print-bridge.log"
+if ($Config.apiBaseUrl -eq 'https://eats.calai.info') {
+    $KeyProvider = if ($InstalledConfig -and $InstalledConfig.terminal -and $InstalledConfig.terminal.keyProvider -in @('software','tpm')) { $InstalledConfig.terminal.keyProvider } else { 'software' }
+    $Terminal = [pscustomobject]@{ enabled = $true; port = 17863; identityPath = './var/terminal-identity.json'; allowedOrigins = @('https://eats.calai.info'); heartbeatIntervalMs = 15000; printerId = $PrinterId; keyProvider = $KeyProvider }
+    $Config | Add-Member -NotePropertyName terminal -NotePropertyValue $Terminal -Force
+    $Config.heartbeatIntervalMs = 15000
+}
 if ($Config.transport.kind -eq "file-sink") { $Config.transport.outputDirectory = "./var/printed" }
 [IO.File]::WriteAllText((Join-Path $InstallDir "config.json"), ($Config | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
 [IO.File]::WriteAllText($InstalledSetup, ($Setup | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
@@ -189,4 +200,4 @@ $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccou
 $Settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Triggers -Principal $Principal -Settings $Settings -Description "Automatic Cal-Eats receipt printing for this restaurant printer." -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
-Write-Host "Cal-Eats printer setup installed and started. The secure connection completes automatically; no pairing code needs to be entered. Check printer settings for connection status."
+Write-Host "Cal-Eats service installed and started. Open this tablet's Cal-Eats business platform, sign in and enrol the ordering terminal using an owner-approved pairing code. Printing remains paused until terminal enrollment is complete."

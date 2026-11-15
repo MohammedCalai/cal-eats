@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { buildWeeklyStatementSnapshot, weeklyStatementPeriod } from "../src/business-weekly-statements.js";
 
 test("7% commission follows £15 less a £4 restaurant offer through saved earnings and refunds", async () => {
-  const f = await journeyFixture({
+  const f = await businessDeviceFixture({
     now: () => new Date("2026-01-01T01:00:00.000Z"),
     paymentProviderMode: "local_simulator",
     orderAlertEmail: { mode: "off" },
@@ -35,7 +35,7 @@ test("7% commission follows £15 less a £4 restaurant offer through saved earni
       return response.body.data;
     };
     const advance = async (orderId, status) => {
-      const response = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
+      const response = await f.signed(`/api/restaurant/orders/${orderId}/status`, { status },{method:'PATCH'});
       assert.equal(response.status, 200, response.text);
       return response.body.data;
     };
@@ -148,7 +148,7 @@ test("7% commission follows £15 less a £4 restaurant offer through saved earni
 
 test("new delivery commission includes the charged fee, excludes waived fees and preserves saved food-only orders", async () => {
   const stamp = "2026-01-01T01:00:00.000Z";
-  const f = await journeyFixture({
+  const f = await businessDeviceFixture({
     now: () => new Date(stamp), paymentProviderMode: "local_simulator",
     orderAlertEmail: { mode: "off" }, businessStatements: { sendEnabled: false },
     rateLimit: { attempts: 60, windowMs: 60000 }
@@ -177,7 +177,7 @@ test("new delivery commission includes the charged fee, excludes waived fees and
       return response.body.data;
     };
     const advance = async (orderId, status) => {
-      const response = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
+      const response = await f.signed(`/api/restaurant/orders/${orderId}/status`, { status },{method:'PATCH'});
       assert.equal(response.status, 200, response.text);
       return response.body.data;
     };

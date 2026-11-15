@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BACKUP_ROOT, createBackup } from "./backup.js";
 import { checkBackup } from "./restore-check.js";
-import { journeyFixture } from "../apps/api/test/helpers.js";
+import { businessDeviceFixture } from "../apps/api/test/business-device-fixture.js";
 import { addNotification } from "../apps/api/src/offers.js";
 
 function fixture(name) {
@@ -68,12 +68,11 @@ test("restorable backups cannot resend on-demand report emails or retain their a
 });
 
 test("a migrated backup cannot revive native customer sessions or replay Live Activity and push delivery", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture();
   const destination = path.join(BACKUP_ROOT, `live-activity-${process.pid}-backup.sqlite`);
   fs.rmSync(destination, { force: true });
   try {
     const customer = await f.login("customer@calai.local", "LocalCustomer!4310");
-    const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310");
     const restaurant = f.db.prepare("SELECT id FROM restaurants WHERE name='Calai Kitchen'").get();
     const menu = f.db.prepare("SELECT id FROM menu_items WHERE restaurant_id=? LIMIT 1").get(restaurant.id);
     const response = await f.json("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "backup-privacy-fixture" }, body: {
@@ -82,9 +81,12 @@ test("a migrated backup cannot revive native customer sessions or replay Live Ac
     } });
     assert.equal(response.status, 201, response.text);
     const order = response.body.data;
-    const accepted = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted", estimatedReadyAt: "2026-01-01T01:30:00.000Z" } });
+    const accepted = await f.signed(`/api/restaurant/orders/${order.id}/status`, { status: "accepted", estimatedReadyAt: "2026-01-01T01:30:00.000Z" },{method:'PATCH'});
     assert.equal(accepted.status, 200, accepted.text);
     assert.ok(f.db.prepare("SELECT COUNT(*) n FROM ledger_entries WHERE order_id=?").get(order.id).n > 0);
+    const businessHeaders=await f.nativeLogin();
+    const businessRegistration=await f.json('/api/native/business/push/devices',{method:'POST',headers:businessHeaders,body:{installationId:'0cbcb0d3-92d8-4393-9148-182d62920501',expoPushToken:'ExpoPushToken[backup_business_fixture]',platform:'android',projectId:'6282b87e-36ae-43bb-80b7-12d69108a411'}});assert.equal(businessRegistration.status,200,businessRegistration.text);
+    await f.report('needs_attention','windows_spooler',['cover_open']);
     const stamp = "2026-01-01T01:01:00.000Z", expires = "2026-01-01T08:00:00.000Z";
     f.db.prepare("INSERT INTO native_sessions VALUES(?,?,?,?,?,NULL)").run("backup-native-session", order.customerId, "private-fixture-session-hash", stamp, expires);
     f.db.prepare(`INSERT INTO customer_push_devices(id,installation_id,user_id,session_id,token_hash,ciphertext,nonce,auth_tag,key_version,platform,project_id,generation,sound_enabled,expires_at,created_at,updated_at)
@@ -102,12 +104,14 @@ test("a migrated backup cannot revive native customer sessions or replay Live Ac
     const copy = new DatabaseSync(destination);
     try {
       copy.exec("PRAGMA foreign_keys=ON");
-      for (const table of ["order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions"]) {
+      for (const table of ["order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "business_incident_push_outbox", "business_push_devices", "business_device_health", "native_business_sessions", "ordering_terminal_handoffs", "ordering_terminal_sessions", "ordering_terminal_screen_challenges", "ordering_terminal_pair_codes"]) {
         assert.equal(rows(copy, table).length, 0, table);
       }
-      for (const table of ["users", "restaurants", "orders", "order_items", "order_events", "ledger_entries", "contracts", "commission_policies", "order_live_activity_revisions"]) {
+      for (const table of ["users", "orders", "order_items", "order_events", "ledger_entries", "contracts", "commission_policies", "order_live_activity_revisions"]) {
         assert.deepEqual(rows(copy, table), before[table], `Preserve ${table}`);
       }
+      assert.deepEqual(rows(copy,'restaurants').map(row=>({...row})),before.restaurants.map(row=>({...row,device_health_due_at:null})), 'Preserve restaurant configuration; health must be checked after restore');
+      assert.deepEqual(rows(copy,'ordering_terminals').map(row=>({...row})),before.ordering_terminals.map(row=>({...row,last_contact_at:null,screen_last_seen_at:null,screen_id:null,screen_session_id:null})), 'Retain enrolment public keys without resurrecting an ordering screen');
       // Exercise the real database triggers on the restored copy: an order
       // update or new alert cannot resurrect a registration from the snapshot.
       copy.prepare("UPDATE orders SET status='preparing',updated_at=? WHERE id=?").run(stamp, order.id);

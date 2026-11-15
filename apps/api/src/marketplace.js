@@ -2,7 +2,9 @@ import {customerPayableMinor,platformVoucherMinor,redeemPlatformVoucher} from ".
 import {restoreRefundedSettlementAdjustments,adjustedRefundRecoveryMinor} from "./business-payment-adjustments.js";
 import { isIP } from "node:net";
 import {pairPrinterDevice,downloadAutomaticPrinterSetup} from "./printer-connection.js";
-import {latestPrinterTestReceipt,createPrinterTestReceipt,claimNextPrinterJob,acknowledgePrinterJob} from "./printer-test-receipts.js";
+import {requireOrderingTerminal} from "./ordering-terminals.js";
+import {latestPrinterTestReceipt,createPrinterTestReceipt,claimNextPrinterJob,acknowledgePrinterJob,markPrinterJobSubmitting} from "./printer-test-receipts.js";
+import {resolveCheckedPrintIncident} from "./business-device-health.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { calculateCommissionAtRate, DEFAULT_COMMISSION_BASE, VALIDATION } from "../../../packages/contracts/src/index.js";
 import { requireRestaurantMembership, requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
@@ -90,14 +92,14 @@ function restaurantPrinterState(db, restaurantId, config) {
   }
   const jobs=new Map();
   for(const row of db.prepare("SELECT j.printer_id,j.status,COUNT(*) AS count FROM device_print_jobs j JOIN restaurant_printers p ON p.id=j.printer_id WHERE p.restaurant_id=? GROUP BY j.printer_id,j.status").all(restaurantId)){
-    if(!jobs.has(row.printer_id))jobs.set(row.printer_id,{queued:0,claimed:0,printed:0,failed:0,uncertain:0});
+    if(!jobs.has(row.printer_id))jobs.set(row.printer_id,{queued:0,claimed:0,dispatched:0,submitted:0,printed:0,failed:0,uncertain:0,cancelled:0});
     if(Object.hasOwn(jobs.get(row.printer_id),row.status))jobs.get(row.printer_id)[row.status]=row.count;
   }
   return db.prepare("SELECT * FROM restaurant_printers WHERE restaurant_id=? ORDER BY created_at,id").all(restaurantId).map(row=>{
     const device=devices.get(row.id),pairedDeviceCount=device?.pairedDeviceCount??0,lastSeenAt=device?.lastSeenAt??null;
     const computerOnline=Boolean(lastSeenAt&&Date.parse(lastSeenAt)>=cutoff),hardware=device?.hardware??[],printerReachable=hardware.length?hardware.some(Boolean):null;
     const status=row.revoked_at?'revoked':!row.enabled?'disabled':!pairedDeviceCount?'awaiting_device':!computerOnline?'offline':printerReachable===true?'online':printerReachable===false?'printer_offline':'connection_unverified';
-    return{...printerDto(row),status,lastSeenAt,pairedDeviceCount,computerOnline,printerReachable,testReceipt:latestPrinterTestReceipt(db,row.id),jobs:jobs.get(row.id)??{queued:0,claimed:0,printed:0,failed:0,uncertain:0}};
+    return{...printerDto(row),status,lastSeenAt,pairedDeviceCount,computerOnline,printerReachable,testReceipt:latestPrinterTestReceipt(db,row.id),jobs:jobs.get(row.id)??{queued:0,claimed:0,dispatched:0,submitted:0,printed:0,failed:0,uncertain:0,cancelled:0}};
   });
 }
 function mandateDto(r){return r?{id:r.id,restaurantId:r.restaurant_id,status:r.status,providerMode:r.provider_mode,createdAt:r.created_at,updatedAt:r.updated_at}:null;}
@@ -148,6 +150,9 @@ export async function routeMarketplace({req,res,url,db,config,session}){
   if(req.method==="POST"&&url.pathname==="/api/devices/heartbeat")return deviceHeartbeat({req,res,db,config});
   if(req.method==="POST"&&url.pathname==="/api/devices/jobs/claim")return claimJob({req,res,db,config});
   m=url.pathname.match(/^\/api\/devices\/jobs\/([^/]+)\/ack$/);if(m&&req.method==="POST")return ackJob({req,res,db,config,id:m[1]});
+  m=url.pathname.match(/^\/api\/devices\/jobs\/([^/]+)\/submitting$/);if(m&&req.method==="POST")return submittingJob({req,res,db,config,id:m[1]});
+  m=url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/printers\/([^/]+)\/jobs\/([^/]+)\/check$/);if(m&&req.method==="POST")return checkPrinterJob({req,res,db,config,session,restaurantId:m[1],printerId:m[2],id:m[3]});
+  m=url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/printers\/([^/]+)\/jobs$/);if(m&&req.method==="GET")return listPrinterJobs({res,url,db,session,restaurantId:m[1],printerId:m[2]});
   m=url.pathname.match(/^\/api\/restaurant\/orders\/([^/]+)\/preparation$/);if(m&&req.method==="PATCH")return preparation({req,res,db,config,session,id:m[1]});
   return false;
 }
@@ -425,7 +430,7 @@ async function pairDevice(context){return pairPrinterDevice(context);}
 async function deviceHeartbeat({req,res,db,config}){
   const d=deviceAuth(req,db),body=await readJson(req,config.bodyLimit);exactObject(body,['printerReachable','transport']);
   if(body.printerReachable!==undefined&&typeof body.printerReachable!=='boolean')throw new HttpError(400,'VALIDATION_ERROR','Printer connection status is invalid');
-  if(body.transport!==undefined&&!['tcp-escpos','file-sink'].includes(body.transport))throw new HttpError(400,'VALIDATION_ERROR','Printer connection type is invalid');
+  if(body.transport!==undefined&&!['tcp-escpos','file-sink','windows-spooler'].includes(body.transport))throw new HttpError(400,'VALIDATION_ERROR','Printer connection type is invalid');
   if(body.printerReachable!==undefined&&!body.transport)throw new HttpError(400,'VALIDATION_ERROR','Printer connection type is required');
   const now=nowIso(config);
   if(body.printerReachable===undefined)db.prepare('UPDATE printer_devices SET last_seen_at=? WHERE id=?').run(now,d.id);
@@ -441,35 +446,84 @@ async function claimJob({req,res,db,config}){
     return claimNextPrinterJob(db,d,{now,lease,tokenHash});
   });
   if(!result)return sendJson(res,200,{data:{job:null}});
-  const j=result.job;return sendJson(res,200,{data:{job:{id:j.id,claimToken:token,leaseExpiresAt:j.lease_expires_at,attempt:j.attempt,receipt:json(j.receipt,{}),manualReprint:Boolean(j.manual_reprint),testReceipt:result.source.testReceipt}}});
+  const j=result.job;return sendJson(res,200,{data:{job:{id:j.id,status:j.status,claimToken:token,leaseExpiresAt:j.lease_expires_at,attempt:j.attempt,receipt:json(j.receipt,{}),receiptRevision:j.receipt_revision,manualReprint:Boolean(j.manual_reprint),testReceipt:result.source.testReceipt}}});
+}
+async function submittingJob({req,res,db,config,id}){
+  const d=deviceAuth(req,db),body=await readJson(req,config.bodyLimit);exactObject(body,['claimToken']);
+  const token=text(body.claimToken,20,200,'Claim token'),now=nowIso(config);
+  const result=withTransaction(db,()=>markPrinterJobSubmitting(db,d,{id,tokenHash:digest(token),now}));
+  if(result.obsolete)throw new HttpError(409,'PRINT_JOB_OBSOLETE','This pending receipt no longer needs submission. No printer output was authorized.');
+  return sendJson(res,200,{data:{id:result.job.id,status:result.job.status,submissionStartedAt:result.job.submission_started_at,testReceipt:result.source.testReceipt}});
 }
 async function ackJob({req,res,db,config,id}){
-  const d=deviceAuth(req,db),body=await readJson(req,config.bodyLimit);exactObject(body,['claimToken','outcome','detail']);
-  if(!['printed','failed','uncertain'].includes(body.outcome))throw new HttpError(400,'VALIDATION_ERROR','Outcome is invalid');
+  const d=deviceAuth(req,db),body=await readJson(req,config.bodyLimit);exactObject(body,['claimToken','outcome','detail','spoolerJobId']);
+  if(!['submitted','printed','failed','uncertain'].includes(body.outcome))throw new HttpError(400,'VALIDATION_ERROR','Outcome is invalid');
+  if(body.spoolerJobId!==undefined&&(typeof body.spoolerJobId!=='string'||!/^[1-9][0-9]{0,9}$/.test(body.spoolerJobId)))throw new HttpError(400,'VALIDATION_ERROR','Windows spooler job ID is invalid');
   const token=text(body.claimToken,20,200,'Claim token'),detail=body.detail===undefined?null:text(body.detail,0,500,'Detail'),now=nowIso(config);
-  const {job,source,expired}=withTransaction(db,()=>acknowledgePrinterJob(db,d,{id,tokenHash:digest(token),outcome:body.outcome,detail,now}));
+  const {job,source,expired}=withTransaction(db,()=>acknowledgePrinterJob(db,d,{id,tokenHash:digest(token),outcome:body.outcome==='printed'?'submitted':body.outcome,legacyPrinted:body.outcome==='printed',detail,spoolerJobId:body.spoolerJobId??null,now}));
   if(expired&&body.outcome!=="uncertain")throw new HttpError(409,"PRINT_CLAIM_EXPIRED","The print connection expired. Check the paper before requesting a labelled reprint.");
-  return sendJson(res,200,{data:{id:job.id,status:job.status,detail:job.detail,testReceipt:source.testReceipt}});
+  return sendJson(res,200,{data:{id:job.id,status:job.status,detail:job.detail,spoolerJobId:job.spooler_job_id??null,physicalPrinted:false,testReceipt:source.testReceipt}});
 }
 async function reprint({req,res,db,config,session,restaurantId,id}) {
+  const owner=requireRestaurantOwner(db,session,restaurantId),body=await readJson(req,config.bodyLimit);exactObject(body,["orderId","requestId"]);
+  requireOrderingTerminal({req,db,config,session,restaurantId});
+  const requestId=body.requestId??req.headers['idempotency-key']??null;
+  if(requestId!==null&&(typeof requestId!=='string'||!/^[A-Za-z0-9_.:-]{8,200}$/.test(requestId)))throw new HttpError(400,'VALIDATION_ERROR','A valid reprint request ID is required');
+  const now=nowIso(config),result=withTransaction(db,()=>{
+    requireOrderingTerminal({req,db,config,session,restaurantId});
+    const printer=db.prepare("SELECT * FROM restaurant_printers WHERE id=? AND restaurant_id=? AND revoked_at IS NULL").get(id,restaurantId),order=db.prepare("SELECT * FROM orders WHERE id=? AND restaurant_id=?").get(body.orderId,restaurantId);
+    if(!printer||!order)throw new HttpError(404,"NOT_FOUND","Resource not found");
+    if(!printer.enabled)throw new HttpError(409,"PRINTER_DISABLED","Enable this printer before requesting a reprint");
+    if(!["accepted","preparing","ready","out_for_delivery","completed"].includes(order.status))throw new HttpError(409,"ORDER_NOT_CONFIRMED","Only confirmed orders can be reprinted");
+    const operationKey=requestId?`printer:${id}:reprint:${digest(requestId)}`:null,previous=operationKey&&db.prepare("SELECT * FROM device_print_jobs WHERE operation_key=?").get(operationKey);
+    if(previous){if(previous.order_id!==order.id)throw new HttpError(409,'IDEMPOTENCY_CONFLICT','This reprint request was already used for another order');return{job:previous,replay:true};}
+    if(db.prepare("SELECT 1 FROM device_print_jobs WHERE printer_id=? AND order_id=? AND status IN ('queued','claimed','dispatched')").get(id,order.id))throw new HttpError(409,'PRINT_JOB_PENDING','A receipt for this order is already waiting or being submitted. Check its result before requesting another.');
+    const latest=db.prepare("SELECT status FROM device_print_jobs WHERE printer_id=? AND order_id=? ORDER BY created_at DESC,id DESC LIMIT 1").get(id,order.id);
+    if(latest?.status==='uncertain')throw new HttpError(409,'PRINT_RESULT_REVIEW_REQUIRED','Check whether the receipt printed on this tablet before requesting a labelled reprint.');
+    const jobId=randomUUID(),revision=db.prepare("SELECT COALESCE(MAX(receipt_revision),0)+1 revision FROM device_print_jobs WHERE printer_id=? AND order_id=?").get(id,order.id).revision;
+    db.prepare("INSERT INTO device_print_jobs(id,printer_id,order_id,operation_key,receipt,status,manual_reprint,attempt,receipt_revision,created_at,updated_at) VALUES(?,?,?,?,?,'queued',1,0,?,?,?)").run(jobId,id,order.id,operationKey??`order:${order.id}:printer:${id}:reprint:${jobId}`,JSON.stringify(receiptV1(db,order)),revision,now,now);
+    db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),owner.id,'printer_job',jobId,'printer_manual_reprint_requested',JSON.stringify({orderId:order.id,printerId:id,receiptRevision:revision,terminalId:req.terminal.id}),now);
+    return{job:db.prepare("SELECT * FROM device_print_jobs WHERE id=?").get(jobId),replay:false};
+  });
+  return sendJson(res,result.replay?200:201,{data:{id:result.job.id,status:result.job.status,manualReprint:true,receiptRevision:result.job.receipt_revision}});
+}
+async function checkPrinterJob({req,res,db,config,session,restaurantId,printerId,id}){
+  const owner=requireRestaurantOwner(db,session,restaurantId),body=await readJson(req,config.bodyLimit);exactObject(body,['result']);
+  if(!['receipt_found','not_printed'].includes(body.result))throw new HttpError(400,'VALIDATION_ERROR','Choose the result of checking the physical receipt');
+  requireOrderingTerminal({req,db,config,session,restaurantId});
+  const now=nowIso(config),result=withTransaction(db,()=>{
+    requireOrderingTerminal({req,db,config,session,restaurantId});
+    const printer=db.prepare("SELECT id FROM restaurant_printers WHERE id=? AND restaurant_id=?").get(printerId,restaurantId);if(!printer)throw new HttpError(404,'NOT_FOUND','Printer not found');
+    const table=db.prepare("SELECT 1 FROM device_print_jobs WHERE id=? AND printer_id=?").get(id,printerId)?'device_print_jobs':db.prepare("SELECT 1 FROM printer_test_jobs WHERE id=? AND printer_id=? AND restaurant_id=?").get(id,printerId,restaurantId)?'printer_test_jobs':null;
+    if(!table)throw new HttpError(404,'NOT_FOUND','Printer job not found');
+    const job=db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id),previous=db.prepare("SELECT details FROM audit_events WHERE entity_type='printer_job' AND entity_id=? AND action='printer_job_checked' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(id);
+    if(previous&&json(previous.details,{}).result===body.result)return{id,status:job.status,result:body.result,replay:true};
+    if(!['failed','uncertain'].includes(job.status))throw new HttpError(409,'PRINT_REVIEW_NOT_AVAILABLE','Only a failed or uncertain receipt needs this check');
+    const status=body.result==='receipt_found'?'submitted':'cancelled',detail=body.result==='receipt_found'?'An authorized tablet operator reported finding the receipt. No additional copy was sent.':'An authorized tablet operator checked and found no receipt. This attempt was closed; a labelled reprint requires a separate explicit request.';
+    db.prepare(`UPDATE ${table} SET status=?,detail=?,updated_at=? WHERE id=?`).run(status,detail,now,id);
+    db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(),owner.id,'printer_job',id,'printer_job_checked',JSON.stringify({priorStatus:job.status,result:body.result,spoolerJobId:job.spooler_job_id??null,terminalId:req.terminal.id}),now);
+    resolveCheckedPrintIncident(db,config,id);
+    return{id,status,result:body.result,replay:false};
+  });
+  return sendJson(res,200,{data:result});
+}
+function listPrinterJobs({res,url,db,session,restaurantId,printerId}){
   requireRestaurantOwner(db,session,restaurantId);
-  const body=await readJson(req,config.bodyLimit);exactObject(body,["orderId"]);
-  const printer=db.prepare("SELECT * FROM restaurant_printers WHERE id=? AND restaurant_id=? AND revoked_at IS NULL").get(id,restaurantId);
-  const order=db.prepare("SELECT * FROM orders WHERE id=? AND restaurant_id=?").get(body.orderId,restaurantId);
-  if(!printer||!order)throw new HttpError(404,"NOT_FOUND","Resource not found");
-  if(!printer.enabled)throw new HttpError(409,"PRINTER_DISABLED","Enable this printer before requesting a reprint");
-  if(!["accepted","preparing","ready","out_for_delivery","completed"].includes(order.status))throw new HttpError(409,"ORDER_NOT_CONFIRMED","Only confirmed orders can be reprinted");
-  const now=nowIso(config),jobId=randomUUID();
-  db.prepare("INSERT INTO device_print_jobs(id,printer_id,order_id,operation_key,receipt,status,manual_reprint,attempt,created_at,updated_at) VALUES(?,?,?,?,?,'queued',1,0,?,?)").run(jobId,id,order.id,`order:${order.id}:printer:${id}:reprint:${jobId}`,JSON.stringify(receiptV1(db,order)),now,now);
-  return sendJson(res,201,{data:{id:jobId,status:"queued",manualReprint:true}});
+  if(!db.prepare('SELECT 1 FROM restaurant_printers WHERE id=? AND restaurant_id=?').get(printerId,restaurantId))throw new HttpError(404,'NOT_FOUND','Printer not found');
+  const offset=cursor(url);if(!Number.isSafeInteger(offset)||offset>100000)throw new HttpError(400,'VALIDATION_ERROR','History cursor is invalid');
+  const rows=db.prepare(`SELECT id,order_id,status,manual_reprint,attempt,receipt_revision,spooler_job_id,detail,created_at,updated_at,0 test_receipt FROM device_print_jobs WHERE printer_id=? UNION ALL SELECT id,NULL order_id,status,0 manual_reprint,attempt,receipt_revision,spooler_job_id,detail,created_at,updated_at,1 test_receipt FROM printer_test_jobs WHERE printer_id=? AND restaurant_id=? ORDER BY updated_at DESC,id DESC LIMIT 51 OFFSET ?`).all(printerId,printerId,restaurantId,offset);
+  const items=rows.slice(0,50).map(row=>{const review=db.prepare("SELECT details FROM audit_events WHERE entity_type='printer_job' AND entity_id=? AND action='printer_job_checked' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(row.id);return{id:row.id,orderId:row.order_id,status:row.status==='printed'?'legacy_unverified':row.status,manualReprint:Boolean(row.manual_reprint),attempt:row.attempt,receiptRevision:row.receipt_revision,spoolerJobId:row.spooler_job_id??null,detail:row.detail,createdAt:row.created_at,updatedAt:row.updated_at,testReceipt:Boolean(row.test_receipt),checkedResult:review?json(review.details,{}).result??null:null};});
+  return sendJson(res,200,{data:{items,nextCursor:rows.length>50?String(offset+50):null}});
 }
 async function preparation({req,res,db,config,session,id}){
   const body=await readJson(req,config.bodyLimit);exactObject(body,["estimatedReadyAt"]);
   if(typeof body.estimatedReadyAt!=="string")throw new HttpError(400,"VALIDATION_ERROR","Customer ETA is required");
   const access=authorizedOrder(db,session,id),user=requireRestaurantMembership(db,session,access.row.restaurant_id),estimate=resolveConfirmationEta(db,access.row,body.estimatedReadyAt,config);
+  requireOrderingTerminal({req,db,config,session,restaurantId:access.row.restaurant_id});
   withTransaction(db,()=>{
     const order=db.prepare("SELECT * FROM orders WHERE id=?").get(id);
     requireRestaurantMembership(db,session,order.restaurant_id);
+    requireOrderingTerminal({req,db,config,session,restaurantId:order.restaurant_id});
     if(!["accepted","preparing"].includes(order.status))throw new HttpError(409,"INVALID_TRANSITION","Customer ETA cannot be changed for this order");
     if(order.estimated_ready_at===estimate)return;
     const now=nowIso(config),eventId=randomUUID(),display=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/London",weekday:"short",hour:"2-digit",minute:"2-digit"}).format(new Date(estimate));

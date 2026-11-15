@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {journeyFixture} from './helpers.js';
+import {businessDeviceFixture} from './business-device-fixture.js';
 import {addNotification} from '../src/offers.js';
 import {decryptCustomerPushToken,loadCustomerPushConfig,runCustomerPush} from '../src/customer-push.js';
 import {createExpoPushAdapter} from '../src/expo-push-adapter.js';
 
 const primary='5bf59184-c670-44f4-be78-5229cbd02300',alternate='f76a2adf-34ca-438a-9208-bdb5d4e65ded';
 const environment={CALAI_CUSTOMER_PUSH_ENABLED:'true',CALAI_EXPO_PUSH_ACCESS_TOKEN:'fixture-service-token',CALAI_EXPO_PUSH_IOS_PROJECT_IDS:primary,CALAI_EXPO_PUSH_ANDROID_PROJECT_IDS:`${primary},${alternate}`};
-async function setup(){
- let clock=Date.parse('2026-01-01T01:00:00Z');const f=await journeyFixture({now:()=>new Date(clock),rateLimit:{attempts:100,windowMs:60000},messageEncryptionKey:Buffer.alloc(32,49).toString('base64'),customerPush:loadCustomerPushConfig(environment)});
+async function setup({terminal=false}={}){
+ let clock=Date.parse('2026-01-01T01:00:00Z');const options={now:()=>new Date(clock),rateLimit:{attempts:100,windowMs:60000},messageEncryptionKey:Buffer.alloc(32,49).toString('base64'),customerPush:loadCustomerPushConfig(environment)},f=await(terminal?businessDeviceFixture({withPrinter:false,...options}):journeyFixture(options));
  const login=await f.json('/api/native/auth/login',{method:'POST',body:{email:'customer@calai.local',password:'LocalCustomer!4310'}}),headers={authorization:`Bearer ${login.body.data.token}`},customerId=login.body.data.user.id,owner=await f.login('restaurant@calai.local','LocalRestaurant!4310'),restaurant=f.db.prepare("SELECT * FROM restaurants WHERE name='Calai Kitchen'").get(),ownerId=f.db.prepare("SELECT id FROM users WHERE email='restaurant@calai.local'").get().id,item=f.db.prepare('SELECT * FROM menu_items WHERE restaurant_id=? LIMIT 1').get(restaurant.id);
  const registration={installationId:randomUUID(),expoPushToken:'ExpoPushToken[unit_customer_push_token_aaaaaaaa]',platform:'ios',projectId:primary};
  const register=(body=registration,extra={headers})=>f.json('/api/native/push/devices',{method:'POST',...extra,body});
@@ -126,10 +127,10 @@ test('native push registration protects customer/session/project boundaries, enc
 });
 
 test('persisted customer notifications deliver safe current actions and honor reads, ended offers, consent, messages and ratings',async()=>{
- const s=await setup(),calls=[],adapter=fakeTransport(calls);try{
+ const s=await setup({terminal:true}),calls=[],adapter=fakeTransport(calls);try{
   assert.equal((await s.register()).status,200);
   const placed=await s.f.json('/api/orders',{method:'POST',headers:{...s.headers,'Idempotency-Key':'push-order'},body:{restaurantId:s.restaurant.id,items:[{menuItemId:s.item.id,quantity:1}],paymentMethod:'mock_card',fulfillment:'collection'}});assert.equal(placed.status,201,placed.text);const order=placed.body.data;
-  const status=async value=>{const r=await s.f.json(`/api/restaurant/orders/${order.id}/status`,{method:'PATCH',cookie:s.owner,body:{status:value}});assert.equal(r.status,200,r.text);};
+  const status=async value=>{const r=await s.f.signed(`/api/restaurant/orders/${order.id}/status`, {status:value}, {method:'PATCH'});assert.equal(r.status,200,r.text);};
   await status('accepted');s.notice('order_status',`order:${order.id}:accepted`,{orderId:order.id,restaurantId:s.restaurant.id});assert.equal(s.f.db.prepare('SELECT COUNT(*) n FROM customer_push_outbox').get().n,1,'Notification replay never duplicates a device job');
   await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,1);assert.deepEqual(calls[0].data,{notificationId:s.f.db.prepare("SELECT id FROM user_notifications WHERE user_id=? AND type='order_status'").get(s.customerId).id,recipientUserId:s.customerId,kind:'order',orderId:order.id});assert.equal(calls[0].sound,undefined);assert.equal(calls[0].channelId,'cal-eats-updates-quiet');
   await status('preparing');await status('ready');await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,2,'Only the latest order status is dispatched');
@@ -141,6 +142,7 @@ test('persisted customer notifications deliver safe current actions and honor re
   const future=s.offer(),scheduledAt=new Date(Date.parse(s.now())+2*86400000).toISOString();s.f.db.prepare('UPDATE offer_campaigns SET starts_at=?,expires_at=? WHERE id=?').run(scheduledAt,new Date(Date.parse(scheduledAt)+86400000).toISOString(),future.id);const beforeFuture=calls.length;await runCustomerPush(s.f.db,s.f.config,{adapter});s.advance(25*3600000);await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,beforeFuture,'Offers scheduled beyond 24 hours remain queued until activation');
   const revisedStart=new Date(Date.parse(s.now())+3600000).toISOString(),revisedEnd=new Date(Date.parse(s.now())+4*3600000).toISOString();s.f.db.prepare('UPDATE offer_campaigns SET starts_at=?,expires_at=? WHERE id=?').run(revisedStart,revisedEnd,future.id);const scheduled=s.f.db.prepare('SELECT o.* FROM customer_push_outbox o JOIN user_notifications n ON n.id=o.notification_id WHERE n.offer_id=?').get(future.grant);assert.equal(scheduled.available_at,revisedStart);assert.equal(scheduled.expires_at,revisedEnd);s.advance(3600001);await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,beforeFuture+1);assert.equal(calls.at(-1).data.offerId,future.grant);
   s.owner=await s.f.login('restaurant@calai.local','LocalRestaurant!4310');
+  await s.f.connectUser(s.owner);
   await s.register({...s.registration,soundEnabled:false});s.voucher();await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.at(-1).sound,undefined);assert.equal(calls.at(-1).channelId,'cal-eats-updates-quiet');
   await status('completed');await runCustomerPush(s.f.db,s.f.config,{adapter});assert.ok(calls.some(payload=>payload.body.includes('quick shop rating')));
   const message=await s.f.json(`/api/orders/${order.id}/messages`,{method:'POST',cookie:s.owner,headers:{'Idempotency-Key':'push-message'},body:{message:'Very private meal and address details'}});assert.equal(message.status,201,message.text);await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.at(-1).title,'New restaurant message');

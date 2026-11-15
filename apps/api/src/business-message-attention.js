@@ -6,5 +6,5 @@ export function restaurantMessageArrivalRevision(db, restaurantId, userId) {
     JOIN restaurant_memberships m ON m.restaurant_id=n.restaurant_id AND m.user_id=n.user_id
     WHERE n.user_id=? AND n.restaurant_id=? AND u.role='restaurant'
       AND EXISTS(SELECT 1 FROM restaurants r WHERE r.id=n.restaurant_id AND r.archived_at IS NULL)
-      AND (n.type='order_message' OR (m.permission='owner' AND n.type='customer_message'))`).get(userId, restaurantId).revision;
+      AND (n.type='order_message' OR ((m.permission='owner' OR m.can_manage_customers=1) AND n.type='customer_message'))`).get(userId, restaurantId).revision;
 }

@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {PDFParse} from "pdf-parse";
-import {journeyFixture} from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import {createCustomerReceiptPdf,receiptPdfFilename} from "../src/customer-receipt-pdf.js";
 import {customerOrderHistoryCutoff} from "../src/customer-order-history.js";
 async function readPdf(buffer){const parser=new PDFParse({data:new Uint8Array(buffer)});try{return await parser.getText();}finally{await parser.destroy();}}
 
 test("completed PDF preserves saved customer amounts and text without merchant finance or personal notes; access and history cannot be bypassed",async()=>{
-  const now=new Date("2026-01-01T01:00:00Z"),f=await journeyFixture({now:()=>now,orderAlertEmail:{mode:"off"}});
+  const now=new Date("2026-01-01T01:00:00Z"),f=await businessDeviceFixture({withPrinter:false,now:()=>now,orderAlertEmail:{mode:"off"}});
   try{
     const customer=await f.login("customer@calai.local","LocalCustomer!4310"),owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];

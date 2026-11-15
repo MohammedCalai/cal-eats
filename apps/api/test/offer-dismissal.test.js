@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import test from "node:test";
@@ -20,7 +21,7 @@ async function setup(f){
 }
 
 test("offer dismissal is per customer, durable, idempotent and cannot be reused by checkout",async()=>{
-  const f=await journeyFixture();try{
+  const f=await businessDeviceFixture({withPrinter:false});try{
     const s=await setup(f),first=s.grant(),other=s.grant({recipient:s.otherId,campaignId:first.campaignId});
     assert.equal((await f.json(`/api/offers/${first.id}`,{method:"PATCH",cookie:s.other,body:{dismissed:true}})).status,404);
     for(let attempt=0;attempt<2;attempt++)assert.equal((await f.json(`/api/offers/${first.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}})).status,200);
@@ -50,9 +51,9 @@ test("active offer pages stay bounded and deterministic across ties, expiry and 
 });
 
 test("offers reserved on an order cannot be dismissed or lose their reservation",async()=>{
-  const f=await journeyFixture();try{
+  const f=await businessDeviceFixture({withPrinter:false});try{
     const s=await setup(f),grant=s.grant(),placed=await f.json("/api/orders",{method:"POST",cookie:s.customer,headers:{"Idempotency-Key":"reserved-customer-offer"},body:{restaurantId:s.restaurant.id,items:[{menuItemId:s.paid.id,quantity:1}],paymentMethod:"mock_card",fulfillment:"collection",offerId:grant.id}});assert.equal(placed.status,201,placed.text);
     const before=f.db.prepare("SELECT * FROM offer_grants WHERE id=?").get(grant.id),denied=await f.json(`/api/offers/${grant.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}});assert.equal(denied.status,409);assert.equal(denied.body.error.code,"OFFER_IN_ORDER");const after=f.db.prepare("SELECT * FROM offer_grants WHERE id=?").get(grant.id);assert.equal(after.dismissed_at,null);assert.equal(after.status,"reserved");assert.equal(after.reserved_order_id,before.reserved_order_id);assert.equal(after.reserved_discount_minor,before.reserved_discount_minor);
-    await f.json(`/api/restaurant/orders/${placed.body.data.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"rejected"}});assert.equal((await f.json(`/api/offers/${grant.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}})).status,200);assert.ok(f.db.prepare("SELECT offer_grant_id FROM orders WHERE id=?").get(placed.body.data.id).offer_grant_id);
+    await f.signed(`/api/restaurant/orders/${placed.body.data.id}/status`, {status:"rejected"}, {method:"PATCH"});assert.equal((await f.json(`/api/offers/${grant.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}})).status,200);assert.ok(f.db.prepare("SELECT offer_grant_id FROM orders WHERE id=?").get(placed.body.data.id).offer_grant_id);
   }finally{await f.close();}
 });

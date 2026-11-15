@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { performance } from "node:perf_hooks";
 import { EventEmitter } from "node:events";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { runCustomerMessageRetention } from "../src/customer-relationships.js";
 import { notificationStreamHub } from "../src/notification-stream.js";
 
 test("10,001-customer directory stays bounded, tenant scoped, and connects encrypted service conversations and notifications", async t => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), otherOwner = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], menu = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items;
     const placed = await f.json("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "crm-history" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: menu[0].id, quantity: 1 }], fulfillment: "collection", paymentMethod: "mock_card" } });
     assert.equal(placed.status, 201, placed.text);
-    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await f.json(`/api/restaurant/orders/${placed.body.data.id}/status`, { method: "PATCH", cookie: owner, body: { status } })).status, 200);
+    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await f.signed(`/api/restaurant/orders/${placed.body.data.id}/status`, { status }, {method: "PATCH"})).status, 200);
     const customerId = placed.body.data.customerId, templateUser = f.db.prepare("SELECT * FROM users WHERE id=?").get(customerId), templateOrder = f.db.prepare("SELECT * FROM orders WHERE id=?").get(placed.body.data.id);
     const userColumns = Object.keys(templateUser), orderColumns = Object.keys(templateOrder), insertUser = f.db.prepare(`INSERT INTO users(${userColumns.join(",")}) VALUES(${userColumns.map(() => "?").join(",")})`), insertOrder = f.db.prepare(`INSERT INTO orders(${orderColumns.join(",")}) VALUES(${orderColumns.map(() => "?").join(",")})`);
     f.db.exec("BEGIN IMMEDIATE");

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Cal-Eats Admin",
+    "name": "Cal Eats Admin",
     "slug": "cal-eats-admin",
     "scheme": "caleatsadmin",
     "version": "0.1.0",
@@ -21,9 +21,9 @@
     "android": {
       "package": "info.calai.caleatsadmin",
       "versionCode": 1,
-      "permissions": [
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      "allowBackup": false,
+      "permissions": [],
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO"]
     },
     "plugins": [
       [
@@ -41,12 +41,11 @@
         }
       ],
       [
-        "expo-audio",
+        "expo-notifications",
         {
-          "microphonePermission": false,
-          "recordAudioAndroid": false,
-          "enableBackgroundRecording": false,
-          "enableBackgroundPlayback": false
+          "defaultChannel": "cal-eats-admin-updates",
+          "color": "#2563eb",
+          "enableBackgroundRemoteNotifications": false
         }
       ]
     ],
@@ -57,7 +56,7 @@
     },
     "owner": "yankee1707",
     "icon": "./assets/app-icon.png",
-    "backgroundColor": "#121212",
+    "backgroundColor": "#081427",
     "primaryColor": "#2865E9"
   }
 }

@@ -1,3 +1,4 @@
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash, randomUUID } from "node:crypto";
@@ -20,7 +21,7 @@ test("deletion targets use the earlier of 30 elapsed days and a clamped calendar
 
 test("verified customer deletion: review, blockers, atomic minimisation, financial preservation and safe completion",async()=>{
   let stamp="2026-01-31T01:00:00.000Z";
-  const f=await journeyFixture({now:()=>new Date(stamp),customerPrivacy:policy,rateLimit:{attempts:100,windowMs:60000}});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(stamp),customerPrivacy:policy,rateLimit:{attempts:100,windowMs:60000}});
   try{
     const customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310"),owner=await f.login("restaurant@calai.local","LocalRestaurant!4310");
     const user=f.db.prepare("SELECT * FROM users WHERE email='customer@calai.local'").get(),adminId=f.db.prepare("SELECT id FROM users WHERE email='admin@calai.local'").get().id,ownerId=f.db.prepare("SELECT id FROM users WHERE email='restaurant@calai.local'").get().id;
@@ -44,7 +45,7 @@ test("verified customer deletion: review, blockers, atomic minimisation, financi
     insert(f.db,"restaurant_memberships",{restaurant_id:restaurant.id,user_id:user.id,created_at:stamp,permission:"staff"});assert.throws(()=>planCustomerErasure(f.db,user.id,{config:f.config,requestId}),e=>e.code==="CUSTOMER_ERASURE_ONLY");f.db.prepare("DELETE FROM restaurant_memberships WHERE user_id=?").run(user.id);
     const placed=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":"privacy-financial-order"},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:2}],paymentMethod:"cash",fulfillment:"collection"}});assert.equal(placed.status,201,placed.text);const orderId=placed.body.data.id;
     assert.ok((await preview()).body.data.blockers.some(b=>b.code==="ACTIVE_ORDERS"));assert.equal((await erase((await preview()).body.data.previewHash)).body.error.code,"CUSTOMER_ERASURE_BLOCKED");
-    for(const status of ["accepted","preparing","ready","completed"]){const changed=await f.json(`/api/restaurant/orders/${orderId}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(changed.status,200,changed.text);}
+    for(const status of ["accepted","preparing","ready","completed"]){const changed=await f.signed(`/api/restaurant/orders/${orderId}/status`, {status}, {method:"PATCH"});assert.equal(changed.status,200,changed.text);}
     const holdId=randomUUID();insert(f.db,"customer_erasure_holds",{id:holdId,user_id:user.id,reason_code:"dispute",created_by:adminId,created_at:stamp});assert.ok((await preview()).body.data.blockers.some(b=>b.code==="LEGAL_HOLD"));f.db.prepare("UPDATE customer_erasure_holds SET released_at=? WHERE id=?").run(stamp,holdId);
     const opId=randomUUID();insert(f.db,"marketplace_operations",{id:opId,operation_key:opId,restaurant_id:restaurant.id,order_id:orderId,kind:"payment_capture",status:"unknown",amount_minor:100,currency:"GBP",provider_mode:"local_simulator",metadata:JSON.stringify({customerEmail:user.email,feeMinor:7}),created_at:stamp,updated_at:stamp});assert.ok((await preview()).body.data.blockers.some(b=>b.code==="UNFINISHED_FINANCIAL_OPERATIONS"));f.db.prepare("UPDATE marketplace_operations SET status='cancelled' WHERE id=?").run(opId);
     const caseId=randomUUID();insert(f.db,"support_cases",{id:caseId,user_id:user.id,order_id:orderId,subject:"Private help subject",message:"Private initial help",status:"open",created_at:stamp,updated_at:stamp,waiting_for:"team"});assert.ok((await preview()).body.data.blockers.some(b=>b.code==="OPEN_SUPPORT_CASES"));f.db.prepare("UPDATE support_cases SET status='resolved',waiting_for='none' WHERE id=?").run(caseId);

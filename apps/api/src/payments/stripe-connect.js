@@ -142,7 +142,7 @@ export async function routeStripeConnect(ctx) {
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/stripe(?:\/(onboarding|refresh|dashboard|payouts|banking))?$/);
   if (match) {
     const owner = requireRestaurantOwner(db,session,match[1]),bankConfig=restaurantBankingConfig(config,match[1]),bankCtx={...ctx,config:bankConfig},mode=stripeMode(bankConfig),scope=bankingPaymentScope(bankConfig);
-    if(mode==="stripe_live"&&match[2]){requireRole(session,"restaurant");requireLiveBankingCredential(db,owner.id);}
+    if(mode==="stripe_live"&&match[2]&&match[2]!=="payouts"){requireRole(session,"restaurant");requireLiveBankingCredential(db,owner.id);}
     if (req.method === "GET" && !match[2]) {
       const row = mode ? accountForMode(db,match[1],bankConfig) : null;
       if(scope.onboardingOnly)await ensurePlatform(bankConfig);

@@ -1,9 +1,8 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {journeyFixture} from "./helpers.js";
-
 test("campaign editing is owner scoped, sends no new offers, and ending preserves reserved order confirmation",async()=>{
- const f=await journeyFixture({now:()=>new Date("2026-01-01T01:00:00.000Z")});
+ const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date("2026-01-01T01:00:00.000Z")});
  try{
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items.find(item=>item.priceMinor>500);
@@ -25,9 +24,9 @@ test("campaign editing is owner scoped, sends no new offers, and ending preserve
   assert.equal(f.db.prepare("SELECT status FROM offer_grants WHERE id=?").get(offerId).status,"reserved");
   assert.equal((await f.json(`/api/promotions/${id}/claim`,{method:"POST",cookie:customer,body:{}})).status,404);
   assert.equal((await f.json(path,{method:"PATCH",cookie:owner,body:{title:"Reopen"}})).body.error.code,"CAMPAIGN_ENDED");
-  const confirmed=await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted",estimatedReadyAt:"2026-01-01T01:30:00Z"}});assert.equal(confirmed.status,200,confirmed.text);
+  const confirmed=await f.signed(`/api/restaurant/orders/${order.id}/status`, {status:"accepted",estimatedReadyAt:"2026-01-01T01:30:00Z"}, {method:"PATCH"});assert.equal(confirmed.status,200,confirmed.text);
   assert.deepEqual(f.db.prepare("SELECT total_minor,commission_minor,promotion_snapshot FROM orders WHERE id=?").get(order.id),before);
-  for(const status of ["preparing","ready","completed"]){const result=await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(result.status,200,result.text);}
+  for(const status of ["preparing","ready","completed"]){const result=await f.signed(`/api/restaurant/orders/${order.id}/status`, {status}, {method:"PATCH"});assert.equal(result.status,200,result.text);}
   assert.equal(f.db.prepare("SELECT status FROM offer_grants WHERE id=?").get(offerId).status,"redeemed");
  }finally{await f.close();}
 });

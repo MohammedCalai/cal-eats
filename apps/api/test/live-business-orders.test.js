@@ -1,9 +1,9 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
 
 test("live kitchen counts follow paid/visible placed orders through handover, across periods and restaurant roles", async () => {
-  const f = await journeyFixture({ now: () => new Date("2026-10-29T12:00:00.000Z") });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date("2026-10-29T12:00:00.000Z") });
   try {
     const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310"), other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310");
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
@@ -14,7 +14,7 @@ test("live kitchen counts follow paid/visible placed orders through handover, ac
     assert.equal((await read()).operations.liveOrders, 1);
     f.db.prepare("UPDATE orders SET created_at='2026-10-20T12:00:00.000Z' WHERE id=?").run(delivery);
     assert.equal((await read("yesterday")).operations.liveOrders, 1);
-    async function status(id, status) { const r = await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: owner, body: { status } }); assert.equal(r.status, 200, r.text); }
+    async function status(id, status) { const r = await f.signed(`/api/restaurant/orders/${id}/status`, { status }, {method: "PATCH"}); assert.equal(r.status, 200, r.text); }
     for (const next of ["accepted", "preparing", "ready"]) { await status(delivery, next); const data = (await read()).operations; assert.equal(data.liveOrders, 1); assert.equal(data.readyForHandover, next === "ready" ? 1 : 0); }
     await status(delivery, "out_for_delivery");
     assert.equal((await read()).operations.liveOrders, 0); assert.equal((await read()).operations.activeOrders, 1);

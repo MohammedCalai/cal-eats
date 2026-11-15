@@ -6,6 +6,7 @@ import { Journal } from "./journal.js";
 import { Logger } from "./logger.js";
 import { ensureCredential } from "./setup.js";
 import { TcpEscPosTransport, TransportError } from "./transports.js";
+import { startTerminalRuntime } from "./terminal-runtime.js";
 
 // Invoked inside the existing native Calai bridge. Both queues use its original
 // printer routine and one dispatch queue; no second Windows launcher is needed.
@@ -23,7 +24,7 @@ export function sharedPrinterTransport(calaiConfig, config, sendToNetworkPrinter
     async send(entry) {
       try {
         await sendToNetworkPrinter(calaiConfig.PRINTER_IP, Number(calaiConfig.PRINTER_PORT), entry.receiptText);
-        return { outcome: "uncertain", detail: "Existing Calai bridge accepted the receipt; check physical paper output" };
+        return { outcome: "submitted", detail: "Existing Calai bridge accepted the receipt; physical paper output is unverified" };
       } catch {
         throw new TransportError("Existing Calai printer dispatch failed; check paper before reprinting", { ambiguous: true });
       }
@@ -36,19 +37,21 @@ export async function startSharedCalai({ configPath, calaiConfig, sendToNetworkP
   if (typeof globalThis.fetch !== "function") throw new Error("The existing Calai runtime needs Node.js 20 or later");
   const transport = sharedPrinterTransport(calaiConfig, config, sendToNetworkPrinter);
   const release = await acquireLock(config.journalPath);
-  const apiFor = (token = null) => new ApiClient({ baseUrl: config.apiBaseUrl, token, timeoutMs: config.requestTimeoutMs, retry: config.retry });
+  let terminal;
   try {
     const logger = new Logger(config.logPath);
+    const journal = await new Journal(config.journalPath).load();
+    terminal = await startTerminalRuntime({ config, transport, journal, logger, signal });
+    const apiFor = (token = null) => new ApiClient({ baseUrl: config.apiBaseUrl, token, timeoutMs: config.requestTimeoutMs, retry: config.retry, terminal });
     const credential = await ensureCredential({
       config, setupPath: path.join(path.dirname(config.configPath), "setup.json"), api: apiFor(),
       verify: saved => apiFor(saved.token).heartbeat({ printerReachable: false, transport: transport.kind }),
     });
-    const journal = await new Journal(config.journalPath).load();
     const api = apiFor(credential.token);
     const heartbeat = api.heartbeat.bind(api);
     api.heartbeat = async () => heartbeat({ printerReachable: await transport.probe(), transport: transport.kind });
     const bridge = new PrintBridge({ api, journal, transport, logger });
     await logger.info("shared_calai_bridge_started");
     await bridge.start({ signal, heartbeatIntervalMs: config.heartbeatIntervalMs, idlePollMs: config.idlePollMs });
-  } finally { await release(); }
+  } finally { terminal?.stop?.(); await release(); }
 }

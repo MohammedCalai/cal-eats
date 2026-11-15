@@ -1,14 +1,14 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Readable } from 'node:stream';
-import { journeyFixture } from './helpers.js';
 import { routeAdminRestaurantWorkspace } from '../src/admin-restaurant-workspace.js';
 import { requireRestaurantOwner } from '../src/auth/authorization.js';
 import { scopedAdminRestaurantSession } from '../src/auth/admin-restaurant-scope.js';
 import { adminRestaurantAvailabilityLabel } from '../../portal/src/admin-restaurant-presentation.js';
 
 async function setup() {
- const f=await journeyFixture({now:()=>new Date('2026-01-01T10:00:00.000Z')});
+ const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date('2026-01-01T10:00:00.000Z')});
  const admin={user:f.db.prepare("SELECT id,name,email,role FROM users WHERE role='admin'").get()},owner={user:f.db.prepare("SELECT id,name,email,role FROM users WHERE email='restaurant@calai.local'").get()},customer={user:f.db.prepare("SELECT id,name,email,role FROM users WHERE role='customer'").get()};
  const restaurants=f.db.prepare('SELECT * FROM restaurants ORDER BY created_at,id').all(),restaurant=restaurants.find(row=>row.status==='approved'),other=restaurants.find(row=>row.id!==restaurant.id);
  async function request(path,{session=admin,method='GET',body,key='admin-test'}={}){

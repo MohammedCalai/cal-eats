@@ -1,7 +1,7 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {randomUUID} from "node:crypto";
-import {journeyFixture} from "./helpers.js";
 import {addNotification} from "../src/offers.js";
 import {migrateDatabase,openDatabase} from "../src/db/index.js";
 import {migrations} from "../src/db/migrations.js";
@@ -9,7 +9,7 @@ import {restaurantMessageArrivalRevision} from "../src/business-message-attentio
 
 test("reading one customer order conversation leaves the other conversation actionable",async()=>{
   let clock=Date.parse("2026-01-01T01:00:00.000Z");
-  const f=await journeyFixture({now:()=>new Date(clock)});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(clock)});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0];
@@ -32,7 +32,7 @@ test("reading one customer order conversation leaves the other conversation acti
 
 test("business message attention uses actual scoped read cursors and a recipient arrival revision",async()=>{
   let clock=Date.parse("2026-01-01T01:00:00.000Z");
-  const f=await journeyFixture({now:()=>new Date(clock),rateLimit:{attempts:120,windowMs:60000}});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(clock),rateLimit:{attempts:120,windowMs:60000}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],foreign=(await f.json("/api/restaurant/restaurants",{cookie:other})).body.data[0],base=`/api/restaurant/restaurants/${restaurant.id}`,endpoint=`${base}/message-attention`;
@@ -61,7 +61,7 @@ test("business message attention uses actual scoped read cursors and a recipient
     const staleRead=await f.json(`/api/orders/${order.id}/messages/read`,{method:"POST",cookie:owner,body:{lastMessageId:first.id}});
     assert.equal(staleRead.body.data.messageAttentionRevision,updated.revision,"A successful read carries the server's current backlog barrier even when the client observed an older revision");assert.equal(staleRead.body.data.unreadCount,1);
     assert.equal((await f.json(`/api/orders/${order.id}/messages/read`,{method:"POST",cookie:owner,body:{lastMessageId:second.id}})).status,200);
-    for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status}})).status,200);
+    for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.signed(`/api/restaurant/orders/${order.id}/status`, {status}, {method:"PATCH"})).status,200);
     const path=`${base}/customers/${order.customerId}/conversation`,started=await f.json(path,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"attention-crm-start"},body:{message:"How can we help?"}});assert.equal(started.status,201,started.text);
     const staffBeforeCrm=await attention(staff);clock+=1000;
     const reply=await f.json(`/api/customer/conversations/${started.body.data.threadId}/messages`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"attention-crm-reply"},body:{message:"Please follow up with me."}});assert.equal(reply.status,201,reply.text);
@@ -91,7 +91,7 @@ test("business message attention uses actual scoped read cursors and a recipient
 
 test("dashboard message actions match reminder counts for active and closed order chats and owner-only customer conversations",async()=>{
   let clock=Date.parse("2026-01-01T01:00:00.000Z");
-  const f=await journeyFixture({now:()=>new Date(clock),rateLimit:{attempts:120,windowMs:60000}});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(clock),rateLimit:{attempts:120,windowMs:60000}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],base=`/api/restaurant/restaurants/${restaurant.id}`;
@@ -107,7 +107,7 @@ test("dashboard message actions match reminder counts for active and closed orde
     }
     const [active,closed]=orders;
     for(const status of ["accepted","preparing","ready","completed"]){
-      const changed=await f.json(`/api/restaurant/orders/${closed.order.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(changed.status,200,changed.text);
+      const changed=await f.signed(`/api/restaurant/orders/${closed.order.id}/status`, {status}, {method:"PATCH"});assert.equal(changed.status,200,changed.text);
     }
     const crmPath=`${base}/customers/${active.order.customerId}/conversation`;
     const opened=await f.json(crmPath,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"dashboard-attention-crm-open"},body:{message:"How can we help?"}});

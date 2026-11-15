@@ -33,6 +33,9 @@ import { normalizeScheduledFor, validateOrderSchedule } from "./scheduled-orders
 import { orderShopRating, restaurantRatingSummary } from "./shop-ratings.js";
 import { assertCustomerContentAllowed } from "./content-moderation.js";
 import {createCustomerReceiptPdf,receiptPdfFilename} from "./customer-receipt-pdf.js";
+import {requireOrderingTerminal} from "./ordering-terminals.js";
+import {assertTabletOrderingAvailable} from "./business-device-health.js";
+import {membershipCapabilitiesFromRow} from "./membership-capabilities.js";
 
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
@@ -156,8 +159,8 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   }
   if (req.method === "GET" && url.pathname === "/api/restaurant/restaurants") {
     const user = requireRole(session, "restaurant");
-    const rows = db.prepare("SELECT r.*,m.permission FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id WHERE m.user_id=? AND r.archived_at IS NULL ORDER BY r.created_at").all(user.id);
-    return sendJson(res, 200, { data: rows.map((row) => restaurantDto(row, { privateDetails: true, now: config.now(), db })) });
+    const rows = db.prepare("SELECT r.*,m.permission,m.can_process_orders,m.can_view_finance,m.can_view_devices,m.can_manage_menu,m.can_manage_marketing,m.can_manage_customers,m.can_manage_settings,m.can_manage_staff FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id WHERE m.user_id=? AND r.archived_at IS NULL ORDER BY r.created_at").all(user.id);
+    return sendJson(res, 200, { data: rows.map((row) => {const capabilities=membershipCapabilitiesFromRow(row);return {...restaurantDto(row, { privateDetails: true, now: config.now(), db }),eligibleTerminalOperator:capabilities.canProcessOrders,capabilities:{...capabilities,eligibleTerminalOperator:capabilities.canProcessOrders,canProcessOrders:false,canPrint:false},orderingAuthority:"paired_terminal_required"};}) });
   }
   if (req.method === "POST" && url.pathname === "/api/restaurant/restaurants") {
     const user = requireRole(session, "restaurant");
@@ -268,8 +271,18 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     const status=url.searchParams.get("status")??"all",paged=url.searchParams.has("page")||url.searchParams.has("pageSize"),rawPage=url.searchParams.get("page")??"1",rawSize=url.searchParams.get("pageSize")??"25",page=Number(rawPage),pageSize=Number(rawSize);
     if(!["all","placed","accepted","preparing","ready","out_for_delivery","completed","rejected"].includes(status)||!/^\d+$/.test(rawPage)||!/^\d+$/.test(rawSize)||!Number.isSafeInteger(page)||page<1||page>100000||pageSize<1||pageSize>100)throw new HttpError(400,"VALIDATION_ERROR","Order filters are invalid");
     const range=parseLondonDateRange(url);
+    const rawSearch=url.searchParams.get("q")??"",search=rawSearch.trim();
+    if(url.searchParams.getAll("q").length>1||search.length>100||/[\u0000-\u001f\u007f]/.test(rawSearch))throw new HttpError(400,"VALIDATION_ERROR","Order search must contain at most 100 characters");
+    // Search only the operational snapshot returned by orderDto. Never join
+    // customer profiles, messages, notes or retained financial/legal copies;
+    // retention/erasure therefore removes those contacts from search too.
+    const searchFields=["customer_name","customer_phone",...["line1","line2","city","postcode"].map(field=>`COALESCE(json_extract(delivery_address,'$.${field}'),'')`)];
+    const literalLike=value=>`%${value.replaceAll("\\","\\\\").replaceAll("%","\\%").replaceAll("_","\\_")}%`;
+    const referenceSearch=search.startsWith("#")?search.slice(1):search;
+    const searchWhere=search?` AND (${referenceSearch?"id LIKE ? ESCAPE '\\' OR ":""}${searchFields.map(field=>`${field} LIKE ? ESCAPE '\\'`).join(" OR ")})`:"";
+    const searchParameters=search?[...(referenceSearch?[literalLike(referenceSearch)]:[]),...searchFields.map(()=>literalLike(search))]:[];
     if(["placed","accepted","preparing","ready","out_for_delivery"].includes(status)&&db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(match[1])?.archived_at)return sendJson(res,200,{data:paged?{items:[],pagination:{page,pageSize,total:0,totalPages:0,hasNext:false,hasPrevious:page>1}}:[]});
-    const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}${range.from?" AND created_at>=?":""}${range.toExclusive?" AND created_at<?":""}`,parameters=[match[1],...(status==="all"?[]:[status]),...(range.from?[range.from]:[]),...(range.toExclusive?[range.toExclusive]:[])];
+    const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}${range.from?" AND created_at>=?":""}${range.toExclusive?" AND created_at<?":""}${searchWhere}`,parameters=[match[1],...(status==="all"?[]:[status]),...(range.from?[range.from]:[]),...(range.toExclusive?[range.toExclusive]:[]),...searchParameters];
     const rows=db.prepare(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC,id DESC${paged?" LIMIT ? OFFSET ?":""}`).all(...parameters,...(paged?[pageSize,(page-1)*pageSize]:[])).map(row=>orderDto(db,row,permission==="owner",permission==="owner",config));
     if(!paged)return sendJson(res,200,{data:rows});
     const total=db.prepare(`SELECT COUNT(*) n FROM orders WHERE ${where}`).get(...parameters).n;
@@ -313,6 +326,7 @@ async function quoteOrder({req,res,db,config,session}){
   const user=requireRole(session,"customer"),body=await readJson(req,config.bodyLimit);exactObject(body,["restaurantId","items","fulfillment","deliveryAddress","offerId","autoApplyOffers","scheduledFor","voucherId","autoApplyVouchers","paymentMethod"]);if(typeof body.restaurantId!=="string"||!Array.isArray(body.items)||!body.items.length||body.items.length>VALIDATION.orderItemsMax||!["collection","delivery"].includes(body.fulfillment)||(body.autoApplyOffers!==undefined&&typeof body.autoApplyOffers!=="boolean"))throw new HttpError(400,"VALIDATION_ERROR","Quote is invalid");
   const restaurant=db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);if(!restaurant)throw new HttpError(404,"NOT_FOUND","Resource not found");const address=body.fulfillment==="delivery"?normalizeAddress(body.deliveryAddress):null;if(body.fulfillment==="collection"&&body.deliveryAddress!==undefined)throw new HttpError(400,"VALIDATION_ERROR","Collection quotes cannot include an address");
   const schedule=validateOrderSchedule(restaurant,body.fulfillment,normalizeScheduledFor(body.scheduledFor),config.now());
+  assertTabletOrderingAvailable(db,config,restaurant.id);
   assertRestaurantServiceArea(db,restaurant,body.fulfillment,address);
   const normalized=body.items.map((entry)=>{exactObject(entry,["menuItemId","quantity","modifiers"]);return{menuItemId:text(entry.menuItemId,1,100,"Menu item"),quantity:integer(entry.quantity,1,VALIDATION.quantityMax,"Quantity"),modifiers:entry.modifiers??[]};});if(new Set(normalized.map(x=>x.menuItemId)).size!==normalized.length)throw new HttpError(400,"VALIDATION_ERROR","Duplicate menu items are not allowed");
   const menu=normalized.map((entry)=>({entry,row:db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(entry.menuItemId,restaurant.id)}));if(menu.some(x=>!x.row))throw new HttpError(409,"MENU_UNAVAILABLE","One or more menu items are unavailable");
@@ -365,6 +379,7 @@ async function createOrder({ req, res, db, config, session }) {
   if (restaurant.suspended) throw new HttpError(409, "RESTAURANT_SUSPENDED", "Restaurant is suspended");
   assertRestaurantServiceArea(db,restaurant,body.fulfillment,address);
   const serverNow = config.now(), schedule = validateOrderSchedule(restaurant, body.fulfillment, scheduledFor, serverNow);
+  assertTabletOrderingAvailable(db,config,restaurant.id);
   if (body.fulfillment === "collection" && !restaurant.collection_enabled) throw new HttpError(409, "COLLECTION_DISABLED", "Restaurant collection is disabled");
   if (body.paymentMethod === "cash" && !voucherId && !restaurant.cash_enabled) throw new HttpError(409, "CASH_DISABLED", "Restaurant is not accepting cash");
   const contract = db.prepare("SELECT * FROM contracts WHERE restaurant_id=? AND accepted_at IS NOT NULL").get(restaurant.id);
@@ -461,6 +476,7 @@ async function updateStatus({ req, res, db, config, session, id }) {
   const body = await readJson(req, config.bodyLimit); exactObject(body, ["status","estimatedReadyAt"]);
   const initial=db.prepare("SELECT * FROM orders WHERE id=?").get(id),initialMembership=initial&&db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(initial.restaurant_id,user.id);
   if(!initial||!initialMembership)throw new HttpError(404,"NOT_FOUND","Resource not found");
+  requireOrderingTerminal({req,db,config,session,restaurantId:initial.restaurant_id});
   if(body.estimatedReadyAt!==undefined&&body.status!=="accepted")throw new HttpError(400,"VALIDATION_ERROR","Use the preparation endpoint to update an existing customer ETA");
   if(body.status===initial.status)return sendJson(res,200,{data:orderDto(db,initial,initialMembership.permission==="owner",initialMembership.permission==="owner",config)});
   requireOrderFinancialEnvironment(db,initial,config);
@@ -478,6 +494,7 @@ async function updateStatus({ req, res, db, config, session, id }) {
     const order = db.prepare("SELECT * FROM orders WHERE id=?").get(id);
     const membership = order && db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(order.restaurant_id, user.id);
     if (!order || !membership) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    requireOrderingTerminal({req,db,config,session,restaurantId:order.restaurant_id});
     if (body.status === order.status) return { order, permission: membership.permission };
     requireOrderFinancialEnvironment(db,order,config);
     if(order.payment_method==="card"&&["accepted","rejected"].includes(body.status)&&!db.prepare("SELECT 1 FROM stripe_order_decisions WHERE order_id=? AND desired_status=? AND state='confirmed'").get(order.id,body.status))throw new HttpError(409,"ORDER_DECISION_NOT_CONFIRMED","Card payment decision is not confirmed");

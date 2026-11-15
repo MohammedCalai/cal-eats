@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -5,8 +6,6 @@ import { financialEnvironmentMigration } from "../src/financial-environment-migr
 import { financialEnvironmentScope, orderEnvironmentPredicate, orderFinancialEnvironment, recordOrderFinancialEnvironment, requireOrderFinancialEnvironment } from "../src/financial-environment.js";
 import { runMarketplaceWorker } from "../src/marketplace.js";
 import { buildFinanceSummary } from "../src/marketplace-reporting.js";
-import { journeyFixture } from "./helpers.js";
-
 function legacyDatabase() {
   const db=new DatabaseSync(":memory:");
   db.exec(`PRAGMA foreign_keys=ON;CREATE TABLE orders(id TEXT PRIMARY KEY,payment_method TEXT,contract_demo_only INTEGER,total_minor INTEGER,status TEXT);CREATE TABLE stripe_order_payments(order_id TEXT PRIMARY KEY REFERENCES orders(id),provider_mode TEXT,payment_intent_id TEXT);
@@ -49,7 +48,7 @@ test("every new order snapshots its creation environment and later config change
 });
 
 test("live handover preserves fictional cash, pauses simulator payouts and excludes their balances without changing history",async()=>{
-  const f=await journeyFixture({orderAlertEmail:{mode:"off"}});
+  const f=await businessDeviceFixture({withPrinter:false,orderAlertEmail:{mode:"off"}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
@@ -57,7 +56,7 @@ test("live handover preserves fictional cash, pauses simulator payouts and exclu
     const place=(key,paymentMethod)=>f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":key},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod,fulfillment:"collection"}});
     const cash=await place("environment-cash","cash"),mock=await place("environment-mock","mock_card"),pending=await place("environment-pending","cash");
     for(const result of[cash,mock,pending])assert.equal(result.status,201,result.text);
-    for(const result of[cash,mock])for(const status of["accepted","preparing","ready","completed"]){const changed=await f.json(`/api/restaurant/orders/${result.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(changed.status,200,changed.text);}
+    for(const result of[cash,mock])for(const status of["accepted","preparing","ready","completed"]){const changed=await f.signed(`/api/restaurant/orders/${result.body.data.id}/status`, {status}, {method:"PATCH"});assert.equal(changed.status,200,changed.text);}
     runMarketplaceWorker(f.db,f.config);
     const payout=f.db.prepare("SELECT * FROM payout_batches WHERE operation_key=?").get(`payout:${mock.body.data.id}`);assert.ok(payout);
     f.db.prepare("UPDATE marketplace_worker_jobs SET available_at='2020-01-01T00:00:00.000Z' WHERE kind='payout_reconcile' AND entity_id=?").run(payout.id);
@@ -68,7 +67,7 @@ test("live handover preserves fictional cash, pauses simulator payouts and exclu
     const live=buildFinanceSummary(f.db,restaurant.id,null,f.config),testing=buildFinanceSummary(f.db,restaurant.id,new URL("http://fixture.invalid?scope=testing"),f.config);
     assert.equal(live.grossSalesMinor,0);assert.equal(live.heldMinor,0);assert.equal(live.cashCommissionOutstandingMinor,0);assert.equal(testing.heldMinor,372);assert.equal(testing.cashCommissionOutstandingMinor,28);
     const worker=runMarketplaceWorker(f.db,f.config);assert.equal(worker.completed,0);assert.equal(worker.failed,0);
-    const blocked=await f.json(`/api/restaurant/orders/${pending.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted"}});assert.equal(blocked.status,409,blocked.text);assert.equal(blocked.body.error.code,"ORDER_FINANCIAL_ENVIRONMENT_MISMATCH");
+    const blocked=await f.signed(`/api/restaurant/orders/${pending.body.data.id}/status`, {status:"accepted"}, {method:"PATCH"});assert.equal(blocked.status,409,blocked.text);assert.equal(blocked.body.error.code,"ORDER_FINANCIAL_ENVIRONMENT_MISMATCH");
     assert.equal(history(),before);
     const liveCsv=await f.request(`/api/restaurant/restaurants/${restaurant.id}/finance/statement.csv`,{cookie:owner});assert.equal(liveCsv.status,200);assert.equal(liveCsv.text.includes(cash.body.data.id),false);
     const testCsv=await f.request(`/api/restaurant/restaurants/${restaurant.id}/finance/statement.csv?scope=testing`,{cookie:owner});assert.equal(testCsv.status,200);assert.equal(testCsv.text.includes(cash.body.data.id),true);
