@@ -87,7 +87,7 @@ test("one printer serialises real receipts and diagnostics across devices, prior
     const job = claimed.body.data.job; assert.equal(job.testReceipt, false); assert.equal(job.receipt.orderNumber, order.id);
     assert.deepEqual(job.receipt.deliveryAddress, { line1: "1 Main Street", line2: "Flat 2", city: "Luton", postcode: "LU1 1AA" });
     const paper = formatReceipt(job.receipt).text;
-    assert.match(paper, /1 Main Street/); assert.match(paper, /Flat 2/); assert.match(paper, /Luton,\s+LU1 1AA/); assert.equal(paper.includes("[object Object]"), false); assert.equal(paper.includes("PRINTER TEST"), false);
+    assert.match(paper, /1 Main Street/); assert.match(paper, /Flat 2/); assert.match(paper, /Luton\r?\nLU1 1AA/); assert.equal(paper.includes("[object Object]"), false); assert.equal(paper.includes("PRINTER TEST"), false);
     const replay = (await k.claim()).body.data.job; assert.equal(replay.id, job.id); assert.notEqual(replay.claimToken, job.claimToken);
     assert.equal((await k.claim(second)).body.data.job, null);
     assert.equal((await k.ack(job, "printed", second)).status, 401);

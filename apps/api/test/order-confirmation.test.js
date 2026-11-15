@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import { journeyFixture } from "./helpers.js";
 import { runOrderConfirmationAlerts } from "../src/order-confirmation.js";
 import { notifyNewOrder } from "../src/offers.js";
 import { createOrderAlertEmailAdapter, loadOrderAlertEmailConfig } from "../src/order-alert-email.js";
 import { openDatabase, closeDatabase } from "../src/db/index.js";
 import { runExpiryWorker } from "../src/operations.js";
+import { recordOrderFinancialEnvironment } from "../src/financial-environment.js";
 
 async function setup() {
   let stamp=Date.parse("2026-01-01T01:00:00.000Z");
@@ -23,14 +25,19 @@ test("confirmation commits the customer ETA once and emits confirmed/out-for-del
     const pending=await f.json(`/api/restaurant/orders/pending-confirmation?restaurantId=${f.restaurant.id}`,{cookie:f.owner});assert.equal(pending.body.data.total,1);
     const invalid=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"2025-12-31T00:00:00.000Z"}});assert.equal(invalid.status,400);assert.equal(f.db.prepare("SELECT status FROM orders WHERE id=?").get(order.id).status,"placed");
     const confirmed=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:eta}});assert.equal(confirmed.status,200,confirmed.text);assert.equal(confirmed.body.data.customerEtaAt,eta);assert.equal(confirmed.body.data.customerEtaType,"delivery_arrival");assert.equal(confirmed.body.data.confirmedAt,new Date(visible).toISOString());
-    const replay=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:new Date(visible+90*60000).toISOString()}});assert.equal(replay.body.data.customerEtaAt,eta);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE order_id=? AND title='Order confirmed'").get(order.id).n,1);
+    const replay=await f.json(route,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:new Date(visible+90*60000).toISOString()}});assert.equal(replay.status,200,replay.text);assert.equal(replay.body.data.customerEtaAt,eta);assert.equal(f.db.prepare("SELECT estimated_ready_at FROM orders WHERE id=?").get(order.id).estimated_ready_at,eta);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE order_id=? AND title='Order confirmed'").get(order.id).n,1);
     const changed=new Date(visible+60*60000).toISOString(),changedResponse=await f.json(`/api/restaurant/orders/${order.id}/preparation`,{method:"PATCH",cookie:f.owner,body:{estimatedReadyAt:changed}});assert.equal(changedResponse.body.data.customerEtaAt,changed);
     for(const status of["preparing","ready","out_for_delivery"])assert.equal((await f.json(route,{method:"PATCH",cookie:f.owner,body:{status}})).status,200);
     const notifications=(await f.json("/api/notifications",{cookie:f.customer})).body.data.items;assert.ok(notifications.some(n=>n.title==="Order confirmed"&&n.message.includes("Estimated delivery")));assert.ok(notifications.some(n=>n.title==="Out for delivery"));assert.ok(notifications.some(n=>n.type==="order_eta"));
     const collection=await f.place(),legacy=await f.json(`/api/restaurant/orders/${collection.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}});assert.equal(legacy.body.data.customerEtaType,"collection_ready");assert.ok(Date.parse(legacy.body.data.customerEtaAt)>visible);
     const paged=await f.json(`/api/restaurant/restaurants/${f.restaurant.id}/orders?page=1&pageSize=1&status=accepted`,{cookie:f.owner});assert.equal(paged.body.data.items.length,1);assert.equal(paged.body.data.pagination.total,1);
     const card=await f.place();f.db.prepare("UPDATE orders SET payment_method='card',payment_status='stripe_authorized' WHERE id=?").run(card.id);
-    const badCard=await f.json(`/api/restaurant/orders/${card.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"not-a-date"}});assert.equal(badCard.status,400);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stripe_order_decisions WHERE order_id=?").get(card.id).n,0);
+    const beforeCard=f.db.prepare("SELECT status,estimated_ready_at,confirmed_at,payment_status FROM orders WHERE id=?").get(card.id);
+    const unproven=await f.json(`/api/restaurant/orders/${card.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"not-a-date"}});assert.equal(unproven.status,409,unproven.text);assert.equal(unproven.body.error.code,"ORDER_FINANCIAL_ENVIRONMENT_MISMATCH");assert.deepEqual(f.db.prepare("SELECT status,estimated_ready_at,confirmed_at,payment_status FROM orders WHERE id=?").get(card.id),beforeCard);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stripe_order_decisions WHERE order_id=?").get(card.id).n,0);
+    const scopedCard={...f.db.prepare("SELECT * FROM orders WHERE id=?").get(card.id),id:randomUUID(),idempotency_key:"invalid-card-eta-with-provenance"},columns=Object.keys(scopedCard);
+    f.db.prepare(`INSERT INTO orders(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...columns.map(column=>scopedCard[column]));recordOrderFinancialEnvironment(f.db,scopedCard,{...f.config,paymentProviderMode:"stripe_test"});
+    f.db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,status,created_at,updated_at) VALUES(?,'stripe_test','authorized',?,?)").run(scopedCard.id,scopedCard.created_at,scopedCard.updated_at);
+    const badCard=await f.json(`/api/restaurant/orders/${scopedCard.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted",estimatedReadyAt:"not-a-date"}});assert.equal(badCard.status,400,badCard.text);assert.equal(badCard.body.error.code,"VALIDATION_ERROR");assert.deepEqual(f.db.prepare("SELECT status,estimated_ready_at,confirmed_at,payment_status FROM orders WHERE id=?").get(scopedCard.id),beforeCard);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stripe_order_decisions WHERE order_id=?").get(scopedCard.id).n,0);
   }finally{await f.close();}
 });
 

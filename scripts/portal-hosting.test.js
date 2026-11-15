@@ -19,10 +19,13 @@ test('portal hosting refuses traversal, source files and unknown route fallbacks
   assert.equal(redirect.headers.location, '/business/');
 });
 
-test('landing and ordering are distinct public entries with working assets and HEAD', async () => {
+test('landing promotes app downloads and ordering remains a distinct entry with assets and HEAD', async () => {
   const home = await serve('/');
   assert.equal(home.status, 200);
-  assert.match(home.body.toString(), /action="\/order\/"/);
+  assert.match(home.body.toString(), /href="\/download\/"/);
+  assert.match(home.body.toString(), /data-store="ios"/);
+  assert.match(home.body.toString(), /data-store="android"/);
+  assert.doesNotMatch(home.body.toString(), /<form[^>]*action="\/order\/"/);
   assert.match(home.body.toString(), /href="\/business\/login"/);
   const order = await serve('/order/');
   assert.equal(order.status, 200);
