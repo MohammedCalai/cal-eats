@@ -8,6 +8,14 @@ export function platformReturnPath(raw){
   const url=new URL(raw,"https://platform.invalid");
   return url.origin==="https://platform.invalid"&&url.pathname.startsWith("/admin/")&&url.pathname!=="/admin/login"?url.pathname+url.search:"/admin/calai/dashboard";
 }
+export function platformLoginMode(current,{loading=false,loginAvailable=false}={}){
+  if(current==="local"||current==="calai")return current;
+  return loading?null:loginAvailable===true?"calai":"local";
+}
+export function platformLoginRequest(mode,email,password,returnTo){
+  if(mode!=="local"&&mode!=="calai")throw Error("Choose an administrator sign-in method.");
+  return {path:mode==="local"?"/api/platform-auth/local-login":"/api/platform-auth/login",body:{email:String(email||"").trim(),password:String(password||"")},destination:mode==="local"?"/admin/connection":platformReturnPath(returnTo)};
+}
 export function calaiReady(connection){return connection?.enabled===true&&connection?.configured===true&&connection?.linked===true&&connection?.session?.federated===true&&connection?.capabilities?.read===true;}
 export const calaiItems=value=>Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
 export const calaiText=value=>value===null||value===undefined||value===""?"Not available":typeof value==="object"?"Not available":String(value);

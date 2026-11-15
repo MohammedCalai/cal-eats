@@ -39,6 +39,15 @@ prove both an existing Cal-Eats administrator account and the intended Calai
 system-owner account. The mapping uses immutable source account IDs, not email
 matching or restaurant/business IDs.
 
+Before the first link, the entry point offers an active **Cal-Eats administrator
+sign-in** on the same page and opens Platform connection after successful local
+authentication. `POST /api/platform-auth/local-login` shares the established
+password/rate-limit/session flow but creates a session only for an enabled
+platform administrator. Restaurant/customer credentials never create a session
+through this endpoint. Local recovery remains available when Calai is disabled
+or unavailable. Selecting another login method clears the password; a local
+credential failure never silently forwards credentials to Calai.
+
 Subsequent combined sign-in authenticates with Calai, proves current active
 account status and current verified system-owner role, checks the explicit
 mapping and the local administrator's enabled role, then creates the ordinary
@@ -50,7 +59,8 @@ within the same workspace. Existing Cal-Eats administration remains available.
 Original Calai endpoints are reached only through fixed, validated adapters;
 there is no arbitrary URL proxy, tenant impersonation or database merge.
 
-A separate local Cal-Eats administrator sign-in remains available for recovery.
+A local Cal-Eats administrator sign-in remains available on the same entry point
+and through the existing business login for recovery.
 Upstream failure never silently changes the authentication method.
 
 ## Authority and logout limits
@@ -110,8 +120,9 @@ Activation steps:
    restaurant-phone branch as a shortcut. This independent release does not
    require Arndale's tablet to be enrolled or change who processes orders.
 2. Install the server settings and deploy the matching API and portal together.
-3. Use the existing **Cal-Eats administrator** recovery sign-in, with its secured
-   private password. Open **Platform connection** and enter both the current
+3. On `/business/admin/login`, use **Cal-Eats administrator sign-in** with the
+   existing administrator's private password. Initial setup opens **Platform
+   connection**; enter both the current
    Cal-Eats administrator password and the intended Calai system-owner login.
    This is an explicit, audited link; no restaurant owner can create it.
 4. Verify the displayed source identity, then test the combined sign-in at

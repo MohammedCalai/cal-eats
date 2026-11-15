@@ -1,6 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {adminProduct,calaiNavigation,calaiReady,calaiMoney,calaiPage,platformReturnPath,tenantEditPayload,telephonyPayload,calaiRequestPresentation,calaiRequestStatusPath} from "../src/calai-platform-model.js";
+import {adminProduct,calaiNavigation,calaiReady,calaiMoney,calaiPage,platformReturnPath,platformLoginMode,platformLoginRequest,tenantEditPayload,telephonyPayload,calaiRequestPresentation,calaiRequestStatusPath} from "../src/calai-platform-model.js";
+
+test("administrator credentials wait for an initial choice, then retain their chosen destination across late settings",()=>{
+ assert.equal(platformLoginMode(null,{loading:true}),null);
+ assert.equal(platformLoginMode(null,{loginAvailable:false}),"local");
+ assert.equal(platformLoginMode(null,{loginAvailable:true}),"calai");
+ // Explicit local access works before the settings response and must not become source authentication later.
+ let chosen=platformLoginMode("local",{loading:true});
+ chosen=platformLoginMode(chosen,{loginAvailable:true});
+ assert.equal(chosen,"local");
+ assert.equal(platformLoginMode("calai",{loginAvailable:false}),"calai");
+ assert.equal(platformLoginMode(null,{}),"local");
+});
+test("local administrator recovery never sends credentials to Calai or accepts a source return destination",()=>{
+ const local=platformLoginRequest("local"," Admin@Example.invalid "," exact local password ","/admin/calai/tenants");
+ assert.deepEqual(local,{path:"/api/platform-auth/local-login",body:{email:"Admin@Example.invalid",password:" exact local password "},destination:"/admin/connection"});
+ const source=platformLoginRequest("calai"," Owner@Example.invalid ","different source password","/admin/calai/tenants?page=2");
+ assert.deepEqual(source,{path:"/api/platform-auth/login",body:{email:"Owner@Example.invalid",password:"different source password"},destination:"/admin/calai/tenants?page=2"});
+ assert.equal(platformLoginRequest("calai","owner@example.invalid","source","https://outside.invalid/admin/tenants").destination,"/admin/calai/dashboard");
+ for(const mode of [null,undefined,"automatic","owner"])assert.throws(()=>platformLoginRequest(mode,"a@example.invalid","password"),/Choose an administrator/);
+});
 
 test("platform navigation separates Calai tenant tools from every existing Cal-Eats admin area",()=>{
  assert.equal(calaiNavigation.length,6);assert.equal(new Set(calaiNavigation.map(([,path])=>path)).size,6);
