@@ -80,6 +80,9 @@ Screenshots are kept privately under
 `artifacts/unified-platform-admin-20261115/combined-login-qa.jpg` and
 `combined-dashboard-qa.jpg`. Test accounts, images, mutation results and financial
 figures in them are synthetic. No real upload or telephony action was performed.
+The QA process was then stopped, port 4360 was confirmed closed and its uniquely
+identified temporary database directory was removed. Cleanup evidence is retained
+privately in `artifacts/unified-platform-admin-qa-cleanup.private.json`.
 
 ## Full regression check
 
@@ -90,9 +93,28 @@ was running the full default-concurrency workload. That import had already passe
 in the focused run. No assertion or timeout was weakened.
 
 Core test workers are now capped at four in the existing test command, bounding
-parallel process pressure. A final complete developer check is being run with
-that cap and the additional UUID regression. Final status/counts will be recorded
-after completion; a running command is not a pass.
+parallel process pressure. The final complete `npm run check:developer` rerun
+**passed with exit 0** against the implementation commit and that cap:
+
+| Check | Result |
+| --- | --- |
+| Core API, customer web, portal, printer and maintenance suites | 734 passed; zero failures/skips |
+| Existing customer native suite | 69 passed; zero failures/skips |
+| Restaurant Cal Eats Admin native suite | 15 passed; zero failures/skips |
+| Portal production build | Passed; existing bundle-size advisory retained |
+| Customer and restaurant native TypeScript checks | Both passed |
+| Release packaging | Passed; 267 JavaScript source files and 24 required release files checked |
+
+All figures describe executed checks, not restaurants or physical devices tested.
+No remaining local test process or QA server is required for this feature.
+
+Independent GitHub verification of implementation commit
+`38756e730c5916dc216ed7fce5fa43d32a5295dc` passed all three jobs in
+[run 43742683373](https://github.com/MohammedCalai/cal-eats/actions/runs/43742683373):
+Windows and Ubuntu each completed the full `npm run check:developer` command;
+the container build and packaged recovery-tool checks also passed. This includes
+the final UUID alias regression and bounded worker configuration. Documentation
+updates after that implementation commit do not change the validated app code.
 
 ## Exact remaining live dependency
 
