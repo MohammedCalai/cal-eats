@@ -81,8 +81,11 @@ test("account export, support and deletion review remain isolated and audited", 
   const f = await journeyFixture();
   try {
     const a = await auth(f);
-    const second = await f.json("/api/auth/register", { method: "POST", body: { name: "Other", email: "other-phaseb@example.test", password: "another long password" } }); const secondCookie = second.headers.get("set-cookie").split(";", 1)[0];
+    const second = await f.json("/api/auth/register", { method: "POST", body: { name: "Other", email: "other-phaseb@example.test", password: "another long password" } }); assert.equal(second.status,201,second.text); const secondCookie = second.headers.get("set-cookie").split(";", 1)[0];
     const restaurant = (await f.json("/api/restaurants")).body.data[0]; const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
+    const unverified = await f.json("/api/orders", { method: "POST", cookie: secondCookie, headers: { "Idempotency-Key": "export-other" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection" } }); assert.equal(unverified.status,428,unverified.text); assert.equal(unverified.body.error.code,"EMAIL_VERIFICATION_REQUIRED");
+    const verification=f.db.prepare("SELECT body FROM local_mail_sink WHERE recipient='other-phaseb@example.test' AND kind='email_verification' ORDER BY rowid DESC LIMIT 1").get()?.body.match(/#verify-email=([A-Za-z0-9_-]+)/)?.[1]; assert.ok(verification);
+    assert.equal((await f.json('/api/auth/email-verification/confirm',{method:'POST',body:{token:verification}})).status,200,'The independent customer verifies the delivered local email before ordering');
     const ownOrder = await f.json("/api/orders", { method: "POST", cookie: a.customer, headers: { "Idempotency-Key": "export-own" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 Export Lane", city: "Luton", postcode: "LU1 1AA" }, allergyNotes: "Own note" } });
     const otherOrder = await f.json("/api/orders", { method: "POST", cookie: secondCookie, headers: { "Idempotency-Key": "export-other" }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection" } });
     assert.equal(ownOrder.status, 201); assert.equal(otherOrder.status, 201);
