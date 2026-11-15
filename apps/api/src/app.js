@@ -164,7 +164,8 @@ export function createApp({ db, config, logger = console }) {
       }
       const applicationHandled=await routeBusinessApplications({req,res,url,db,config,session,checkRate});
       if(applicationHandled||res.writableEnded||res.headersSent)return;
-      if (req.method === "POST" && url.pathname === "/api/auth/login") {
+      const localPlatformLogin = url.pathname === "/api/platform-auth/local-login";
+      if (req.method === "POST" && (url.pathname === "/api/auth/login" || localPlatformLogin)) {
         const body = await readJson(req, config.bodyLimit);
         exactObject(body, ["email", "password"]);
         const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -172,13 +173,13 @@ export function createApp({ db, config, logger = console }) {
         checkRate(req, email);
         for (let verificationAttempt = 0; verificationAttempt < 2; verificationAttempt += 1) {
           const row = db.prepare("SELECT * FROM users WHERE email=? AND account_enabled=1").get(email);
-          if (!(await verifyPassword(password, row?.password_hash)) || !row) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+          if (!(await verifyPassword(password, row?.password_hash)) || !row || (localPlatformLogin && row.role !== "admin")) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
           assertCustomerPasswordReady(row);
           const verifiedHash = row.password_hash;
           const upgradedHash = passwordNeedsRehash(verifiedHash) ? await hashPassword(password) : null;
           const created = withTransaction(db, () => {
             const current = db.prepare("SELECT password_hash,account_enabled,role,password_reset_required FROM users WHERE id=?").get(row.id);
-            if (!current || current.password_hash !== verifiedHash || !current.account_enabled) return null;
+            if (!current || current.password_hash !== verifiedHash || !current.account_enabled || (localPlatformLogin && current.role !== "admin")) return null;
             assertCustomerPasswordReady(current);
             if (upgradedHash) db.prepare("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?").run(upgradedHash, row.id, verifiedHash);
             return createSession(db, row.id, config);
