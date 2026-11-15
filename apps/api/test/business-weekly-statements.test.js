@@ -142,7 +142,7 @@ test("bounded statement CSV is transmitted by mail adapters without file or URL 
     const graph=createGraphMailAdapter(graphSettings,{clientFactory:async()=>({getTokenCache:()=>({getAllAccounts:async()=>[{username:message.from}]}),acquireTokenSilent:async()=>({accessToken:"TEST_ONLY",scopes:["Mail.Send"]})}),fetchImpl:async(_url,request)=>{graphPayload=JSON.parse(request.body);return{status:202};}});
     assert.equal((await graph(message)).status,"sent");assert.equal(graphPayload.message.attachments[0].contentBytes,message.attachments[0].contentBase64);
     assert.equal(graphPayload.message.attachments[0]["@odata.type"],"#microsoft.graph.fileAttachment");
-    const oversized=buildBusinessStatementEmail({...{id,restaurant_id:f.restaurant.id,recipient:message.to,week_from:"2026-10-19",week_to:"2026-10-25",summary:JSON.stringify(snapshot.summary),message_id:message.messageId},csv:"a".repeat(1024*1024+1)},f.config);
-    assert.equal(oversized.attachments,undefined);assert.ok(oversized.text.includes(`/weekly-statements/${id}.csv`));
+    assert.ok(message.text.includes("/business/owner/earnings"));assert.equal(message.text.includes(`/weekly-statements/${id}.csv`),false);
+    assert.throws(()=>buildBusinessStatementEmail({...{id,restaurant_id:f.restaurant.id,recipient:message.to,week_from:"2026-10-19",week_to:"2026-10-25",summary:JSON.stringify(snapshot.summary),message_id:message.messageId},csv:"a".repeat(1024*1024+1)},f.config),/attachment exceeds/);
   }finally{await f.close();}
 });

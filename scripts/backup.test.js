@@ -49,6 +49,24 @@ test("restorable backups omit phone tokens and pending alerts without changing t
   } finally { item.cleanup(); }
 });
 
+test("restorable backups cannot resend on-demand report emails or retain their attachment copies", async () => {
+  const item = fixture(`report-email-${process.pid}`);
+  const marker = "private-report-attachment-must-not-replay";
+  try {
+    item.db.exec("CREATE TABLE business_report_email_outbox(id TEXT PRIMARY KEY,status TEXT,csv TEXT); INSERT INTO orders VALUES('retained-financial-order');");
+    item.db.prepare("INSERT INTO business_report_email_outbox VALUES('requested-report','pending',?)").run(marker);
+    await createBackup({ source: item.source, destination: item.destination });
+    const backup = new DatabaseSync(item.destination, { readOnly: true });
+    try {
+      assert.equal(backup.prepare("SELECT COUNT(*) n FROM business_report_email_outbox").get().n, 0);
+      assert.equal(backup.prepare("SELECT id FROM orders").get().id, "retained-financial-order");
+      assert.equal(backup.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+    } finally { backup.close(); }
+    assert.equal(item.db.prepare("SELECT csv FROM business_report_email_outbox").get().csv, marker);
+    assert.equal(fs.readFileSync(item.destination).includes(Buffer.from(marker)), false);
+  } finally { item.cleanup(); }
+});
+
 test("a migrated backup cannot revive native customer sessions or replay Live Activity and push delivery", async () => {
   const f = await journeyFixture();
   const destination = path.join(BACKUP_ROOT, `live-activity-${process.pid}-backup.sqlite`);

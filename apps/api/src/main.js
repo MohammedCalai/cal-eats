@@ -17,6 +17,7 @@ import { runOrderConfirmationAlerts } from "./order-confirmation.js";
 import { initializeCustomerEmailDelivery, runCustomerTransactionalEmails } from "./customer-emails.js";
 import { initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "./business-weekly-statements.js";
 import {runRestaurantCommissionEmails} from "./restaurant-commission-emails.js";
+import {runBusinessReportEmails} from "./business-report-emails.js";
 import {runAccountAccessEmails} from "./account-access-email.js";
 import {runCustomerPush} from "./customer-push.js";
 import {runOrderLiveActivities} from "./order-live-activities.js";
@@ -43,6 +44,13 @@ let currentAlertWorker = Promise.resolve();
 let commissionRunning = false;
 let currentCommissionWorker = Promise.resolve();
 let accountEmailRunning=false,currentAccountEmailWorker=Promise.resolve();
+let reportEmailRunning=false,currentReportEmailWorker=Promise.resolve();
+function triggerReportEmails(){
+  if(reportEmailRunning)return currentReportEmailWorker;
+  reportEmailRunning=true;
+  currentReportEmailWorker=runBusinessReportEmails(db,config,{limit:5}).catch(()=>{console.error("Requested business report email worker failed");}).finally(()=>{reportEmailRunning=false;});
+  return currentReportEmailWorker;
+}
 let customerPushRunning=false,currentCustomerPushWorker=Promise.resolve();
 let liveActivityRunning=false,currentLiveActivityWorker=Promise.resolve();
 let mediaCleanupRunning=false,currentMediaCleanup=Promise.resolve();
@@ -115,6 +123,7 @@ await listen(server, config);
 console.log(`Cal-Eats API listening at ${config.origin}`);
 // Commission notices must not hold up HTTP startup or urgent order/customer notices.
 void triggerCommissionEmails();
+void triggerReportEmails();
 void triggerAccountEmails();
 void triggerCustomerPush();
 void triggerLiveActivities();
@@ -125,6 +134,8 @@ const alertWorker=setInterval(()=>{void triggerOrderAlerts();},5000);
 alertWorker.unref();
 const commissionWorker=setInterval(()=>{void triggerCommissionEmails();},5000);
 commissionWorker.unref();
+const reportEmailWorker=setInterval(()=>{void triggerReportEmails();},5000);
+reportEmailWorker.unref();
 const accountEmailWorker=setInterval(()=>{void triggerAccountEmails();},5000);
 accountEmailWorker.unref();
 const customerPushWorker=setInterval(()=>{void triggerCustomerPush();},5000);
@@ -138,10 +149,11 @@ let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);clearInterval(customerPushWorker);clearInterval(liveActivityWorker);clearInterval(mediaCleanupWorker);
+  clearInterval(reportEmailWorker);
   notificationStreamHub(db).close();
   const result = await closeServer(server, { graceMs: 5_000 });
   if (!result.drained) process.exit(1);
-  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
+  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentReportEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
   if (!workerDrained) process.exit(1);
   closeDatabase(db);
 }

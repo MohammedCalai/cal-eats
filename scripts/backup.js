@@ -57,7 +57,7 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
     try {
       // Delete delivery dependants before registrations, and registrations before
       // the native session they reference. This also works with older schemas.
-      const temporaryTables = ["customer_safety_reports", "customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
+      const temporaryTables = ["business_report_email_outbox", "customer_safety_reports", "customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
       const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
       if (present.length) {
         copy.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");

@@ -43,6 +43,7 @@ import { routeFinanceDetails } from "./finance-details.js";
 import { routeServiceAreas } from "./service-areas.js";
 import { enforceCustomerOrderHistory } from "./customer-order-history.js";
 import { routeDashboardExports } from "./dashboard-exports.js";
+import {routeBusinessReportEmails} from "./business-report-emails.js";
 import { initializeCustomerLegal, recordCustomerLegalSubmission, routeCustomerLegal, validateCustomerLegalSubmission } from "./customer-legal.js";
 import {routeCustomerPrivacy} from "./customer-privacy.js";
 import {routeCustomerSafety} from "./customer-safety.js";
@@ -201,7 +202,7 @@ export function createApp({ db, config, logger = console }) {
       if(scheduledHandled||res.writableEnded||res.headersSent)return;
       const ratingHandled=await routeShopRatings({req,res,url,db,config,session});
       if(ratingHandled||res.writableEnded||res.headersSent)return;
-      for(const route of [routeServiceAreas,routeDashboardExports,routeBusinessDashboard,handleBusinessStatementRoutes,routeBusinessPaymentAdjustments,routeOrderMessaging,routeLoyalty,routeDisputeResolution,routeStripeConnect,routeFinanceDetails]){
+      for(const route of [routeServiceAreas,routeBusinessReportEmails,routeDashboardExports,routeBusinessDashboard,handleBusinessStatementRoutes,routeBusinessPaymentAdjustments,routeOrderMessaging,routeLoyalty,routeDisputeResolution,routeStripeConnect,routeFinanceDetails]){
         const routed=await route({req,res,url,db,config,session,checkRate});
         if(routed||res.writableEnded||res.headersSent)return;
       }

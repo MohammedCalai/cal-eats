@@ -48,13 +48,13 @@ function liveMetrics(db, restaurantId, stamp) {
     COALESCE(SUM(CASE WHEN o.status IN ('accepted','preparing','ready','out_for_delivery') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}) THEN 1 ELSE 0 END),0) AS activeOrders
     FROM orders o WHERE ${scope.sql}`).get(stamp, ...scope.values);
 }
-function ordersExport(db, restaurantId, range, admin,financialScope) {
+function ordersExport(db, restaurantId, range, admin,financialScope,rowLimit=MAX_ROWS) {
   const scope = orderScope(restaurantId, range,financialScope);
   const orders = db.prepare(`SELECT o.id,o.restaurant_id,o.restaurant_name,o.status,o.fulfillment,o.scheduled_for,o.created_at,o.updated_at,o.confirmed_at,o.estimated_ready_at AS customer_eta_at,o.merchant_visible_at,
     o.total_minor,o.customer_payable_minor,o.platform_voucher_minor,o.subtotal_minor,o.delivery_fee_minor,o.promotion_snapshot,o.offer_snapshot,o.currency,o.payment_method,o.payment_status,o.commission_minor,
     COALESCE((SELECT SUM(food_amount_minor+delivery_amount_minor) FROM refunds WHERE order_id=o.id),0) AS refunded_minor,
     COALESCE((SELECT environment FROM order_financial_environments fe WHERE fe.order_id=o.id),'unknown') AS provider_mode
-    FROM orders o WHERE ${scope.sql} ORDER BY o.created_at,o.id LIMIT ?`).all(...scope.values, MAX_ROWS + 1);
+    FROM orders o WHERE ${scope.sql} ORDER BY o.created_at,o.id LIMIT ?`).all(...scope.values, rowLimit + 1);
   const headers = ["orderId", "restaurantId", "restaurantName", "status", "fulfillment", "scheduledForUtc", "createdAtUtc", "updatedAtUtc", "confirmedAtUtc", "customerEtaAtUtc", "restaurantReceivedAtUtc", "deliveryBeforeOfferMinor", "deliveryDiscountMinor"];
   if (admin) headers.push("foodSubtotalMinor", "deliveryFeeMinor", "totalMinor", "recordedCommissionMinor", "refundsMinor", "currency", "paymentMethod", "paymentStatus", "providerMode","customerPayableMinor","platformVoucherMinor");
   const rows = orders.map(order => {
@@ -107,6 +107,20 @@ function restaurantsExport(db, restaurants, url, range, stamp,config) {
   return { headers, rows };
 }
 
+function ownerReport(db,config,session,url,match,rowLimit=MAX_ROWS){
+  const restaurantId=match[1],kind=match[2],user=requireRestaurantOwner(db,session,restaurantId),now=config.now(),range=dashboardRange(url.searchParams.get("period")??"today",now),financialScope=resolveFinanceScope(config,url);
+  const restaurant=db.prepare("SELECT id,name FROM restaurants WHERE id=?").get(restaurantId);
+  const report=kind==="orders"?ordersExport(db,restaurantId,range,false,financialScope,rowLimit):ownerMetrics(db,restaurant,user,range,now.toISOString(),financialScope);
+  if(report.rows.length>rowLimit)throw new HttpError(413,"EXPORT_TOO_LARGE","Choose a shorter date range for this export.");
+  return {restaurantId,kind,user,range,report,financialScope};
+}
+// Shared pure rendering for owner downloads and requested email attachments.
+export function buildOwnerDashboardCsv({db,config,session,url,rowLimit=MAX_ROWS}){
+  const match=url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/dashboard\/(metrics|orders)\.csv$/);
+  if(!match)throw new HttpError(400,"INVALID_REPORT","Choose an available business report.");
+  const value=ownerReport(db,config,session,url,match,rowLimit);
+  return {...value,body:csv([...value.report.headers,"financialScope"],value.report.rows.map(row=>[...row,value.financialScope]))};
+}
 export async function routeDashboardExports({ req, res, url, db, config, session }) {
   const ownerMatch = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/dashboard\/(metrics|orders)\.csv$/);
   const adminMatch = url.pathname.match(/^\/api\/admin\/dashboard\/(metrics|orders|restaurants)\.csv$/);
@@ -114,11 +128,7 @@ export async function routeDashboardExports({ req, res, url, db, config, session
   const now = config.now(), stamp = now.toISOString(),financialScope=resolveFinanceScope(config,url);
   let user, range, report, kind, restaurantId = null;
   if (ownerMatch) {
-    restaurantId = ownerMatch[1]; kind = ownerMatch[2];
-    user = requireRestaurantOwner(db, session, restaurantId);
-    range = dashboardRange(url.searchParams.get("period") ?? "today", now);
-    const restaurant = db.prepare("SELECT id,name FROM restaurants WHERE id=?").get(restaurantId);
-    report = kind === "orders" ? ordersExport(db, restaurantId, range, false,financialScope) : ownerMetrics(db, restaurant, user, range, stamp,financialScope);
+    ({restaurantId,kind,user,range,report}=ownerReport(db,config,session,url,ownerMatch));
   } else {
     user = requireRole(session, "admin"); kind = adminMatch[1];
     range = { ...parseLondonDateRange(url), fromDate: url.searchParams.get("from") || "", toDate: url.searchParams.get("to") || "" };

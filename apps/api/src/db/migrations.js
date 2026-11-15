@@ -19,6 +19,7 @@ import {businessApplicationAccessMigration59} from "../business-application-acce
 import {printerConnectionMigration60} from "../printer-test-receipts-migration.js";
 import {businessPaymentAdjustmentMigration61} from "../business-payment-adjustments-migration.js";
 import {customerPasswordQuarantineMigration62} from "../auth/customer-password-quarantine-migration.js";
+import {businessReportEmailsMigration63} from "../business-report-emails-migration.js";
 import {restaurantCommissionEmailMigration40} from "../restaurant-commission-email-migration.js";
 import {businessMessageAttentionMigration41} from "../business-message-attention-migration.js";
 import {platformVouchersMigration38} from "../platform-vouchers-migration.js";
@@ -335,5 +336,6 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   businessApplicationAccessMigration59,
   printerConnectionMigration60,
   businessPaymentAdjustmentMigration61,
-  customerPasswordQuarantineMigration62
+  customerPasswordQuarantineMigration62,
+  businessReportEmailsMigration63
 ];
