@@ -1,5 +1,12 @@
 # Cal-Eats print bridge
 
+The new secure terminal authority, SYSTEM/CNG enrollment, signed API,
+Windows spooler diagnostics and submitted/uncertain semantics are documented in
+[Windows ordering terminal and printing](WINDOWS_TERMINAL_COMPANION.md).
+That revision supersedes the older bearer-only API and installation notes below
+for production Cal-Eats; the historical simulator evidence remains limited to
+what it actually tested.
+
 The Cal-Eats device client under `apps/print-bridge` supports standalone installation and sharing an existing native Calai bridge. The file-sink simulator remains the default development transport.
 
 ## Shared native bridge — 14 November 2026

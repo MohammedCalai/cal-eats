@@ -1,3 +1,4 @@
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -46,7 +47,7 @@ test("legal publication requires exact immutable UTF8 text and public version co
 });
 
 test("new orders atomically snapshot accepted documents, while replays and legacy orders preserve contract and money", async () => {
-  const f = await journeyFixture({ rateLimit: { attempts: 100, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, rateLimit: { attempts: 100, windowMs: 60000 } });
   try {
     const setup = await orderSetup(f), legacy = await setup.place("legacy-contract-order"); assert.equal(legacy.status, 201, legacy.text);
     assert.equal(legacy.body.data.legal, null); assert.equal(orderCustomerTermsCopy(f.db, legacy.body.data.id), null);
@@ -74,11 +75,11 @@ test("new orders atomically snapshot accepted documents, while replays and legac
 });
 
 test("actual confirmation delivery contains the full exact accepted Terms after a later revision, without sending a provider request", async () => {
-  const policy = documents(), f = await journeyFixture({ customerLegal: policy, orderAlertEmail: { mode: "local", from: "caleats-support@calai.info" } });
+  const policy = documents(), f = await businessDeviceFixture({withPrinter:false, customerLegal: policy, orderAlertEmail: { mode: "local", from: "caleats-support@calai.info" } });
   try {
     const setup = await orderSetup(f); assert.equal((await setup.agree(policy)).status, 200);
     const placed = await setup.place("durable-contract-email"); assert.equal(placed.status, 201, placed.text); const order = placed.body.data;
-    const confirm = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: setup.owner, body: { status: "accepted", estimatedReadyAt: "2026-01-01T01:45:00.000Z" } }); assert.equal(confirm.status, 200, confirm.text);
+    const confirm = await f.signed(`/api/restaurant/orders/${order.id}/status`, { status: "accepted", estimatedReadyAt: "2026-01-01T01:45:00.000Z" }, {method: "PATCH"}); assert.equal(confirm.status, 200, confirm.text);
     const queued = f.db.prepare("SELECT * FROM customer_transactional_email_outbox WHERE order_id=? AND event_kind='order_update'").get(order.id); assert.ok(queued);
     const payload = JSON.parse(queued.payload); assert.equal(payload.termsCopy.text, policy.documents.terms.text); assert.equal(payload.termsCopy.sha256, policy.documents.terms.sha256);
     f.config.customerLegal = loadCustomerLegalConfig(documents("fixture-v2"), f.config.origin); initializeCustomerLegal(f.db, f.config);

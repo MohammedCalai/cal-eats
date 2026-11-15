@@ -11,7 +11,7 @@
     "outputDirectory": "./var/printed"
   },
   "requestTimeoutMs": 5000,
-  "heartbeatIntervalMs": 30000,
+  "heartbeatIntervalMs": 15000,
   "idlePollMs": 3000,
   "retry": {
     "maxAttempts": 3,

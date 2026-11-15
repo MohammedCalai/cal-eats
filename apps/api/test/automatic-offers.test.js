@@ -1,11 +1,10 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
-
 async function setup() {
   const stamp = "2026-01-01T01:00:00.000Z";
-  const f = await journeyFixture({ now: () => new Date(stamp), paymentProviderMode: "local_simulator", orderAlertEmail: { mode: "off" }, businessStatements: { sendEnabled: false }, rateLimit: { attempts: 60, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date(stamp), paymentProviderMode: "local_simulator", orderAlertEmail: { mode: "off" }, businessStatements: { sendEnabled: false }, rateLimit: { attempts: 60, windowMs: 60000 } });
   const customer = await f.login("customer@calai.local", "LocalCustomer!4310");
   const user = f.db.prepare("SELECT id FROM users WHERE email='customer@calai.local'").get();
   const owner = f.db.prepare("SELECT id FROM users WHERE email='restaurant@calai.local'").get();

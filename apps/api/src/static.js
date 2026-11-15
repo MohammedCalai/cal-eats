@@ -123,7 +123,9 @@ async function servePortal(req, res, pathname) {
     const body = await readFile(absolute);
     const offline = resource === "offline-portal.html";
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
+    // Only the fixed, origin/CSRF/USER-proof protected tablet companion is
+    // reachable from the business portal. Customer pages keep self-only CSP.
+    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self' http://127.0.0.1:17863; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
     res.writeHead(200, { "Content-Type": portalTypes.get(path.extname(resource)), "Content-Length": body.length, "Cache-Control": "no-store" });
     res.end(req.method === "HEAD" ? undefined : body);
     return true;

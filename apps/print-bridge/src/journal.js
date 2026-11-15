@@ -53,7 +53,8 @@ export class Journal {
   get(id) { return this.state?.jobs[id] ?? null; }
 
   async recordClaim(job, formatted, now = this.clock()) {
-    if (this.state.jobs[job.id]) return this.state.jobs[job.id];
+    const previous = this.state.jobs[job.id];
+    if (previous && !(job.attempt > previous.attempt && !previous.dispatchStartedAt && ["acked", "ack_rejected"].includes(previous.state) && !["printed", "submitted"].includes(previous.outcome))) return previous;
     this.state.jobs[job.id] = {
       id: job.id,
       state: "claimed",
@@ -67,6 +68,7 @@ export class Journal {
       updatedAt: now.toISOString(),
       acknowledgement: null,
       ackAttempts: 0,
+      ...(previous ? { priorAttempts: [...(previous.priorAttempts || []), { attempt: previous.attempt, state: previous.state, outcome: previous.outcome ?? null }].slice(-3) } : {}),
     };
     await this.save();
     return this.state.jobs[job.id];

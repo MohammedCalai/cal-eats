@@ -162,7 +162,7 @@ function sourceIsCurrent(db,row,config) {
   }
   if(row.event_kind==="customer_message") {
     const message=db.prepare("SELECT m.sender_user_id,t.restaurant_id FROM restaurant_customer_messages m JOIN restaurant_customer_threads t ON t.id=m.thread_id JOIN users u ON u.id=m.sender_user_id WHERE m.id=? AND m.thread_id=? AND t.customer_id=? AND m.sender_role='restaurant' AND m.expires_at>? AND u.account_enabled=1").get(row.source_message_id,row.conversation_id,row.customer_id,now);
-    if(!message||!db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(message.restaurant_id,message.sender_user_id))return{ok:false,code:"CUSTOMER_MESSAGE_UNAVAILABLE"};
+    if(!message||!db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND (permission='owner' OR can_manage_customers=1)").get(message.restaurant_id,message.sender_user_id))return{ok:false,code:"CUSTOMER_MESSAGE_UNAVAILABLE"};
   }
   if(row.event_kind==="support_reply") {
     const message=db.prepare("SELECT m.sender_user_id,m.sender_role,s.restaurant_id FROM support_case_messages m JOIN support_cases s ON s.id=m.case_id JOIN users u ON u.id=m.sender_user_id WHERE m.id=? AND s.id=? AND s.user_id=? AND m.sender_role IN ('restaurant','admin') AND u.account_enabled=1").get(row.source_message_id,row.support_case_id,row.customer_id);

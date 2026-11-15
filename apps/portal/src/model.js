@@ -18,7 +18,7 @@ export function businessReturnPath(raw,role) {
 export function ownerNavigation(permission = "owner") {
   const core = [
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
-    ["Printers", "/owner/printers"],
+    ["Devices", "/owner/devices"], ["Printers", "/owner/printers"],
   ];
   if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Marketing", "/owner/offers"], ["Support", "/owner/support"]);
   if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Settings", "/owner/settings"]);

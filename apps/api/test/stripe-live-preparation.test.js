@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {openDatabase,migrateDatabase} from "../src/db/index.js";
 import {journeyFixture} from "./helpers.js";
+import {enrollRestaurantDevice} from "./business-device-fixture.js";
 import {runStripeConnectWorker} from "../src/payments/stripe-connect.js";
 import {queueEligibleStripeTransfers} from "../src/payments/stripe-settlement.js";
 
@@ -61,6 +62,7 @@ test("discounted delivery captures once and transfers the saved merchant net, in
     const f=await journeyFixture({paymentProviderMode:"stripe_test",paymentProvider:adapter,stripePlatformAccountId:"acct_platform",paymentProviderWebhookSecret:"whsec_platform",paymentProviderConnectWebhookSecret:"whsec_connect",orderAlertEmail:{mode:"off"},now:()=>new Date(clock)});
     try{
       const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310"),restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];restaurantId=restaurant.id;
+      const terminal=await enrollRestaurantDevice(f,{restaurantId,cookie:owner});
       const call=async(route,options)=>{const response=await f.json(route,options);assert.ok(response.status<300,response.text);return response.body.data;};
       f.db.prepare("UPDATE menu_items SET price_minor=1500 WHERE id=?").run(item.id);
       f.db.prepare("UPDATE restaurants SET delivery_enabled=1,delivery_outcodes='[\"LU1\"]',delivery_fee_minor=200,min_delivery_subtotal_minor=0 WHERE id=?").run(restaurantId);
@@ -79,8 +81,9 @@ test("discounted delivery captures once and transfers the saved merchant net, in
       assert.equal(order.totalMinor,1300);assert.equal(order.commissionMinor,commission);assert.equal(order.customerPayableMinor,1300-scenario.voucher);
       await call(`/api/orders/${orderId}/checkout`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"money-checkout"},body:{}});
       await call(`/api/orders/${orderId}/payment/refresh`,{method:"POST",cookie:customer,body:{}});
-      if(scenario.scheduled)clock="2026-01-01T12:02:00.000Z";
-      const status=value=>call(`/api/restaurant/orders/${orderId}/status`,{method:"PATCH",cookie:owner,body:{status:value}});
+      const unsigned=await f.json(`/api/restaurant/orders/${orderId}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted"}});assert.equal(unsigned.status,403);assert.equal(unsigned.body.error.code,"PAIRED_TERMINAL_REQUIRED");assert.equal(captureCalls,0,"An ordinary business login cannot capture a payment");
+      if(scenario.scheduled){clock="2026-01-01T12:02:00.000Z";await terminal.pulse();}
+      const status=async value=>{const response=await terminal.signed(`/api/restaurant/orders/${orderId}/status`,{status:value},{method:"PATCH"});assert.ok(response.status<300,response.text);return response.body.data;};
       await status("accepted");await status("accepted");assert.equal(captureCalls,1);
       for(const value of["preparing","ready","out_for_delivery","completed"])await status(value);
       assert.equal(queueEligibleStripeTransfers(f.db,f.config).queued,1);assert.equal(queueEligibleStripeTransfers(f.db,f.config).queued,0);

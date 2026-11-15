@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
@@ -49,7 +50,7 @@ test("help requests produce receipts, team notifications and an encrypted reply 
 });
 
 test("order help is routed to its restaurant and cannot be read by another restaurant", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const customer = await f.login("customer@calai.local", "LocalCustomer!4310"), owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310");
     const restaurant = (await f.json("/api/restaurants")).body.data[0], item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];

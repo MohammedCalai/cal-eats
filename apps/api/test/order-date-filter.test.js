@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {journeyFixture} from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 test("restaurant order date range filters before pagination using London DST boundaries",async()=>{
- const f=await journeyFixture();try{
+ const f=await businessDeviceFixture({withPrinter:false});try{
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0],ids=[];
   for(let index=0;index<3;index++){const reply=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`date-range-${index}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"mock_card",fulfillment:"collection"}});assert.equal(reply.status,201,reply.text);ids.push(reply.body.data.id);}

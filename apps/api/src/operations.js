@@ -5,6 +5,7 @@ import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { authorizedOrder, ledgerDto, orderDto } from "./journey.js";
 import { notifyOrderStatus, releaseOfferForOrder } from "./offers.js";
+import {requireOrderingTerminal} from "./ordering-terminals.js";
 
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}` : JSON.stringify(value);
 const fingerprint = (value) => createHash("sha256").update(canonical(value)).digest("hex");
@@ -93,6 +94,7 @@ export async function routeOperations({ req, res, url, db, config, session }) {
     const access = authorizedOrder(db, session, match[1]);
     const body = await readJson(req, config.bodyLimit); exactObject(body, []);
     const now = config.now().toISOString(); const id = randomUUID();
+    requireOrderingTerminal({req,db,config,session,restaurantId:access.row.restaurant_id});
     db.prepare("INSERT INTO print_jobs VALUES(?,?,?,?,?,?,?)").run(id, access.row.id, access.user.id, "requested", null, now, now);
     return sendJson(res, 201, { data: printJobDto(db.prepare("SELECT * FROM print_jobs WHERE id=?").get(id)) });
   }
@@ -103,7 +105,8 @@ export async function routeOperations({ req, res, url, db, config, session }) {
     if (!["browser_opened", "failed"].includes(body.status) || (body.status === "failed" && typeof body.error !== "string")) throw new HttpError(400, "VALIDATION_ERROR", "Print job status is invalid");
     const row = db.prepare("SELECT * FROM print_jobs WHERE id=?").get(match[1]);
     if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    authorizedOrder(db, session, row.order_id);
+    const access=authorizedOrder(db, session, row.order_id);
+    requireOrderingTerminal({req,db,config,session,restaurantId:access.row.restaurant_id});
     const error = body.status === "failed" ? safeText(body.error, 1, 300, "Print error") : null;
     db.prepare("UPDATE print_jobs SET status=?,error=?,updated_at=? WHERE id=?").run(body.status, error, config.now().toISOString(), row.id);
     return sendJson(res, 200, { data: printJobDto(db.prepare("SELECT * FROM print_jobs WHERE id=?").get(row.id)) });

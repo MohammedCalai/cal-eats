@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { buildFinanceSummary } from "../src/marketplace-reporting.js";
 import { recordVerifiedPayoutApiRead } from "../src/financial-environment.js";
 import { buildWeeklyStatementSnapshot, weeklyStatementPeriod, initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "../src/business-weekly-statements.js";
@@ -10,7 +10,7 @@ const insert = (db,table,row) => db.prepare(`INSERT INTO ${table}(${Object.keys(
 const financialFacts = db => JSON.stringify(Object.fromEntries(["orders","marketplace_operations","journal_postings","ledger_entries","payout_batches","stripe_connected_payouts","provider_events","order_financial_environments"].map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
 
 test("live owner earnings and weekly totals exclude fictional cash/test cards and require actual payout-environment evidence", async () => {
-  const f=await journeyFixture({now:()=>new Date("2026-10-21T12:00:00.000Z"),rateLimit:{attempts:100,windowMs:60000},businessStatements:{sendEnabled:false}});
+  const f=await businessDeviceFixture({now:()=>new Date("2026-10-21T12:00:00.000Z"),rateLimit:{attempts:100,windowMs:60000},businessStatements:{sendEnabled:false}});
   try {
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const shop=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${shop.id}/menu`)).body.data.items[0],root=`/api/restaurant/restaurants/${shop.id}`;
@@ -19,7 +19,7 @@ test("live owner earnings and weekly totals exclude fictional cash/test cards an
     for(const paymentMethod of ["cash","mock_card"]){
       const placed=await f.json("/api/orders",{cookie:customer,method:"POST",headers:{"Idempotency-Key":`report-history-${paymentMethod}`},body:{restaurantId:shop.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod,fulfillment:"collection"}});
       assert.equal(placed.status,201,placed.text);old.push(placed.body.data.id);
-      for(const status of ["accepted","preparing","ready","completed"]){const r=await f.json(`/api/restaurant/orders/${placed.body.data.id}/status`,{cookie:owner,method:"PATCH",body:{status}});assert.equal(r.status,200,r.text);}
+      for(const status of ["accepted","preparing","ready","completed"]){const r=await f.signed(`/api/restaurant/orders/${placed.body.data.id}/status`,{status},{method:'PATCH'});assert.equal(r.status,200,r.text);}
     }
     const template=f.db.prepare("SELECT * FROM orders WHERE id=?").get(old[0]),liveId=randomUUID(),stamp=f.config.now().toISOString();
     insert(f.db,"orders",{...template,id:liveId,idempotency_key:`fixture-live-${liveId}`,total_minor:1500,subtotal_minor:1500,gross_food_minor:1500,customer_payable_minor:1500,commission_minor:105,created_at:stamp,updated_at:stamp});
@@ -55,7 +55,7 @@ test("live owner earnings and weekly totals exclude fictional cash/test cards an
 });
 
 test("a queued testing weekly statement cannot be sent after a live handover and remains downloadable only as testing history",async()=>{
-  const f=await journeyFixture({now:()=>new Date("2026-10-21T12:00:00.000Z"),businessStatements:{sendEnabled:false}});
+  const f=await businessDeviceFixture({now:()=>new Date("2026-10-21T12:00:00.000Z"),businessStatements:{sendEnabled:false}});
   try {
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),shop=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],ownerId=f.db.prepare("SELECT id FROM users WHERE email='restaurant@calai.local'").get().id;
     initializeBusinessWeeklyStatements(f.db,f.config);

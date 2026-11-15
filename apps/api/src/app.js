@@ -1,4 +1,8 @@
 import {routeAdminRestaurantWorkspace} from "./admin-restaurant-workspace.js";
+import {readOrderingTerminalSession,authorizeTerminalRequest,routeOrderingTerminals} from "./ordering-terminals.js";
+import {routeBusinessDeviceHealth} from "./business-device-health.js";
+import {routeBusinessDevicePush} from "./business-device-push.js";
+import {scopeRestaurantCapabilities,routeMembershipCapabilities} from "./membership-capabilities.js";
 import {routeRestaurantCommission} from "./restaurant-commission.js";
 import {routePaymentLaunch} from "./payment-launch.js";
 import {routePasswordChange} from "./auth/password-change.js";
@@ -112,13 +116,21 @@ export function createApp({ db, config, logger = console }) {
       const bearerProvided = typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ");
       const token = parseSessionCookie(req.headers.cookie);
       const nativeSession = bearerProvided ? readNativeSession(db, req, config) : null;
-      const session = bearerProvided ? nativeSession : readSession(db, token, config);
+      let session = bearerProvided ? nativeSession : readSession(db, token, config);
+      if (!session) session = await readOrderingTerminalSession({req,url,db,config});
+      session=scopeRestaurantCapabilities({req,url,db,session});
       enforceCustomerOrderHistory({ url, db, config, session });
       const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password","/api/native/auth/email-verification/confirm"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
       const pairingRoute = url.pathname === "/api/devices/pair";
-      const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute;
+      const terminalDeviceRoute = /^\/api\/terminal-devices\/(?:pair|health|[A-Za-z0-9_-]+\/(?:session|heartbeat|screen-heartbeat))$/.test(url.pathname);
+      const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute || terminalDeviceRoute || Boolean(session?.terminalDelegation);
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((req.headers.origin && req.headers.origin !== config.origin) || (config.runMode === "hosted-preview" && !originExempt && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
+      await authorizeTerminalRequest({req,url,db,config,session});
+      for (const route of [routeOrderingTerminals,routeMembershipCapabilities,routeBusinessDeviceHealth,routeBusinessDevicePush]) {
+        const handled=await route({req,res,url,db,config,session,checkRate});
+        if(handled||res.writableEnded||res.headersSent)return;
+      }
       const accountAccessHandled = await routeAccountAccess({ req, res, url, db, config, session, checkRate });
       if (accountAccessHandled || res.writableEnded || res.headersSent) return;
       const nativeHandled = await routeNativeAuth({ req, res, url, db, config, session, checkRate });

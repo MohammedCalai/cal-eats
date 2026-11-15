@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { customerMessageSequenceMigration25 } from "../src/customer-message-sequence-migration.js";
 import { runCustomerMessageRetention } from "../src/customer-relationships.js";
 
@@ -22,7 +22,7 @@ test("CRM ingestion cursor preserves late earlier-created messages and never reu
   } finally { old.close(); }
 
   let clock = Date.parse("2026-01-01T01:00:00.000Z");
-  const f = await journeyFixture({ now: () => new Date(clock), sessionHours: 24 * 60 });
+  const f = await businessDeviceFixture({withPrinter:false, now: () => new Date(clock), sessionHours: 24 * 60 });
   try {
     const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];

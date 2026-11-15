@@ -18,6 +18,8 @@ import { initializeCustomerEmailDelivery, runCustomerTransactionalEmails } from 
 import { initializeBusinessWeeklyStatements, runBusinessWeeklyStatements } from "./business-weekly-statements.js";
 import {runRestaurantCommissionEmails} from "./restaurant-commission-emails.js";
 import {runBusinessReportEmails} from "./business-report-emails.js";
+import {runBusinessDeviceHealth} from "./business-device-health.js";
+import {runBusinessDevicePush} from "./business-device-push.js";
 import {runAccountAccessEmails} from "./account-access-email.js";
 import {runCustomerPush} from "./customer-push.js";
 import {runOrderLiveActivities} from "./order-live-activities.js";
@@ -45,6 +47,20 @@ let commissionRunning = false;
 let currentCommissionWorker = Promise.resolve();
 let accountEmailRunning=false,currentAccountEmailWorker=Promise.resolve();
 let reportEmailRunning=false,currentReportEmailWorker=Promise.resolve();
+let businessDeviceRunning=false,currentBusinessDeviceWorker=Promise.resolve(),healthContinuation=null;
+let businessPushRunning=false,currentBusinessPushWorker=Promise.resolve();
+function triggerBusinessPush(){
+  if(businessPushRunning)return currentBusinessPushWorker;
+  businessPushRunning=true;
+  currentBusinessPushWorker=runBusinessDevicePush(db,config,{limit:10}).catch(()=>{console.error("Business phone notification worker failed");}).finally(()=>{businessPushRunning=false;});
+  return currentBusinessPushWorker;
+}
+function triggerBusinessDevices(){
+  if(businessDeviceRunning)return currentBusinessDeviceWorker;
+  businessDeviceRunning=true;
+  currentBusinessDeviceWorker=Promise.resolve().then(()=>{const batch=runBusinessDeviceHealth(db,config,{limit:100});if(batch.hasMore&&!shuttingDown){healthContinuation=setTimeout(()=>{healthContinuation=null;void triggerBusinessDevices();},25);healthContinuation.unref();}}).catch(()=>{console.error("Business device monitoring cycle failed");}).finally(()=>{businessDeviceRunning=false;});
+  return currentBusinessDeviceWorker;
+}
 function triggerReportEmails(){
   if(reportEmailRunning)return currentReportEmailWorker;
   reportEmailRunning=true;
@@ -124,6 +140,7 @@ console.log(`Cal-Eats API listening at ${config.origin}`);
 // Commission notices must not hold up HTTP startup or urgent order/customer notices.
 void triggerCommissionEmails();
 void triggerReportEmails();
+void triggerBusinessPush();
 void triggerAccountEmails();
 void triggerCustomerPush();
 void triggerLiveActivities();
@@ -136,6 +153,10 @@ const commissionWorker=setInterval(()=>{void triggerCommissionEmails();},5000);
 commissionWorker.unref();
 const reportEmailWorker=setInterval(()=>{void triggerReportEmails();},5000);
 reportEmailWorker.unref();
+const businessDeviceWorker=setInterval(()=>{void triggerBusinessDevices();},config.businessDevices.reportIntervalSeconds*1000);
+businessDeviceWorker.unref();
+const businessPushWorker=setInterval(()=>{void triggerBusinessPush();},5000);
+businessPushWorker.unref();
 const accountEmailWorker=setInterval(()=>{void triggerAccountEmails();},5000);
 accountEmailWorker.unref();
 const customerPushWorker=setInterval(()=>{void triggerCustomerPush();},5000);
@@ -150,10 +171,12 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);clearInterval(customerPushWorker);clearInterval(liveActivityWorker);clearInterval(mediaCleanupWorker);
   clearInterval(reportEmailWorker);
+  clearInterval(businessDeviceWorker);
+  clearInterval(businessPushWorker);clearTimeout(healthContinuation);
   notificationStreamHub(db).close();
   const result = await closeServer(server, { graceMs: 5_000 });
   if (!result.drained) process.exit(1);
-  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentReportEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
+  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentReportEmailWorker,currentBusinessDeviceWorker,currentBusinessPushWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
   if (!workerDrained) process.exit(1);
   closeDatabase(db);
 }

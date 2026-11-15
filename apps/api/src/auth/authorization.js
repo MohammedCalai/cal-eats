@@ -1,4 +1,5 @@
 import { hasAdminRestaurantScope } from "./admin-restaurant-scope.js";
+import {hasCapabilityScope} from "./membership-capability-scope.js";
 
 export function requireUser(session) {
   if (!session) throw Object.assign(new Error("Authentication required"), { status: 401, code: "AUTH_REQUIRED" });
@@ -25,8 +26,8 @@ export function requireRestaurantMembership(db, session, restaurantId) {
 export function requireRestaurantOwner(db, session, restaurantId) {
   if (hasAdminRestaurantScope(session, restaurantId)) return requireRestaurantMembership(db, session, restaurantId);
   const user = requireRole(session, "restaurant");
-  const membership = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id);
+  const membership = db.prepare("SELECT * FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id);
   if (!membership) throw Object.assign(new Error("Resource not found"), { status: 404, code: "NOT_FOUND" });
-  if (membership.permission !== "owner") throw Object.assign(new Error("Owner permission required"), { status: 403, code: "OWNER_REQUIRED" });
+  if (membership.permission !== "owner"&&!hasCapabilityScope(session,restaurantId,membership)) throw Object.assign(new Error("Owner permission required"), { status: 403, code: "OWNER_REQUIRED" });
   return user;
 }

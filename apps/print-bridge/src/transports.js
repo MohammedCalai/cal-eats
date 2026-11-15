@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import net from "node:net";
 import { escPosBytes } from "./receipt.js";
+import { WindowsSpoolerTransport } from "./windows-printer.js";
 
 export class TransportError extends Error {
   constructor(message, { ambiguous = false } = {}) {
@@ -132,7 +133,7 @@ export class TcpEscPosTransport {
       socket.once("timeout", () => finish(reject, new TransportError("TCP ESC/POS transport timed out", { ambiguous: connected })));
       socket.connect(this.port, this.host, () => {
         connected = true;
-        socket.end(payload, () => finish(resolve, { outcome: "uncertain", detail: "ESC/POS bytes were accepted by the network stack; physical paper output is unverified" }));
+        socket.end(payload, () => finish(resolve, { outcome: "submitted", detail: "ESC/POS bytes were accepted by the network stack; physical paper output is unverified" }));
       });
     });
   }
@@ -143,6 +144,10 @@ export function createTransport(config, { allowPhysicalTransport = false } = {})
   if (config.kind === "tcp-escpos") {
     if (!allowPhysicalTransport) throw new Error("TCP ESC/POS is disabled; pass --allow-physical-transport only for separately authorised hardware testing");
     return new TcpEscPosTransport(config);
+  }
+  if (config.kind === "windows-spooler") {
+    if (!allowPhysicalTransport) throw new Error("Windows printing is disabled; pass --allow-physical-transport only for authorised hardware");
+    return new WindowsSpoolerTransport(config);
   }
   throw new Error("Unsupported transport");
 }

@@ -1,9 +1,8 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { routeDashboardExports } from "../src/dashboard-exports.js";
-import { journeyFixture } from "./helpers.js";
-
 function parseCsv(text) {
   const rows = [], row = []; let value = "", quoted = false;
   text = text.replace(/^\uFEFF/, "");
@@ -19,7 +18,7 @@ function parseCsv(text) {
 }
 
 test("dashboard CSV exports enforce owner/admin scope, London periods, privacy and safe spreadsheet cells", async () => {
-  const now = "2026-10-29T12:00:00.000Z", f = await journeyFixture({ now: () => new Date(now) });
+  const now = "2026-10-29T12:00:00.000Z", f = await businessDeviceFixture({withPrinter:false, now: () => new Date(now) });
   try {
     const ownerCookie = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), customerCookie = await f.login("customer@calai.local", "LocalCustomer!4310");
     const owner = f.db.prepare("SELECT id,role FROM users WHERE email='restaurant@calai.local'").get(), otherOwner = f.db.prepare("SELECT id,role FROM users WHERE email='restaurant2@calai.local'").get(), admin = f.db.prepare("SELECT id,role FROM users WHERE email='admin@calai.local'").get(), customer = f.db.prepare("SELECT id,role FROM users WHERE email='customer@calai.local'").get();

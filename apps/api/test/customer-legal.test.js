@@ -1,3 +1,4 @@
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Readable } from "node:stream";
@@ -62,7 +63,7 @@ test("web/native signup requires exact affirmative versions and atomically prese
 });
 
 test("existing users retain account rights; privacy-only updates and new terms are separate from original-order retries", async () => {
-  const f = await journeyFixture({ customerLegal: documents(), rateLimit: { attempts: 100, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, customerLegal: documents(), rateLimit: { attempts: 100, windowMs: 60000 } });
   try {
     const cookie = await f.login("customer@calai.local", "LocalCustomer!4310"), owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310");
     const userId = f.db.prepare("SELECT id FROM users WHERE email='customer@calai.local'").get().id;

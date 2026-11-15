@@ -1,6 +1,6 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
-import { journeyFixture } from "./helpers.js";
 
 test("Stripe checkout, refresh, capture and owner onboarding remain authoritative and idempotent", async () => {
   let checkoutCalls = 0, captureCalls = 0, checkoutState = "pending";
@@ -27,7 +27,7 @@ test("Stripe checkout, refresh, capture and owner onboarding remain authoritativ
     createAccountLink: async () => ({ status: "confirmed", actionUrl: "https://connect.stripe.com/setup/s/acct_restaurant", expiresAt: "2026-01-02T00:00:00.000Z" }),
     createAccountLoginLink: async () => ({ status: "confirmed", actionUrl: "https://connect.stripe.com/express/acct_restaurant" }),
   };
-  const f = await journeyFixture({ paymentProviderMode: "stripe_test", paymentProvider: provider, stripePlatformAccountId: "acct_platform", paymentProviderWebhookSecret: "whsec_platform_fixture", paymentProviderConnectWebhookSecret: "whsec_connect_fixture" });
+  const f = await businessDeviceFixture({withPrinter:false, paymentProviderMode: "stripe_test", paymentProvider: provider, stripePlatformAccountId: "acct_platform", paymentProviderWebhookSecret: "whsec_platform_fixture", paymentProviderConnectWebhookSecret: "whsec_connect_fixture" });
   try {
     const customer = await f.login("customer@calai.local", "LocalCustomer!4310");
     const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310");
@@ -71,7 +71,7 @@ test("Stripe checkout, refresh, capture and owner onboarding remain authoritativ
     assert.equal(authorized.body.data.status, "authorized");
     assert.equal((await f.json(`/api/restaurant/restaurants/${restaurant.id}/orders`,{cookie:owner})).body.data.some(order=>order.id===currentOrder.id),true);
 
-    const accepted = await f.json(`/api/restaurant/orders/${currentOrder.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted" } });
+    const accepted = await f.signed(`/api/restaurant/orders/${currentOrder.id}/status`, { status: "accepted" }, {method: "PATCH"});
     assert.equal(accepted.status, 200, accepted.text);
     assert.equal(captureCalls, 1);
     const receipt = await f.request(`/api/orders/${currentOrder.id}/receipt`, { cookie: customer });
@@ -80,7 +80,7 @@ test("Stripe checkout, refresh, capture and owner onboarding remain authoritativ
     assert.match(receipt.text, /Payment status: Captured/);
     assert.doesNotMatch(receipt.text, /stripe|Cash —/i);
 
-    const duplicate = await f.json(`/api/restaurant/orders/${currentOrder.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted" } });
+    const duplicate = await f.signed(`/api/restaurant/orders/${currentOrder.id}/status`, { status: "accepted" }, {method: "PATCH"});
     assert.equal(duplicate.status, 200, duplicate.text);
     assert.equal(captureCalls, 1);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM marketplace_worker_jobs WHERE kind='stripe_transfer'").get().n, 0);

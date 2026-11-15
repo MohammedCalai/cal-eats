@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadConfig } from "../src/config.js";
@@ -7,13 +8,11 @@ import { runGovernanceReminders } from "../src/admin-governance.js";
 import { runStripeConnectWorker } from "../src/payments/stripe-connect.js";
 import { prepareStripeOrderTransition } from "../src/payments/stripe-transitions.js";
 import { businessDirectResolutionSummary } from "../src/business-direct-resolution.js";
-import { journeyFixture } from "./helpers.js";
-
 const stamp="2026-10-27T12:00:00.000Z";
 
 test("business-direct resolution is the default and order help reaches the restaurant without opening a refund case",async()=>{
   assert.equal(loadConfig().financialRemediesEnabled,false);
-  const f=await journeyFixture({financialRemediesEnabled:false,rateLimit:{attempts:30,windowMs:60000}});
+  const f=await businessDeviceFixture({withPrinter:false,financialRemediesEnabled:false,rateLimit:{attempts:30,windowMs:60000}});
   try{
     const customer=await f.login("customer@calai.local","LocalCustomer!4310"),owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
@@ -41,6 +40,7 @@ function paymentFixture(){
   for(const [id,method,status,payment] of [["card","card","accepted","stripe_captured"],["local","mock_card","accepted","mock_captured"],["void","card","placed","stripe_authorized"]]){
     db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at) VALUES(?,'restaurant','Kitchen','customer',?,2000,2000,140,?,?,'collection',?,'fixture',?,?)").run(id,status,method,payment,id,stamp,stamp);
     if(method==="card")db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,checkout_session_id,payment_intent_id,status,provider_cost_minor,created_at,updated_at) VALUES(?,'stripe_test',?,?,?,0,?,?)").run(id,`cs_${id}`,`pi_${id}`,id==="void"?"authorized":"captured",stamp,stamp);
+    db.prepare("INSERT INTO order_financial_environments(order_id,environment,provenance,source_reference,recorded_at) VALUES(?,?,'fixture_proven_payment',?,?)").run(id,method==="card"?"stripe_test":"local_simulator",method==="card"?`pi_${id}`:null,stamp);
   }
   for(const [id,kind] of [["card","stripe_refund"],["local","refund_execution"]]){
     db.prepare("INSERT INTO refund_cases(id,reference,order_id,restaurant_id,customer_id,status,reason,item_ids,description,issue_hash,requested_amount_minor,approved_amount_minor,remedy,execution_status,provider_mode,monthly_review_flag,created_at,updated_at) VALUES(?,?,?,'restaurant','customer','approved','quality','[]','Historical issue',?,500,500,'refund','queued',?,0,?,?)").run(`case-${id}`,`RC-${id}`,id,id,id==="card"?"stripe_test":"local_simulator",stamp,stamp);

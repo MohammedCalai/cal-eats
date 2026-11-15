@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { journeyFixture } from './helpers.js';
@@ -32,7 +33,7 @@ test('admin coverage map only geocodes bounded configured areas, caches failures
 });
 
 test('admin support queues separate platform and restaurant requests, filter by business and preserve tenant access',async()=>{
- const f=await journeyFixture();try{
+ const f=await businessDeviceFixture({withPrinter:false});try{
   const {admin,owner,other,customer,restaurant,foreign}=await identities(f);
   async function create(cookie,key,body){const response=await f.json('/api/support',{cookie,method:'POST',headers:{'Idempotency-Key':key},body});assert.equal(response.status,201,response.text);return response.body.data;}
   const businessA=await create(owner,'triage-business-a',{subject:'Business A needs support',message:'Private A business request',restaurantId:restaurant.id}),businessB=await create(other,'triage-business-b',{subject:'Business B needs support',message:'Private B business request',restaurantId:foreign.id}),general=await create(customer,'triage-customer-general',{subject:'Customer account help',message:'Private customer account request'});

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 
 const accounts = {
   admin: ["admin@calai.local", "LocalAdmin!4310"],
@@ -14,7 +14,7 @@ async function cookies(f) {
 }
 
 test("pending restaurant approval through delivery lifecycle preserves snapshots and recognizes one commission", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const c = await cookies(f);
     const owned = await f.json("/api/restaurant/restaurants", { cookie: c.owner2 });
@@ -28,6 +28,7 @@ test("pending restaurant approval through delivery lifecycle preserves snapshots
     await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: c.owner2, body: { phone: "07000000000" } });
     const approved = await f.json(`/api/admin/restaurants/${restaurant.id}/approval`, { method: "PATCH", cookie: c.admin, body: { status: "approved" } });
     assert.equal(approved.body.data.status, "approved");
+    const terminal=await f.enrollRestaurant({restaurantId:restaurant.id,cookie:c.owner2});
     const orderBody = { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 2 }], paymentMethod: "mock_card", fulfillment: "delivery", deliveryAddress: { line1: "1 <Main>", city: "London", postcode: "N1 1AA" } };
     const headers = { "Idempotency-Key": "delivery-1" };
     const created = await f.json("/api/orders", { method: "POST", cookie: c.customer, headers, body: orderBody });
@@ -43,13 +44,13 @@ test("pending restaurant approval through delivery lifecycle preserves snapshots
     await f.json(`/api/restaurant/restaurants/${restaurant.id}/menu/${item.id}`, { method: "PATCH", cookie: c.owner2, body: { name: "Changed", priceMinor: 9999 } });
     await f.json(`/api/restaurant/restaurants/${restaurant.id}/delivery`, { method: "PATCH", cookie: c.owner2, body: { enabled: true, outcodes: ["N2"], deliveryFeeMinor: 999, minDeliverySubtotalMinor: 5000 } });
     await f.json(`/api/admin/restaurants/${restaurant.id}/approval`, { method: "PATCH", cookie: c.admin, body: { status: "rejected" } });
-    assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner2, body: { status: "accepted" } })).body.error.code, "RESTAURANT_UNAVAILABLE");
+    assert.equal((await terminal.signed(`/api/restaurant/orders/${id}/status`, {status:"accepted"}, {method:"PATCH"})).body.error.code, "RESTAURANT_UNAVAILABLE");
     await f.json(`/api/admin/restaurants/${restaurant.id}/approval`, { method: "PATCH", cookie: c.admin, body: { status: "approved" } });
-    const accepted = await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner2, body: { status: "accepted" } });
+    const accepted = await terminal.signed(`/api/restaurant/orders/${id}/status`, {status:"accepted"}, {method:"PATCH"});
     assert.equal(accepted.body.data.paymentStatus, "mock_captured");
     assert.equal(accepted.body.data.ledger[0].kind, "commission_mock");
-    assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner2, body: { status: "accepted" } })).body.data.ledger.length, 1);
-    for (const status of ["preparing", "ready", "out_for_delivery", "completed"]) assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner2, body: { status } })).status, 200);
+    assert.equal((await terminal.signed(`/api/restaurant/orders/${id}/status`, {status:"accepted"}, {method:"PATCH"})).body.data.ledger.length, 1);
+    for (const status of ["preparing", "ready", "out_for_delivery", "completed"]) assert.equal((await terminal.signed(`/api/restaurant/orders/${id}/status`, {status}, {method:"PATCH"})).status, 200);
     const detail = await f.json(`/api/orders/${id}`, { cookie: c.customer });
     assert.equal(detail.body.data.items[0].name, "<script>special</script>");
     assert.equal(detail.body.data.items[0].unitPriceMinor, 1200);
@@ -67,7 +68,7 @@ test("pending restaurant approval through delivery lifecycle preserves snapshots
 });
 
 test("tenant/customer isolation and delivery eligibility reject unsafe orders", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const c = await cookies(f);
     const r1 = (await f.json("/api/restaurant/restaurants", { cookie: c.owner1 })).body.data[0];
@@ -94,7 +95,7 @@ test("tenant/customer isolation and delivery eligibility reject unsafe orders", 
 });
 
 test("cash collection lifecycle has separate receivable and forbids invalid transitions", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const c = await cookies(f);
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: c.owner1 })).body.data[0];
@@ -112,10 +113,12 @@ test("cash collection lifecycle has separate receivable and forbids invalid tran
     const second = await f.json("/api/auth/register", { method: "POST", body: { name: "Other Customer", email: "other@example.test", password: "another long passphrase" } });
     const secondCookie = second.headers.get("set-cookie").split(";", 1)[0];
     assert.equal((await f.json(`/api/orders/${id}`, { cookie: secondCookie })).status, 404);
-    assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner1, body: { status: "completed" } })).status, 409);
-    assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner2, body: { status: "accepted" } })).status, 404);
+    assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner1, body: { status: "completed" } })).status, 403);
+    assert.equal((await f.signed(`/api/restaurant/orders/${id}/status`, {status:"completed"}, {method:"PATCH"})).status, 409);
+    assert.equal((await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner2, body: { status: "accepted" } })).status, 403);
+    const wrongTenant=await f.signed(`/api/restaurant/orders/${id}/status`,{status:"accepted"},{method:"PATCH",cookie:c.owner2});assert.equal(wrongTenant.status,403);assert.equal(wrongTenant.body.error.code,"RESTAURANT_CAPABILITY_REQUIRED");
     for (const status of ["accepted", "preparing", "ready", "completed"]) {
-      const response = await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: c.owner1, body: { status } });
+      const response = await f.signed(`/api/restaurant/orders/${id}/status`, {status}, {method:"PATCH"});
       assert.equal(response.status, 200);
       if (status === "accepted") assert.equal(response.body.data.ledger[0].kind, "commission_cash_receivable");
       if (status === "completed") assert.equal(response.body.data.paymentStatus, "cash_collected");
@@ -126,22 +129,22 @@ test("cash collection lifecycle has separate receivable and forbids invalid tran
 });
 
 test("concurrent acceptance and competing decisions use current transactional state", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const c = await cookies(f);
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: c.owner1 })).body.data[0];
     const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const make = async (key) => (await f.json("/api/orders", { method: "POST", cookie: c.customer, headers: { "Idempotency-Key": key }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection" } })).body.data.id;
     const first = await make("concurrent-accept");
-    const accept = () => f.json(`/api/restaurant/orders/${first}/status`, { method: "PATCH", cookie: c.owner1, body: { status: "accepted" } });
+    const accept = () => f.signed(`/api/restaurant/orders/${first}/status`, {status:"accepted"}, {method:"PATCH"});
     const duplicateResults = await Promise.all([accept(), accept()]);
     assert.deepEqual(duplicateResults.map((result) => result.status), [200, 200]);
     assert.equal(f.db.prepare("SELECT count(*) AS n FROM ledger_entries WHERE order_id=?").get(first).n, 1);
     assert.equal(f.db.prepare("SELECT count(*) AS n FROM order_events WHERE order_id=?").get(first).n, 2);
     const second = await make("competing-decision");
     const [accepted, rejected] = await Promise.all([
-      f.json(`/api/restaurant/orders/${second}/status`, { method: "PATCH", cookie: c.owner1, body: { status: "accepted" } }),
-      f.json(`/api/restaurant/orders/${second}/status`, { method: "PATCH", cookie: c.owner1, body: { status: "rejected" } })
+      f.signed(`/api/restaurant/orders/${second}/status`, {status:"accepted"}, {method:"PATCH"}),
+      f.signed(`/api/restaurant/orders/${second}/status`, {status:"rejected"}, {method:"PATCH"})
     ]);
     assert.deepEqual([accepted.status, rejected.status].sort(), [200, 409]);
     const stored = f.db.prepare("SELECT status,payment_status FROM orders WHERE id=?").get(second);

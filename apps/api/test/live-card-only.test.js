@@ -1,11 +1,11 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
-import {journeyFixture} from "./helpers.js";
 
 test("live checkout blocks cash even with an older cash preference; owners cannot enable it, while test cash remains available",async()=>{
   for(const mode of ["local_simulator","stripe_test","stripe_live"]){
     const stripe=mode!=="local_simulator";
-    const f=await journeyFixture({orderAlertEmail:{mode:"off"},liveOnboardingRestaurantIds:[],...(stripe?{paymentProviderMode:mode,paymentProvider:{mode},stripePlatformAccountId:"acct_cardonlyfixture",paymentProviderWebhookSecret:"whsec_platform_cardonlyfixture",paymentProviderConnectWebhookSecret:"whsec_connect_cardonlyfixture"}:{}),...(mode==="stripe_live"?{runMode:"hosted-preview",nodeEnv:"production",origin:"https://eats.example.test",livePaymentsEnabled:true}: {})});
+    const f=await businessDeviceFixture({withPrinter:false,orderAlertEmail:{mode:"off"},liveOnboardingRestaurantIds:[],...(stripe?{paymentProviderMode:mode,paymentProvider:{mode},stripePlatformAccountId:"acct_cardonlyfixture",paymentProviderWebhookSecret:"whsec_platform_cardonlyfixture",paymentProviderConnectWebhookSecret:"whsec_connect_cardonlyfixture"}:{}),...(mode==="stripe_live"?{runMode:"hosted-preview",nodeEnv:"production",origin:"https://eats.example.test",livePaymentsEnabled:true}: {})});
     const json=(route,options={})=>f.json(route,{...options,headers:{origin:f.config.origin,...options.headers}});
     const login=async(email,password)=>{const result=await json("/api/auth/login",{method:"POST",body:{email,password}});assert.equal(result.status,200,result.text);return result.headers.get("set-cookie").split(";",1)[0];};
     try{

@@ -8,8 +8,10 @@ export function sendJson(res, status, payload, headers = {}) {
   res.end(body);
 }
 
-export async function readJson(req, limit) {
-  if (req.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json");
+const requestBody=Symbol("cal-eats-request-body");
+export function cachedRequestBody(req){return req[requestBody]??null;}
+export async function readRequestBody(req,limit){
+  if(req[requestBody]){if(req[requestBody].length>limit)throw new HttpError(413,"BODY_TOO_LARGE","Request body is too large");return req[requestBody];}
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -17,7 +19,12 @@ export async function readJson(req, limit) {
     if (size > limit) { req.resume(); throw new HttpError(413, "BODY_TOO_LARGE", "Request body is too large"); }
     chunks.push(chunk);
   }
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  const bytes=Buffer.concat(chunks);req[requestBody]=bytes;return bytes;
+}
+export async function readJson(req, limit) {
+  if (req.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json");
+  const bytes=await readRequestBody(req,limit);
+  try { return JSON.parse(bytes.toString("utf8")); }
   catch { throw new HttpError(400, "INVALID_JSON", "Request body must be valid JSON"); }
 }
 

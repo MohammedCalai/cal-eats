@@ -1,11 +1,11 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {journeyFixture} from "./helpers.js";
 import {menuBatchItems,mealDealGroups} from "../../../packages/contracts/src/menu-tools.js";
 import {randomUUID} from "node:crypto";
 
 test("owners can batch-add dishes, save meal choices and nutrition, and customers can quote multiple items",async()=>{
- const f=await journeyFixture();try{
+ const f=await businessDeviceFixture({withPrinter:false});try{
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
   const restaurant=(await f.json('/api/restaurant/restaurants',{cookie:owner})).body.data[0],root=`/api/restaurant/restaurants/${restaurant.id}/menu`;
   const items=menuBatchItems([{name:"Test starter",price:"2.50",category:"Starters"},{name:"Test rice",price:"3.25",category:"Rice"}]);

@@ -1,20 +1,20 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
-import {journeyFixture} from "./helpers.js";
 import {runOrderConfirmationAlerts} from "../src/order-confirmation.js";
 import {notificationRecipientAllowed} from "../src/notification-stream.js";
 import {addNotification} from "../src/offers.js";
 
 test("archiving hides a shop and its offers from new shopping while preserving and restoring its financial history",async()=>{
   let clock="2026-01-01T10:00:00.000Z";
-  const f=await journeyFixture({now:()=>new Date(clock),orderAlertEmail:{mode:"off"}});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(clock),orderAlertEmail:{mode:"off"}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const call=async(path,options)=>{const response=await f.json(path,options);assert.ok(response.status<300,response.text);return response.body.data;};
     const restaurant=(await call("/api/restaurant/restaurants",{cookie:owner}))[0],items=(await call(`/api/restaurants/${restaurant.id}/menu`)).items,item=items.find(row=>row.priceMinor>=1000),gift=items.find(row=>row.id!==item.id);
     const basket={restaurantId:restaurant.id,fulfillment:"collection",paymentMethod:"mock_card",items:[{menuItemId:item.id,quantity:1}]};
     const order=await call("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":"archive-historical-order"},body:basket});
-    for(const status of ["accepted","preparing","ready","completed"])await call(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status}});
+    for(const status of ["accepted","preparing","ready","completed"]){const response=await f.signed(`/api/restaurant/orders/${order.id}/status`,{status},{method:'PATCH'});assert.equal(response.status,200,response.text);}
     await call("/api/account/preferences",{method:"PATCH",cookie:customer,body:{merchantOffers:true}});
     const campaign=await call(`/api/restaurant/restaurants/${restaurant.id}/offers`,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"archive-historical-campaign"},body:{customerIds:[order.customerId],title:"A free side",message:"Fixture customer offer",menuItemId:gift.id,minSubtotalMinor:500,expiresInDays:7}});
     const grant=(await call("/api/offers",{cookie:customer}))[0];assert.ok(grant);

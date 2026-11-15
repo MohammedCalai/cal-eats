@@ -1,9 +1,9 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { crc32 } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { journeyFixture } from "./helpers.js";
 import { buildPrinterBridgePackage } from "../src/printer-bridge-package.js";
 import { loadConfig } from "../../print-bridge/src/config.js";
 
@@ -21,37 +21,41 @@ function unzipStored(bytes){
   return entries;
 }
 
-test("archived restaurants cannot claim paired printer jobs and existing acknowledgements remain valid",async()=>{
-  const f=await journeyFixture();
+test("archived restaurants cannot use printer authority and retained acknowledgements replay after restoration",async()=>{
+  const f=await businessDeviceFixture({withPrinter:false});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],root=`/api/restaurant/restaurants/${restaurant.id}`;
     const item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const printer=(await f.json(`${root}/printers`,{method:"POST",cookie:owner,body:{name:"Archived kitchen",enabled:true}})).body.data;
     const code=(await f.json(`${root}/printers/${printer.id}/pairing-code`,{method:"POST",cookie:owner,body:{}})).body.data.code;
-    const paired=await f.json("/api/devices/pair",{method:"POST",body:{code,name:"Archive fixture"}});assert.equal(paired.status,201,paired.text);
+    const paired=await f.signed("/api/devices/pair", {code,name:"Archive fixture"}, {method:"POST", deviceOnly:true});assert.equal(paired.status,201,paired.text);
     const headers={authorization:`Bearer ${paired.body.data.token}`};
     for(let i=0;i<2;i++){
       const order=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`archived-printer-${i}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:"collection"}});assert.equal(order.status,201,order.text);
-      const accepted=await f.json(`/api/restaurant/orders/${order.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted"}});assert.equal(accepted.status,200,accepted.text);
+      const accepted=await f.signed(`/api/restaurant/orders/${order.body.data.id}/status`, {status:"accepted"}, {method:"PATCH"});assert.equal(accepted.status,200,accepted.text);
     }
-    const first=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(first.status,200,first.text);assert.ok(first.body.data.job);
-    const jobs=()=>f.db.prepare("SELECT * FROM device_print_jobs ORDER BY id").all(),tokens=()=>f.db.prepare("SELECT * FROM printer_job_claim_tokens ORDER BY job_id,token_hash").all();
-    const beforeJobs=jobs(),beforeTokens=tokens();assert.deepEqual(beforeJobs.map(row=>row.status).sort(),["claimed","queued"]);
-    f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(f.config.now().toISOString(),restaurant.id);
-    const blocked=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(blocked.status,200,blocked.text);assert.equal(blocked.body.data.job,null);
-    assert.deepEqual(jobs(),beforeJobs);assert.deepEqual(tokens(),beforeTokens);
+    const first=await f.signed("/api/devices/jobs/claim", {}, {method:"POST", headers, deviceOnly:true});assert.equal(first.status,200,first.text);assert.ok(first.body.data.job);
     const claimed=first.body.data.job;
-    const ack=await f.json(`/api/devices/jobs/${claimed.id}/ack`,{method:"POST",headers,body:{claimToken:claimed.claimToken,outcome:"printed"}});assert.equal(ack.status,200,ack.text);assert.equal(ack.body.data.status,"printed");
-    assert.equal((await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}})).body.data.job,null);
+    const submitting=await f.signed(`/api/devices/jobs/${claimed.id}/submitting`,{claimToken:claimed.claimToken},{headers,deviceOnly:true});assert.equal(submitting.status,200,submitting.text);
+    const jobs=()=>f.db.prepare("SELECT * FROM device_print_jobs ORDER BY id").all(),tokens=()=>f.db.prepare("SELECT * FROM printer_job_claim_tokens ORDER BY job_id,token_hash").all();
+    const beforeJobs=jobs(),beforeTokens=tokens();assert.deepEqual(beforeJobs.map(row=>row.status).sort(),["dispatched","queued"]);
+    f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(f.config.now().toISOString(),restaurant.id);
+    const blocked=await f.signed("/api/devices/jobs/claim", {}, {method:"POST", headers, deviceOnly:true});assert.equal(blocked.status,403,blocked.text);
+    assert.deepEqual(jobs(),beforeJobs);assert.deepEqual(tokens(),beforeTokens);
+    const pendingAck={claimToken:claimed.claimToken,outcome:"submitted"};
+    assert.equal((await f.signed(`/api/devices/jobs/${claimed.id}/ack`,pendingAck,{headers,deviceOnly:true})).status,403);
+    assert.deepEqual(jobs(),beforeJobs,'Denied archived authority never rewrites retained print history');
     f.db.prepare("UPDATE restaurants SET archived_at=NULL WHERE id=?").run(restaurant.id);
-    const restored=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(restored.status,200,restored.text);assert.ok(restored.body.data.job);assert.notEqual(restored.body.data.job.id,claimed.id);
-    assert.equal(f.db.prepare("SELECT status FROM device_print_jobs WHERE id=?").get(claimed.id).status,"printed");assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length,0);
+    const ack=await f.signed(`/api/devices/jobs/${claimed.id}/ack`,pendingAck,{headers,deviceOnly:true});assert.equal(ack.status,200,ack.text);assert.equal(ack.body.data.status,'submitted');
+    assert.equal((await f.signed(`/api/devices/jobs/${claimed.id}/ack`,pendingAck,{headers,deviceOnly:true})).status,200);
+    const restored=await f.signed("/api/devices/jobs/claim", {}, {method:"POST", headers, deviceOnly:true});assert.equal(restored.status,200,restored.text);assert.ok(restored.body.data.job);assert.notEqual(restored.body.data.job.id,claimed.id);
+    assert.equal(f.db.prepare("SELECT status FROM device_print_jobs WHERE id=?").get(claimed.id).status,"submitted");assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length,0);
   }finally{await f.close();}
 });
 
-test("staff can see safe printer connection status without accessing printer management",async()=>{
-  const f=await journeyFixture();
+test("tablet operators can inspect printer status and history while configuration remains owner-only",async()=>{
+  const f=await businessDeviceFixture({withPrinter:false});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],root=`/api/restaurant/restaurants/${restaurant.id}`;
@@ -65,12 +69,15 @@ test("staff can see safe printer connection status without accessing printer man
     assert.deepEqual(Object.keys(kitchen).sort(),["enabled","lastSeenAt","name","revoked","status"]);
     assert.equal(kitchen.enabled,true);assert.equal(kitchen.status,"awaiting_device");assert.equal(kitchen.lastSeenAt,null);assert.equal(kitchen.revoked,false);
     assert.equal((await f.json(statusPath)).status,401);assert.equal((await f.json(statusPath,{cookie:other})).status,404);assert.equal((await f.json(statusPath,{cookie:customer})).status,403);
-    assert.equal((await f.json(`${root}/printers`,{cookie:staff})).status,403);
+    assert.equal((await f.json(`${root}/printers`,{cookie:staff})).status,200,'An operator may inspect the printer used by its receipt history');
+    assert.equal((await f.json(`${root}/printers`,{method:'POST',cookie:staff,body:{name:'Forbidden printer',enabled:true}})).status,403);
+    assert.equal((await f.json(`${root}/printers/${added.body.data.id}`,{method:'PATCH',cookie:staff,body:{enabled:false}})).status,403);
+    assert.equal((await f.request(`${root}/printers/${added.body.data.id}/setup-package`,{method:'POST',cookie:staff,body:{}})).status,403);
   }finally{await f.close();}
 });
 
 test("printer management preserves old fields, normalises metadata and isolates owners and soft deletion",async()=>{
-  const f=await journeyFixture();
+  const f=await businessDeviceFixture({withPrinter:false});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],otherRestaurant=(await f.json("/api/restaurant/restaurants",{cookie:other})).body.data[0];
@@ -95,7 +102,7 @@ test("printer management preserves old fields, normalises metadata and isolates 
 });
 
 test("automatic setup ZIP contains scoped bootstrap, validated config and no device credentials",async()=>{
-  const f=await journeyFixture();
+  const f=await businessDeviceFixture({withPrinter:false});
   try{
     const printer={id:"b2222222-2222-4222-8222-222222222222",restaurant_id:"a1111111-1111-4111-8111-111111111111",name:"Kitchen café",mac_address:"AA:BB:CC:DD:EE:FF",ip_address:"192.0.2.24"};
     const setup={schemaVersion:1,product:"cal-eats",printerId:printer.id,restaurantId:printer.restaurant_id,code:"one-use-printer-code",expiresAt:"2026-11-21T12:00:00Z"};
@@ -115,7 +122,7 @@ test("automatic setup ZIP contains scoped bootstrap, validated config and no dev
 
 
 test("Calai printer identifiers accept common MAC styles and original serial numbers",async()=>{
- const f=await journeyFixture();
+ const f=await businessDeviceFixture({withPrinter:false});
  try{
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0];

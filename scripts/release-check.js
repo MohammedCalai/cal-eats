@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 const root = resolve(import.meta.dirname, "..");
 const failures = [];
@@ -37,7 +38,7 @@ if (lock) {
   for (const workspace of ["apps/api", "apps/web", "apps/portal", "apps/mobile", "apps/admin-mobile", "apps/print-bridge", "packages/contracts"]) {
     const manifest = JSON.parse(readFileSync(join(root, workspace, "package.json"), "utf8"));
     const locked = lock.packages?.[workspace];
-    if (!locked || locked.name !== manifest.name || locked.version !== manifest.version || JSON.stringify(locked.dependencies || {}) !== JSON.stringify(manifest.dependencies || {})) failures.push(`package-lock.json is out of date for ${workspace}.`);
+    if (!locked || locked.name !== manifest.name || locked.version !== manifest.version || !isDeepStrictEqual(locked.dependencies || {}, manifest.dependencies || {})) failures.push(`package-lock.json is out of date for ${workspace}.`);
   }
 }
 

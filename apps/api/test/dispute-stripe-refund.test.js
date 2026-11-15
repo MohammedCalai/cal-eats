@@ -1,9 +1,9 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
 
 test("accepted restaurant card-refund proposal queues Stripe execution without an instant refund", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const customer = await f.login("customer@calai.local", "LocalCustomer!4310");
     const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310");

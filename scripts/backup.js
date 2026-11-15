@@ -57,13 +57,16 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
     try {
       // Delete delivery dependants before registrations, and registrations before
       // the native session they reference. This also works with older schemas.
-      const temporaryTables = ["business_report_email_outbox", "customer_safety_reports", "customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
+      const temporaryTables = ["business_incident_push_outbox", "business_push_devices", "business_device_health", "native_business_sessions", "ordering_terminal_screen_challenges", "ordering_terminal_handoffs", "ordering_terminal_sessions", "ordering_terminal_pair_codes", "business_report_email_outbox", "customer_safety_reports", "customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
       const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
       if (present.length) {
         copy.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;");
         try {
           if(copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='support_case_messages'").get())copy.exec("DELETE FROM support_case_messages WHERE idempotency_key='customer-safety-evidence:'||case_id");
-          for (const table of present) copy.exec(`DELETE FROM ${table}`); copy.exec("COMMIT");
+          for (const table of present) copy.exec(`DELETE FROM ${table}`);
+          if(copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='ordering_terminals'").get())copy.exec("UPDATE ordering_terminals SET last_contact_at=NULL,screen_last_seen_at=NULL,screen_id=NULL,screen_session_id=NULL");
+          if(copy.prepare("SELECT 1 FROM pragma_table_info('restaurants') WHERE name='device_health_due_at'").get())copy.exec("UPDATE restaurants SET device_health_due_at=NULL");
+          copy.exec("COMMIT");
         }
         catch (error) { copy.exec("ROLLBACK"); throw error; }
         // Keep thread metadata and sequence high-watermarks; removing bodies

@@ -31,10 +31,12 @@ export class PrintBridge {
     this.hooks = hooks;
   }
 
-  async _queueAcknowledgement(entry, outcome, acknowledgementDetail) {
+  async _queueAcknowledgement(entry, outcome, acknowledgementDetail, spoolerJobId = null) {
     return this.journal.update(entry.id, {
       state: "ack_pending",
-      acknowledgement: { claimToken: entry.claimToken, outcome, ...(acknowledgementDetail ? { detail: acknowledgementDetail.slice(0, 300) } : {}) },
+      outcome,
+      ...(spoolerJobId ? { spoolerJobId } : {}),
+      acknowledgement: { claimToken: entry.claimToken, outcome, ...(acknowledgementDetail ? { detail: acknowledgementDetail.slice(0, 300) } : {}), ...(spoolerJobId ? { spoolerJobId } : {}) },
     });
   }
 
@@ -58,6 +60,20 @@ export class PrintBridge {
 
   async _dispatch(entry) {
     if (await this._expiredPhysicalClaim(entry)) return false;
+    if (this.transport.recovery !== "deterministic") {
+      if (typeof this.api.submitting !== "function") throw new Error("The signed printer API must confirm submission before physical dispatch");
+      // A request failure here never writes to a printer. The server marker is
+      // idempotent; a lost reply is reconciled before any physical dispatch.
+      try { await this.api.submitting(entry.id, entry.claimToken); }
+      catch (error) {
+        if (error instanceof ApiError && ["PRINT_JOB_OBSOLETE", "PRINT_CLAIM_EXPIRED", "INVALID_CLAIM_TOKEN"].includes(error.code)) {
+          await this.journal.update(entry.id, { state: error.code === "PRINT_JOB_OBSOLETE" ? "acked" : "ack_rejected", outcome: error.code === "PRINT_JOB_OBSOLETE" ? "cancelled" : "failed", claimToken: null, receiptText: null, lastAckError: error.code });
+          await this.logger.info("job_stopped_before_submission", { jobId: entry.id, code: error.code });
+          return false;
+        }
+        throw error;
+      }
+    }
     await this.journal.update(entry.id, { state: "dispatching", dispatchStartedAt: this.clock().toISOString() });
     await this.hooks.afterDispatchMarked?.(entry);
     if (await this._expiredPhysicalClaim(entry)) return false;
@@ -75,7 +91,7 @@ export class PrintBridge {
         result = { outcome, detail: detail(error) };
       }
     }
-    entry = await this._queueAcknowledgement(entry, result.outcome, result.detail);
+    entry = await this._queueAcknowledgement(entry, result.outcome, result.detail, result.spoolerJobId);
     await this.hooks.afterAcknowledgementQueued?.(entry);
     return this._ack(entry);
   }

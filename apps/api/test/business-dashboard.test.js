@@ -1,9 +1,8 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { dashboardRange } from "../src/business-dashboard.js";
-import { journeyFixture } from "./helpers.js";
-
 test("dashboard presets use London calendar days, Monday weeks and exact DST boundaries", () => {
   const spring = dashboardRange("today", new Date("2026-03-29T12:00:00.000Z"));
   assert.equal(spring.from, "2026-03-29T00:00:00.000Z"); assert.equal(spring.toExclusive, "2026-03-29T23:00:00.000Z");
@@ -18,18 +17,18 @@ test("dashboard presets use London calendar days, Monday weeks and exact DST bou
 });
 
 test("business dashboard scopes periods, roles, earnings, messages and transfer progress without inventing bank payouts", async () => {
-  const now = "2026-10-28T12:00:00.000Z", f = await journeyFixture({ now: () => new Date(now), rateLimit: { attempts: 30, windowMs: 60000 } });
+  const now = "2026-10-28T12:00:00.000Z", f = await businessDeviceFixture({withPrinter:false, now: () => new Date(now), rateLimit: { attempts: 30, windowMs: 60000 } });
   try {
     const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), otherOwner = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
     const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], root = `/api/restaurant/restaurants/${restaurant.id}`;
     const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
-    let index = 0;
+    let index = 0, otherDevice;
     async function place(paymentMethod, createdAt, target = "completed", restaurantId = restaurant.id, menuItemId = item.id, cookie = owner) {
       const result = await f.json("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": `dashboard-order-${index++}` }, body: { restaurantId, items: [{ menuItemId, quantity: 1 }], paymentMethod, fulfillment: "collection" } });
       assert.equal(result.status, 201, result.text);
       const order = result.body.data;
       if (target !== "placed") for (const status of target === "accepted" ? ["accepted"] : ["accepted", "preparing", "ready", "completed"]) {
-        const response = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie, body: { status } });
+        const response = await (restaurantId===restaurant.id?f:otherDevice).signed(`/api/restaurant/orders/${order.id}/status`, {status}, {method:"PATCH"});
         assert.equal(response.status, 200, response.text);
       }
       f.db.prepare("UPDATE orders SET created_at=? WHERE id=?").run(createdAt, order.id);
@@ -54,6 +53,7 @@ test("business dashboard scopes periods, roles, earnings, messages and transfer 
     f.db.prepare("UPDATE restaurants SET status='approved' WHERE id=?").run(otherRestaurant.id);
     const otherItem = { id: randomUUID() };
     f.db.prepare("INSERT INTO menu_items(id,restaurant_id,name,price_minor,created_at,updated_at) VALUES(?,?,'Other restaurant dish',9999,?,?)").run(otherItem.id, otherRestaurant.id, now, now);
+    otherDevice=await f.enrollRestaurant({restaurantId:otherRestaurant.id,cookie:otherOwner});
     await place("cash", "2026-10-28T08:00:00.000Z", "completed", otherRestaurant.id, otherItem.id, otherOwner);
 
     const response = await f.json(`${root}/dashboard?period=today&pageSize=2`, { cookie: owner });

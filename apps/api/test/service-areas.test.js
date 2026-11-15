@@ -1,7 +1,7 @@
 import test from "node:test";import assert from "node:assert/strict";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 test("admin service areas govern new orders, keep replay safe, and expose scoped recent addresses",async()=>{
- const f=await journeyFixture({locationProvider:async()=>({postcode:"LU1 2AB",admin_district:"Luton"}),rateLimit:{attempts:30,windowMs:60000}});
+ const f=await businessDeviceFixture({withPrinter:false,locationProvider:async()=>({postcode:"LU1 2AB",admin_district:"Luton"}),rateLimit:{attempts:30,windowMs:60000}});
  try{
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];

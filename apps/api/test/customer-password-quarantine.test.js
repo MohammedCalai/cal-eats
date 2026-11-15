@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { hashPassword } from "../src/auth/passwords.js";
 import { quarantineLegacyCustomerPasswords } from "../src/auth/customer-password-quarantine.js";
 
@@ -14,7 +14,7 @@ test("the quarantine maintenance entry point imports in a fresh process before d
   assert.equal(result.status, 0, result.stderr);
 });
 async function setup() {
-  const f = await journeyFixture({ rateLimit: { attempts: 200, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, rateLimit: { attempts: 200, windowMs: 60000 } });
   const first = f.db.prepare("SELECT id,email FROM users WHERE email='customer@calai.local'").get(), admin = f.db.prepare("SELECT id,role FROM users WHERE role='admin'").get();
   const passwordHash = await hashPassword(weak), second = { id: randomUUID(), email: "legacy-second@example.test" }, reviewer = { id: randomUUID(), email: "reviewer-strong@example.test" };
   f.db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, first.id);
@@ -103,7 +103,14 @@ test("a simultaneous ordinary reset and quarantine cannot authenticate the old p
       f.json("/api/auth/password/reset", { method: "POST", body: { token, password: replacement } }),
       f.flag().then(value => ({ value }), error => ({ error }))
     ]);
-    assert.equal(reset.status, 200, reset.text); if (quarantine.error) assert.equal(quarantine.error.code, "CUSTOMER_SECURITY_SCOPE_CHANGED");
+    assert.equal(reset.status, 200, reset.text);
+    // A reset can win either before the asynchronous legacy-password check or
+    // between verification and its transactional recheck. Both reject safely;
+    // thread-pool scheduling must not decide the expected error variant.
+    if (quarantine.error) {
+      assert.equal(quarantine.error.status, 409);
+      assert.ok(["CUSTOMER_SECURITY_SCOPE_MISMATCH", "CUSTOMER_SECURITY_SCOPE_CHANGED"].includes(quarantine.error.code));
+    }
     assert.equal(status(f, f.first.id).password_reset_required, 0); assert.equal((await f.login(f.first.email, replacement, true)).status, 200); assert.equal((await f.login(f.first.email, weak, true)).status, 401);
   } finally { await f.close(); }
 });

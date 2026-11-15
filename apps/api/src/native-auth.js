@@ -7,6 +7,7 @@ import { isDemoEmail } from "./seed.js";
 import { recordCustomerLegalSubmission, validateCustomerLegalSubmission } from "./customer-legal.js";
 import { assertCustomerSignupEmailReady, issueCustomerSignupVerification } from "./account-access.js";
 import { assertCustomerPasswordReady } from "./auth/customer-password-quarantine.js";
+import {nativeBusinessCapabilities} from "./membership-capabilities.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const rawBearer = (req) => typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ") ? req.headers.authorization.slice(7) : "";
@@ -33,11 +34,11 @@ export async function routeNativeAuth({req,res,url,db,config,session,checkRate})
       assertCustomerPasswordReady(user);
       if(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id))throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
       const created=withTransaction(db,()=>{const current=db.prepare("SELECT password_hash,role,account_enabled,password_reset_required FROM users WHERE id=?").get(user.id);if(!current||current.password_hash!==verifiedHash||current.role!==role||!current.account_enabled||(business&&!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(user.id)))return null;assertCustomerPasswordReady(current);return create(db,user.id,config,business?"business":"customer");});
-      if(created)return sendJson(res,200,{data:{user:publicUser(user),token:created.token,expiresAt:created.expiresAt}});
+      if(created)return sendJson(res,200,{data:{user:publicUser(user),token:created.token,expiresAt:created.expiresAt,...(business?{businessAccess:nativeBusinessCapabilities(db,user.id)}:{})}});
     }
     throw new HttpError(401,"INVALID_CREDENTIALS","Email or password is incorrect");
   }
-  if(req.method==="GET"&&url.pathname==="/api/native/auth/me"){if(!session?.native)throw new HttpError(401,"AUTH_REQUIRED","Native authentication required");return sendJson(res,200,{data:{user:session.user,session:{id:session.sessionId,createdAt:session.createdAt,expiresAt:session.expiresAt}}});}
+  if(req.method==="GET"&&url.pathname==="/api/native/auth/me"){if(!session?.native)throw new HttpError(401,"AUTH_REQUIRED","Native authentication required");return sendJson(res,200,{data:{user:session.user,session:{id:session.sessionId,createdAt:session.createdAt,expiresAt:session.expiresAt},...(session.nativeAudience==="business"?{businessAccess:nativeBusinessCapabilities(db,session.user.id)}:{})}});}
   if(req.method==="POST"&&url.pathname==="/api/native/auth/logout"){if(!session?.native)throw new HttpError(401,"AUTH_REQUIRED","Native authentication required");const b=await readJson(req,config.bodyLimit);exactObject(b,[]);const table=session.nativeAudience==="business"?"native_business_sessions":"native_sessions";db.prepare(`UPDATE ${table} SET revoked_at=? WHERE id=? AND revoked_at IS NULL`).run(config.now().toISOString(),session.sessionId);return sendJson(res,200,{data:{loggedOut:true}});}
   return false;
 }

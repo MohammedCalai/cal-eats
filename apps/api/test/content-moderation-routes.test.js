@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 
 async function setup() {
-  const f = await journeyFixture({ rateLimit: { attempts: 100, windowMs: 60000 } });
+  const f = await businessDeviceFixture({withPrinter:false, rateLimit: { attempts: 100, windowMs: 60000 } });
   const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), otherOwner = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
   const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], root = `/api/restaurant/restaurants/${restaurant.id}`;
   const item = f.db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? LIMIT 1").get(restaurant.id);
@@ -69,7 +69,7 @@ test("published menu/profile/import and campaign text cannot bypass screening or
     const allowed = await s.f.json(`${s.root}/menu/${s.item.id}`, { method: "PATCH", cookie: s.owner, body: { name: "Chicken breast", description: "Shiitake mushrooms, cumin and nuts. Ask about allergies." } });
     assert.equal(allowed.status, 200, allowed.text);
     rejected(await s.f.json(`${s.root}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "blocked-offer" }, body: { customerIds: [s.order.customerId], title: "Dinner offer", message: "send me nudes", menuItemId: s.item.id, minSubtotalMinor: 0, expiresInDays: 7 } }));
-    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await s.f.json(`/api/restaurant/orders/${s.order.id}/status`, { method: "PATCH", cookie: s.owner, body: { status } })).status, 200);
+    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await s.f.signed(`/api/restaurant/orders/${s.order.id}/status`, { status }, {method: "PATCH"})).status, 200);
     assert.equal((await s.f.json("/api/account/marketing-preferences", { method: "PATCH", cookie: s.customer, body: { inAppPromotions: true, pushPromotions: false, source: "moderation-fixture" } })).status, 200);
     const now = s.f.config.now(), promotion = { title: "Dinner offer", message: "10% off your next meal", campaignType: "percent_order", offerType: "percent_off", value: 1000, minSubtotalMinor: 0, startsAt: new Date(+now - 1000).toISOString(), expiresAt: new Date(+now + 86400000).toISOString(), redemptionLimit: 100, eligibleItemIds: [], eligibleCategories: [], recipientSegment: "all", customerIds: [], stackingPolicy: "exclusive", fundingParty: "restaurant" };
     rejected(await s.f.json(`${s.root}/loyalty/promotions`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "blocked-promotion" }, body: { ...promotion, title: "Fuck you" } }));

@@ -1,13 +1,13 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
 import { runExpiryWorker } from "../src/operations.js";
 
 const credentials = { owner: ["restaurant@calai.local", "LocalRestaurant!4310"], owner2: ["restaurant2@calai.local", "LocalRestaurant2!4310"], customer: ["customer@calai.local", "LocalCustomer!4310"] };
 
 async function complete(f, owner, orderId) {
   for (const status of ["accepted", "preparing", "ready", "completed"]) {
-    const response = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
+    const response = await f.signed(`/api/restaurant/orders/${orderId}/status`, { status }, {method: "PATCH"});
     assert.equal(response.status, 200, response.text);
   }
 }
@@ -24,7 +24,7 @@ async function setupEligible(f) {
 }
 
 test("owner campaigns are tenant scoped, idempotent and expose persisted analytics", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const s = await setupEligible(f);
     const defaultDirectory = await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/customers`, { cookie: s.owner }); assert.equal(defaultDirectory.body.data.items[0].merchantOffers, false);
@@ -62,7 +62,7 @@ test("owner campaigns are tenant scoped, idempotent and expose persisted analyti
 });
 
 test("offer checkout reserves once, snapshots a free item, releases on rejection and redeems on completion", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const s = await setupEligible(f); await f.json("/api/account/preferences", { method: "PATCH", cookie: s.customer, body: { merchantOffers: true } }); const admin = await f.login("admin@calai.local", "LocalAdmin!4310"); const campaignBody = { customerIds: [s.customerId], title: "Free fries", message: "One free side with a paid order.", menuItemId: s.gift.id, minSubtotalMinor: 1000, expiresInDays: 7 };
     await f.json(`/api/restaurant/restaurants/${s.restaurant.id}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "redeem-campaign" }, body: campaignBody });
@@ -72,7 +72,7 @@ test("offer checkout reserves once, snapshots a free item, releases on rejection
     assert.equal(successes.length, 1); assert.equal(failures.length, 1); assert.equal(failures[0].body.error.code, "OFFER_UNAVAILABLE");
     const first = successes[0].body.data; assert.equal(first.totalMinor, first.subtotalMinor); assert.equal(first.commissionMinor, Math.round(first.subtotalMinor * 0.07));
     const free = first.items.find((item) => item.isOfferItem); assert.ok(free); assert.equal(free.unitPriceMinor, 0); assert.equal(free.lineTotalMinor, 0); assert.equal(free.basePriceMinor, grant.itemValueMinor); assert.equal(first.offer.itemName, grant.itemName);
-    await f.json(`/api/restaurant/orders/${first.id}/status`, { method: "PATCH", cookie: s.owner, body: { status: "rejected" } });
+    await f.signed(`/api/restaurant/orders/${first.id}/status`, { status: "rejected" }, {method: "PATCH"});
     assert.equal((await f.json("/api/offers", { cookie: s.customer })).body.data[0].status, "available");
     const second = await request("offer-after-release"); assert.equal(second.status, 201, second.text); await complete(f, s.owner, second.body.data.id);
     assert.equal((await f.json("/api/offers", { cookie: s.customer })).body.data[0].status, "redeemed");
@@ -85,7 +85,7 @@ test("offer checkout reserves once, snapshots a free item, releases on rejection
 });
 
 test("offer eligibility, minimum, expiry, order expiry and pre-completion full refund are enforced", async () => {
-  const f = await journeyFixture();
+  const f = await businessDeviceFixture({withPrinter:false});
   try {
     const s = await setupEligible(f); await f.json("/api/account/preferences", { method: "PATCH", cookie: s.customer, body: { merchantOffers: true } }); const admin = await f.login("admin@calai.local", "LocalAdmin!4310");
     const outsider = await f.json("/api/auth/register", { method: "POST", body: { name: "No history", email: "no-history@example.test", password: "long local password" } });
@@ -104,7 +104,7 @@ test("offer eligibility, minimum, expiry, order expiry and pre-completion full r
     f.db.prepare("UPDATE orders SET created_at='2025-01-01T00:00:00.000Z' WHERE id=?").run(expiring.body.data.id);
     assert.equal(runExpiryWorker(f.db, f.config), 1); assert.equal((await f.json("/api/offers", { cookie: s.customer })).body.data[0].status, "available");
     const refunded = await place("refund-release");
-    await f.json(`/api/restaurant/orders/${refunded.body.data.id}/status`, { method: "PATCH", cookie: s.owner, body: { status: "accepted" } });
+    await f.signed(`/api/restaurant/orders/${refunded.body.data.id}/status`, { status: "accepted" }, {method: "PATCH"});
     const refund = await f.json(`/api/admin/orders/${refunded.body.data.id}/refunds`, { method: "POST", cookie: admin, headers: { "Idempotency-Key": "full-before-complete" }, body: { foodAmountMinor: refunded.body.data.subtotalMinor, deliveryAmountMinor: 0, reason: "Local test" } });
     assert.equal(refund.status, 201, refund.text); assert.equal((await f.json("/api/offers", { cookie: s.customer })).body.data[0].status, "available");
     const exportData = (await f.json("/api/account/export", { cookie: s.customer })).body.data; assert.ok(exportData.offers.some((row) => row.id === grant.id)); assert.ok(exportData.notifications.some((row) => row.orderId === refunded.body.data.id));

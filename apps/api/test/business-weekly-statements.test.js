@@ -1,9 +1,9 @@
+import {businessDeviceFixture} from "./business-device-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { journeyFixture } from "./helpers.js";
 import { closeDatabase, openDatabase } from "../src/db/index.js";
 import { buildBusinessStatementEmail, buildWeeklyStatementSnapshot, initializeBusinessWeeklyStatements, nextWeeklyStatementAt, runBusinessWeeklyStatements, weeklyStatementPeriod } from "../src/business-weekly-statements.js";
 import { createOrderAlertEmailAdapter } from "../src/order-alert-email.js";
@@ -23,16 +23,17 @@ test("weekly schedules use next Monday at 09:00 UK time and full DST calendar we
 
 async function fixture() {
   let stamp=Date.parse("2026-10-21T12:00:00.000Z");
-  const f=await journeyFixture({now:()=>new Date(stamp),sessionHours:24*60,businessStatements:{sendEnabled:false}});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>new Date(stamp),sessionHours:24*60,businessStatements:{sendEnabled:false}});
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
   initializeBusinessWeeklyStatements(f.db,f.config);
   f.db.prepare("UPDATE business_statement_preferences SET enabled=0 WHERE restaurant_id<>?").run(restaurant.id);
   let sequence=0;
   return {...f,owner,customer,other,restaurant,item,root:`/api/restaurant/restaurants/${restaurant.id}/weekly-statements`,set(value){stamp=Date.parse(value);},async place(paymentMethod="cash"){
+    await f.pulse();
     const response=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`weekly-order-${sequence++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod,fulfillment:"collection"}});
     assert.equal(response.status,201,response.text);
-    for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.json(`/api/restaurant/orders/${response.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}})).status,200);
+    for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.signed(`/api/restaurant/orders/${response.body.data.id}/status`, {status}, {method:"PATCH"})).status,200);
     return response.body.data;
   }};
 }

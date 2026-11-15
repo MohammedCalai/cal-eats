@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { journeyFixture } from "./helpers.js";
+import { businessDeviceFixture } from "./business-device-fixture.js";
 import { customerOrderHistoryCutoff, customerOrderIsVisible, enforceCustomerOrderHistory } from "../src/customer-order-history.js";
 import { linkOrderHelpToPlatform } from "../src/support-cases.js";
 import { buildCustomerEmail, runCustomerTransactionalEmails } from "../src/customer-emails.js";
 
 const NOW=new Date("2026-01-01T01:00:00.000Z");
 async function setup(){
-  const f=await journeyFixture({now:()=>NOW,orderAlertEmail:{mode:"local",from:"caleats-support@calai.info"}});
+  const f=await businessDeviceFixture({withPrinter:false,now:()=>NOW,orderAlertEmail:{mode:"local",from:"caleats-support@calai.info"}});
   const customer=await f.login("customer@calai.local","LocalCustomer!4310"),owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];let n=0;
   return {...f,customer,owner,admin,other,restaurant,async place(){const result=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`history-support-order-${n++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"mock_card",fulfillment:"collection"}});assert.equal(result.status,201,result.text);return result.body.data;}};

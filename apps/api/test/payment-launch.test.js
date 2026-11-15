@@ -1,3 +1,4 @@
+import {businessDeviceFixture} from './business-device-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
@@ -41,7 +42,7 @@ test("staged live secrets remain private; zero commission remains zero and a rep
 });
 
 test("launch checks include unmaterialized test refunds and require both restaurant transfer and card capabilities",async()=>{
-  const f=await journeyFixture({orderAlertEmail:{mode:"off"}});
+  const f=await businessDeviceFixture({withPrinter:false,orderAlertEmail:{mode:"off"}});
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],stamp=f.config.now().toISOString();
     f.db.prepare("INSERT INTO provider_accounts(id,restaurant_id,provider_mode,status,capabilities,requirements,provider_reference,created_at,updated_at) VALUES('launch-account',?,'stripe_live','enabled','[\"card_payments\"]','[]','acct_launch',?,?)").run(restaurant.id,stamp,stamp);
@@ -59,7 +60,7 @@ test("launch checks include unmaterialized test refunds and require both restaur
 });
 
 test("active payment readiness excludes archived demos and exposes operational and credential blockers",async()=>{
-  const f=await journeyFixture({orderAlertEmail:{mode:"off"},paymentProviderMode:"stripe_test",paymentProvider:{mode:"stripe_test"},stripePlatformAccountId:"acct_fixture",paymentProviderWebhookSecret:"whsec_platform_fixture",paymentProviderConnectWebhookSecret:"whsec_connect_fixture"});
+  const f=await businessDeviceFixture({withPrinter:false,orderAlertEmail:{mode:"off"},paymentProviderMode:"stripe_test",paymentProvider:{mode:"stripe_test"},stripePlatformAccountId:"acct_fixture",paymentProviderWebhookSecret:"whsec_platform_fixture",paymentProviderConnectWebhookSecret:"whsec_connect_fixture"});
   try{
     const admin=await f.login("admin@calai.local","LocalAdmin!4310"),restaurant=f.db.prepare("SELECT * FROM restaurants WHERE name='Calai Kitchen'").get(),archived=f.db.prepare("SELECT * FROM restaurants WHERE name='Second Spoon'").get(),stamp=f.config.now().toISOString();
     f.db.prepare("UPDATE restaurants SET archived_at=? WHERE id=?").run(stamp,archived.id);

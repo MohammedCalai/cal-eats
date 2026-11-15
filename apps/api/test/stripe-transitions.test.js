@@ -38,6 +38,20 @@ test("an acceptance claim serializes an opposing rejection", async () => {
   } finally { db.close(); }
 });
 
+test("simultaneous matching acceptance during a provider wait captures once and safely replays",async()=>{
+  let release,entered,captured=false,captureCalls=0;
+  const gate=new Promise(resolve=>{release=resolve;}),insideCapture=new Promise(resolve=>{entered=resolve;});
+  const adapter={retrievePlatformAccount:async()=>({providerReference:"acct_platform",status:"confirmed"}),retrieveCheckoutSession:async()=>facts(captured?"captured":"authorized"),capturePayment:async()=>{captureCalls++;entered();await gate;captured=true;return {status:"confirmed"};},retrievePayment:async()=>facts(captured?"captured":"authorized")};
+  const {db,config}=fixture(adapter);
+  try{
+    const first=prepareStripeOrderTransition(db,config,{orderId:"order",userId:"owner",targetStatus:"accepted"});await insideCapture;
+    await assert.rejects(prepareStripeOrderTransition(db,config,{orderId:"order",userId:"owner",targetStatus:"accepted"}),error=>error.code==="ORDER_DECISION_IN_PROGRESS");
+    release();assert.equal((await first).paymentState,"captured");
+    assert.equal((await prepareStripeOrderTransition(db,config,{orderId:"order",userId:"owner",targetStatus:"accepted"})).paymentState,"captured");
+    assert.equal(captureCalls,1);assert.equal(db.prepare("SELECT COUNT(*) n FROM stripe_order_decisions WHERE order_id='order' AND state='confirmed'").get().n,1);
+  }finally{release();db.close();}
+});
+
 test("capture timeout is recovered authoritatively without a second capture", async () => {
   let captured = false, captureCalls = 0;
   const adapter = {

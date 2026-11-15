@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 import { ApiError, api } from "./api";
 
 // One request at a time per resource, including manual refreshes. A forced
-// refresh waits for an older poll and then reads again after a status mutation.
+// refresh waits for an older poll and then reads the latest server state again.
 export function useLiveOrders<T>(path: string, token: string, interval = 10_000) {
   const [value, setValue] = useState<T | null>(null), [error, setError] = useState(""), [loading, setLoading] = useState(true), [verified, setVerified] = useState(false), [foreground, setForeground] = useState(AppState.currentState === "active"), [unauthorised, setUnauthorised] = useState(false);
   const active = useRef(AppState.currentState === "active"), generation = useRef(0), mounted = useRef(false), running = useRef<Promise<void> | null>(null);
