@@ -24,7 +24,7 @@ function ResourceState({resource,empty}){return resource.error?<Message>{resourc
 function Pages({value,onPage}){const p=value?.pagination;if(!p||!p.total)return null;const first=(p.page-1)*p.pageSize+1;return <nav className="admin-rest-pages" aria-label="Results pages"><span>{first}–{Math.min(p.total,p.page*p.pageSize)} of {p.total.toLocaleString()}</span><div><button className="quiet" disabled={!p.hasPrevious} onClick={()=>onPage(p.page-1)}>Previous</button><span>Page {p.page} of {Math.max(1,p.totalPages)}</span><button className="quiet" disabled={!p.hasNext} onClick={()=>onPage(p.page+1)}>Next</button></div></nav>;}
 
 export default function AdminRestaurantsWorkspace({Editor,imageBody}){
-  const [params,setParams]=useSearchParams(),restaurantId=params.get("restaurant"),section=params.get("section")||"overview",[search,setSearch]=useState(""),[status,setStatus]=useState("all"),[page,setPage]=useState(1),q=useDebounced(search);
+  const [params,setParams]=useSearchParams(),restaurantId=params.get("restaurant"),section=params.get("section")||"overview",[search,setSearch]=useState(""),[status,setStatus]=useState(()=>["all","approved","pending","rejected","suspended"].includes(params.get("status"))?params.get("status"):"all"),[page,setPage]=useState(1),q=useDebounced(search);
   const directory=useResource(`/api/admin/restaurant-directory?${new URLSearchParams({q,status,page:String(page)})}`);
   useEffect(()=>setPage(1),[q,status]);
   function open(id,next="overview"){setParams({restaurant:id,section:next});window.scrollTo({top:0,behavior:"instant"});}

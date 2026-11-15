@@ -41,7 +41,7 @@ test("passwordless application is private, sessionless, retry-safe and sends one
     assert.equal((await f.json("/api/auth/restaurant-register",options({...application,address:"22 Other Street, London E1 1AA"}))).status,409);
     assert.equal((await f.json("/api/auth/restaurant-register",{method:"POST",body:application})).status,409);
     assert.equal((await f.json("/api/auth/login",{method:"POST",body:{email:application.email,password:"123456"}})).status,401);
-    const rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox WHERE event_kind='business_application'").all();assert.equal(rows.length,1);
+    const rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox WHERE event_kind='business_application' AND COALESCE(json_extract(payload,'$.recipientRole'),'applicant')<>'admin'").all();assert.equal(rows.length,1);
     const mail=buildCustomerEmail(rows[0],f.config);assert.equal(mail.from,"caleats-support@calai.info");assert.match(mail.text,/The Calai team will contact you within 72 hours/);assert.match(mail.text,/prepare your business login/);assert.match(mail.html,/Pending review/);assert.doesNotMatch(mail.html,/View your application|Sign in to the business platform to view/);assert.equal(mail.text.includes(application.address),false);
     let sends=0;const worker=await runCustomerTransactionalEmails(f.db,f.config,{adapter:async(message,{beforeSend})=>{assert.equal(beforeSend(),true);assert.equal(message.to,application.email);sends++;return{status:"unknown",errorCode:"TEST_UNCERTAIN"};}});assert.equal(worker.unknown,1);
     await runCustomerTransactionalEmails(f.db,f.config,{adapter:async()=>{sends++;return{status:"sent"};}});assert.equal(sends,1);

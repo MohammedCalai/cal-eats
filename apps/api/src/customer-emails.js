@@ -81,14 +81,49 @@ export function queueBusinessApplicationEmail(db,config,{userId,restaurantId,res
   const id=randomUUID(),sourceKey=`business-application:${restaurantId}:received`;
   const payload={title:"Your restaurant application has been received",restaurantName:safe(restaurantName,150),summary:"Thank you for applying to join Cal-Eats. The Calai team will contact you within 72 hours. Your restaurant stays private while we review your application.",loginPreparedByAdmin:true};
   db.prepare("INSERT OR IGNORE INTO customer_transactional_email_outbox(id,customer_id,source_key,event_kind,restaurant_id,recipient,payload,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,'business_application',?,?,?,?,?,'pending',?,?)").run(id,userId,sourceKey,restaurantId,recipient,JSON.stringify(payload),`<cal-eats-customer-email-${id}@calai.info>`,config.orderAlertEmail.mode,now,now);
+  queueBusinessApplicationAdminAlerts(db,config,{restaurantId,now});
   return db.prepare("SELECT id FROM customer_transactional_email_outbox WHERE customer_id=? AND source_key=?").get(userId,sourceKey)?.id??null;
+}
+
+function businessApplicationSource(db,restaurantId){
+  return db.prepare("SELECT s.user_id,u.name applicant_name,u.email applicant_email,u.phone applicant_mobile,r.name restaurant_name,r.address FROM business_application_submissions s JOIN users u ON u.id=s.user_id AND u.role='restaurant' JOIN restaurants r ON r.id=s.restaurant_id AND r.archived_at IS NULL JOIN restaurant_memberships m ON m.user_id=s.user_id AND m.restaurant_id=s.restaurant_id AND m.permission='owner' WHERE s.restaurant_id=?").get(restaurantId);
+}
+function applicationAdministrator(db,config){
+  const recipient=config.orderAlertEmail.recipient;
+  return email(recipient)?db.prepare("SELECT id,email FROM users WHERE role='admin' AND account_enabled=1 AND email=? COLLATE NOCASE").get(recipient):null;
+}
+// Also supports an explicitly scoped backfill. All identities and contacts are
+// derived from the saved application and the configured active administrator.
+export function queueBusinessApplicationAdminAlerts(db,config,{restaurantId,now=config.now().toISOString()}){
+  const source=businessApplicationSource(db,restaurantId),admin=applicationAdministrator(db,config);if(!source||!admin)return null;
+  db.exec("SAVEPOINT business_application_admin_alert");
+  try{
+    const sourceKey=`business-application:${restaurantId}:admin-received`,notificationId=randomUUID(),id=randomUUID();
+    db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,restaurant_id,event_key,created_at) VALUES(?,?,'business_application_received','New restaurant application',?,?,?,?)").run(notificationId,admin.id,`${safe(source.restaurant_name,150)} has applied to join Cal-Eats. Open the restaurant application to review it.`,restaurantId,sourceKey,now);
+    const notice=db.prepare("SELECT id FROM user_notifications WHERE user_id=? AND event_key=?").get(admin.id,sourceKey);
+    const payload={recipientRole:"admin",title:"New restaurant application",restaurantName:safe(source.restaurant_name,150),applicant:{userId:source.user_id,name:safe(source.applicant_name,100),email:source.applicant_email,mobile:safe(source.applicant_mobile,30),address:safe(source.address,500)}};
+    db.prepare("INSERT OR IGNORE INTO customer_transactional_email_outbox(id,customer_id,notification_id,source_key,event_kind,restaurant_id,recipient,payload,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,?,'business_application',?,?,?,?,?,'pending',?,?)").run(id,admin.id,notice.id,sourceKey,restaurantId,admin.email,JSON.stringify(payload),`<cal-eats-customer-email-${id}@calai.info>`,config.orderAlertEmail.mode,now,now);
+    const saved=db.prepare("SELECT id FROM customer_transactional_email_outbox WHERE customer_id=? AND source_key=?").get(admin.id,sourceKey);
+    db.exec("RELEASE SAVEPOINT business_application_admin_alert");
+    return {notificationId:notice.id,emailId:saved.id,recipient:admin.email};
+  }catch(error){db.exec("ROLLBACK TO SAVEPOINT business_application_admin_alert");db.exec("RELEASE SAVEPOINT business_application_admin_alert");throw error;}
 }
 
 function sourceIsCurrent(db,row,config) {
   const safetyNotification=row.notification_id&&db.prepare("SELECT * FROM user_notifications WHERE id=? AND user_id=?").get(row.notification_id,row.customer_id);
   if(safetyNotification&&blockedRestaurantNotification(db,safetyNotification))return {ok:false,code:"RESTAURANT_CONTACT_BLOCKED"};
   if(row.event_kind==="business_application"){
-    const source=db.prepare("SELECT u.email FROM users u JOIN business_application_submissions s ON s.user_id=u.id JOIN restaurant_memberships m ON m.user_id=u.id AND m.restaurant_id=s.restaurant_id AND m.permission='owner' WHERE u.id=? AND u.role='restaurant' AND (u.account_enabled=1 OR EXISTS(SELECT 1 FROM business_application_access a WHERE a.restaurant_id=s.restaurant_id AND a.user_id=u.id AND a.password_set_at IS NULL)) AND s.restaurant_id=?").get(row.customer_id,row.restaurant_id),payload=parse(row.payload);
+    const payload=parse(row.payload);
+    if(payload?.recipientRole==="admin"){
+      const admin=applicationAdministrator(db,config),source=businessApplicationSource(db,row.restaurant_id);
+      const notice=db.prepare("SELECT 1 FROM user_notifications WHERE id=? AND user_id=? AND restaurant_id=? AND event_key=? AND type='business_application_received'").get(row.notification_id,row.customer_id,row.restaurant_id,row.source_key);
+      if(!admin||admin.id!==row.customer_id||admin.email.toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"APPLICATION_ADMIN_RECIPIENT_CHANGED"};
+      if(!source||source.user_id!==payload.applicant?.userId||!notice||row.source_key!==`business-application:${row.restaurant_id}:admin-received`)return{ok:false,code:"APPLICATION_ADMIN_SOURCE_CHANGED"};
+      if(row.mode!==config.orderAlertEmail.mode)return{ok:false,code:"EMAIL_MODE_CHANGED"};
+      if(row.mode!=="local"&&demoRecipient(row.recipient))return{ok:false,code:"DEMO_RECIPIENT_EXTERNAL_SEND_DISABLED"};
+      return{ok:true,payload};
+    }
+    const source=db.prepare("SELECT u.email FROM users u JOIN business_application_submissions s ON s.user_id=u.id JOIN restaurant_memberships m ON m.user_id=u.id AND m.restaurant_id=s.restaurant_id AND m.permission='owner' WHERE u.id=? AND u.role='restaurant' AND (u.account_enabled=1 OR EXISTS(SELECT 1 FROM business_application_access a WHERE a.restaurant_id=s.restaurant_id AND a.user_id=u.id AND a.password_set_at IS NULL)) AND s.restaurant_id=?").get(row.customer_id,row.restaurant_id);
     if(!source||source.email.toLowerCase()!==row.recipient.toLowerCase())return{ok:false,code:"APPLICATION_RECIPIENT_OR_SOURCE_CHANGED"};
     if(row.source_key!==`business-application:${row.restaurant_id}:received`)return{ok:false,code:"APPLICATION_EMAIL_SOURCE_MISMATCH"};
     if(row.mode!==config.orderAlertEmail.mode)return{ok:false,code:"EMAIL_MODE_CHANGED"};
@@ -141,6 +176,11 @@ function sourceIsCurrent(db,row,config) {
 export function buildCustomerEmail(row,config) {
   const payload=parse(row.payload);if(!payload)throw new Error("Invalid customer email payload");
   if(row.event_kind==="business_application"){
+    if(payload.recipientRole==="admin"){
+      const link=new URL("/business/admin/restaurants",config.origin);link.searchParams.set("restaurant",row.restaurant_id);link.searchParams.set("section","access");
+      const fields=[["Business",payload.restaurantName],["Applicant",payload.applicant.name],["Email",payload.applicant.email],["Mobile",payload.applicant.mobile],["Business address",payload.applicant.address]],sender=config.orderAlertEmail.from;
+      return{id:row.id,to:row.recipient,from:sender,messageId:row.message_id,subject:`Cal-Eats | New restaurant application — ${safe(payload.restaurantName,150)}`,text:["Cal-Eats — New restaurant application",...fields.map(([label,value])=>`${label}: ${value}`),"Review the pending application and contact the applicant within 72 hours.","Business login is prepared by an administrator after review.",`Review application: ${link.href}`].join("\n\n"),html:`<!doctype html><html><body style="font-family:Arial,sans-serif;color:#192333"><h1>New restaurant application</h1>${fields.map(([label,value])=>`<p><strong>${escape(label)}:</strong> ${escape(value)}</p>`).join("")}<p>Review the pending application and contact the applicant within 72 hours. An administrator prepares the business login after review.</p><p><a href="${escape(link.href)}">Review restaurant application</a></p></body></html>`};
+    }
     const sender=config.orderAlertEmail.from,preparedByAdmin=payload.loginPreparedByAdmin===true,link=preparedByAdmin?`mailto:${sender}`:new URL("/business/login",config.origin).href,logo=new URL("/assets/cal-eats-logo.png",config.origin).href;
     const accessText=preparedByAdmin?"You do not need to choose a password now. The Calai team will prepare your business login and contact you with the next steps.":"You can sign in to the business platform to view your pending application.",actionText=preparedByAdmin?"Contact Cal-Eats":"View your application";
     const text=["Cal-Eats",payload.title,`Your business: ${payload.restaurantName}`,payload.summary,accessText,preparedByAdmin?`Contact: ${sender}`:`Business sign-in: ${link}`,`Cal-Eats · ${sender}`].join("\n\n");
