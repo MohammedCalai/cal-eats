@@ -1,4 +1,5 @@
 import "./AdminShell.css";
+import {PlatformAdminLogin,PlatformAdminShell,PlatformConnection} from "./CalaiPlatform.jsx";
 import {AdminResolutionHistory} from "./ResolutionHistory.jsx";
 import BusinessSoundSetting from "./BusinessSoundSetting.jsx";
 import BusinessHomeLink from "./BusinessHomeLink.jsx";
@@ -42,6 +43,7 @@ const AdminOrdersWorkspace=React.lazy(()=>import("./AdminOrdersWorkspace.jsx"));
 const AdminFinanceWorkspace=React.lazy(()=>import("./AdminFinanceWorkspace.jsx"));
 const AdminOperationsWorkspace=React.lazy(()=>import("./AdminOperationsWorkspace.jsx"));
 const AdminAccessWorkspace=React.lazy(()=>import("./AdminOperationsWorkspace.jsx").then(module=>({default:module.AdminAccessWorkspace})));
+const CalaiPlatformPage=React.lazy(()=>import("./CalaiPlatformPages.jsx").then(module=>({default:module.CalaiPlatformPage})));
 const SessionContext = React.createContext(null);
 const RestaurantContext = React.createContext(null);
 const BUSINESS_ROLES = new Set(["admin", "restaurant", "owner", "staff"]);
@@ -78,6 +80,7 @@ function App() {
   if (session.loading) return <PageState text="Opening business platform…" />;
   return <SessionContext.Provider value={{ ...session, refresh, setSession }}><Routes>
     <Route path="/login" element={<Login />} />
+    <Route path="/admin/login" element={<PlatformAdminLogin user={session.user} onSignedIn={refresh}/>} />
     <Route element={<RequireSession />}>
       <Route path="/" element={<PortalHome />} />
       <Route path="/owner" element={<OwnerBootstrap />}>
@@ -98,7 +101,15 @@ function App() {
         </Route>
       </Route>
       <Route path="/admin" element={<React.Suspense fallback={<PageState text="Opening admin tools…"/>}><RequireRole role="admin" /></React.Suspense>}>
-        <Route element={<Shell kind="admin" />}>
+        <Route element={<PlatformAdminShell user={session.user} onRefresh={refresh}/>}>
+          <Route path="connection" element={<PlatformConnection/>}/>
+          <Route path="calai/dashboard" element={<CalaiPlatformPage section="dashboard"/>}/>
+          <Route path="calai/ai-training" element={<CalaiPlatformPage section="training"/>}/>
+          <Route path="calai/tenants" element={<CalaiPlatformPage section="tenants"/>}/>
+          <Route path="calai/tenants/:tenantId" element={<CalaiPlatformPage section="tenant"/>}/>
+          <Route path="calai/telephony" element={<CalaiPlatformPage section="telephony"/>}/>
+          <Route path="calai/billing" element={<CalaiPlatformPage section="billing"/>}/>
+          <Route path="calai/settings" element={<CalaiPlatformPage section="settings"/>}/>
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="restaurants" element={<AdminRestaurants />} />
           <Route path="customers" element={<AdminCustomers />} />
@@ -117,7 +128,7 @@ function App() {
   </Routes></SessionContext.Provider>;
 }
 
-function RequireSession() { const { user } = React.useContext(SessionContext); const location=useLocation(); return user ? <Outlet /> : <Navigate to="/login" state={{returnTo:`${location.pathname}${location.search}`}} replace />; }
+function RequireSession() { const { user } = React.useContext(SessionContext); const location=useLocation(); return user ? <Outlet /> : <Navigate to={location.pathname.startsWith("/admin/")?"/admin/login":"/login"} state={{returnTo:`${location.pathname}${location.search}`}} replace />; }
 function PortalHome() { const { user } = React.useContext(SessionContext); return BUSINESS_ROLES.has(user?.role) ? <Navigate to={roleHome(user.role)} replace /> : <BusinessAccessUnavailable />; }
 function RequireRole({ role }) { const { user } = React.useContext(SessionContext); return user?.role === role ? <Outlet /> : BUSINESS_ROLES.has(user?.role) ? <Denied /> : <BusinessAccessUnavailable />; }
 function OwnerOnly({ children }) { const { permission } = React.useContext(RestaurantContext); return permission === "owner" ? children : <Denied message="Owner permission is required." />; }
@@ -192,10 +203,10 @@ function Shell({ kind }) {
     <div className="business-header-identity">{headerMenu}{headerTitle}</div>
     <nav className="business-header-navigation" aria-label="Business shortcuts" hidden={!showHeaderShortcuts}>
       {showHeaderShortcuts&&<BusinessHomeLink/>}
-      <NotificationsPanel userId={user.id} restaurantId={owner.restaurant.id} enableSound={true} kind={kind} onSelectRestaurant={owner.setSelected} visible={showHeaderShortcuts} labelled/>
+      <NotificationsPanel userId={user.id} restaurantId={owner.restaurant.id} enableSound={false} kind={kind} onSelectRestaurant={owner.setSelected} visible={showHeaderShortcuts} labelled/>
     </nav>
     <div className="top-actions">{headerAccount}</div>
-  </>:<>{headerMenu}{headerTitle}<div className="top-actions"><NotificationsPanel userId={user.id} enableSound={true} kind={kind}/>{headerAccount}</div></>}
+  </>:<>{headerMenu}{headerTitle}<div className="top-actions"><NotificationsPanel userId={user.id} enableSound={false} kind={kind}/>{headerAccount}</div></>}
 </header><main id="portal-main" className="content" tabIndex={-1}><Outlet /></main><nav className="mobile-bottom-nav" style={{gridTemplateColumns:`repeat(${mobileNav.length+(kind==="owner"?1:0)},minmax(0,1fr))`}} aria-label="Quick business tools">{mobileNav.map(([label,path])=><NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label==="Inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}{kind==="owner"&&<button type="button" aria-label="More business tools" onClick={()=>setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button>}</nav></div></div></BusinessMessageReminderProvider></OrderAlertProvider>;
 }
 

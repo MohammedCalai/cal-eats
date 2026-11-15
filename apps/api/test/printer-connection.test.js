@@ -129,7 +129,7 @@ test("upgrading the pre-reachability schema preserves an existing paired printer
     await seedDemoData(db, new Date(stamp));
     const restaurantId = db.prepare("SELECT id FROM restaurants ORDER BY id LIMIT 1").get().id, printerId = randomUUID(), deviceId = randomUUID(), tokenHash = hash("existing-device-secret");
     db.prepare("INSERT INTO restaurant_printers(id,restaurant_id,name,enabled,created_at,updated_at,ip_address) VALUES(?,?,?,1,?,?,?)").run(printerId, restaurantId, "Existing kitchen", stamp, stamp, "192.0.2.26");
-    db.prepare("INSERT INTO printer_devices VALUES(?,?,?,?,?,?,?,?)").run(deviceId, printerId, restaurantId, "Existing tablet", tokenHash, null, stamp, stamp);
+    db.prepare("INSERT INTO printer_devices(id,printer_id,restaurant_id,name,token_hash,revoked_at,last_seen_at,created_at) VALUES(?,?,?,?,?,?,?,?)").run(deviceId, printerId, restaurantId, "Existing tablet", tokenHash, null, stamp, stamp);
     migrateDatabase(db);
     const device = db.prepare("SELECT * FROM printer_devices WHERE id=?").get(deviceId);
     assert.equal(device.printer_id, printerId); assert.equal(device.restaurant_id, restaurantId); assert.equal(device.token_hash, tokenHash); assert.equal(device.last_seen_at, stamp);
