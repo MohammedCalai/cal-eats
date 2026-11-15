@@ -61,8 +61,8 @@ Two installable Android QA packages were built from the frozen native source on
 
 | Package | Target | SHA-256 |
 | --- | --- | --- |
-| `artifacts/cal-eats-admin-20261115/Cal-Eats-Admin-local-QA-arm64-v8a-20261115.apk` | ARM64 Android phone | `f3c8fe5b77f73ff733949831b98dd650a288a83b018e1797064d2de6314881b6` |
-| `artifacts/cal-eats-admin-20261115/Cal-Eats-Admin-local-QA-x86_64-20261115.apk` | x86-64 Android emulator | `77661f7b0a14651baa9d60939f969d4e8754318cd211e8ec89ba8b2fbc77fdf1` |
+| `artifacts/cal-eats-admin-20261115/Cal-Eats-Admin-local-QA-v3-arm64-v8a-20261115.apk` | ARM64 Android phone | `2381b5f68a935d08781f410ecd3ca69479bd024e687506aade518b93ce7a06d1` |
+| `artifacts/cal-eats-admin-20261115/Cal-Eats-Admin-local-QA-v3-x86_64-20261115.apk` | x86-64 Android emulator | `12cb5c40c970e67b092424fe836227c0d244c8ae296cc4a9f96491008d8a3bd6` |
 
 These packages use Android Debug signing, version 0.1.0 (1), package
 `info.calai.caleatsadmin` and the isolated local API at
@@ -78,6 +78,48 @@ distribution against the hosted service uses the HTTPS build profiles above
 after a compatible backend and tablet cutover; it must not use this local build
 or the Android Debug signer. Both packages passed signature, package, ABI and
 archive-integrity checks. They have not yet been opened on a physical phone.
+
+Both final packages match the frozen 55-file native/config/contracts snapshot
+`51b30b28fa586ea9523fa364ae65cfb58c9ed48e298c279b31e2bddc3d0ecc4d`.
+The shallow Windows build directory avoids Android/Ninja path-length limits;
+it is a verified source copy, not a changed customer application.
+
+An actual Xcode iOS simulator archive also compiled successfully in Expo build
+[`e8d0fdb9-8673-467e-a89b-315ead543725`](https://expo.dev/accounts/yankee1707/projects/cal-eats-admin/builds/e8d0fdb9-8673-467e-a89b-315ead543725).
+Its local artifact is
+`artifacts/cal-eats-admin-20261115/Cal-Eats-Admin-iOS-simulator-QA-v2-20261115.tar.gz`.
+It includes the verified metric-layout fix and separate Admin identity, with a temporary
+HTTPS connection to only the disposable synthetic QA server. This temporary
+connection stops after testing; the archive is not an iPhone/TestFlight install.
+No Apple distribution credential was needed for this simulator build.
+
+Actual iOS simulator checks covered owner login, order search and empty states,
+date selection, view-only order details, authoritative synthetic payout figures,
+truthfully unknown physical printer status and logout. The equal-height metric
+layout and unbroken currency amount were verified after the first correction.
+The simulator also exposed a modal safe-area overlap; source commit `8dea74d`
+adds a modal-root SafeAreaProvider and is included in Android v3. Its iOS visual
+Close-button retest remains outstanding. The temporary QA server/tunnel and
+simulator sessions were stopped after testing. None of these checks establishes
+physical iPhone push or Windows printer behaviour.
+
+### TestFlight account dependency checked on 15 November
+
+The existing signed-in Apple organisation session was inspected. Its Program
+License Agreement records acceptance on 5 November and membership is current.
+App Store Connect still shows **Developer Information Update In Process**, and
+Calai Ltd's Free Apps Agreement is **Pending (New Legal Entity)**. Trying to add
+the separate Admin app produces Apple's Agreement Update block. The existing
+upload API also returns `FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` for
+app/bundle-identifier reads. No new Admin signing credential, provisioning
+profile or App Store Connect record has been created, and no agreement, tax or
+bank information was submitted.
+
+This is an Apple account dependency, not a failed app compile. Apple's
+[agreement status guide](https://developer.apple.com/help/app-store-connect/manage-agreements/view-agreements-status/)
+describes the legal-entity state. The company agreement must become effective
+before the blocked record/signing/upload steps can proceed. Do not change an
+unrelated app or switch to the old legal entity to work around it.
 
 The updated backend and portal must be deployed together with an agreed tablet
 cutover. An old hosted backend does not provide the new capabilities/health API.
