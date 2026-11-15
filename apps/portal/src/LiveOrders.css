@@ -2,10 +2,10 @@
 .live-orders-panel{position:relative;isolation:isolate;overflow:hidden;border:1px solid #1f293780;border-radius:16px;background:#18181a;color:#fff}
 .business-dashboard .live-orders-panel{border-radius:16px;background:#18181a}
 .business-dashboard .live-order-banner{display:flex;align-items:center;gap:40px;padding:32px;position:relative;text-align:left}
-.business-dashboard .live-order-orbit{flex:none;width:144px;height:144px;border:3px solid #1f2937;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;position:relative;background:transparent}
-.business-dashboard .live-order-orbit>svg{width:24px;height:24px;fill:none;stroke:#9ca3af;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;margin-bottom:2px}
-.business-dashboard .live-order-orbit strong{font-size:36px;font-weight:700;line-height:1;letter-spacing:-.025em;color:#fff;margin:2px 0;font-variant-numeric:tabular-nums}
-.business-dashboard .live-order-orbit small{font-size:10px;font-weight:600;letter-spacing:2px;color:#9ca3af;margin-top:4px}
+.business-dashboard .live-order-orbit{isolation:isolate;overflow:visible;box-sizing:border-box;flex:none;width:144px;height:144px;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;position:relative;background:transparent}
+.business-dashboard .live-order-orbit>.live-order-orbit-art{position:absolute;inset:0;width:100%;height:100%;z-index:-1;margin:0;fill:none;stroke:none;filter:drop-shadow(0 6px 7px #03091255)}
+.business-dashboard .live-order-orbit strong{position:relative;font-size:36px;font-weight:700;line-height:1;letter-spacing:-.025em;color:#fff;margin:2px 0;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #02091588}
+.business-dashboard .live-order-orbit small{position:relative;font-size:10px;font-weight:600;letter-spacing:2px;color:#91a8c4;margin-top:4px}
 .business-dashboard .live-order-content{flex:1;min-width:0}
 .business-dashboard .live-order-content h2{font-size:24px;font-weight:600;line-height:32px;margin:0 0 4px;letter-spacing:normal}
 .business-dashboard .live-order-content>p:not(.live-order-label){color:#9ca3af;font-size:14px;line-height:20px;margin:0 0 24px;max-width:none}
@@ -20,8 +20,9 @@
 .business-dashboard .live-order-footnote{position:relative;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 32px;border-top:1px solid #1f293780;color:#6b7280;font-size:12px;font-weight:500;line-height:16px;font-variant-numeric:tabular-nums}
 .order-energy{display:none;position:absolute;inset:0;z-index:-1;pointer-events:none}
 .is-live.live-orders-panel{border-color:#2563eb80;box-shadow:0 0 25px #2563eb14}
-.business-dashboard .is-live .live-order-orbit{border:6px solid #2f68fe;background:#151c2c;box-shadow:0 0 30px #2f68fe4d}
-.business-dashboard .is-live .live-order-orbit>svg,.business-dashboard .is-live .live-order-orbit small{color:#93c5fd;stroke:#93c5fd}
+.business-dashboard .is-live .live-order-orbit>.live-order-orbit-art{filter:drop-shadow(0 0 9px #387aff25) drop-shadow(0 6px 7px #03091277);animation:live-order-orbit-breathe 5s ease-in-out infinite}
+.business-dashboard .is-live .live-order-orbit small{color:#a8c8ef}
+@keyframes live-order-orbit-breathe{0%,100%{opacity:.94}50%{opacity:1}}
 .is-live .live-order-label>span{background:#38bdf8;box-shadow:0 0 10px #38bdf880}
 .is-live .order-energy{display:block;background:radial-gradient(ellipse at 12% 40%,#2563eb0b,transparent 65%)}
 .order-energy>i{position:absolute;left:-15%;top:25%;width:130%;height:70%;border:1px solid #2563eb22;border-radius:50%;box-shadow:0 -2px 18px #2563eb0b;transform:rotate(-12deg);animation:order-energy-flow 6s ease-in-out infinite alternate}
@@ -30,4 +31,4 @@
 @keyframes order-energy-flow{from{translate:0 -12px;opacity:.15}to{translate:0 16px;opacity:.45}}
 @media(max-width:1023px){.business-dashboard .live-order-banner{flex-direction:column;text-align:center;gap:32px}.business-dashboard .live-order-content{width:100%}.business-dashboard .live-order-content .live-order-label,.business-dashboard .live-order-stages{justify-content:center}.business-dashboard .live-order-banner>.button-link{margin-top:16px}}
 @media(max-width:639px){.business-dashboard .live-order-banner{padding:24px}.business-dashboard .live-order-footnote{padding:12px 24px}.business-dashboard .live-order-stages{gap:24px}}
-@media(prefers-reduced-motion:reduce){.order-energy>i{animation:none;opacity:.25}}
+@media(prefers-reduced-motion:reduce){.order-energy>i{animation:none;opacity:.25}.business-dashboard .is-live .live-order-orbit>.live-order-orbit-art{animation:none}}
