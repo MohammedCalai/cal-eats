@@ -5,6 +5,7 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://eats.calai.info",
         "CAL_EATS_PUBLIC_RELEASE_BUILD": "false"
@@ -21,6 +22,7 @@
     },
     "store-test": {
       "distribution": "store",
+      "environment": "preview",
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://eats.calai.info",

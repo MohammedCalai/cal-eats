@@ -1,4 +1,6 @@
-# Cal-Eats Admin — restaurant phone app
+# Cal Eats Admin — restaurant phone app
+
+**Current manager release:** see [native notification setup and installation](NATIVE_PUSH_SETUP.md) and [the Surface/manager architecture](../../docs/SURFACE_MONITORING_AND_MANAGER_2026_11_22.md). Those describe the current view-only phone order permissions, enrolled-tablet requirements, native incident registration and exact provider prerequisites. The 28 October implementation notes below are historical and do not grant current phone acceptance or printing authority.
 
 This is the separate **restaurant owner app** for iPhone and Android. It uses the same restaurant memberships, menu, customer relationships, help requests, offers and refund cases as the Cal-Eats tablet business platform. It is native React Native source, with native forms, sheets, photo selection and secure device session storage; it is not a website embedded in a WebView. Platform administrators remain a restricted role in the shared web business platform.
 

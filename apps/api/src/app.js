@@ -53,6 +53,7 @@ import {routeUnifiedBusiness} from "./unified-business.js";
 import {hasBusinessTerminalHeaders,readBusinessTerminalSession,enforceBusinessTerminalCapabilities,routeBusinessTerminals} from "./business-terminals.js";
 import {routeSurfaceMonitoring} from './surface-monitoring.js';
 import {routeBusinessMonitoringPush} from './business-monitoring-push.js';
+import {routeTabletFleet} from './tablet-fleet.js';
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -127,6 +128,7 @@ export function createApp({ db, config, logger = console }) {
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute || terminalAuthority;
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((req.headers.origin && req.headers.origin !== config.origin) || (config.runMode === "hosted-preview" && !originExempt && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       await enforcePlatformAdminAuthority({req,res,url,db,config,session});
+      if(await routeTabletFleet({req,res,url,db,config,session,checkRate}))return;
       if(await routeSurfaceMonitoring({req,res,url,db,config,session,checkRate}))return;
       if(await routeBusinessMonitoringPush({req,res,url,db,config,session,checkRate}))return;
       if(await routeBusinessTerminals({req,res,url,db,config,session,checkRate}))return;

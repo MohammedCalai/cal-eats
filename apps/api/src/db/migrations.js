@@ -6,6 +6,7 @@ import {unifiedBusinessMigration67} from "../unified-business-migration.js";
 import {businessTerminalMigration68} from "../business-terminal-migration.js";
 import {businessProductPolicyMigration69} from "../business-product-policy-migration.js";
 import {surfaceMonitoringMigration70} from "../surface-monitoring-migration.js";
+import {tabletFleetMigration71} from "../tablet-fleet-migration.js";
 import {accountAccessEmailMigration43} from "../account-access-email.js";
 import {customerPushMigration44} from "../customer-push-migration.js";
 import {orderLiveActivityMigration45} from "../order-live-activity-migration.js";
@@ -351,5 +352,6 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   unifiedBusinessMigration67,
   businessTerminalMigration68,
   businessProductPolicyMigration69,
-  surfaceMonitoringMigration70
+  surfaceMonitoringMigration70,
+  tabletFleetMigration71
 ];
