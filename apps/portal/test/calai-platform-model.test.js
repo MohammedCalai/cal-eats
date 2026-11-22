@@ -22,9 +22,11 @@ test("local administrator recovery never sends credentials to Calai or accepts a
  for(const mode of [null,undefined,"automatic","owner"])assert.throws(()=>platformLoginRequest(mode,"a@example.invalid","password"),/Choose an administrator/);
 });
 
-test("platform navigation separates Calai tenant tools from every existing Cal-Eats admin area",()=>{
- assert.equal(calaiNavigation.length,6);assert.equal(new Set(calaiNavigation.map(([,path])=>path)).size,6);
- for(const [,path]of calaiNavigation)assert.equal(adminProduct(path),"calai");
+test("platform navigation keeps native Calai tenant tools separate while sharing the central tablet fleet",()=>{
+ const native=calaiNavigation.filter(([,path])=>path.startsWith('/admin/calai/'));
+ assert.equal(native.length,6);assert.equal(new Set(calaiNavigation.map(([,path])=>path)).size,7);
+ for(const [,path]of native)assert.equal(adminProduct(path),"calai");
+ assert.deepEqual(calaiNavigation.filter(([,path])=>!path.startsWith('/admin/calai/')),[["Tablets","/admin/tablets"]]);
  for(const path of ["/admin/restaurants","/admin/finance","/admin/orders","/admin/customers"])assert.equal(adminProduct(path),"cal-eats");
  assert.equal(platformReturnPath("/admin/calai/tenants?id=1"),"/admin/calai/tenants?id=1");
  for(const path of ["//evil.invalid/admin/x","https://evil.invalid/admin/x","/owner/dashboard","/admin/login","/admin/\\evil.invalid","/admin/calai/../login","/admin/calai/../../owner/dashboard"])assert.equal(platformReturnPath(path),"/admin/calai/dashboard");

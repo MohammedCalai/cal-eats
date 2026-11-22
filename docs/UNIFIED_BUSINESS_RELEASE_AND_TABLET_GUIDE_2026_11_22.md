@@ -1,10 +1,11 @@
 # Combined business workspace: implementation and release guide
 
-Status as of 22 November 2026: implemented in the current Cal-Eats feature branch; local verification is recorded below and in the companion reports. This document is not evidence of a production deployment, signed mobile release, working physical printer or delivered push notification.
+Status as of 22 November 2026: the Cal-Eats workspace is deployed through PR #6 and its health/data-preservation checks passed. Original Calai remains unchanged. Central tablet-fleet additions and their release evidence are documented separately. A web deployment is not evidence of a signed mobile release, working physical printer or delivered push notification.
 
 ## Boundaries and architecture
 
 - Existing Cal-Eats API, SQLite migration runner, web portal, customer accounts, order/payment records, queues and existing manager app remain the product foundations. The customer app's native identity is unchanged.
+- The shared system-administrator Tablets page and safe requested-configuration/reassignment rules are described in [the central fleet guide](CENTRAL_TABLET_FLEET_2026_11_22.md). It does not deliver Intune changes or replace native tablet authentication.
 - Migrations 67–70 add the independent business association, scoped operational tablet identity, administrator product permission/verified owner proof, and Surface presence/monitoring metadata. They run only against Cal-Eats storage. Existing restaurant IDs, native Calai IDs, orders, saved commissions and payout records are retained.
 - An association references separate native accounts. Product names prefix counters and source records. There is no shared ledger, cross-product balance transfer, email/name matching, shared signing secret or replacement native identity.
 - Cal-Eats administrator permission, verified native account connection and setup readiness are separate facts. New associations default to administrator-off. Migration preserves explicit enablement of pre-existing Cal-Eats associations; synthetic seed provisioning is local development/test only.
@@ -77,7 +78,7 @@ The existing manager app retains its identity and can build for iOS/Android. Add
 
 ## Scoped release and rollback
 
-1. Review the feature diff and current target environment. Do not merge to an automatically deploying branch merely to preview this work. No production environment or secret has been changed by this implementation.
+1. Review the exact release diff and current target environment. Do not merge to an automatically deploying branch merely to preview work. The first authorised Cal-Eats release is now deployed; see the dated verification report for its exact commit and checks. Original Calai and hosted secrets remain unchanged by that deployment.
 2. Take and verify the normal Cal-Eats database/media backup. The new backup sanitizer changes the backup copy only: privileged phone sessions, new terminal grants/proofs/pairings and encrypted integration credentials are removed/revoked; native references, original records and financial history remain. A restored environment requires owner reauthentication and terminal re-enrolment.
 3. Apply migrations through the existing Cal-Eats migration runner in a dedicated test deployment first. Verify all original-column snapshots/foreign keys, own app routes, authorised source reads and the signed-terminal flow there. Configure monitoring/push only in Cal-Eats.
 4. Coordinate physical Surface enrolment and a safe operational rollout before activating the stricter production order-action boundary. Deploying it against an unprepared current ordering browser would intentionally deny that browser's operational actions. There is no insecure remote-acceptance fallback.

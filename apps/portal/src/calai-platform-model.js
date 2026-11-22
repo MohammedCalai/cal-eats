@@ -1,6 +1,7 @@
 export const calaiNavigation=[
   ["Dashboard","/admin/calai/dashboard"],["AI Training","/admin/calai/ai-training"],["Tenant Management","/admin/calai/tenants"],
   ["Telephony","/admin/calai/telephony"],["Subscriptions & Billing","/admin/calai/billing"],["Settings","/admin/calai/settings"],
+  ["Tablets","/admin/tablets"],
 ];
 export function adminProduct(path){return path.startsWith("/admin/calai/")||path==="/admin/connection"?"calai":"cal-eats";}
 export function platformReturnPath(raw){

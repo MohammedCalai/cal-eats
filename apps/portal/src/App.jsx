@@ -48,6 +48,7 @@ const AdminOrdersWorkspace=React.lazy(()=>import("./AdminOrdersWorkspace.jsx"));
 const AdminFinanceWorkspace=React.lazy(()=>import("./AdminFinanceWorkspace.jsx"));
 const AdminOperationsWorkspace=React.lazy(()=>import("./AdminOperationsWorkspace.jsx"));
 const AdminAccessWorkspace=React.lazy(()=>import("./AdminOperationsWorkspace.jsx").then(module=>({default:module.AdminAccessWorkspace})));
+const AdminTablets=React.lazy(()=>import("./AdminTablets.jsx"));
 const CalaiPlatformPage=React.lazy(()=>import("./CalaiPlatformPages.jsx").then(module=>({default:module.CalaiPlatformPage})));
 const SessionContext = React.createContext(null);
 const RestaurantContext = React.createContext(null);
@@ -137,6 +138,7 @@ function App() {
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="restaurants" element={<AdminRestaurants />} />
           <Route path="business-accounts" element={<AdminBusinessAccounts/>}/>
+          <Route path="tablets" element={<AdminTablets/>}/>
           <Route path="surface-monitoring" element={<AdminSurfaceMonitoring/>}/>
           <Route path="customers" element={<AdminCustomers />} />
           <Route path="orders" element={<AdminOrdersWorkspace />} />

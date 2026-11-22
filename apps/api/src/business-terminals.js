@@ -6,6 +6,7 @@ import {requireRestaurantMembership,requireRestaurantOwner} from './auth/authori
 import { businessAccountState, hasCurrentBusinessOwner, requireBusinessAccountOwner } from "./unified-business.js";
 import { buildTerminalInstaller } from "../../terminal-auth/windows/build-installer.mjs";
 import { terminalHasCalaiAuthority } from "./business-product-policy.js";
+import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -47,7 +48,8 @@ export function businessTerminalPairingProof({ terminalId, challenge, publicKeyS
 }
 
 function activeTerminal(db, id) {
-  return db.prepare("SELECT t.* FROM business_terminals t JOIN business_accounts b ON b.id=t.business_id JOIN users u ON u.id=t.operator_user_id WHERE t.id=? AND t.revoked_at IS NULL AND b.archived_at IS NULL AND u.account_enabled=1 AND u.principal_kind='terminal'").get(id);
+  const terminal=db.prepare("SELECT t.* FROM business_terminals t JOIN business_accounts b ON b.id=t.business_id JOIN users u ON u.id=t.operator_user_id WHERE t.id=? AND t.revoked_at IS NULL AND b.archived_at IS NULL AND u.account_enabled=1 AND u.principal_kind='terminal'").get(id);
+  assertFleetTerminalAllowed(db,terminal);return terminal;
 }
 
 function activeOwnerExists(db, businessId) {
@@ -120,6 +122,8 @@ export async function verifyBusinessTerminalRequest({ req, db, config }) {
   const canonical = businessTerminalCanonical({ terminalId: id, timestamp, nonce, method: req.method, target: url.pathname + url.search, body });
   if (!verify("sha256", Buffer.from(canonical), { key: keyDetails(terminal.public_key_spki).key, dsaEncoding: "ieee-p1363" }, signatureBytes(req.headers["x-cal-eats-terminal-signature"]))) throw failure("TERMINAL_SIGNATURE_INVALID", "The tablet request could not be verified.", 401);
   withTransaction(db, () => {
+    const fresh=activeTerminal(db,id);
+    if(!fresh||fresh.public_key_sha256!==terminal.public_key_sha256||fresh.business_id!==terminal.business_id)throw failure('TERMINAL_REVOKED','This restaurant tablet is no longer authorised.');
     db.prepare("DELETE FROM business_terminal_nonces WHERE expires_at<=?").run(now(config));
     try { db.prepare("INSERT INTO business_terminal_nonces VALUES(?,?,?)").run(id, nonce, new Date(config.now().getTime() + 120_000).toISOString()); }
     catch (error) {
@@ -203,6 +207,7 @@ function retire(db, terminal, actorId, stamp) {
   db.prepare("UPDATE business_terminal_grants SET revoked_at=? WHERE terminal_id=? AND revoked_at IS NULL").run(stamp, terminal.id);
   db.prepare("UPDATE users SET account_enabled=0 WHERE id=? AND principal_kind='terminal'").run(terminal.operator_user_id);
 }
+export {retire as retireBusinessTerminal};
 
 function dto(row, config) {
   if (!row) return { registered: false, terminalId: null, online: false, lastContactAt: null };
@@ -230,6 +235,7 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       let replaces = null;
       withTransaction(db, () => {
         owner(db, session, match[1], config);
+        assertFleetNewEnrolmentAllowed(db,match[1]);
         const currentNow = db.prepare("SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL").get(match[1]);
         if (currentNow && body.replace !== true) throw failure("TERMINAL_ALREADY_REGISTERED", "This business already has a registered tablet.", 409);
         replaces = currentNow?.id ?? null;
@@ -263,6 +269,8 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
     if (!pairing || !verify("sha256", Buffer.from(businessTerminalPairingProof({ terminalId: body.terminalId, challenge: pairing.challenge, publicKeySpki: body.publicKeySpki })), { key: publicKey.key, dsaEncoding: "ieee-p1363" }, signatureBytes(body.challengeSignature))) throw failure("TERMINAL_PAIRING_INVALID", "Tablet setup is invalid or expired.", 401);
     const enrolled = withTransaction(db, () => {
       const fresh = db.prepare("SELECT * FROM business_terminal_pairings WHERE terminal_id=? AND code_hash=?").get(body.terminalId, hash(body.code));
+      if(!fresh)throw failure('TERMINAL_PAIRING_INVALID','Tablet setup is invalid or expired.',401);
+      assertFleetNewEnrolmentAllowed(db,fresh.business_id);
       if (!issuerAllowed(db, fresh.issued_by, fresh.business_id) || !db.prepare("SELECT 1 FROM business_accounts WHERE id=? AND archived_at IS NULL").get(fresh.business_id)) throw failure("TERMINAL_PAIRING_INVALID", "Tablet setup is invalid or expired.", 401);
       const existing = activeTerminal(db, fresh.terminal_id);
       if (existing && fresh.consumed_at && existing.public_key_sha256 === publicKey.sha256 && existing.business_id === fresh.business_id) return existing;
@@ -276,7 +284,7 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       db.prepare("INSERT INTO business_terminals(id,business_id,operator_user_id,name,public_key_spki,public_key_sha256,registered_by,registered_at) VALUES(?,?,?,?,?,?,?,?)").run(fresh.terminal_id, fresh.business_id, actorId, body.deviceName.trim(), body.publicKeySpki, publicKey.sha256, fresh.issued_by, stamp);
       db.prepare("UPDATE business_terminal_pairings SET consumed_at=? WHERE terminal_id=? AND consumed_at IS NULL").run(stamp, fresh.terminal_id);
       audit(db, fresh.issued_by, fresh.business_id, "terminal_enrolled", { terminalId: fresh.terminal_id, replaced: current?.id ?? null, publicKeySha256: publicKey.sha256 }, stamp);
-      return activeTerminal(db, fresh.terminal_id);
+      const registered=activeTerminal(db,fresh.terminal_id);recordEnrolledTabletInventory(db,registered);return registered;
     });
     return sendJson(res, 201, { data: { paired: true, terminalId: enrolled.id, businessId: enrolled.business_id, registeredAt: enrolled.registered_at } });
   }

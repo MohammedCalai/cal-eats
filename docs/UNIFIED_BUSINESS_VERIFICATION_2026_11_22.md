@@ -1,6 +1,17 @@
 # Combined business workspace verification
 
-22 November 2026. Implemented and locally tested on the Cal-Eats feature branch. Neither Cal-Eats production nor original Calai was deployed or reconfigured during this work.
+22 November 2026. The Cal-Eats workspace release is deployed; original Calai remains unchanged. The dated release evidence below distinguishes production checks from synthetic/local verification and physical checks still outstanding.
+
+## Live Cal-Eats release evidence
+
+- PR #6 merged at `a7bda06548121a9c12bb8aa5c7cf1954eed2933a`. Its exact source head passed GitHub Actions run 106 on Ubuntu, Windows and the deployment container.
+- The existing Cal-Eats Railway service deployed successfully at 16:28 UTC on 22 November. Its health check passed; a read-only production check confirmed schema 70, database integrity and no foreign-key errors.
+- All 34 orders and the checked ledger, commission, commercial-acceptance, payout and adjustment records matched the verified pre-release backup. No real payment, order, refund, transfer or payout was initiated by these checks.
+- The signed-in Arndale owner page loaded the new workspace at the existing business address. Its account, devices and view-only operational guidance were visible. Arndale was closed with no active orders; the existing printing service continued reporting.
+- No operational tablet was registered at that check. The Surface installation/enrolment and physical printer acceptance are still required. A background service contact is not proof of physical printer readiness.
+- The manager Android app was separately registered in the existing Cal-Eats Firebase project through the authorised Google account. The customer registration remains separate. The existing messaging-only service account cannot read app configuration; the in-app browser did not produce a downloadable configuration file. EAS credential association, signed manager builds and physical push delivery are not yet complete. Apple reports an outstanding team agreement.
+
+The production backup was also migrated in a private local copy from schema 66 to the new fleet schema 71: all original-column values in 146 tables and all 34 orders were preserved, with foreign-key/integrity checks passing (38 ms). This copy test did not modify production.
 
 ## Checks actually run
 
