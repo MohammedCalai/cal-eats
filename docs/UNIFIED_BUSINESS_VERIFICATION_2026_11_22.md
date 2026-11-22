@@ -12,7 +12,7 @@
 | Customer and manager TypeScript checks | Passed |
 | Final portal tests, including subsequent presentation and explicit sign-in recovery checks | **133 passed** |
 | Final portal production build | Passed; existing main-chunk size advisory remains (about 657 kB minified) |
-| Post-run customer push, manager permission and business policy/DST checks | **22 passed**, 0 failed/skipped |
+| Post-run customer push and business policy/DST checks | **22 passed**, 0 failed/skipped |
 | Final terminal transport restriction and broker/logout/replay checks | **9 passed**, 0 failed/skipped |
 | Release/package check | Passed: 273 JavaScript files and 28 required files; new companion is explicitly included in Cal-Eats runtime packaging |
 | Generated standalone Windows installer | Generated and parsed successfully by the PowerShell parser; **not installed or executed** |
