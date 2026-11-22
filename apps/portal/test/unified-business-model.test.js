@@ -1,8 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions } from "../src/unified-business-model.js";
+import { productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
+test("native owners can connect permitted products without administrator service controls; staff and tablets cannot",()=>{
+  const owner={principalKind:"human",canManageProducts:false,canConnectProducts:true,products:{calai:product("calai-native",{linked:false,readiness:{ready:false,tasks:[]},effectiveStatus:"setup_required"}),"cal-eats":product("eats-native")}};
+  assert.equal(canConnectBusinessProduct(owner,"calai"),true,"The actual native owner DTO has administrator controls disabled");
+  assert.equal(canConnectBusinessProduct(owner,"cal-eats"),true,"An owner can verify an existing permitted connection");
+  for(const candidate of [{...owner,canConnectProducts:false},{...owner,canConnectProducts:undefined},{...owner,canManageProducts:true,canConnectProducts:false},{...owner,principalKind:"terminal"}]){
+    for(const kind of ["calai","cal-eats"])assert.equal(canConnectBusinessProduct(candidate,kind),false);
+  }
+  assert.equal(canConnectBusinessProduct({...owner,products:{...owner.products,calai:product("native",{adminAllowed:false})}},"calai"),false,"An owner's connection authority cannot bypass administrator disablement");
+  assert.equal(canConnectBusinessProduct({...owner,products:{...owner.products,calai:product("native",{canConnect:false})}},"calai"),false);
+  assert.equal(canConnectBusinessProduct(owner,"arbitrary-product"),false);
+  assert.equal(owner.canManageProducts,false,"Connection visibility does not add service enable/disable controls");
+});
 test("independent native staff tool permissions expose only permitted tools and keep banking, legal and settings with owners",()=>{
  const ordinary=businessToolPermissions({permission:"staff"});assert.ok(Object.values(ordinary).every(value=>value===false));
  const manager=businessToolPermissions({permission:"staff",capabilities:{viewFinance:true,manageMenu:true,manageMarketing:true,viewDevices:true}});

@@ -8,6 +8,26 @@ test('both cards exist before a second native account and only admin permission 
  const f=await businessFixture({allowEats:false});try{const before=f.db.prepare('SELECT COUNT(*) n FROM restaurants').get().n;let response=await f.call(`/api/admin/business/accounts/${f.business.id}`,{session:f.adminSession});assert.equal(response.status,200,response.text);assert.equal(response.body.data.products.calai.adminAllowed,false);assert.equal(response.body.data.products['cal-eats'].adminAllowed,false);assert.equal(response.body.data.products.calai.linked,false);response=await f.allow('calai');assert.equal(response.status,200);assert.equal(response.body.data.products.calai.adminAllowed,true);assert.equal(response.body.data.products.calai.linked,false);assert.equal(response.body.data.products.calai.readiness.ready,false);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM restaurants').get().n,before);const audit=f.db.prepare("SELECT actor_user_id,details FROM audit_events WHERE action='business_product_permission_changed' ORDER BY rowid DESC LIMIT 1").get();assert.equal(audit.actor_user_id,f.admin.id);const details=JSON.parse(audit.details);assert.equal(details.previous,false);assert.equal(details.current,true);assert.equal(details.nativeCalaiUnchanged,true);assert.equal((await f.call(`/api/admin/business/accounts/${f.business.id}/products/calai`,{method:'PATCH',body:{allowed:false}})).status,403);}finally{await f.close();}
 });
 
+test('Calai account verification never fabricates service status and preserves actual directory evidence',async()=>{
+ const f=await businessFixture();try{
+  await f.allow('calai');assert.equal((await f.link()).status,200);
+  let state=businessProductState(f.db,f.business.id,'calai',f.config);
+  assert.equal(state.nativeStatus,null);assert.equal(state.nativeStatusVerifiedAt,null);
+  assert.equal(state.readiness.ready,true,'Unknown service status does not invent a setup restriction');
+  const observedAt='2030-12-31T09:15:00.000Z';
+  f.db.prepare("UPDATE business_native_references SET native_status='SUSPENDED',verified_at=? WHERE business_id=? AND product='calai'").run(observedAt,f.business.id);
+  state=businessProductState(f.db,f.business.id,'calai',f.config);assert.equal(state.nativeStatus,'SUSPENDED');assert.equal(state.nativeStatusVerifiedAt,observedAt);
+  assert.equal((await f.link()).status,200);
+  const actual=f.db.prepare("SELECT native_status,verified_at FROM business_native_references WHERE business_id=? AND product='calai'").get(f.business.id);
+  assert.equal(actual.native_status,'SUSPENDED');assert.equal(actual.verified_at,observedAt,'A fresh owner login is not a fresh native service observation');
+  const card=await f.call(`/api/admin/business/accounts/${f.business.id}`,{session:f.adminSession});
+  assert.equal(card.body.data.products.calai.nativeStatus,'SUSPENDED');assert.equal(card.body.data.products.calai.nativeStatusVerifiedAt,observedAt);
+  f.db.prepare("UPDATE business_native_references SET native_status='verified' WHERE business_id=? AND product='calai'").run(f.business.id);
+  state=businessProductState(f.db,f.business.id,'calai',f.config);assert.equal(state.nativeStatus,null);assert.equal(state.nativeStatusVerifiedAt,null,'Legacy connection markers are not service evidence');
+  assert.equal(state.readiness.ready,true);
+ }finally{await f.close();}
+});
+
 test('administrator disablement during source callback prevents late activation',async()=>{
  const f=await businessFixture();try{await f.allow('calai');const proof=await f.prepare();assert.equal(proof.status,200,proof.text);let disabled=false;f.state.hook=async()=>{if(!disabled){disabled=true;assert.equal((await f.allow('calai',false)).status,200);}};const linked=await f.confirmCalai(proof);assert.equal(linked.status,403,linked.text);assert.equal(linked.body.error.code,'ADMIN_CONNECTION_PERMISSION_REQUIRED');assert.equal(f.db.prepare("SELECT COUNT(*) n FROM business_product_links WHERE product='calai'").get().n,0);assert.equal(f.db.prepare('SELECT consumed_at FROM business_connection_proofs').get().consumed_at,null);}finally{await f.close();}
 });

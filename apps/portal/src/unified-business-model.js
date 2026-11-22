@@ -23,6 +23,10 @@ export function productPresentation(business, product) {
   const labels = { admin_off: "Disabled by administrator", setup_required: "Setup required", ready: "Ready", unavailable: "Connection unavailable" };
   return { ...value, product, name: productName(product), nativeAccountId, linked, allowed, ready, status, label: labels[status] || "Status unavailable", tasks: Array.isArray(value.readiness?.tasks) ? value.readiness.tasks : [], usable: allowed && linked && ready && status === "ready", canConnect: allowed && value.canConnect !== false, financialAccess: value.financialAccess === true };
 }
+export function canConnectBusinessProduct(business, product) {
+  if (!BUSINESS_PRODUCTS.includes(product) || business?.principalKind === "terminal" || business?.canConnectProducts !== true) return false;
+  return productPresentation(business, product).canConnect === true;
+}
 export function businessNavigation(business, eatsNavigation = []) {
   const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats");
   return [

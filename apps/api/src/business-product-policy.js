@@ -19,10 +19,12 @@ export function ensureBusinessProductPermissions(db,businessId,now,{existingEats
 }
 export function businessProductState(db,businessId,product,config={}){
  const row=db.prepare('SELECT * FROM business_product_links WHERE business_id=? AND product=?').get(businessId,product),reference=db.prepare('SELECT * FROM business_native_references WHERE business_id=? AND product=?').get(businessId,product),adminAllowed=businessProductPermission(db,businessId,product),tasks=[];
- let nativeStatus=null,connected=Boolean(row),sourceUnavailable=false;
+ let nativeStatus=null,nativeStatusVerifiedAt=null,connected=Boolean(row),sourceUnavailable=false;
+ if(product==='calai'&&reference&&(!row||reference.source_account_id===row.source_account_id)&&typeof reference.native_status==='string'&&reference.native_status.trim()&&reference.native_status!=='verified'&&Number.isFinite(Date.parse(reference.verified_at))){
+  nativeStatus=reference.native_status;nativeStatusVerifiedAt=reference.verified_at;
+ }
  if(!row)tasks.push({code:'ACCOUNT_CONNECTION_REQUIRED',label:`Connect the correct ${product==='calai'?'Calai':'Cal-Eats'} account and location.`});
  if(product==='calai'&&row){
-  nativeStatus='Verified through native Calai';
   if(!row.encrypted_credentials||!Number.isFinite(Date.parse(row.credential_expires_at))||Date.parse(row.credential_expires_at)<= (config.now?.()??new Date()).getTime())tasks.push({code:'CALAI_REAUTHENTICATION_REQUIRED',label:'Sign in to the authorised Calai account again.'});
   if(row.last_error_code){sourceUnavailable=row.last_error_code==='CALAI_UNAVAILABLE';tasks.push({code:row.last_error_code,label:sourceUnavailable?'Calai is currently unavailable.':'Verify the Calai connection again.'});}
  }
@@ -44,7 +46,7 @@ export function businessProductState(db,businessId,product,config={}){
   }
  }
  const ready=connected&&tasks.length===0;
- return{adminAllowed,connected,readiness:{ready,tasks},effectiveStatus:!adminAllowed?'admin_off':sourceUnavailable?'unavailable':ready?'ready':'setup_required',nativeAccountId:row?.source_account_id??reference?.source_account_id??null,nativeStatus:nativeStatus??reference?.native_status??null};
+ return{adminAllowed,connected,readiness:{ready,tasks},effectiveStatus:!adminAllowed?'admin_off':sourceUnavailable?'unavailable':ready?'ready':'setup_required',nativeAccountId:row?.source_account_id??reference?.source_account_id??null,nativeStatus,nativeStatusVerifiedAt};
 }
 export function businessMonitoringContext(db,config,restaurantId){
  const row=db.prepare("SELECT business_id FROM business_product_links WHERE product='cal-eats' AND restaurant_id=?").get(restaurantId),restaurant=db.prepare('SELECT status,archived_at FROM restaurants WHERE id=?').get(restaurantId);
