@@ -10,6 +10,7 @@ import { loadMerchantCommercialConfig } from "./merchant-commercial.js";
 import {loadMediaObjectStore} from "./media-object-store.js";
 import {loadPlatformAdminConfig} from "./platform-admin-config.js";
 import {loadBusinessPushConfig} from './business-monitoring-push.js';
+import {loadTabletManagementConfig} from './tablet-management-graph.js';
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -87,6 +88,7 @@ export function loadConfig(overrides = {}) {
     businessIntegration:overrides.businessIntegration??{encryptionKey:process.env.CALAI_BUSINESS_ENCRYPTION_KEY??process.env.CALAI_PLATFORM_ADMIN_ENCRYPTION_KEY??null},
     businessPush:overrides.businessPush??loadBusinessPushConfig(),
     surfaceMonitoring:overrides.surfaceMonitoring??{},
+    tabletManagement:loadTabletManagementConfig(overrides.tabletManagement),
     mediaObjectStore:loadMediaObjectStore(overrides.mediaObjectStore),
     hostname,
     runMode,

@@ -8,12 +8,12 @@ The manager app registers its installation with the authenticated Cal-Eats backe
 
 ## Confirmed provider status — 22 November 2026
 
-Read-only provider requests confirmed:
+Provider checks and the approved existing-key connection confirmed:
 
-- The existing Yankee1707 Expo session can access the existing manager project. Android signing credentials exist; the manager project has no FCM credential association. Existing iOS manager builds were simulator builds; no manager iOS signing/push credential record was present.
+- The existing Yankee1707 Expo session can access the existing manager project. Android signing credentials exist. At 17:19 UTC on 22 November, the existing Cal-Eats FCM v1 credential was associated with the manager Android credentials, and a fresh provider read verified the connection. The customer project's credential association was identical before and after. Existing iOS manager builds were simulator builds; no manager iOS signing/push credential record was present.
 - The manager Android registration was created through the authorised Google owner console in the existing `cal-eats-notifications` project: app ID `1:267285017965:android:806f06e062f0931dbb9664`, package `info.calai.caleatsadmin`. The customer registration remains separate. The existing messaging service account authenticates, but the Firebase app-configuration API returns `403 PERMISSION_DENIED`; no official Firebase/gcloud user CLI session is available. The in-app browser's download did not return a configuration file. Do not expand the messaging account's permissions or create another private key to work around this.
 - The existing Cal-Eats App Store Connect API credential returns `403 FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED`, including for the existing customer bundle. Further console checks show the Developer Program licence was already accepted on 5 November 2026. The API issuer and actual certificate/profiles match the current Calai ltd team. App Store Connect instead lists Calai ltd's Free and Paid Apps agreements as **Pending (New Legal Entity)**. That is the relevant Apple-side transition to investigate; the generic API error is not proof that the user needs to accept the Developer Program licence again. No replacement key/team is justified by these checks.
-- Existing Cal-Eats APNs and FCM sending credentials are available for reuse. They have not been assigned to the manager project in this work. No new provider key, signed build, store upload or physical push test was performed.
+- The existing FCM sending credential is now associated with the manager project; the existing APNs credential remains available for reuse after Apple's pending company transition. No new provider key, IAM role, signed build, store upload or physical push test was performed. The private verification receipt is in ignored `artifacts/admin-mobile-push/fcm-existing-association.private.json`.
 
 These are credential/account prerequisites, not evidence that a push was delivered. Recheck provider status after the owner completes them.
 
@@ -22,10 +22,10 @@ These are credential/account prerequisites, not evidence that a push was deliver
 1. The separate Android application `info.calai.caleatsadmin` is already registered in the existing `cal-eats-notifications` project. Do not create a duplicate or change the customer app registration/messaging account.
 2. From its manager app settings, obtain the generated `google-services.json` through the authorised owner console. It must contain only the manager Android client, the correct Firebase project and matching sender/app IDs. Do not copy the customer file, manufacture an unverified configuration or use a Google service-account private-key JSON as this file.
 3. In the **manager Expo project**, create a preview-environment **file** variable named `CAL_EATS_ADMIN_GOOGLE_SERVICES_FILE` with the manager configuration. Use the existing provider account and existing messaging credentials. Do not place private keys in public Expo variables, source control or build archives.
-4. Associate the existing Cal-Eats FCM v1 credential with the manager Android app credentials in EAS. This association does not replace customer credentials.
+4. **Completed:** the existing Cal-Eats FCM v1 credential is associated with the manager Android app credentials in EAS. The customer credentials remain unchanged. Do not create a replacement key.
 5. Run the checks below and build one chosen profile. `preview` produces an internal APK; `store-test` produces an AAB for the existing testing release process. An AAB cannot be installed directly like an APK.
 
-`app.config.js` deliberately ignores the customer app's `CAL_EATS_GOOGLE_SERVICES_FILE` and `GOOGLE_SERVICES_JSON`. It rejects a mismatched Expo/native identity, a customer/mixed Firebase client file or a different Firebase sender. Android EAS workers fail before packaging if the manager file is absent. Local JavaScript work and iOS configuration can still run while Android registration is pending. Both test profiles use this manager project's `preview` environment.
+`app.config.js` deliberately ignores the customer app's `CAL_EATS_GOOGLE_SERVICES_FILE` and `GOOGLE_SERVICES_JSON`. It rejects a mismatched Expo/native identity, a customer/mixed Firebase client file or a different Firebase sender. Android EAS workers fail before packaging if the manager file is absent. Local JavaScript work and iOS configuration can still run while the manager SDK configuration file is pending. Both test profiles use this manager project's `preview` environment.
 
 ## iOS and TestFlight
 

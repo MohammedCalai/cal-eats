@@ -5,7 +5,12 @@ if (-not [Environment]::Is64BitProcess) { throw 'Use 64-bit Windows PowerShell.'
 $TerminalIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $TerminalPrincipal=New-Object Security.Principal.WindowsPrincipal($TerminalIdentity)
 if (-not $TerminalPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Managed administrator setup is required.' }
-if ($TargetSerial -and ([string](Get-CimInstance Win32_BIOS).SerialNumber).Trim() -ne $TargetSerial) { return }
+# A central-admin download can be limited to its recorded tablet. This prevents
+# installation on the wrong device; server pairing still requires signed proof.
+$TerminalBoundSerial='__TARGET_SERIAL__'
+if ($TerminalBoundSerial -and $TargetSerial -and $TargetSerial -ne $TerminalBoundSerial) { throw 'The target serial cannot override this tablet-specific installer.' }
+$TerminalExpectedSerial=if ($TerminalBoundSerial) { $TerminalBoundSerial } else { $TargetSerial }
+if ($TerminalExpectedSerial -and ([string](Get-CimInstance Win32_BIOS).SerialNumber).Trim() -ne $TerminalExpectedSerial) { throw 'This installer does not match this tablet serial. Download the installer for this tablet.' }
 if ($DeviceName.Length -lt 2 -or $DeviceName.Length -gt 80 -or $DeviceName -match '[\r\n\0]') { throw 'Invalid tablet name.' }
 $TerminalRoot=[IO.Path]::GetFullPath((Join-Path $env:ProgramData 'CalEatsTerminalAuth'))
 $TerminalParent=Split-Path -Parent $TerminalRoot

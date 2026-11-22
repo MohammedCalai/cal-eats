@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import {randomUUID} from "node:crypto";
 import { BACKUP_ROOT, createBackup } from "./backup.js";
 import { checkBackup } from "./restore-check.js";
 import { journeyFixture } from "../apps/api/test/helpers.js";
 import { enrolRegisteredTablet } from "../apps/api/test/registered-tablet-fixture.js";
 import { addNotification } from "../apps/api/src/offers.js";
+import {runTabletManagementRefresh} from "../apps/api/src/tablet-management.js";
+import {runBusinessMonitoringRetention} from "../apps/api/src/business-monitoring-retention.js";
 
 function fixture(name) {
   fs.mkdirSync(BACKUP_ROOT, { recursive: true });
@@ -147,6 +150,71 @@ test("business-only backup clears connection secrets and revoked-device authorit
     try{for(const table of ['business_terminal_grants','surface_application_presence','native_business_sessions','native_platform_sessions'])assert.equal(copy.prepare('SELECT COUNT(*) n FROM '+table).get().n,0);assert.ok(copy.prepare('SELECT revoked_at FROM business_terminals').get().revoked_at);const link=copy.prepare('SELECT * FROM business_product_links').get();assert.equal(link.source_account_id,'native-account');assert.equal(link.encrypted_credentials,null);assert.equal(link.last_error_code,'CALAI_RECONNECT_REQUIRED');assert.equal(copy.prepare('SELECT id FROM orders').get().id,'retained-financial-order');}finally{copy.close();}
     assert.equal(item.db.prepare('SELECT encrypted_credentials FROM business_product_links').get().encrypted_credentials,marker);assert.equal(item.db.prepare('SELECT revoked_at FROM business_terminals').get().revoked_at,null);assert.equal(fs.readFileSync(item.destination).includes(Buffer.from(marker)),false);
   }finally{item.cleanup();}
+});
+
+async function centralTabletFixture(){
+ let clock=Date.parse('2031-01-01T12:00:00.000Z');
+ const f=await journeyFixture({now:()=>new Date(clock),rateLimit:{attempts:1000,windowMs:60000},tabletManagement:{enabled:true,tenantId:randomUUID(),clientId:randomUUID(),certificateThumbprint:'a'.repeat(64),privateKey:'SYNTHETIC_TEST_ONLY',approvedScripts:[]}});
+ try{
+  const admin=await f.login('admin@calai.local','LocalAdmin!4310');
+  const secured=await f.json('/api/auth/password',{method:'POST',cookie:admin,body:{currentPassword:'LocalAdmin!4310',newPassword:'SecureBackupAdmin!4310'}});assert.equal(secured.status,200,secured.text);
+  const business=f.db.prepare("SELECT business_id FROM business_product_links WHERE product='cal-eats' ORDER BY business_id LIMIT 1").get().business_id;
+  const call=(route,body)=>f.json('/api/admin/tablets'+route,{method:'POST',cookie:admin,body});
+  async function create(suffix){const response=await call('',{displayName:'Synthetic backup tablet '+suffix,businessId:business,serialNumber:'BACKUP-SYNTHETIC-'+suffix,intuneManagedDeviceId:randomUUID(),entraDeviceId:randomUUID()});assert.equal(response.status,201,response.text);return response.body.data;}
+  async function queue(record){const response=await call('/'+record.id+'/management/refresh',{expectedRevision:record.revision});assert.equal(response.status,202,response.text);return response.body.data.job;}
+  return{...f,call,create,queue,advance(seconds){clock+=seconds*1000;}};
+ }catch(error){await f.close();throw error;}
+}
+
+test('schema72 backup removes real central pairing children and cancels queued or leased management reads without changing source history',async()=>{
+ const f=await centralTabletFixture(),destination=path.join(BACKUP_ROOT,`central-tablet-${process.pid}-backup.sqlite`);
+ fs.rmSync(destination,{force:true});
+ try{
+  assert.ok(f.db.prepare('SELECT 1 FROM schema_migrations WHERE version=72').get());
+  const record=await f.create('ONE'),issued=await f.call('/'+record.id+'/enrolment',{expectedRevision:record.revision,confirmReplaceTerminalId:null});assert.equal(issued.status,201,issued.text);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM tablet_fleet_pairing_requests').get().n,1);
+  await f.queue(record);
+  const adapter={collect:async()=>({identityMatched:true,collectedAt:f.config.now().toISOString(),contactAt:f.config.now().toISOString(),scriptRef:null,scriptSha256:null,runStateId:null,execution:null,physicalStartupVerified:false,applicationPresenceVerified:false,source:'microsoft_graph'})};
+  assert.equal((await runTabletManagementRefresh(f.db,f.config,{adapter})).completed,1);
+  f.advance(31);const queued=await f.queue(record),second=await f.create('TWO'),running=await f.queue(second);
+  f.db.prepare("UPDATE tablet_management_refresh_jobs SET status='running',attempts=1,lease_owner='synthetic-live-reader',lease_expires_at=? WHERE id=?").run(new Date(f.config.now().getTime()+180000).toISOString(),running.id);
+  const rows=(db,table)=>db.prepare('SELECT * FROM '+table+' ORDER BY id').all(),sourceJobs=rows(f.db,'tablet_management_refresh_jobs'),sourceEvidence=rows(f.db,'tablet_management_observations'),sourceOrders=rows(f.db,'orders'),sourceInventory=rows(f.db,'admin_tablets');
+  await createBackup({source:f.config.dbPath,destination});
+  const copy=new DatabaseSync(destination);
+  try{
+   for(const table of ['tablet_fleet_pairing_requests','business_terminal_pairings'])assert.equal(copy.prepare('SELECT COUNT(*) n FROM '+table).get().n,0);
+   assert.equal(copy.prepare("SELECT COUNT(*) n FROM tablet_management_refresh_jobs WHERE status IN('queued','running') OR lease_owner IS NOT NULL OR lease_expires_at IS NOT NULL OR available_at IS NOT NULL").get().n,0);
+   for(const id of[queued.id,running.id]){const job=copy.prepare('SELECT * FROM tablet_management_refresh_jobs WHERE id=?').get(id);assert.equal(job.status,'cancelled');assert.equal(job.error_code,'GRAPH_BACKUP_REQUIRES_FRESH_REQUEST');assert.ok(job.finished_at);}
+   assert.deepEqual(rows(copy,'tablet_management_observations'),sourceEvidence,'Keep the original dated historical observation and completed parent');
+   assert.deepEqual(rows(copy,'orders'),sourceOrders);assert.deepEqual(rows(copy,'admin_tablets'),sourceInventory);
+   let resumed=0;const result=await runTabletManagementRefresh(copy,f.config,{adapter:{collect:async()=>{resumed++;throw Error('A restored backup must require a fresh request');}}});assert.equal(resumed,0);assert.equal(result.completed,0);
+   assert.deepEqual(copy.prepare('PRAGMA foreign_key_check').all(),[]);assert.equal(copy.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
+  }finally{copy.close();}
+  assert.deepEqual(rows(f.db,'tablet_management_refresh_jobs'),sourceJobs);assert.deepEqual(rows(f.db,'tablet_management_observations'),sourceEvidence);assert.deepEqual(rows(f.db,'orders'),sourceOrders);assert.deepEqual(rows(f.db,'admin_tablets'),sourceInventory);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM tablet_fleet_pairing_requests').get().n,1);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM business_terminal_pairings').get().n,1);
+  assert.equal(fs.readFileSync(destination).includes(Buffer.from(issued.body.data.enrolment.code)),false);
+ }finally{await f.close();for(const file of[destination,`${destination}-wal`,`${destination}-shm`,`${destination}.media-objects.jsonl`])fs.rmSync(file,{force:true});}
+});
+
+test('approved30-day monitoring retention removes old finished management evidence and jobs while preserving current and active operations',async()=>{
+ const f=await centralTabletFixture();
+ try{
+  const record=await f.create('RETENTION'),old='2030-11-01T12:00:00.000Z',recent=f.config.now().toISOString(),actor=f.db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get().id;
+  const insert=(status,at)=>{const id=randomUUID();f.db.prepare('INSERT INTO tablet_management_refresh_jobs(id,tablet_id,record_revision,requested_by,requested_at,status,attempts,available_at,lease_owner,lease_expires_at,finished_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,record.id,1,actor,at,status,1,status==='queued'?at:null,status==='running'?'active-collector':null,status==='running'?'2031-01-01T12:03:00.000Z':null,['completed','failed','cancelled'].includes(status)?at:null,at);return id;};
+  const oldCompleted=insert('completed',old),recentCompleted=insert('completed',recent),oldFailed=insert('failed',old),oldCancelled=insert('cancelled',old),queued=insert('queued',old);
+  // One active job per tablet is enforced; use another real inventory for the leased case.
+  const other=await f.create('ACTIVE'),running=randomUUID();f.db.prepare("INSERT INTO tablet_management_refresh_jobs(id,tablet_id,record_revision,requested_by,requested_at,status,attempts,lease_owner,lease_expires_at,updated_at) VALUES(?,?,?,?,?,'running',1,'active-collector',?,?)").run(running,other.id,1,actor,old,'2031-01-01T12:03:00.000Z',old);
+  const observe=(job,tablet,at)=>f.db.prepare("INSERT INTO tablet_management_observations(id,tablet_id,record_revision,refresh_job_id,source,collected_at,intune_device_id,entra_device_id,serial_number,evidence_json) VALUES(?,?,1,?,'microsoft_graph',?,?,?,?,?)").run(randomUUID(),tablet.id,job,at,tablet.mapping.intuneManagedDeviceId,tablet.mapping.entraDeviceId,tablet.serialNumber,JSON.stringify({collectedAt:at,source:'microsoft_graph'}));
+  observe(oldCompleted,record,old);observe(recentCompleted,record,recent);observe(running,other,old);
+  const financial=f.db.prepare('SELECT * FROM orders ORDER BY id').all(),inventory=f.db.prepare('SELECT * FROM admin_tablets ORDER BY id').all();
+  const config={...f.config,customerPrivacy:{enabled:true,approvedAt:old,retention:{chatDays:30}}};
+  const result=runBusinessMonitoringRetention(f.db,config,{force:true});assert.equal(result.managementObservations,1);assert.equal(result.managementJobs,3);
+  for(const id of[oldCompleted,oldFailed,oldCancelled])assert.equal(f.db.prepare('SELECT 1 FROM tablet_management_refresh_jobs WHERE id=?').get(id),undefined);
+  for(const id of[recentCompleted,queued,running])assert.ok(f.db.prepare('SELECT 1 FROM tablet_management_refresh_jobs WHERE id=?').get(id));
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM tablet_management_observations').get().n,2,'Current history and a running operation remain intact');
+  assert.deepEqual(f.db.prepare('SELECT * FROM orders ORDER BY id').all(),financial);assert.deepEqual(f.db.prepare('SELECT * FROM admin_tablets ORDER BY id').all(),inventory);assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
+  assert.equal(runBusinessMonitoringRetention(f.db,config,{force:true}).managementJobs,0);
+ }finally{await f.close();}
 });
 
 test("concurrent backups to one destination allow one owner and preserve its backup", async () => {

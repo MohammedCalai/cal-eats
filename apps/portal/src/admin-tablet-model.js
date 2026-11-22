@@ -17,7 +17,7 @@ export function tabletQuery({ q = "", status = "all", page = 1, businessId } = {
   if (businessId) query.set("businessId", uuid(businessId, "Location"));
   return query.toString();
 }
-export function tabletRecordPath(id, action = "") { if (!["", "disable", "reassign", "registration"].includes(action)) throw new Error("Unsupported tablet action."); return `/api/admin/tablets/${uuid(id, "Tablet")}${action ? `/${action}` : ""}`; }
+export function tabletRecordPath(id, action = "") { if (!["", "disable", "reassign", "registration", "enrolment", "installer", "management/refresh"].includes(action)) throw new Error("Unsupported tablet action."); return `/api/admin/tablets/${uuid(id, "Tablet")}${action ? `/${action}` : ""}`; }
 export function tabletMetadataDraft(row = {}) {
   return { displayName: row.displayName || "", serialNumber: row.serialNumber || "", requestedStartupProduct: row.requestedStartupProduct || "", ...Object.fromEntries(MAPPING_FIELDS.map(([key]) => [key, row.mapping?.[key] || ""])) };
 }
@@ -43,6 +43,28 @@ export function tabletReassignmentPayload(draft, expectedRevision) {
 }
 export function tabletDisablePayload(value, expectedRevision, confirmed) { if (confirmed !== true) throw new Error("Confirm that this tablet record should be disabled."); return { expectedRevision: revision(expectedRevision), reason: reason(value) }; }
 export function tabletRegistrationPayload(draft, expectedRevision) { if(draft.confirmSamePhysicalDevice!==true)throw new Error("Confirm that this existing registration belongs to the same physical tablet and location."); return{expectedRevision:revision(expectedRevision),terminalId:uuid(draft.terminalId,"Existing terminal"),confirmSamePhysicalDevice:true}; }
+export function tabletCurrentTerminalId(row){return uuid(row?.actions?.currentTerminalId,"Current registered terminal",true);}
+export function tabletEnrolmentPayload(row,{confirmed=false,confirmReplaceTerminalId=null}={}){
+ if(row?.actions?.canIssueSetup!==true)throw new Error(row?.actions?.setupBlockReason||"Tablet setup is unavailable for this record.");
+ if(confirmed!==true)throw new Error("Confirm the intended restaurant and physical tablet before creating a private setup file.");
+ const existing=tabletCurrentTerminalId(row);
+ if(existing!==null&&confirmReplaceTerminalId!==existing)throw new Error("Confirm the exact currently registered terminal before preparing its replacement.");
+ if(existing===null&&confirmReplaceTerminalId!==null)throw new Error("The registered terminal changed. Refresh before creating setup.");
+ return{expectedRevision:revision(row.revision),confirmReplaceTerminalId:existing};
+}
+export function tabletManagementRefreshPayload(row){
+ if(row?.actions?.canRefreshManagement!==true)throw new Error(row?.actions?.managementBlockReason||"Management evidence refresh is unavailable.");
+ return{expectedRevision:revision(row.revision)};
+}
+export function tabletManagementPresentation(row){
+ const management=row?.management||{},candidate=management.evidence;
+ const evidence=candidate?.identityMatched===true?candidate:null,execution=evidence?.execution?.source==="microsoft_graph"?evidence.execution:null;
+ let executionLabel="No verified script execution result";
+ if(execution?.status==="AlreadyCorrect"&&execution.changed===false)executionLabel="Startup check passed — no changes made";
+ else if(execution?.changed===true)executionLabel="Startup change reported by management";
+ else if(execution)executionLabel=`Management script result: ${String(execution.status||"Unavailable")}`;
+ return{configured:management.configured===true,evidence,evidenceMatchesCurrentRevision:management.evidenceMatchesCurrentRevision===true,execution,executionLabel,job:management.latestRefresh||null};
+}
 export function tabletEvidence(row) {
   const state = row?.startup || {};
   return [

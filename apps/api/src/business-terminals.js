@@ -6,7 +6,7 @@ import {requireRestaurantMembership,requireRestaurantOwner} from './auth/authori
 import { businessAccountState, hasCurrentBusinessOwner, requireBusinessAccountOwner } from "./unified-business.js";
 import { buildTerminalInstaller } from "../../terminal-auth/windows/build-installer.mjs";
 import { terminalHasCalaiAuthority } from "./business-product-policy.js";
-import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
+import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,assertFleetPairingAllowed,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -215,6 +215,22 @@ function dto(row, config) {
   return { registered: !row.revoked_at, terminalId: row.id, name: row.name, registeredAt: row.registered_at, lastContactAt: row.last_contact_at, online: !row.revoked_at && Number.isFinite(stamp) && config.now().getTime() - stamp < 60_000 };
 }
 
+// Called inside the caller's transaction. Both existing owner setup and central
+// secured administration share these one-use, current-registration invariants.
+export function issueBusinessTerminalSetup(db,config,session,businessId,{replace=false,deviceName,expectedTerminalId=undefined}={}){
+ const user=owner(db,session,businessId,config);
+ if(typeof replace!=='boolean')throw failure('VALIDATION_ERROR','Tablet replacement is invalid.',400);
+ assertFleetNewEnrolmentAllowed(db,businessId);
+ const current=db.prepare('SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL').get(businessId);
+ if(expectedTerminalId!==undefined&&(current?.id??null)!==expectedTerminalId)throw failure('TERMINAL_PAIRING_CHANGED','The current registered tablet changed. Reload it before issuing setup.',409);
+ if(current&&!replace)throw failure('TERMINAL_ALREADY_REGISTERED','This business already has a registered tablet. Confirm its exact registration before replacement.',409);
+ const terminalId=randomUUID(),code=randomBytes(24).toString('base64url'),challenge=randomBytes(32).toString('base64url'),stamp=now(config),expiresAt=new Date(config.now().getTime()+10*60000).toISOString();
+ db.prepare('UPDATE business_terminal_pairings SET consumed_at=? WHERE business_id=? AND consumed_at IS NULL').run(stamp,businessId);
+ db.prepare('INSERT INTO business_terminal_pairings VALUES(?,?,?,?,?,?,?,?,NULL)').run(terminalId,businessId,hash(code),challenge,user.id,current?.id??null,stamp,expiresAt);
+ audit(db,user.id,businessId,'terminal_setup_issued',{terminalId,replaces:current?.id??null,expiresAt},stamp);
+ return{schemaVersion:1,product:'calai-business-terminal',apiBaseUrl:config.origin,businessId,terminalId,code,challenge,expiresAt};
+}
+
 export async function routeBusinessTerminals({ req, res, url, db, config, session, checkRate }) {
   let match = /^\/api\/business\/accounts\/([^/]+)\/terminals(?:\/(setup|revoke|installer))?$/.exec(url.pathname);
   if (match) {
@@ -231,19 +247,8 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       const body = await readJson(req, config.bodyLimit); exactObject(body, ["replace","deviceName"]);
       if (body.replace !== undefined && typeof body.replace !== "boolean") throw failure("VALIDATION_ERROR", "Tablet replacement is invalid.", 400);
       if (current && body.replace !== true) throw failure("TERMINAL_ALREADY_REGISTERED", "This business already has a registered tablet. Choose Replace tablet to change it.", 409);
-      const terminalId = randomUUID(), code = randomBytes(24).toString("base64url"), challenge = randomBytes(32).toString("base64url"), stamp = now(config), expiresAt = new Date(config.now().getTime() + 10 * 60_000).toISOString();
-      let replaces = null;
-      withTransaction(db, () => {
-        owner(db, session, match[1], config);
-        assertFleetNewEnrolmentAllowed(db,match[1]);
-        const currentNow = db.prepare("SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL").get(match[1]);
-        if (currentNow && body.replace !== true) throw failure("TERMINAL_ALREADY_REGISTERED", "This business already has a registered tablet.", 409);
-        replaces = currentNow?.id ?? null;
-        db.prepare("UPDATE business_terminal_pairings SET consumed_at=? WHERE business_id=? AND consumed_at IS NULL").run(stamp, match[1]);
-        db.prepare("INSERT INTO business_terminal_pairings VALUES(?,?,?,?,?,?,?,?,NULL)").run(terminalId, match[1], hash(code), challenge, user.id, replaces, stamp, expiresAt);
-        audit(db, user.id, match[1], "terminal_setup_issued", { terminalId, replaces, expiresAt }, stamp);
-      });
-      return sendJson(res, 201, { data: { schemaVersion: 1, product: "calai-business-terminal", apiBaseUrl: config.origin, businessId: match[1], terminalId, code, challenge, expiresAt } });
+      const document=withTransaction(db,()=>issueBusinessTerminalSetup(db,config,session,match[1],body));
+      return sendJson(res,201,{data:document},{'Cache-Control':'private, no-store'});
     }
     if (req.method === "POST" && match[2] === "revoke") {
       exactObject(await readJson(req, config.bodyLimit), []);
@@ -271,6 +276,7 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       const fresh = db.prepare("SELECT * FROM business_terminal_pairings WHERE terminal_id=? AND code_hash=?").get(body.terminalId, hash(body.code));
       if(!fresh)throw failure('TERMINAL_PAIRING_INVALID','Tablet setup is invalid or expired.',401);
       assertFleetNewEnrolmentAllowed(db,fresh.business_id);
+      assertFleetPairingAllowed(db,fresh);
       if (!issuerAllowed(db, fresh.issued_by, fresh.business_id) || !db.prepare("SELECT 1 FROM business_accounts WHERE id=? AND archived_at IS NULL").get(fresh.business_id)) throw failure("TERMINAL_PAIRING_INVALID", "Tablet setup is invalid or expired.", 401);
       const existing = activeTerminal(db, fresh.terminal_id);
       if (existing && fresh.consumed_at && existing.public_key_sha256 === publicKey.sha256 && existing.business_id === fresh.business_id) return existing;
