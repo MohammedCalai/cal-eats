@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { adminNavigation, ownerNavigation } from "../src/model.js";
 import { calaiNavigation } from "../src/calai-platform-model.js";
-import { tabletQuery, tabletRecordPath, tabletMetadataDraft, tabletMetadataPayload, tabletReassignmentPayload, tabletDisablePayload, tabletRegistrationPayload, tabletEvidence, tabletHistory } from "../src/admin-tablet-model.js";
+import { tabletQuery, tabletRecordPath, tabletMetadataDraft, tabletMetadataPayload, tabletReassignmentPayload, tabletDisablePayload, tabletRegistrationPayload, tabletCurrentTerminalId, tabletEnrolmentPayload, tabletManagementRefreshPayload, tabletManagementPresentation, tabletEvidence, tabletHistory } from "../src/admin-tablet-model.js";
 
 const first="11111111-1111-4111-8111-111111111111",second="22222222-2222-4222-8222-222222222222",terminal="33333333-3333-4333-8333-333333333333";
 const draft={displayName:"Calai-0001",serialNumber:"0F02-ABC/01",requestedStartupProduct:"cal-eats",intuneManagedDeviceId:first,entraDeviceId:"",startupGroupId:second,startupProfileId:""};
@@ -68,4 +68,42 @@ test("registration reconciliation records only an existing exact reference and e
 test("unlinked inventory history never claims that an application identity or printer was revoked",()=>{
  const unbound=tabletHistory({action:"tablet_access_disabled",details:{previous:{terminalId:null},current:{terminalId:null}}});assert.equal(unbound.label,"Fleet record disabled; no application registration linked");
  const linked=tabletHistory({action:"tablet_access_disabled",details:{previous:{terminalId:terminal},current:{terminalId:terminal}}});assert.equal(linked.label,"Fleet record disabled; linked Cal-Eats authority revoked");
+});
+
+test("central private enrolment requires current setup permission and exact replacement acknowledgement",()=>{
+ const row={revision:4,actions:{canIssueSetup:true,currentTerminalId:terminal},registration:{registered:true,terminalId:terminal}};
+ assert.deepEqual(tabletEnrolmentPayload(row,{confirmed:true,confirmReplaceTerminalId:terminal,cleanupDone:true,ownerSession:"not transferred"}),{expectedRevision:4,confirmReplaceTerminalId:terminal});
+ for(const replacement of[null,first,undefined])assert.throws(()=>tabletEnrolmentPayload(row,{confirmed:true,confirmReplaceTerminalId:replacement}),/exact currently registered/);
+ for(const confirmed of[false,"true",undefined])assert.throws(()=>tabletEnrolmentPayload(row,{confirmed,confirmReplaceTerminalId:terminal}),/Confirm the intended/);
+ const unpaired={revision:1,actions:{canIssueSetup:true,currentTerminalId:null},registration:null};
+ assert.deepEqual(tabletEnrolmentPayload(unpaired,{confirmed:true}),{expectedRevision:1,confirmReplaceTerminalId:null});
+ const unboundInventory={revision:2,actions:{canIssueSetup:true,currentTerminalId:terminal},registration:null};
+ assert.equal(tabletCurrentTerminalId(unboundInventory),terminal,"Current business registration is authoritative even when this inventory row is unbound");
+ assert.deepEqual(tabletEnrolmentPayload(unboundInventory,{confirmed:true,confirmReplaceTerminalId:terminal}),{expectedRevision:2,confirmReplaceTerminalId:terminal});
+ assert.throws(()=>tabletEnrolmentPayload(unboundInventory,{confirmed:true}),/exact currently registered/);
+ assert.equal(tabletCurrentTerminalId({...row,actions:{...row.actions,currentTerminalId:null}}),null,"A historical attached registration cannot override the server current-registration capability");
+ assert.throws(()=>tabletEnrolmentPayload(unpaired,{confirmed:true,confirmReplaceTerminalId:terminal}),/terminal changed/);
+ for(const blocked of[{actions:{canIssueSetup:false,setupBlockReason:"Physical handoff remains quarantined."}},{actions:{canIssueSetup:"true"}},{actions:{}}])assert.throws(()=>tabletEnrolmentPayload({...unpaired,...blocked},{confirmed:true}),/quarantined|unavailable/);
+ assert.throws(()=>tabletEnrolmentPayload({...unpaired,revision:0},{confirmed:true}),/Refresh/);
+ assert.equal(tabletRecordPath(first,"enrolment"),`/api/admin/tablets/${first}/enrolment`);
+ assert.equal(tabletRecordPath(first,"installer"),`/api/admin/tablets/${first}/installer`);
+});
+
+test("read-only management refresh sends no device results, script content or completion override",()=>{
+ assert.deepEqual(tabletManagementRefreshPayload({revision:9,actions:{canRefreshManagement:true},changed:true,cleanupVerified:true,script:"not sent",management:{configured:true}}),{expectedRevision:9});
+ assert.throws(()=>tabletManagementRefreshPayload({revision:9,actions:{canRefreshManagement:false,managementBlockReason:"Management connection is not configured."}}),/not configured/);
+ assert.throws(()=>tabletManagementRefreshPayload({revision:9,management:{configured:true}}),/unavailable/);
+ assert.equal(tabletRecordPath(first,"management/refresh"),`/api/admin/tablets/${first}/management/refresh`);
+ assert.throws(()=>tabletRecordPath(first,"management/complete"),/Unsupported/);
+});
+
+test("management check success is not a startup change, application presence or completed handoff",()=>{
+ const evidence={identityMatched:true,collectedAt:"2026-11-22T17:00:00Z",contactAt:"2026-11-22T16:50:00Z",scriptRef:first,scriptSha256:"a".repeat(64),execution:{status:"AlreadyCorrect",changed:false,observedAt:"2026-11-22T16:50:00Z",source:"microsoft_graph"},physicalStartupVerified:false,applicationPresenceVerified:false};
+ const row={management:{configured:true,evidence,evidenceMatchesCurrentRevision:false,latestRefresh:{status:"failed",errorCode:"GRAPH_UNAVAILABLE"}},startup:{state:"requested"},handoff:{state:"pending_physical_cleanup",completionSupported:false}};
+ const view=tabletManagementPresentation(row);
+ assert.equal(view.evidenceMatchesCurrentRevision,false,"Retained evidence cannot claim to match a newly edited fleet revision");assert.equal(view.executionLabel,"Startup check passed — no changes made");assert.equal(view.execution.changed,false);assert.equal(view.job.status,"failed");assert.equal(view.evidence.collectedAt,evidence.collectedAt,"A failed refresh retains the dated earlier observation");
+ assert.equal(tabletEvidence(row).find(stage=>stage.key==="applied").value,"Not confirmed");assert.equal(tabletEvidence(row).find(stage=>stage.key==="physical").value,"Not verified");
+ assert.equal(Object.hasOwn(view,"application"),false);assert.equal(Object.hasOwn(view,"handoffCompleted"),false);
+ const unmatched=tabletManagementPresentation({management:{configured:true,evidence:{...evidence,identityMatched:false,execution:{status:"Applied",changed:true,source:"microsoft_graph"}}}});assert.equal(unmatched.evidence,null);assert.equal(unmatched.execution,null);
+ const unsupported=tabletManagementPresentation({management:{evidence:{...evidence,execution:{status:"Succeeded",changed:true,source:"typed_by_administrator"}}}});assert.equal(unsupported.execution,null);assert.equal(unsupported.executionLabel,"No verified script execution result");
 });

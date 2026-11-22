@@ -6,7 +6,7 @@ Status as of 22 November 2026: the Cal-Eats workspace and central system-adminis
 
 - Existing Cal-Eats API, SQLite migration runner, web portal, customer accounts, order/payment records, queues and existing manager app remain the product foundations. The customer app's native identity is unchanged.
 - The shared system-administrator Tablets page and safe requested-configuration/reassignment rules are described in [the central fleet guide](CENTRAL_TABLET_FLEET_2026_11_22.md). It does not deliver Intune changes or replace native tablet authentication.
-- Migrations 67–71 add the independent business association, scoped operational tablet identity, administrator product permission/verified owner proof, Surface presence/monitoring metadata and central inventory. They run only against Cal-Eats storage. Existing restaurant IDs, native Calai IDs, orders, saved commissions and payout records are retained.
+- Migrations 67–72 add the independent business association, scoped operational tablet identity, administrator product permission/verified owner proof, Surface presence/monitoring metadata, central inventory and read-only management evidence. They run only against Cal-Eats storage. Existing restaurant IDs, native Calai IDs, orders, saved commissions and payout records are retained.
 - An association references separate native accounts. Product names prefix counters and source records. There is no shared ledger, cross-product balance transfer, email/name matching, shared signing secret or replacement native identity.
 - Cal-Eats administrator permission, verified native account connection and setup readiness are separate facts. New associations default to administrator-off. Migration preserves explicit enablement of pre-existing Cal-Eats associations; synthetic seed provisioning is local development/test only.
 - The two administrator controls are **Allow Calai connection in the combined workspace** and **Enable Cal-Eats**. The former restricts only the integration, never native Calai operation. Turning either off retains references/history. Re-enablement does not need a business Resume action if the genuine setup remains ready.
@@ -57,13 +57,15 @@ Prerequisites: supported 64-bit Windows, administrator/SYSTEM installation autho
 6. Open the existing Cal-Eats business address on that Surface. Permit its scoped local-network browser prompt if required. Successful signed discovery and actual order-receive checks establish the application session. A background companion heartbeat, printer service, phone login or login page cannot make the Surface online.
 7. Confirm the correct location, current application contact and operational controls. Physical key protection, browser permission, restart/recovery and receipt output still need a real Surface acceptance check before production rollout.
 
+Alternatively, a secured system administrator can select the exact record in **Tablets**, download its serial-limited installer and issue the same one-use setup document there. Prepare the companion before starting the ten-minute expiry. The central flow confirms the exact existing terminal before a replacement and signed pairing binds the registration to that inventory record. Metadata edits invalidate unfinished setup; a serial guard prevents accidental installation but does not replace the protected signing key. Do not issue Cal-Eats setup for a Calai-only location.
+
 The local companion listens on loopback only, validates the exact approved Origin/Host and per-process CSRF/window proof, constrains methods/paths, signs request bodies, and rejects stale/replayed requests. It does not expose a general signing proxy or arbitrary URL forwarding. Browser process reconnection retries are bounded; uncertain operational writes are never automatically replayed.
 
 ### Replacement, logout and revocation
 
 - Use Replace ordering Surface deliberately. Existing authority remains until the one-use replacement enrolment commits; that commit atomically revokes the old registration and its grants. A stale replacement cannot replace a different device enrolled in the meantime.
 - Use Revoke Surface to withdraw authority immediately. Active browser windows cannot keep accepting with cached credentials. Revocation and enrolment have actor/location/device audit records.
-- Reusing the same physical tablet with a different new registration requires its explicit administrator `-ForgetRegistration` option and a fresh owner-approved enrolment file. This retires local public identity metadata; it does not bypass server revocation or make an expired code usable.
+- Reusing the same physical tablet with a different new registration requires its explicit administrator `-ForgetRegistration` option and a fresh authorised enrolment file. This retires local public identity metadata; it does not bypass server revocation or make an expired code usable. Cross-restaurant reassignment remains quarantined until a supported, separately authorised process clears previous browser/native and protected printer tenant credentials and reconciles queued receipts.
 - Explicit application logout reports signed logout and clears/revokes the current application grant. A subsequent legitimate sign-in requires a fresh native grant. Companion contact alone does not undo the signed-out state.
 
 ## Presence, printer evidence and notifications
@@ -96,7 +98,8 @@ Exact remaining release dependencies:
 1. Current original Calai source confirmation and an already-supported frontend-assets-only release/rollback route.
 2. Actual Surface installation/key/browser-permission and app lifecycle check; coordinated replacement of the existing ordinary ordering session.
 3. Verified isolated shared-printer arrangement and actual hardware diagnostics/output. Paper/cover capability is currently unsupported, not secretly simulated.
-4. Manager-app APNs/FCM/Expo project configuration, signed distribution build and physical foreground/background/locked-phone delivery.
+4. Manager-app official Firebase SDK configuration file, APNs/Apple account transition, signed distribution build and physical foreground/background/locked-phone delivery. The existing manager Expo Android credential is now associated with the existing approved FCM key; customer credentials are unchanged. See `apps/admin-mobile/NATIVE_PUSH_SETUP.md` for the remaining exact prerequisites.
 5. Deployment sizing and throughput verification for large simultaneous outages; bounded local tests do not establish a 10,000-restaurant alert-delivery SLA.
+6. Dedicated Microsoft certificate identity and read-only consent to activate the implemented collector. Remote startup delivery and cross-restaurant physical cleanup/rebinding remain separate unsupported operations; the read-only collector cannot perform them. See `TABLET_MANAGEMENT_CONNECTION.md`.
 
 Final command results and local screenshots are recorded in the verification report next to this guide. Implemented, locally tested and deployed must remain separate statuses.

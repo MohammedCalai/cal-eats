@@ -1,0 +1,76 @@
+import React, {useEffect,useRef,useState} from "react";
+import {api,json} from "./api.js";
+import {shortDate} from "./model.js";
+import {deviceStateLabel,terminalSetupDocument} from "./unified-business-model.js";
+import {tabletRecordPath,tabletCurrentTerminalId,tabletEnrolmentPayload,tabletManagementRefreshPayload,tabletManagementPresentation} from "./admin-tablet-model.js";
+
+const date=value=>value&&Number.isFinite(Date.parse(value))?shortDate(value):"Not recorded";
+const refreshLabels={queued:"Waiting to collect",running:"Collecting management evidence",completed:"Collection completed",failed:"Collection failed",cancelled:"Collection cancelled"};
+const enrolmentLabels={issued:"Private setup issued — waiting for signed pairing",paired:"Signed device pairing completed",expired:"Setup expired — issue a fresh file when ready",superseded:"Setup replaced by a newer request"};
+function useTabletTask(){
+ const [busy,setBusy]=useState(false),[error,setError]=useState("");
+ const active=useRef(false),controller=useRef(null),working=useRef(false);
+ useEffect(()=>{active.current=true;return()=>{active.current=false;controller.current?.abort();};},[]);
+ async function run(work){
+  if(working.current)return;working.current=true;setBusy(true);setError("");
+  const request=new AbortController();controller.current=request;const timer=setTimeout(()=>request.abort(),15000);
+  try{await work(request.signal,()=>active.current&&!request.signal.aborted);}
+  catch(caught){if(active.current)setError(caught.name==="AbortError"?"The request took too long. Refresh the current status before trying again; the server may have received it.":caught.code==="TABLET_REVISION_CHANGED"?"This tablet record changed. Refresh it and review the current location and terminal before trying again.":caught.message);}
+  finally{clearTimeout(timer);working.current=false;if(controller.current===request)controller.current=null;if(active.current)setBusy(false);}
+ }
+ return{busy,error,run};
+}
+function privateSetupDownload(document){
+ const url=URL.createObjectURL(new Blob([document],{type:"application/json"})),link=window.document.createElement("a");
+ try{link.href=url;link.download="CalEats-Tablet-Enrolment.json";window.document.body.append(link);link.click();}
+ finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+}
+
+export default function AdminTabletConnections({row,onChanged,onReload}){
+ const [confirmed,setConfirmed]=useState(false),enrol=useTabletTask(),refresh=useTabletTask();
+ const management=tabletManagementPresentation(row),latest=row.latestEnrolment,registration=row.registration;
+ const currentTerminalId=tabletCurrentTerminalId(row),replacing=Boolean(currentTerminalId),currentTerminalName=registration?.terminalId===currentTerminalId?registration.name:null,canSetup=row.actions?.canIssueSetup===true;
+ const watching=latest?.status==="issued"||["queued","running"].includes(management.job?.status),reload=useRef(onReload);reload.current=onReload;
+ useEffect(()=>{if(!watching)return;const timer=setInterval(()=>{if(!document.hidden)void reload.current?.();},5000);return()=>clearInterval(timer);},[watching]);
+ async function prepare(event){
+  event.preventDefault();
+  await enrol.run(async(signal,current)=>{
+   const payload=tabletEnrolmentPayload(row,{confirmed,confirmReplaceTerminalId:currentTerminalId});
+   const result=await api(tabletRecordPath(row.id,"enrolment"),{...json("POST",payload),signal});
+   if(!current())return;
+   const document=terminalSetupDocument(result.enrolment,{businessId:row.businessId,apiOrigin:window.location.origin});
+   privateSetupDownload(document);setConfirmed(false);
+   await onChanged?.(row,`Private one-use setup file downloaded. It expires ${date(result.enrolment.expiresAt)}. Issuing this file does not pair a device or prove application readiness.${replacing?" The current registered tablet remains authorised until signed replacement pairing completes.":""}`);
+  });
+ }
+ async function collect(){await refresh.run(async(signal,current)=>{
+  const result=await api(tabletRecordPath(row.id,"management/refresh"),{...json("POST",tabletManagementRefreshPayload(row)),signal});
+  if(current())await onChanged?.(row,`${refreshLabels[result.job?.status]||"Management evidence refresh requested"}. This reads management records; it does not run a Windows script, change startup or verify physical operation.`);
+ });}
+ return <>
+  <section className="panel tablet-setup-wizard" aria-labelledby="tablet-setup-heading">
+   <header><p className="eyebrow">Secure Windows enrolment</p><h2 id="tablet-setup-heading">Connect the restaurant tablet</h2><p>Prepare the existing protected Cal-Eats companion directly from system administration. The device must complete signed pairing itself.</p></header>
+   {!canSetup&&<p className="alert">{row.actions?.setupBlockReason||"Setup is not available for this tablet record."}</p>}
+   {!row.business?.eatsRestaurantId&&<p className="fine">A Calai-only location does not need a Cal-Eats account or companion. Its existing native Calai login, startup and printer remain separate.</p>}
+   {enrol.error&&<p className="alert" role="alert">{enrol.error}</p>}
+   {row.business?.eatsRestaurantId&&<ol className="tablet-setup-steps">
+    <li><h3>Confirm the recorded location</h3><p><strong>{row.business?.name||"No location assigned"}</strong>{row.businessId&&<small className="account-reference">{row.businessId}</small>}</p><p className="fine">Recorded serial: {row.serialNumber||"Not recorded"}. A typed serial is metadata, not proof of the connected device.</p></li>
+    <li><h3>Download the protected Windows installer</h3><p>Use the intended Windows tablet and an authorised Windows administrator. This separate companion has no printer queue consumer and does not replace Calai’s existing startup or printer setup.</p>{canSetup&&<a className="button-link" href={tabletRecordPath(row.id,"installer")}>Download Windows installer</a>}</li>
+    <li><h3>{replacing?"Prepare a deliberate tablet replacement":"Create a private one-use setup file"}</h3><p>The file expires after ten minutes. Keep it private, use it only on the intended device, and remove its downloaded copy after enrolment. A newer request invalidates the previous unused file.</p>{replacing&&<p className="tablet-boundary-note">Current registered terminal: <strong>{currentTerminalName||currentTerminalId}</strong><small className="account-reference">{currentTerminalId}</small>The current tablet is revoked only when the replacement completes signed pairing. This is not a cross-restaurant handoff or proof that old browser sessions have been cleared.</p>}{canSetup&&<form onSubmit={prepare}><label className="tablet-check"><input type="checkbox" checked={confirmed} disabled={enrol.busy} onChange={event=>setConfirmed(event.target.checked)}/><span>I confirm this setup is for {row.business?.name||"the recorded location"} and its intended physical Windows tablet.{replacing?` I explicitly authorise replacement of registered terminal ${currentTerminalId}.`:""}</span></label><button className="primary" disabled={enrol.busy||!confirmed}>{enrol.busy?"Preparing private setup…":replacing?"Download replacement setup":"Download one-use setup"}</button></form>}</li>
+    <li><h3>Pair on the tablet and verify the application</h3><p>Run the reviewed installer as a Windows administrator with the private file:</p><code className="tablet-setup-command">&amp; .\CalEats-Tablet-Setup.ps1 -EnrolmentPath '.\CalEats-Tablet-Enrolment.json'</code><p>Then open the existing business platform on that tablet and review its location, ordering-screen contact and printer observations. If Windows reports a different local registration, stop for administrator review; resetting identity metadata cannot verify a physical handoff.</p></li>
+   </ol>}
+   <dl className="tablet-facts"><div><dt>Latest one-use setup</dt><dd>{enrolmentLabels[latest?.status]||"No setup issued from this inventory record"}{latest&&<small>Issued {date(latest.issuedAt)} · Expires {date(latest.expiresAt)}{latest.consumedAt?` · Consumed ${date(latest.consumedAt)}`:""}</small>}</dd></div><div><dt>Cryptographic device registration</dt><dd>{registration?.registered?"Signed pairing completed":registration?"Registration revoked / inactive":"Not paired"}<small>{date(registration?.registeredAt)}</small></dd></div><div><dt>Companion service contact</dt><dd>{date(registration?.lastContactAt)}<small>Service contact alone does not establish an active ordering screen.</small></dd></div><div><dt>Authenticated ordering application</dt><dd>{row.application?deviceStateLabel(row.application.state):"Application status unavailable"}<small>Last application contact: {date(row.application?.lastApplicationContactAt)}</small></dd></div></dl>
+   <button className="quiet" type="button" onClick={()=>void onReload?.()}>Refresh pairing and application status</button>{watching&&<p className="fine" role="status">Waiting for current server evidence. This page refreshes while setup or collection is pending.</p>}
+  </section>
+  <section className="panel tablet-management-evidence" aria-labelledby="tablet-management-heading">
+   <header><p className="eyebrow">Read-only management evidence</p><h2 id="tablet-management-heading">Management contact and startup checks</h2></header>
+   <p>{management.configured?"The configured collector can read management records for the recorded device. Refreshing does not deliver a policy or execute a script.":"The management evidence connection is not configured. Saved startup preferences remain requests until a supported delivery integration is available."}</p>
+   {refresh.error&&<p className="alert" role="alert">{refresh.error}</p>}
+   {management.job&&<p className={management.job.status==="failed"?"alert":"tablet-boundary-note"} role="status"><strong>{refreshLabels[management.job.status]||"Collection status unavailable"}</strong> · Requested {date(management.job.requestedAt)}{management.job.finishedAt?` · Finished ${date(management.job.finishedAt)}`:""}{management.job.errorCode&&<small className="account-reference">{management.job.errorCode}</small>}</p>}
+   {management.evidence?<>{!management.evidenceMatchesCurrentRevision&&<p className="alert">This retained observation is not correlated with the current fleet revision. Refresh management evidence to check the current mapping; its earlier timestamp remains visible below.</p>}<dl className="tablet-facts"><div><dt>Observed managed identity</dt><dd>Device identity matched at collection<small>Observed management identity does not verify an application session.</small></dd></div><div><dt>Last management contact</dt><dd>{date(management.evidence.contactAt)}</dd></div><div><dt>Evidence collected</dt><dd>{date(management.evidence.collectedAt)}<small>Retained observations have their own timestamp; they are not a live connection.</small></dd></div><div><dt>Microsoft-reported script result</dt><dd>{management.executionLabel}<small>{date(management.execution?.observedAt)}</small></dd></div></dl>{management.execution&&<details><summary>Management execution reference</summary><dl className="tablet-facts"><div><dt>Script reference</dt><dd>{management.evidence.scriptRef||"Not returned"}</dd></div><div><dt>Current approved script SHA-256</dt><dd>{management.evidence.scriptSha256||"Not returned"}</dd></div><div><dt>Observed execution status</dt><dd>{management.execution.status}</dd></div><div><dt>Change reported</dt><dd>{management.execution.changed===true?"Yes":management.execution.changed===false?"No":"Not established"}</dd></div></dl></details>}</>:<p className="empty">No verified management observation has been collected for this tablet.</p>}
+   <p className="fine">The management report correlates the current approved script content and run time. It does not contain a cryptographically attested executed-payload hash. A successful management check, an offered script or “AlreadyCorrect” does not verify native sign-in, absence of popups, receipt output or physical startup. Application presence and physical checks stay separate.</p>
+   <button className="quiet" type="button" disabled={refresh.busy||row.actions?.canRefreshManagement!==true||["queued","running"].includes(management.job?.status)} onClick={()=>void collect()}>{refresh.busy?"Requesting collection…":"Refresh management evidence"}</button>{row.actions?.canRefreshManagement!==true&&<p className="fine">{row.actions?.managementBlockReason||"A supported configured collector and verified management mapping are required."}</p>}
+  </section>
+  {row.lifecycleState==="pending_handoff"&&<section className="panel tablet-handoff-boundary"><h2>Physical handoff remains quarantined</h2><p>{row.handoff?.limitation||"Supported physical sign-out and profile-cleanup evidence is required before reassignment can be completed."}</p><ul><li>Revoking a Cal-Eats terminal does not clear human browser or native Calai sessions.</li><li>A separate new profile does not establish that the old profile was cleaned.</li><li>Existing Calai / printer tenant credentials and queued receipts remain protected. Transfer to another restaurant also requires supported, separately authorised printer reprovisioning; browser cleanup alone is insufficient.</li><li>A management success result does not verify session cleanup or transfer business authority.</li></ul><p className="fine">There is no manual “cleanup done” override. No replacement setup or destination operational access is available while this handoff remains blocked.</p></section>}
+ </>;
+}

@@ -5,14 +5,17 @@ import {hasLiveBankingCredential} from './auth/password-change.js';
 import {enforcePlatformAdminAuthority} from './platform-admin.js';
 import {businessAccountState,canonicalBusinessId} from './unified-business.js';
 import {getSurfaceStatus} from './surface-monitoring.js';
-import {retireBusinessTerminal} from './business-terminals.js';
+import {retireBusinessTerminal,issueBusinessTerminalSetup} from './business-terminals.js';
+import {buildTerminalInstaller} from '../../terminal-auth/windows/build-installer.mjs';
+import {tabletManagementState,queueTabletManagementRefresh} from './tablet-management.js';
+import {assertFleetNewEnrolmentAllowed} from './tablet-fleet-policy.js';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail=(status,code,message)=>new HttpError(status,code,message);
 const noStore={'Cache-Control':'private, no-store'};
 const mappingFields={intuneManagedDeviceId:'intune_managed_device_id',entraDeviceId:'entra_device_id',startupGroupId:'startup_group_id',startupProfileId:'startup_profile_id'};
 const deliveryLimitation='Startup configuration is recorded as requested only. No supported Intune delivery or trusted Windows acknowledgement is connected.';
-const handoffLimitation='Previous browser/native sessions cannot be selectively cleared by this inventory. Keep the tablet quarantined until authorised physical sign-out and profile cleanup are verified. No handoff-completion capability is connected.';
+const handoffLimitation='Previous browser/native sessions cannot be selectively cleared by this inventory. Existing printer tenant credentials and queued receipts are also preserved, and need an authorised cleanup/rebinding procedure before cross-restaurant use. Keep the tablet quarantined until the complete physical handoff is verified. No handoff-completion capability is connected.';
 function currentAdmin(db,config,session){
  if(!session?.user?.id)throw fail(401,'AUTH_REQUIRED','Sign in to system administration.');
  if(session.principalKind==='terminal'||session.nativeAudience==='business')throw fail(403,'PLATFORM_ADMIN_REQUIRED','System administrator access is required.');
@@ -49,6 +52,21 @@ function revokeRegistration(db,row,actor,at){
  db.prepare('UPDATE business_terminal_pairings SET consumed_at=COALESCE(consumed_at,?) WHERE business_id=? AND consumed_at IS NULL').run(at,terminal.business_id);
  db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor,'business_terminal',terminal.business_id,'terminal_revoked',JSON.stringify({terminalId:terminal.id,source:'central_tablet_fleet',tabletId:row.id}),at);
 }
+function setupCapability(db,row,business){
+ const current=row.business_id&&db.prepare('SELECT id FROM business_terminals WHERE business_id=? AND revoked_at IS NULL').get(row.business_id);
+ let reason=null;
+ if(row.archived_at||row.authority_blocked_at||row.handoff_requested_at||['disabled','pending_handoff'].includes(row.lifecycle_state))reason='Tablet setup is blocked while this device is disabled or awaiting verified physical cleanup.';
+ else if(!row.business_id||!business||business.archived)reason='Associate this inventory record with its current native business first.';
+ else if(!business.eatsRestaurantId)reason='This is a Calai-only native account. Its protected native provisioning remains separate; no Cal-Eats restaurant will be created.';
+ else if(business.id!==row.business_id)reason='Reconcile the inventory with its canonical native business before issuing setup.';
+ if(!reason){try{assertFleetNewEnrolmentAllowed(db,row.business_id);}catch(error){if(error.code!=='TABLET_QUARANTINED')throw error;reason='A tablet for this location is quarantined pending complete physical session and printer-tenant cleanup.';}}
+ return{canIssueSetup:!reason,setupBlockReason:reason,currentTerminalId:current?.id??null};
+}
+function latestEnrolment(db,config,row){
+ const record=db.prepare('SELECT f.*,p.consumed_at,t.revoked_at,t.id AS paired_id FROM tablet_fleet_pairing_requests f JOIN business_terminal_pairings p ON p.terminal_id=f.terminal_id LEFT JOIN business_terminals t ON t.id=f.terminal_id WHERE f.tablet_id=? ORDER BY f.issued_at DESC,f.rowid DESC LIMIT 1').get(row.id);if(!record)return null;
+ const paired=Boolean(record.paired_id&&row.terminal_id===record.terminal_id&&!record.revoked_at),status=paired?'paired':record.consumed_at||row.revision!==record.record_revision||row.archived_at||row.authority_blocked_at?'superseded':Date.parse(record.expires_at)<=config.now().getTime()?'expired':'issued';
+ return{terminalId:record.terminal_id,issuedAt:record.issued_at,expiresAt:record.expires_at,consumedAt:record.consumed_at,status};
+}
 function dto(db,config,row,{history=false}={}){
  const state=id=>{if(!id)return null;try{return businessAccountState(db,id,{config});}catch(error){if(error.status!==404)throw error;const account=db.prepare('SELECT name FROM business_accounts WHERE id=?').get(id);return{id,name:account?.name??'Unavailable business',archived:true,products:{},eatsRestaurantId:null};}};
  const business=state(row.business_id),requestedBusiness=state(row.requested_business_id);
@@ -56,7 +74,9 @@ function dto(db,config,row,{history=false}={}){
  let application=null;
  if(business?.eatsRestaurantId&&terminal&&!terminal.revoked_at&&terminal.business_id===row.business_id){const observed=getSurfaceStatus(db,config,business.eatsRestaurantId);if(observed.tablet.terminalId===terminal.id)application=observed;}
  const request=db.prepare('SELECT * FROM tablet_configuration_requests WHERE tablet_id=? ORDER BY record_revision DESC LIMIT 1').get(row.id);
+ const management=tabletManagementState(db,config,row),actions={...setupCapability(db,row,business),canRefreshManagement:management.refreshReady&&!row.archived_at,managementBlockReason:row.archived_at?'This inventory record was superseded.':management.refreshBlockReason};
  const result={...snapshot(row),business,requestedBusiness,mapping:{...mapping(row),source:'administrator_metadata',provesHardwareIdentity:false},management:{state:'unavailable',lastContactAt:null,source:null},registration:terminal?{terminalId:terminal.id,name:terminal.name,businessId:terminal.business_id,registered:!terminal.revoked_at,registeredAt:terminal.registered_at,revokedAt:terminal.revoked_at,lastContactAt:terminal.last_contact_at}:null,application,startup:{state:request?.state??'not_requested',requestedAt:request?.requested_at??null,assignedAt:request?.assigned_at??null,offeredAt:request?.offered_at??null,receivedAt:request?.received_at??null,appliedAt:request?.applied_at??null,physicallyVerifiedAt:request?.physically_verified_at??null,appliedProduct:null,deliveryLimitation},handoff:{state:row.handoff_requested_at?'pending_physical_cleanup':'not_requested',requestedAt:row.handoff_requested_at,completionSupported:false,limitation:row.handoff_requested_at?((terminal?.revoked_at?'The linked Cal-Eats application terminal authority was revoked. ':'No linked Cal-Eats application identity can be revoked from this metadata record. ')+handoffLimitation):null},createdAt:row.created_at,updatedAt:row.updated_at};
+ result.management=management;result.actions=actions;result.latestEnrolment=latestEnrolment(db,config,row);
  if(history)result.history=db.prepare("SELECT id,actor_user_id AS actorUserId,action,details,created_at AS createdAt FROM audit_events WHERE entity_type='tablet_fleet' AND entity_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50").all(row.id).map(event=>({...event,details:JSON.parse(event.details)}));
  return result;
 }
@@ -97,6 +117,30 @@ export async function routeTabletFleet(context){
    const row=rowFor(db,id);if(product||mapped.some(Boolean))requestConfiguration(db,row,actor.id,at);audit(db,actor.id,id,'tablet_inventory_created',null,row,at);return row;
   });}catch(error){ensureUnique(error);}
   return sendJson(res,201,{data:dto(db,config,outcome,{history:true})},noStore);
+ }
+ const operation=/^\/api\/admin\/tablets\/([0-9a-f-]{36})\/(enrolment|installer|management\/refresh)$/.exec(url.pathname);
+ if(operation&&operation[2]==='installer'&&req.method==='GET'){
+  if(session.native)throw fail(403,'FLEET_WEB_ADMIN_REQUIRED','Use system-administration website for tablet installation.');
+  const row=rowFor(db,operation[1]),business=row.business_id?businessAccountState(db,row.business_id,{config}):null,capability=setupCapability(db,row,business);if(!capability.canIssueSetup)throw fail(409,'TABLET_SETUP_NOT_READY',capability.setupBlockReason);
+  const bytes=Buffer.from(buildTerminalInstaller({targetSerial:row.serial_number??''}),'utf8');currentAdmin(db,config,session);
+  res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="CalEats-Tablet-Setup.ps1"','Content-Length':bytes.length,...noStore});res.end(bytes);return true;
+ }
+ if(operation&&req.method==='POST'&&operation[2]!=='installer'){
+  const isSetup=operation[2]==='enrolment',body=await mutationBody(context,isSetup?['expectedRevision','confirmReplaceTerminalId']:['expectedRevision'],admin);
+  const outcome=withTransaction(db,()=>{
+   const actor=currentAdmin(db,config,session),row=rowFor(db,operation[1]);revision(body,row);const at=config.now().toISOString();
+   if(!isSetup){const job=queueTabletManagementRefresh(db,config,row,actor.id);audit(db,actor.id,row.id,'tablet_management_refresh_requested',row,row,at);return{job};}
+   const business=row.business_id?businessAccountState(db,row.business_id,{config}):null,capability=setupCapability(db,row,business);
+   if(!capability.canIssueSetup)throw fail(409,'TABLET_SETUP_NOT_READY',capability.setupBlockReason);
+   if(!Object.hasOwn(body,'confirmReplaceTerminalId'))throw fail(400,'TABLET_REPLACEMENT_CONFIRMATION_REQUIRED','Confirm the exact current registration, or null when no terminal is registered.');
+   const expected=optionalId(body.confirmReplaceTerminalId,'Current terminal');
+   if(expected!==capability.currentTerminalId)throw fail(409,'TABLET_REPLACEMENT_CONFIRMATION_REQUIRED','The registered tablet changed. Reload and confirm its exact identity.');
+   const enrolment=issueBusinessTerminalSetup(db,config,session,row.business_id,{replace:Boolean(expected),expectedTerminalId:expected});
+   db.prepare('INSERT INTO tablet_fleet_pairing_requests VALUES(?,?,?,?,?,?,?)').run(enrolment.terminalId,row.id,row.revision,row.business_id,actor.id,at,enrolment.expiresAt);
+   audit(db,actor.id,row.id,'tablet_central_enrolment_issued',row,row,at,'Short-lived setup only; physical signed pairing is still required.');
+   return{enrolment,installerUrl:base+'/'+row.id+'/installer',inventoryRevision:row.revision,expiresAt:enrolment.expiresAt,documentFilename:'CalEats-Tablet-Enrolment.json',targetSerial:row.serial_number,limitation:'The recorded serial is metadata, not device authentication. Run this setup on the intended Windows tablet. Replacement takes effect only after valid signed pairing; no Calai/printer/startup change is made.'};
+  });
+  return sendJson(res,isSetup?201:202,{data:outcome},noStore);
  }
  const match=/^\/api\/admin\/tablets\/([0-9a-f-]{36})(?:\/(disable|revoke|reassign|registration))?$/.exec(url.pathname);
  if(!match)return false;
