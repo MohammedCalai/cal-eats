@@ -1,6 +1,6 @@
 # Combined business workspace: implementation and release guide
 
-Status as of 22 November 2026: the Cal-Eats workspace and central system-administrator tablet fleet are deployed through PRs #6 and #7; health, integrity and data-preservation checks passed. Original Calai remains unchanged. A web deployment is not evidence of a signed mobile release, working physical printer or delivered push notification.
+Status as of 22 November 2026: the Cal-Eats workspace, central system-administrator tablet fleet and central signed enrolment follow-up are deployed through PRs #6, #7 and #8; health, integrity and data-preservation checks passed. The read-only Microsoft collector is implemented but remains disabled pending its approved connection. Original Calai remains unchanged. A web deployment is not evidence of a signed mobile release, working physical printer or delivered push notification.
 
 ## Boundaries and architecture
 
