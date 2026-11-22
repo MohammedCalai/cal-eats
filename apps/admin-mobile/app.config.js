@@ -35,14 +35,17 @@ export function createAdminAppConfig(config, env = process.env) {
   } catch {
     throw new Error('The manager Firebase configuration file is missing or invalid.');
   }
-  const clients = services.client;
-  const client = Array.isArray(clients) && clients.length === 1 ? clients[0] : null;
-  const projectNumber = services.project_info?.project_number;
+  // Google's official file can contain sibling applications from this project.
+  // Android selects its own package; never let another client stand in for it.
+  const clients = Array.isArray(services?.client) ? services.client.filter(value => value?.client_info?.android_client_info?.package_name === managerIdentifier) : [];
+  const client = clients.length === 1 ? clients[0] : null;
+  const projectNumber = services?.project_info?.project_number;
   const appId = client?.client_info?.mobilesdk_app_id;
-  if (services.project_info?.project_id !== firebaseProjectId ||
+  const hasApiKey = Array.isArray(client?.api_key) && client.api_key.some(value => typeof value?.current_key === 'string' && value.current_key.trim().length > 0);
+  if (services?.project_info?.project_id !== firebaseProjectId ||
       projectNumber !== firebaseProjectNumber ||
       client?.client_info?.android_client_info?.package_name !== managerIdentifier ||
-      appId !== firebaseAppId) {
+      appId !== firebaseAppId || !hasApiKey) {
     throw new Error('Use the Firebase Android configuration for info.calai.caleatsadmin in cal-eats-notifications, not the customer app or another sender.');
   }
   return {...config, android: {...config.android, googleServicesFile}};

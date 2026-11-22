@@ -8,7 +8,7 @@ import {createAdminAppConfig} from '../app.config.js';
 const config = JSON.parse(fs.readFileSync(new URL('../app.json', import.meta.url), 'utf8')).expo;
 const firebase = (packageName = 'info.calai.caleatsadmin', projectId = 'cal-eats-notifications') => ({
   project_info: {project_number: '267285017965', project_id: projectId},
-  client: [{client_info: {mobilesdk_app_id: '1:267285017965:android:806f06e062f0931dbb9664', android_client_info: {package_name: packageName}}}],
+  client: [{client_info: {mobilesdk_app_id: packageName === 'info.calai.caleatsadmin' ? '1:267285017965:android:806f06e062f0931dbb9664' : '1:267285017965:android:9c20cbd0e65ff71cbb9664', android_client_info: {package_name: packageName}}, api_key: [{current_key: 'TEST_ONLY_FIREBASE_CONFIGURATION_KEY'}]}],
 });
 
 function withConfigFile(value: unknown, run: (filename: string) => void) {
@@ -48,7 +48,26 @@ test('the manager Firebase file must match the registered manager package and se
     assert.deepEqual(result.extra, config.extra);
     assert.equal(config.android.googleServicesFile, undefined);
   });
-  for (const value of [firebase('uk.co.calai.caleats'), firebase('info.calai.caleatsadmin', 'unrelated-project'), {...firebase(), client: [...firebase().client, ...firebase('uk.co.calai.caleats').client]}]) {
+  for (const value of [firebase('uk.co.calai.caleats'), firebase('info.calai.caleatsadmin', 'unrelated-project'), {...firebase(), client: [...firebase().client, ...firebase().client]}]) {
+    withConfigFile(value, filename => assert.throws(() => createAdminAppConfig(config, {CAL_EATS_ADMIN_GOOGLE_SERVICES_FILE: filename}), /not the customer app or another sender/));
+  }
+});
+
+test('official sibling clients are preserved while only the exact manager registration is selected', () => {
+  const services = {...firebase(), client: [...firebase('uk.co.calai.caleats').client, ...firebase().client]};
+  withConfigFile(services, filename => {
+    const original = fs.readFileSync(filename);
+    const result = createAdminAppConfig(config, {CAL_EATS_ADMIN_GOOGLE_SERVICES_FILE: filename});
+    assert.equal(result.android.package, 'info.calai.caleatsadmin');
+    assert.equal(result.extra.eas.projectId, '6282b87e-36ae-43bb-80b7-12d69108a411');
+    assert.deepEqual(fs.readFileSync(filename), original);
+  });
+});
+
+test('the manager client must contain an API key and invalid JSON shapes fail closed', () => {
+  const missingKey = firebase();
+  missingKey.client[0]!.api_key = [];
+  for (const value of [missingKey, null, []]) {
     withConfigFile(value, filename => assert.throws(() => createAdminAppConfig(config, {CAL_EATS_ADMIN_GOOGLE_SERVICES_FILE: filename}), /not the customer app or another sender/));
   }
 });
