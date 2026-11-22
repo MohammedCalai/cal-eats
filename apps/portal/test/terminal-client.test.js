@@ -10,11 +10,11 @@ const session = (overrides = {}) => ({ principalKind: "terminal", terminalId: TE
 const response = (data, status = 200) => new Response(JSON.stringify(status < 400 ? { data } : { error: data }), { status, headers: { "content-type": "application/json" } });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 async function until(predicate) { for (let index = 0; index < 50 && !predicate(); index++) await new Promise(resolve => setImmediate(resolve)); assert.ok(predicate(), "Expected request was not made"); }
-function fixture() {
-  const calls = [], queue = [], timers = new Map(); let timer = 0, now = NOW;
-  const client = createAutomaticTerminalClient({ clock: () => now, screenIdFactory: () => SCREEN, schedule: (callback, delay) => { const id = ++timer; timers.set(id, { callback, delay }); return id; }, cancel: id => timers.delete(id), fetchImpl: (url, options) => { calls.push({ url, options }); const next = queue.shift(); if (!next) throw new Error("Unexpected request"); return typeof next === "function" ? next(url, options) : next; } });
+function fixture(overrides = {}) {
+  const calls = [], queue = [], timers = new Map(); let timer = 0, now = NOW, permission = { state: "granted" }, remembered = false;
+  const client = createAutomaticTerminalClient({ clock: () => now, screenIdFactory: () => SCREEN, permissionQuery: () => permission, discoveryHint: { read: () => remembered, write: value => { remembered = value; } }, schedule: (callback, delay) => { const id = ++timer; timers.set(id, { callback, delay }); return id; }, cancel: id => timers.delete(id), fetchImpl: (url, options) => { calls.push({ url, options }); const next = queue.shift(); if (!next) throw new Error("Unexpected request"); return typeof next === "function" ? next(url, options) : next; }, ...overrides });
   const ready = async (value = session()) => { queue.push(response(bootstrap()), response(value)); return client.connectAutomaticTerminal(); };
-  return { client, calls, queue, timers, ready, setTime: value => { now = value; } };
+  return { client, calls, queue, timers, ready, setTime: value => { now = value; }, setPermission: value => { permission = value; }, setHint: value => { remembered = value; }, hint: () => remembered };
 }
 
 test("automatic sign-in returns a scoped safe identity and keeps all transport secrets in its closure", async () => {
@@ -30,7 +30,7 @@ test("automatic sign-in returns a scoped safe identity and keeps all transport s
   assert.equal(f.calls[1].url, "http://127.0.0.1:17864/v1/automatic-session");
   assert.deepEqual(JSON.parse(f.calls[1].options.body), { screenId: SCREEN });
   assert.equal(f.calls[1].options.headers["X-Calai-Terminal-CSRF"], CSRF);
-  for (const { options } of f.calls) { assert.equal(options.credentials, "omit"); assert.equal(options.redirect, "error"); assert.equal(options.cache, "no-store"); assert.equal(options.mode, "cors"); assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers.Cookie, undefined); }
+  for (const { options } of f.calls) { assert.equal(options.credentials, "omit"); assert.equal(options.redirect, "error"); assert.equal(options.cache, "no-store"); assert.equal(options.mode, "cors"); assert.equal(options.targetAddressSpace, "loopback"); assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers.Cookie, undefined); }
   assert.equal(f.client.terminalStatus().status, "ready");
   context.products.calai.active = false; assert.equal(f.client.terminalStatus().context.products.calai.active, true);
   assert.equal(f.timers.size, 0);
@@ -69,10 +69,10 @@ test("body/header validation rejects credential leaks, raw uploads, invalid JSON
   assert.equal(f.calls.length, 2); assert.equal(f.client.terminalStatus().status, "ready");
 });
 
-test("missing broker, unpaired tablet, offline cloud and revoked tablet are distinct states without a human fallback", async () => {
+test("unreachable connection, unpaired tablet, offline cloud and revoked tablet are distinct without claiming missing software", async () => {
   const f = fixture(); f.queue.push(() => Promise.reject(new TypeError("Connection refused")));
   await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === "TERMINAL_LOCAL_UNAVAILABLE" && error.retryable);
-  assert.equal(f.client.terminalStatus().status, "not_installed");
+  assert.equal(f.client.terminalStatus().status, "connection_unavailable");
   f.queue.push(response(bootstrap(false)));
   await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === "TABLET_NOT_ENROLLED");
   assert.equal(f.client.terminalStatus().status, "unpaired"); assert.equal(f.calls.length, 2);
@@ -178,4 +178,118 @@ test("oversized or non-JSON broker responses cannot leave an authenticated conte
     await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === "TERMINAL_LOCAL_INVALID");
     assert.equal(f.client.terminalStatus().context, null); assert.equal(f.timers.size, 0);
   }
+});
+
+test("automatic startup does not prompt or contact loopback for prompt, denied or unsupported permissions", async () => {
+  for (const state of ["prompt", "denied", "unknown"]) {
+    const f = fixture(); f.setPermission({ state });
+    if (state !== "unknown") f.setHint(true);
+    await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === (state === "denied" ? "TERMINAL_PERMISSION_DENIED" : "TERMINAL_PERMISSION_REQUIRED"));
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.client.terminalStatus().context, null);
+    assert.equal(f.client.terminalStatus().status, state === "denied" ? "permission_denied" : "permission_required");
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test("trusted connection starts the actual fetch before any permission query and still validates the native identity", async () => {
+  const permission = deferred(); let queries = 0;
+  const f = fixture({ permissionQuery: () => { queries++; return permission.promise; } });
+  f.queue.push(response(bootstrap()), response(session()));
+  const opening = f.client.connectAutomaticTerminal({ userInitiated: true });
+  assert.equal(f.calls.length, 1, "The first fetch must happen in the caller's click stack");
+  assert.equal(queries, 0, "No asynchronous permission lookup may precede the prompting fetch");
+  await until(() => queries === 1);
+  assert.equal(f.client.terminalStatus().context, null);
+  permission.resolve({ state: "granted" });
+  await opening;
+  assert.equal(f.client.terminalStatus().status, "ready");
+  assert.equal(f.hint(), true);
+});
+
+test("denied permission can be rechecked on the same page without treating permission as terminal authority", async () => {
+  const f = fixture(); f.setPermission({ state: "denied" });
+  await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === "TERMINAL_PERMISSION_DENIED");
+  f.setPermission({ state: "granted" });
+  assert.equal(await f.client.recheckLoopbackPermission(), "granted");
+  assert.equal(f.client.terminalStatus().status, "unchecked");
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(f.calls.length, 0);
+  await f.ready();
+  assert.equal(f.calls.length, 2);
+});
+
+test("a fresh signed connection alone can persist a discovery-only compatibility hint for unsupported browsers", async () => {
+  let remembered = false;
+  const discoveryHint = { read: () => remembered, write: value => { remembered = value; } };
+  const f = fixture({ permissionQuery: () => ({ state: "unknown" }), discoveryHint });
+  f.queue.push(response(bootstrap()), response(session()));
+  await f.client.connectAutomaticTerminal({ userInitiated: true });
+  assert.equal(remembered, true);
+  const restarted = fixture({ permissionQuery: () => ({ state: "unknown" }), discoveryHint });
+  await restarted.ready();
+  assert.equal(restarted.client.terminalStatus().status, "ready");
+  restarted.client.disconnectLocalTerminal();
+  assert.equal(remembered, false, "Explicit local sign-out must clear the compatibility hint");
+  remembered = true;
+  const forged = fixture({ permissionQuery: () => ({ state: "unknown" }), discoveryHint });
+  forged.queue.push(response(bootstrap()), response(session({ principalKind: "human", user: { id: ACTOR, role: "admin", name: "Ordinary login" } })));
+  await assert.rejects(forged.client.connectAutomaticTerminal(), error => error.code === "TERMINAL_LOCAL_INVALID");
+  assert.equal(forged.client.terminalStatus().context, null);
+  assert.equal(remembered, false);
+});
+
+test("a failed compatibility probe clears its hint and cannot create a permission-prompt retry loop", async () => {
+  const f = fixture(); f.setPermission({ state: "unknown" }); f.setHint(true);
+  f.queue.push(() => Promise.reject(new TypeError("Synthetic inaccessible transport")));
+  await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === "TERMINAL_LOCAL_UNAVAILABLE");
+  assert.equal(f.hint(), false);
+  assert.equal(f.client.terminalStatus().status, "connection_unavailable");
+  await assert.rejects(f.client.connectAutomaticTerminal(), error => error.code === "TERMINAL_PERMISSION_REQUIRED");
+  assert.equal(f.calls.length, 1);
+});
+
+test("permission revocation clears live proofs; granting it again never marks the tablet ready by itself", async () => {
+  const permission = Object.assign(new EventTarget(), { state: "granted" });
+  const f = fixture({ permissionQuery: () => permission });
+  await f.ready();
+  const snapshots = []; const unsubscribe = f.client.subscribe(value => snapshots.push(value));
+  permission.state = "denied"; permission.dispatchEvent(new Event("change"));
+  assert.equal(f.client.terminalStatus().status, "permission_denied");
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(f.hint(), false);
+  await assert.rejects(f.client.terminalApi("/api/auth/me"), error => error.code === "TERMINAL_SESSION_REQUIRED");
+  permission.state = "granted"; permission.dispatchEvent(new Event("change"));
+  assert.equal(f.client.terminalStatus().status, "unchecked");
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(f.calls.length, 2);
+  assert.ok(!snapshots.some(value => value.permission === "denied" && value.context));
+  assert.ok(!JSON.stringify(snapshots).includes(WINDOW));
+  unsubscribe();
+  await f.ready();
+});
+
+test("a stalled permission query times out without a loopback request or an authenticated context", async () => {
+  const f = fixture({ permissionQuery: () => new Promise(() => {}) });
+  const opening = f.client.connectAutomaticTerminal(); opening.catch(() => {});
+  await until(() => f.timers.size === 1);
+  [...f.timers.values()][0].callback();
+  await assert.rejects(opening, error => error.code === "TERMINAL_PERMISSION_REQUIRED");
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(f.timers.size, 0);
+});
+
+test("the sign-out latch can forget discovery immediately without destroying proof needed for signed logout", async () => {
+  const f = fixture(); await f.ready();
+  assert.equal(f.hint(), true);
+  f.client.clearDiscoveryHint();
+  assert.equal(f.hint(), false);
+  assert.equal(f.client.terminalStatus().status, "ready");
+  f.queue.push(response({ state: "signed_out" }));
+  await f.client.terminalApi(`/api/business/accounts/${BUSINESS}/surface/heartbeat`, { method: "POST", body: { sequence: 1, state: "signed_out" } });
+  assert.equal(f.calls.at(-1).options.headers["X-Calai-Terminal-Window"], WINDOW);
+  f.client.disconnectLocalTerminal();
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(f.hint(), false);
 });

@@ -16,7 +16,9 @@ Status as of 22 November 2026: the Cal-Eats workspace, central system-administra
 
 The protected Calai baseline and asset candidate are documented in `CALAI_FRONTEND_INTEGRATION_BOUNDARY.md`. Original Calai source and deployment remain untouched. The candidate changes only the business frontend and preserves native settings/forms/login/startup and native actions. Protected backend, host, runtime, authentication, database, printer/configuration, billing and deployment settings are not altered.
 
-The reviewed frontend patch, sanitized manifest and protected hashes are in the [tracked review package](../integration/calai-business-frontend/README.md). Additional ignored local evidence remains under `artifacts/calai-business-frontend-20261122/`. Current remote source is not verified, and no supported existing assets-only deployment/rollback route has been established. The existing container release rebuilds/replaces services. Do not run it, copy into its containers, add a new pipeline or change protected headers to publish this feature.
+The reviewed frontend patch, sanitized manifest and protected hashes are in the [tracked review package](../integration/calai-business-frontend/README.md). Authenticated GitHub inspection now verifies main at `dec58e32f9fffff16ffc5409a4ba3369193ad68c`, matching the immutable archive and all 314 source files. The actual production commit behind `calai.info` remains unproven. The updated candidate includes exact-origin iframe autoplay/loopback delegation; ten focused tests and its full isolated 14.17-second build pass. Actual Surface permission, sound and receiving checks remain pending.
+
+No established assets-only publication/rollback route for actual `calai.info` is available. The inspected existing Vercel project lists only `calai-platform.vercel.app`; its latest main deployment is Blocked by contributor/private-repository plan restrictions. It does not establish the route for the actual nginx-served Calai host, and no Vercel setting was changed. Additional ignored evidence remains under `artifacts/calai-business-frontend-20261122/`. The existing container release rebuilds/replaces services. Do not run it, copy into its containers, change DNS or protected headers, add a pipeline, or change authors/accounts/plans to publish this feature.
 
 The new Cal-Eats read adapter excludes native GET call-summary and current-subscription endpoints because source inspection found that those reads can write native records. Calls, native settings and statements link to existing native workflows. No replacement statement backend is fabricated. Source authentication/refresh occurs only in the existing permitted native workflow and uses encrypted integration credentials in Cal-Eats.
 
@@ -54,12 +56,20 @@ Prerequisites: supported 64-bit Windows, administrator/SYSTEM installation autho
    ```
 
 5. The SYSTEM companion creates an ECDSA P-256 Windows machine key with export disabled and verified SYSTEM/administrator access controls, then signs the server challenge. Current production adapter uses the Windows software key provider; TPM hardware attestation is not claimed. Browser sessions never receive that key or the companion's terminal grant.
-6. Open the existing Cal-Eats business address on that Surface. Permit its scoped local-network browser prompt if required. Successful signed discovery and actual order-receive checks establish the application session. A background companion heartbeat, printer service, phone login or login page cannot make the Surface online.
+6. Open the existing Cal-Eats business address on that Surface. If **Restaurant tablet connection** appears, press **Connect tablet** inside the Cal-Eats workspace and permit its scoped loopback/local-network browser prompt if required. Successful signed discovery and actual order-receive checks establish the application session. A background companion heartbeat, printer service, phone login or login page cannot make the Surface online.
 7. Confirm the correct location, current application contact and operational controls. Physical key protection, browser permission, restart/recovery and receipt output still need a real Surface acceptance check before production rollout.
 
 Alternatively, a secured system administrator can select the exact record in **Tablets**, download its serial-limited installer and issue the same one-use setup document there. Prepare the companion before starting the ten-minute expiry. The central flow confirms the exact existing terminal before a replacement and signed pairing binds the registration to that inventory record. Metadata edits invalidate unfinished setup; a serial guard prevents accidental installation but does not replace the protected signing key. Do not issue Cal-Eats setup for a Calai-only location.
 
 The local companion listens on loopback only, validates the exact approved Origin/Host and per-process CSRF/window proof, constrains methods/paths, signs request bodies, and rejects stale/replayed requests. It does not expose a general signing proxy or arbitrary URL forwarding. Browser process reconnection retries are bounded; uncertain operational writes are never automatically replayed.
+
+### Browser connection recovery
+
+The connection panel is available on Windows at sign-in and in the owner workspace. A blocked permission is distinguished from an unreachable connection; neither proves that software is missing. Use the address-bar site permissions and then **Check permission again**. In the embedded workspace, the permission belongs to the containing `calai.info` site. A permission recheck does not perform an order action or register a tablet.
+
+The deliberate **Connect tablet** click starts discovery before any cloud read or permission-query wait. This same interaction lets existing Cal-Eats business audio handlers prepare sound; it adds no test-sound feature or audio guarantee. Browsers that cannot report granular loopback permission may remember only a non-secret successful-discovery hint, allowing one automatic discovery attempt after restart. Every successful connection still needs fresh signed device proof. A blocked/unreachable connection or logout clears the hint; blocked browser storage can require another deliberate connection. A copied hint, phone login or permission grant conveys no terminal authority.
+
+First-use/denied permission, embedded audio, sleep/wake and actual receiving still require the physical Surface check. No browser security policy or Calai printing configuration is changed by this recovery interface.
 
 ### Replacement, logout and revocation
 
@@ -85,7 +95,7 @@ The existing manager app retains its identity and can build for iOS/Android. Add
 3. Apply migrations through the existing Cal-Eats migration runner in a dedicated test deployment first. Verify all original-column snapshots/foreign keys, own app routes, authorised source reads and the signed-terminal flow there. Configure monitoring/push only in Cal-Eats.
 4. Coordinate physical Surface enrolment and a safe operational rollout before activating the stricter production order-action boundary. Deploying it against an unprepared current ordering browser would intentionally deny that browser's operational actions. There is no insecure remote-acceptance fallback.
 5. Release the existing manager app with its unchanged identifiers only once the corresponding API/credentials are ready. Run the real Surface/physical-printer/phone notification acceptance checklist without creating real calls/payments for this change.
-6. Release the permitted Calai frontend only when its exact current baseline and an existing isolated asset deployment/rollback mechanism are verified. Until then, retain the reviewable patch; do not use the protected full-container deployment.
+6. GitHub main and the immutable Calai baseline are verified. Release the permitted frontend only after production asset provenance and the existing isolated publication/rollback mechanism for actual `calai.info` are established. Until then, retain the tested review package; do not use the protected full-container deployment, DNS or another domain as a workaround.
 
 Rollback uses the normal scoped Cal-Eats application release and a verified backup when required. Do not downgrade to an older server that restores ordinary-browser acceptance, drop financial tables, reverse payments, delete associations or touch Calai to hide a failed integration. An old backup cannot be used to resurrect a revoked device or push token. If no safe backward-compatible release is available, keep the feature branch out of production and resolve the dependency first.
 
@@ -95,7 +105,7 @@ Local checks cover source allowlist semantics, one-use linking/races, separate n
 
 Exact remaining release dependencies:
 
-1. Current original Calai source confirmation and an already-supported frontend-assets-only release/rollback route.
+1. Production Calai asset provenance and the established frontend-assets-only release/rollback route for actual `calai.info`. Current GitHub main/source verification is complete; the separate Vercel project and its blocked deployment do not establish that route.
 2. Actual Surface installation/key/browser-permission and app lifecycle check; coordinated replacement of the existing ordinary ordering session.
 3. Verified isolated shared-printer arrangement and actual hardware diagnostics/output. Paper/cover capability is currently unsupported, not secretly simulated.
 4. Apple company-transition clearance, manager-specific iOS signing/App Store Connect record and TestFlight build; physical Android installation, navigation and foreground/background/locked-phone notification checks. The official Android SDK configuration, existing signing/FCM connection, verified internal APK and Android-only backend sender are complete. Customer credentials are unchanged. See `apps/admin-mobile/NATIVE_PUSH_SETUP.md` for the install links and exact remaining steps.

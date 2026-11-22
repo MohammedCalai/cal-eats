@@ -13,11 +13,12 @@ The full candidate and additional ignored local evidence remain under
 `artifacts/calai-business-frontend-20261122/`. The candidate extends the existing
 Calai React/Vite business application. It does not create a replacement portal.
 
-**Tested:** eight isolated message-model checks, JSX parsing of five modified or
+**Tested:** ten isolated protocol/permission checks, JSX parsing of five modified or
 new JSX files, patch applicability, exact changed-path allowlisting and protected
 frontend byte comparisons. The complete candidate also passed its existing
-`vite build` in a separate ignored artifact copy after a pinned
-`npm ci --ignore-scripts` from the official npm registry. No deployment script,
+`vite build` in a separate ignored artifact copy, reusing the pinned
+`npm ci --ignore-scripts` installation from the official npm registry. The updated
+permission candidate built in 14.17 seconds. No deployment script,
 protected host operation, original backend or provider operation was executed.
 The original 314-file source snapshot was compared with its downloaded archive:
 zero byte differences. These checks are not an authenticated two-product Surface
@@ -33,8 +34,11 @@ The read-only source is `calai-operation/calai-platform` at
 `dec58e32f9fffff16ffc5409a4ba3369193ad68c`, downloaded on 15 November. Archive
 SHA-256:
 `ac0b3631c40d60e5f3728a021b77ad31c9182cd824be2cd6076e614fc89aa69d`.
-Current-main reads through both available GitHub connections returned 404;
-this pinned snapshot must not be presented as verified current production source.
+Authenticated GitHub inspection on 22 November verified that `main` still points
+to this exact commit. The immutable archive EOCD/comment and all 314 source
+snapshot files match. Source access is therefore resolved. The commit actually
+serving `calai.info` remains unproven; verified GitHub main is not proof of the
+production deployment.
 
 Native Calai is React/Vite under `frontend/`, with Express/Prisma/PostgreSQL under
 `backend/`. The business startup address remains
@@ -118,6 +122,23 @@ without a valid child update the host labels the integration unavailable; this
 display freshness rule does not replace server-side Surface monitoring or alter
 Cal-Eats enablement/availability.
 
+The persistent iframe delegates autoplay and companion loopback permission only
+to `https://eats.calai.info`. Where the browser reports support for the granular
+`loopback-network` feature, it receives that feature without modern LAN access.
+Older managed Edge receives its documented combined `local-network-access`
+fallback. No wildcard origin, sandbox expansion, top navigation, parent-header
+change or kiosk-policy change is introduced. [Microsoft iframe guidance](https://learn.microsoft.com/en-us/deployedge/ms-edge-local-network-access),
+[Chrome loopback guidance](https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access)
+and [Chrome autoplay guidance](https://developer.chrome.com/blog/autoplay) describe
+these browser requirements.
+
+Delegation does not itself grant the user's browser permission, activate audio,
+pair a terminal or establish application presence. Parent navigation messages are
+not user gestures. Actual first-use permission, blocked-permission recovery,
+message/order sound, background receiving, sleep/wake and printer output still
+need the real Surface check. The companion continues accepting only its exact
+Cal-Eats origin, process CSRF/window proof and authorised signed requests.
+
 ## Native authentication and statements
 
 Existing Calai login and refresh endpoints check current active user status.
@@ -190,12 +211,27 @@ Read-only unauthenticated checks on 22 November returned:
 | --- | --- |
 | `https://calai.info/owner/dashboard` | 200 HTML, no CSP, CSP-Report-Only, X-Frame-Options, COOP, COEP or CORP response header |
 | `https://calai.info/auth/login` | 200 HTML with the same observed header absence |
-| `https://eats.calai.info/business/embedded` before this release | 404 JSON, `frame-ancestors 'none'` and `X-Frame-Options: DENY` |
+| `https://eats.calai.info/business/embedded` | 200 HTML, `frame-ancestors https://calai.info`, no conflicting X-Frame-Options header |
+| `https://eats.calai.info/business/owner/dashboard` | Normal owner route retains `frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 
-These probes do not authenticate or execute the application and do not certify
-the current host configuration. The Cal-Eats release must serve the dedicated
-embedded HTML route with the exact authorised Calai frame ancestor and without a
-conflicting DENY header. Calai CSP/proxy/firewall/CORS settings are not changed.
+These probes do not authenticate or execute the application, establish its
+production source commit or verify physical browser behaviour. The dedicated
+Cal-Eats HTML entry now permits the exact authorised Calai parent; other owner
+pages remain protected against framing. No Calai header change is needed for
+this direct parent/child arrangement. Calai CSP/proxy/firewall/CORS settings are
+unchanged.
+
+Read-only inspection found an existing Vercel project for
+`calai-operation/calai-platform`, rooted at `frontend`, using Vite and Node 24.
+Its Domains page lists only `calai-platform.vercel.app` as Production, not
+`calai.info`. Its latest main deployment, `99THchaG5ezTNWj9EfpibocxuExe`, is
+**Blocked**, dated 7 November, at the verified `dec58e32...` commit. Vercel states
+that commit author `NKRifat47` lacks contributing access and that Hobby
+private-repository collaboration requires Pro. This is an observed existing
+project restriction, not permission to change the author, account or plan.
+No redeploy, upgrade, domain, authentication or project-setting change was made.
+The actual `calai.info` host reports `nginx/1.31.3`; the inspected Vercel project
+does not establish a release or rollback route for that host.
 
 The source Docker Compose setup defines a separate frontend service, but its
 Dockerfile copies `dist` inside a frontend nginx image. The documented normal
@@ -204,13 +240,14 @@ migrations. That release is forbidden for this task. A frontend-only Compose
 replacement could technically avoid backend dependencies, but still changes a
 protected Calai container and is not treated as an authorised assets-only route.
 
-**Exact Calai release dependency:** establish the current authorised frontend
-source baseline and an already-supported static-asset publication/rollback route
-that changes only frontend assets, without replacing protected containers,
+**Exact Calai release dependency:** verify the production asset provenance and
+the already-supported static-asset publication/rollback route for the actual
+`calai.info` host. GitHub main and the immutable source baseline are verified.
+The remaining route must change only frontend assets, without replacing protected containers,
 restarting/redeploying the backend, changing host/proxy settings or modifying the
 deployment pipeline. No such verified route is available from the inspected
-source/accounts. Do not invent `docker cp`, host mounts, a new Vercel deployment
-or pipeline modifications as a workaround.
+source/accounts. Do not use `docker cp`, host mounts, DNS changes, a new deployment
+pipeline or another Vercel domain as a workaround.
 
 Once that route is established, check patch applicability against current source,
 review only the seven allowlisted frontend paths, build in an authorised
@@ -224,20 +261,26 @@ rollback restores operational databases or changes native accounts/history.
 From the Cal-Eats workspace, run:
 
 ```text
-node artifacts/calai-business-frontend-20261122/verify-frontend.mjs
+node artifacts/calai-business-frontend-20261122/verify-iframe-permissions.mjs
 ```
 
-The verification produces `manifest.json`, `model-test-results.txt` and the
-applicable `calai-business-frontend.patch`. `original-source-boundary.json`
-records the separate 314-file archive comparison. None of these checks deploys
-or executes the original Calai application.
+The existing local verification helper checks the exact seven changed paths,
+all protected frontend bytes, JSX parsing and ten focused tests, and produces
+`iframe-permission-review.json`, `iframe-permission-tests.log` and the applicable
+`calai-business-frontend.permissions.patch`. Patch applicability uses an explicit
+baseline directory so no hunk is silently excluded by the current Git directory.
+The reviewed patch and sanitized result are retained in the tracked integration
+package. `original-source-boundary.json` records the separate 314-file archive
+comparison. These artifact helpers are local evidence, not files included in a
+fresh clone. None of these checks deploys or executes the original application.
 
 The complete candidate build ran only in `build-check/`, copied from the
 candidate with its unchanged baseline package manifests and Vite configuration.
 Its inspected build script is only `vite build`. Dependency lifecycle scripts
 were disabled during installation, and every locked dependency URL used
-`registry.npmjs.org`. `build-check-result.json` records the commands, successful
-result, preserved manifest hashes and generated asset hashes. The 40.90-second
-build completed successfully; the largest JavaScript chunk is approximately
+`registry.npmjs.org`. The current `iframe-permission-review.json` records the
+successful build, preserved manifest hashes and generated asset hashes; the
+prior build record remains historical evidence. The updated 14.17-second build
+completed successfully; the largest JavaScript chunk is approximately
 2.17 MB before gzip. No configuration or chunking change was introduced to hide
 that warning.

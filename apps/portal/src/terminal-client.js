@@ -1,3 +1,5 @@
+import { loopbackPermissionState, queryLoopbackPermission, tabletDiscoveryHint } from "./loopback-permission.js";
+
 const LOCAL_ORIGIN = "http://127.0.0.1:17864";
 const PRODUCT = "calai-business-terminal";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -119,24 +121,72 @@ async function readJson(response) {
   try { return JSON.parse(text); } catch { throw failure("The tablet connection returned invalid JSON.", 502, "TERMINAL_LOCAL_INVALID"); }
 }
 
-export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalThis.fetch(...args), clock = Date.now, screenIdFactory = () => globalThis.crypto.randomUUID(), timeoutMs = 10000, schedule = setTimeout, cancel = clearTimeout } = {}) {
+export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalThis.fetch(...args), clock = Date.now, screenIdFactory = () => globalThis.crypto.randomUUID(), timeoutMs = 10000, permissionTimeoutMs = 1000, permissionQuery = queryLoopbackPermission, discoveryHint = tabletDiscoveryHint, schedule = setTimeout, cancel = clearTimeout } = {}) {
   let generation = 0, csrfToken = null, windowProof = null, context = null, currentScreenId = null, connecting = null;
-  let state = { status: "unchecked", terminalId: null, paired: null, errorCode: null };
-  const requests = new Set();
+  let state = { status: "unchecked", terminalId: null, paired: null, errorCode: null, permission: "unknown" };
+  let localAccessObserved = false, permissionBinding = null;
+  const requests = new Set(), listeners = new Set();
+  function publish(next) { state = { ...state, ...next }; for (const listener of listeners) listener(terminalStatus()); }
+  function hint(enabled) { try { discoveryHint.write(enabled); } catch { /* Discovery hints never grant authority. */ } }
+  function hinted() { try { return discoveryHint.read() === true; } catch { return false; } }
+  const permissionFailure = permission => failure(permission === "denied" ? "Browser permission for this tablet connection is blocked. Review this site's permissions, then check again." : "Connect this tablet to allow its local ordering connection.", 403, permission === "denied" ? "TERMINAL_PERMISSION_DENIED" : "TERMINAL_PERMISSION_REQUIRED");
   function invalidate(status, code = null) {
     generation++; csrfToken = null; windowProof = null; context = null;
     for (const controller of requests) controller.abort(changed());
-    state = { ...state, status, errorCode: code };
+    publish({ status, errorCode: code });
   }
   const assertCurrent = expected => { if (expected !== generation) throw changed(); };
+  function observePermission(value) {
+    const permission = loopbackPermissionState(value);
+    if (permissionBinding?.value !== value) {
+      permissionBinding?.value.removeEventListener?.("change", permissionBinding.listener);
+      permissionBinding = null;
+      if (typeof value?.addEventListener === "function") {
+        const listener = () => {
+          if (permissionBinding?.value !== value) return;
+          const next = loopbackPermissionState(value);
+          if (next !== "granted") {
+            state = { ...state, permission: next };
+            localAccessObserved = false; hint(false);
+            invalidate(next === "denied" ? "permission_denied" : "permission_required", permissionFailure(next).code);
+          } else publish({ permission: next, ...(["permission_denied", "permission_required"].includes(state.status) ? { status: "unchecked", errorCode: null } : {}) });
+        };
+        value.addEventListener("change", listener);
+        permissionBinding = { value, listener };
+      }
+    }
+    publish({ permission });
+    return permission;
+  }
+  async function readPermission({ signal, expected = generation } = {}) {
+    let timer;
+    const query = Promise.resolve().then(permissionQuery).catch(() => ({ state: "unknown" }));
+    const bounded = Promise.race([query, new Promise(resolve => { timer = schedule(() => resolve({ state: "unknown" }), permissionTimeoutMs); })]);
+    try {
+      const value = await waitForCaller(bounded, signal);
+      assertCurrent(expected);
+      return observePermission(value);
+    } finally { cancel(timer); }
+  }
+  async function recheckLoopbackPermission({ signal } = {}) {
+    const permission = await readPermission({ signal });
+    if (permission === "denied" || permission !== "granted" && !localAccessObserved) {
+      localAccessObserved = false;
+      if (permission === "denied") hint(false);
+      invalidate(permission === "denied" ? "permission_denied" : "permission_required", permissionFailure(permission).code);
+    } else if (["permission_denied", "permission_required"].includes(state.status)) publish({ status: "unchecked", errorCode: null });
+    return permission;
+  }
   function failed(error, stage, expected) {
     if (expected !== generation || error.code === "TERMINAL_CONTEXT_CHANGED") return;
     if (error.code === "TERMINAL_ABORTED") { invalidate("unchecked", error.code); return; }
     const revoked = /(?:TABLET|TERMINAL)_(?:REVOKED|DISABLED)/.test(error.code || "");
     const unpaired = /(?:TABLET_NOT_ENROLLED|TERMINAL_NOT_PAIRED)/.test(error.code || "");
-    const missing = stage === "bootstrap" && state.paired !== true && error.code === "TERMINAL_LOCAL_UNAVAILABLE";
-    invalidate(revoked ? "revoked" : unpaired ? "unpaired" : missing ? "not_installed" : "offline", error.code);
-    if (unpaired) state.paired = false;
+    const permission = error.code === "TERMINAL_PERMISSION_DENIED" ? "permission_denied" : error.code === "TERMINAL_PERMISSION_REQUIRED" ? "permission_required" : null;
+    const unavailable = error.code === "TERMINAL_LOCAL_UNAVAILABLE";
+    if (revoked || unpaired || unavailable || permission === "permission_denied" || permission === "permission_required" && state.permission === "prompt" || ["TERMINAL_LOCAL_INVALID", "TERMINAL_TIMEOUT"].includes(error.code)) { localAccessObserved = false; hint(false); }
+    invalidate(permission || (revoked ? "revoked" : unpaired ? "unpaired" : unavailable ? "connection_unavailable" : "offline"), error.code);
+    if (unpaired) publish({ paired: false });
   }
   async function local(route, body, { expected, signal, proof = null, csrf = csrfToken } = {}) {
     assertCurrent(expected);
@@ -150,7 +200,7 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     const work = (async () => {
       let response;
       try {
-        response = await fetchImpl(`${LOCAL_ORIGIN}${route}`, { method: body === undefined ? "GET" : "POST", mode: "cors", credentials: "omit", cache: "no-store", redirect: "error", signal: controller.signal, headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json", "X-Calai-Terminal-CSRF": csrf, ...(proof ? { "X-Calai-Terminal-Window": proof } : {}) }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+        response = await fetchImpl(`${LOCAL_ORIGIN}${route}`, { method: body === undefined ? "GET" : "POST", mode: "cors", targetAddressSpace: "loopback", credentials: "omit", cache: "no-store", redirect: "error", signal: controller.signal, headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json", "X-Calai-Terminal-CSRF": csrf, ...(proof ? { "X-Calai-Terminal-Window": proof } : {}) }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       } catch (error) { if (controller.signal.aborted) throw controller.signal.reason; throw failure("The local restaurant tablet connection is unavailable.", 0, "TERMINAL_LOCAL_UNAVAILABLE", true); }
       assertCurrent(expected); if (controller.signal.aborted) throw controller.signal.reason;
       const result = await readJson(response);
@@ -161,31 +211,48 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     try { return await Promise.race([work, abortPromise]); }
     finally { cancel(timer); requests.delete(controller); signal?.removeEventListener("abort", externalAbort); controller.signal.removeEventListener("abort", abortListener); }
   }
-  function connectAutomaticTerminal({ signal, screenId } = {}) {
+  function connectAutomaticTerminal({ signal, screenId, userInitiated = false } = {}) {
     const selectedScreen = screenId || currentScreenId || screenIdFactory();
     if (!UUID.test(selectedScreen)) return Promise.reject(failure("The tablet screen identifier is invalid.", 400, "TERMINAL_SCREEN_INVALID"));
     if (signal?.aborted) return Promise.reject(aborted());
-    if (connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted) return connecting.signal === signal ? connecting.promise : waitForCaller(connecting.promise, signal);
+    if (connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted && !(userInitiated && !connecting.userInitiated)) return connecting.signal === signal ? connecting.promise : waitForCaller(connecting.promise, signal);
     if (windowProof && state.status === "ready" && currentScreenId === selectedScreen && Date.parse(context.expiresAt) > clock() + RENEW_BEFORE_MS) return Promise.resolve(clone(context));
     invalidate("connecting"); currentScreenId = selectedScreen;
-    const expected = generation, attempt = { screenId: selectedScreen, signal, promise: null };
+    const expected = generation, attempt = { screenId: selectedScreen, signal, userInitiated, promise: null };
     attempt.promise = (async () => {
-      let stage = "bootstrap";
+      let stage = "permission";
       try {
+        if (!userInitiated) {
+          const permission = await readPermission({ signal, expected });
+          if (permission === "denied" || permission !== "granted" && !(permission === "unknown" && (localAccessObserved || hinted()))) throw permissionFailure(permission);
+        }
+        // The trusted Connect path reaches fetch synchronously, before querying
+        // permissions or reading a cloud session consumes transient activation.
+        stage = "bootstrap";
         const bootstrap = await local("/v1/bootstrap", undefined, { expected, signal });
         assertCurrent(expected);
         if (!plain(bootstrap) || bootstrap.product !== PRODUCT || !PROOF.test(bootstrap.csrfToken) || typeof bootstrap.paired !== "boolean" || bootstrap.terminalId !== undefined && bootstrap.terminalId !== null && !UUID.test(bootstrap.terminalId)) throw failure("Update the restaurant tablet connection.", 502, "TERMINAL_LOCAL_INVALID");
-        state = { ...state, terminalId: bootstrap.terminalId || null, paired: bootstrap.paired };
+        localAccessObserved = true;
+        publish({ terminalId: bootstrap.terminalId || null, paired: bootstrap.paired });
         if (!bootstrap.paired) throw failure("Register this restaurant tablet once before using automatic sign-in.", 403, "TABLET_NOT_ENROLLED");
         csrfToken = bootstrap.csrfToken; stage = "session";
         const result = await local("/v1/automatic-session", { screenId: selectedScreen }, { expected, signal });
         assertCurrent(expected);
         const safe = safeContext(result, selectedScreen, clock());
         if (!PROOF.test(result.windowProof) || safe.terminalId !== bootstrap.terminalId) throw failure("The restaurant tablet identity could not be verified.", 502, "TERMINAL_LOCAL_INVALID");
+        if (userInitiated && await readPermission({ signal, expected }) === "denied") throw permissionFailure("denied");
+        assertCurrent(expected);
         context = safe; windowProof = result.windowProof;
-        state = { status: "ready", paired: true, terminalId: safe.terminalId, errorCode: null };
+        hint(true);
+        publish({ status: "ready", paired: true, terminalId: safe.terminalId, errorCode: null });
         return clone(context);
-      } catch (error) { failed(error, stage, expected); throw error; }
+      } catch (error) {
+        if (error.code === "TERMINAL_LOCAL_UNAVAILABLE" && expected === generation) {
+          try { if (await readPermission({ signal, expected }) === "denied") error = permissionFailure("denied"); }
+          catch (changedError) { error = changedError; }
+        }
+        failed(error, stage, expected); throw error;
+      }
       finally { if (connecting === attempt) connecting = null; }
     })();
     connecting = attempt; return attempt.promise;
@@ -201,9 +268,11 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
       throw error;
     }
   }
-  function disconnectLocalTerminal() { invalidate("unchecked"); connecting = null; }
+  function disconnectLocalTerminal() { localAccessObserved = false; hint(false); invalidate("unchecked"); connecting = null; }
+  function clearDiscoveryHint() { hint(false); }
   function terminalStatus() { return { ...state, context: clone(context), expiresAt: context?.expiresAt || null }; }
-  return { connectAutomaticTerminal, terminalApi, disconnectLocalTerminal, terminalStatus };
+  function subscribe(listener) { listeners.add(listener); listener(terminalStatus()); return () => listeners.delete(listener); }
+  return { connectAutomaticTerminal, terminalApi, disconnectLocalTerminal, terminalStatus, recheckLoopbackPermission, clearDiscoveryHint, subscribe };
 }
 
 const automatic = createAutomaticTerminalClient();
@@ -211,4 +280,7 @@ export const connectAutomaticTerminal = options => automatic.connectAutomaticTer
 export const terminalApi = (path, options) => automatic.terminalApi(path, options);
 export const disconnectLocalTerminal = () => automatic.disconnectLocalTerminal();
 export const terminalStatus = () => automatic.terminalStatus();
+export const recheckLoopbackPermission = options => automatic.recheckLoopbackPermission(options);
+export const subscribeTerminalStatus = listener => automatic.subscribe(listener);
+export const clearTabletDiscoveryHint = () => automatic.clearDiscoveryHint();
 export const terminalCanRequest = (path,method='GET') => {const state=automatic.terminalStatus();return state.status==='ready'&&state.context&&allowedPath(path,String(method).toUpperCase(),state.context);};
