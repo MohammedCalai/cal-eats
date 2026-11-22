@@ -80,7 +80,10 @@ test("Windows managed installation produces the reviewed source without executin
     const configPath = path.join(directory, "download.json"), setupPath = path.join(directory, "setup.json");
     await fs.writeFile(configPath, JSON.stringify(configuration));
     await fs.writeFile(setupPath, JSON.stringify({ schemaVersion: 1, product: "cal-eats", printerId: "11111111-1111-4111-8111-111111111111", restaurantId: "22222222-2222-4222-8222-222222222222", code: "synthetic-setup-code", expiresAt: "2099-01-01T00:00:00Z" }));
-    const installed = await promisify(execFile)(path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/powershell.exe"), ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("../windows/connect-shared-calai.ps1", import.meta.url)), "-ConfigPath", configPath, "-SetupPath", setupPath, "-CalaiBridgePath", native, "-NodePath", path.join(process.env.ProgramFiles, "nodejs/node.exe")], { timeout: 20000, env: { ...process.env, PSModulePath: [path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/Modules"), path.join(process.env.ProgramFiles, "WindowsPowerShell/Modules")].join(";") } });
+    // Fresh Windows CI runners can take more than twenty seconds to load the
+    // signing-trust and ScheduledTasks components. Keep the child bounded while
+    // retaining the real synthetic installation and all preservation checks.
+    const installed = await promisify(execFile)(path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/powershell.exe"), ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("../windows/connect-shared-calai.ps1", import.meta.url)), "-ConfigPath", configPath, "-SetupPath", setupPath, "-CalaiBridgePath", native, "-NodePath", path.join(process.env.ProgramFiles, "nodejs/node.exe")], { timeout: 60000, windowsHide: true, env: { ...process.env, PSModulePath: [path.join(process.env.WINDIR, "System32/WindowsPowerShell/v1.0/Modules"), path.join(process.env.ProgramFiles, "WindowsPowerShell/Modules")].join(";") } });
     assert.match(installed.stdout, /True/);
     assert.equal(await fs.readFile(native, "utf8"), patchCalaiBridge(source));
     assert.equal(await fs.readFile(`${native}.before-cal-eats`, "utf8"), source);
