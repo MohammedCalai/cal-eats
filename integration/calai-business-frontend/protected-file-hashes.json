@@ -3,7 +3,13 @@
     "repository": "calai-operation/calai-platform",
     "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c",
     "archiveSha256": "ac0b3631c40d60e5f3728a021b77ad31c9182cd824be2cd6076e614fc89aa69d",
-    "currentMainVerified": false
+    "currentMainVerified": true,
+    "currentMainVerification": {
+      "date": "2026-11-22",
+      "method": "Authenticated GitHub main commit link; immutable archive EOCD/comment and all 314 snapshot files matched",
+      "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c"
+    },
+    "productionCommitVerified": false
   },
   "algorithm": "SHA-256",
   "unchangedCandidateFrontendFiles": [

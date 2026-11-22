@@ -1,13 +1,13 @@
 diff --git a/frontend/src/components/cal-eats/CalEatsWorkspace.jsx b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
 new file mode 100644
-index 0000000..5e23441
+index 0000000..3a1f685
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,130 @@
 +import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 +import { Link, useLocation } from 'react-router-dom';
 +import useAuth from '../../hooks/useAuth';
-+import { CAL_EATS_ORIGIN, CAL_EATS_EMBED, workspaceStateFromMessage, navigateWorkspaceMessage, workspaceViewForPath, workspacePath, displayOrderCount, surfaceStateLabel } from './workspace-model.mjs';
++import { CAL_EATS_ORIGIN, CAL_EATS_EMBED, workspaceStateFromMessage, navigateWorkspaceMessage, workspaceViewForPath, workspacePath, displayOrderCount, surfaceStateLabel, workspaceIframeAllow } from './workspace-model.mjs';
 +
 +const Workspace = createContext(null);
 +const panelStyle = { border: '1px solid #2a3b57', background: '#142033', borderRadius: 16, padding: 20, color: '#edf5ff' };
@@ -106,6 +106,14 @@ index 0000000..5e23441
 +
 +export function CalEatsWorkspaceSurface({ children }) {
 +  const current = useContext(Workspace);
++  const iframeAllow = useMemo(() => {
++    try {
++      const policy = document.permissionsPolicy?.features ? document.permissionsPolicy : document.featurePolicy;
++      return workspaceIframeAllow(policy?.features?.());
++    } catch {
++      return workspaceIframeAllow();
++    }
++  }, []);
 +  if (!current?.owner) return children;
 +  const { identity, frameRef, state, connection, desiredView, sendView } = current;
 +  const visible = Boolean(desiredView);
@@ -122,21 +130,28 @@ index 0000000..5e23441
 +      {connection === 'connected' && !state?.combined && <p role="status" style={{ ...smallStyle, marginTop: 10 }}>Review the administrator permission, account connection and outstanding setup tasks below. Connection permission alone does not mean the restaurant can receive Cal-Eats orders.</p>}
 +    </section>}
 +    <div style={visible ? { width: '100%', minHeight: 620, height: 'calc(100vh - 250px)' } : { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }} aria-hidden={!visible}>
-+      <iframe key={identity} ref={frameRef} src={CAL_EATS_EMBED} title="Cal-Eats business workspace" tabIndex={visible ? 0 : -1} referrerPolicy="strict-origin" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox" onLoad={() => sendView(safeView || 'accounts')} onError={() => { /* The connection timeout reports unavailable without touching native Calai. */ }} style={{ display: 'block', width: '100%', height: '100%', border: '1px solid #294769', borderRadius: 14, background: '#101722' }} />
++      <iframe key={identity} ref={frameRef} src={CAL_EATS_EMBED} allow={iframeAllow} title="Cal-Eats business workspace" tabIndex={visible ? 0 : -1} referrerPolicy="strict-origin" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox" onLoad={() => sendView(safeView || 'accounts')} onError={() => { /* The connection timeout reports unavailable without touching native Calai. */ }} style={{ display: 'block', width: '100%', height: '100%', border: '1px solid #294769', borderRadius: 14, background: '#101722' }} />
 +    </div>
 +  </>;
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.mjs b/frontend/src/components/cal-eats/workspace-model.mjs
 new file mode 100644
-index 0000000..d0827d9
+index 0000000..2dc2e9f
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.mjs
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,68 @@
 +export const CAL_EATS_ORIGIN = 'https://eats.calai.info';
 +export const CAL_EATS_EMBED = CAL_EATS_ORIGIN + '/business/embedded';
 +export const WORKSPACE_STATE = 'cal-eats-workspace:state';
 +export const WORKSPACE_NAVIGATE = 'cal-eats-workspace:navigate';
 +export const WORKSPACE_VIEWS = Object.freeze(['dashboard', 'orders', 'payouts', 'menu', 'accounts', 'devices']);
++// A modern browser can delegate loopback without also granting LAN access.
++// Older managed Edge uses its documented combined Local Network Access token.
++// Delegation is limited to this child origin; it never authorises a terminal.
++export function workspaceIframeAllow(supportedFeatures = []) {
++  const loopbackFeature = Array.isArray(supportedFeatures) && supportedFeatures.includes('loopback-network') ? 'loopback-network' : 'local-network-access';
++  return `autoplay ${CAL_EATS_ORIGIN}; ${loopbackFeature} ${CAL_EATS_ORIGIN}`;
++}
 +const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 +const isId = value => typeof value === 'string' && UUID.test(value);
 +const plain = value => Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype);
@@ -195,17 +210,36 @@ index 0000000..d0827d9
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.test.mjs b/frontend/src/components/cal-eats/workspace-model.test.mjs
 new file mode 100644
-index 0000000..8bcf918
+index 0000000..afcec27
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.test.mjs
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,83 @@
 +import assert from 'node:assert/strict';
 +import test from 'node:test';
-+import { CAL_EATS_ORIGIN, WORKSPACE_STATE, workspaceStateFromMessage, navigateWorkspaceMessage, workspaceViewForPath, workspacePath, displayOrderCount, surfaceStateLabel } from './workspace-model.mjs';
++import {readFileSync} from 'node:fs';
++import { CAL_EATS_ORIGIN, WORKSPACE_STATE, workspaceStateFromMessage, navigateWorkspaceMessage, workspaceViewForPath, workspacePath, displayOrderCount, surfaceStateLabel, workspaceIframeAllow } from './workspace-model.mjs';
 +const id = digit => `${digit.repeat(8)}-${digit.repeat(4)}-4${digit.repeat(3)}-8${digit.repeat(3)}-${digit.repeat(12)}`;
 +const source = {}, nativeUser = { id: id('1'), businessId: id('2'), role: 'BUSINESS_OWNER' };
 +function data() { return { type: WORKSPACE_STATE, version: 1, authenticated: true, business: { id: id('3'), name: 'Independent restaurant' }, products: { calai: { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active', sourceAccountId: nativeUser.businessId, verifiedSourceUserId: nativeUser.id }, 'cal-eats': { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active' } }, counters: { calai: { today: 4, available: true }, 'cal-eats': { today: 6, available: true } }, capabilities: { viewOrders: true, viewPayouts: false, manageMenu: false, viewDevices: true }, surface: { state: 'online' } }; }
 +const event = value => ({ origin: CAL_EATS_ORIGIN, source, data: value });
++
++test('iframe permissions grant only the fixed child origin and prefer loopback without modern LAN access', () => {
++  const modern = workspaceIframeAllow(['autoplay', 'local-network-access', 'local-network', 'loopback-network']);
++  assert.equal(modern, 'autoplay https://eats.calai.info; loopback-network https://eats.calai.info');
++  assert.equal(modern.includes('local-network'), false);
++  for (const features of [undefined, null, [], ['autoplay', 'local-network-access'], ['loopback-network https://attacker.invalid', '*']]) {
++    assert.equal(workspaceIframeAllow(features), 'autoplay https://eats.calai.info; local-network-access https://eats.calai.info');
++  }
++  assert.equal(workspaceIframeAllow(['loopback-network', '*', 'camera', 'microphone', 'https://attacker.invalid']), modern);
++});
++
++test('the actual persistent iframe applies bounded permission delegation without changing sandbox or authentication', () => {
++  const component = readFileSync(new URL('./CalEatsWorkspace.jsx', import.meta.url), 'utf8');
++  assert.match(component, /<iframe[^>]*src=\{CAL_EATS_EMBED\}[^>]*allow=\{iframeAllow\}/);
++  assert.match(component, /workspaceIframeAllow\(policy\?\.features\?\.\(\)\)/);
++  assert.match(component, /sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"/);
++  assert.doesNotMatch(component, /allow-top-navigation|allow="[^"\n]*\*|Cookies\.(?:set|remove)|localStorage\.(?:setItem|removeItem|clear)|Authorization|fetch\(/);
++});
 +test('only exact child origin, frame and protocol can supply a workspace state', () => {
 +  assert.equal(workspaceStateFromMessage(event(data()), source, nativeUser).combined, true);
 +  assert.equal(workspaceStateFromMessage({ ...event(data()), origin: CAL_EATS_ORIGIN + '.evil.invalid' }, source, nativeUser), null);

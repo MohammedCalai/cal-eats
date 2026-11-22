@@ -4,27 +4,33 @@
     "repository": "calai-operation/calai-platform",
     "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c",
     "archiveSha256": "ac0b3631c40d60e5f3728a021b77ad31c9182cd824be2cd6076e614fc89aa69d",
-    "currentMainVerified": false
+    "currentMainVerified": true,
+    "currentMainVerification": {
+      "date": "2026-11-22",
+      "method": "Authenticated GitHub main commit link; immutable archive EOCD/comment and all 314 snapshot files matched",
+      "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c"
+    },
+    "productionCommitVerified": false
   },
   "patch": {
     "path": "calai-business-frontend.patch",
-    "sha256": "9eb5d64c6ef9c1b4433488c738166a4d15f4c6d48bc98d10b56accc08a015da8",
-    "bytes": 27989,
+    "sha256": "cf70edf43291412c90e6de99c418f3c64df4b96c9f2fb029a4a8b48eb58e6569",
+    "bytes": 30456,
     "changedFiles": [
       {
         "path": "frontend/src/components/cal-eats/CalEatsWorkspace.jsx",
         "beforeSha256": null,
-        "afterSha256": "407dd6e2e3fded9599ac0f301a90ca62849e6a79206e848e001ef194f60cd747"
+        "afterSha256": "c78fb62282d4b84cb08c9fa01e2fa6d9bee5a2e21f511558d122ff696e84729e"
       },
       {
         "path": "frontend/src/components/cal-eats/workspace-model.mjs",
         "beforeSha256": null,
-        "afterSha256": "6bde4a91e44665e9aead861d98ddba6c1dbd2fca9e394b8934b83ea047bb419e"
+        "afterSha256": "a13498f0eb2e4e614445f2656195bb0f8c156ca5d60c8c43c1e94450dc635ee3"
       },
       {
         "path": "frontend/src/components/cal-eats/workspace-model.test.mjs",
         "beforeSha256": null,
-        "afterSha256": "64e94b87b56cf141c2922130e5315ff5e5f3a29de8378725a9edf1cdb6fcf5bd"
+        "afterSha256": "e9f412aefeb8ab31ade392c2ceb253695c4da7403419320f641a70a0cbc894ee"
       },
       {
         "path": "frontend/src/components/layout/Sidebar.jsx",
@@ -58,7 +64,7 @@
   },
   "verification": {
     "messageModelTests": {
-      "passed": 8,
+      "passed": 10,
       "failed": 0
     },
     "jsxFilesParsed": 5,
@@ -67,11 +73,18 @@
     "originalArchiveUnchanged": true,
     "fullIsolatedCandidateBuild": {
       "success": true,
-      "buildSeconds": 40.9,
+      "buildSeconds": 14.17,
       "commands": [
-        "npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/",
         "npm run build"
       ],
+      "dependencyPreparation": {
+        "reusedExistingIsolatedInstall": true,
+        "originalInstallCommand": "npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/",
+        "dependencyLifecycleScriptsEnabled": false,
+        "lockedDependencyRegistryHosts": [
+          "registry.npmjs.org"
+        ]
+      },
       "dependencyLifecycleScriptsEnabled": false,
       "dependencyRegistryHosts": [
         "registry.npmjs.org"
@@ -106,14 +119,14 @@
           "sha256": "b18ea1707da1e2c2ea46cfd6dfd6e1778cf9640e3d9be5c1fb8e2a421f63dbca"
         },
         {
-          "path": "dist/assets/index-CTtwOA0F.js",
-          "bytes": 2171750,
-          "sha256": "0e2a102977e461c0ff84ab0d4cc66a8fb0f9304557e9d09fc416c0150f9644d5"
+          "path": "dist/assets/index-DIaszMwF.js",
+          "bytes": 2172085,
+          "sha256": "b9b0be9e24675f2ba7f9a82289a4211f5bcfddb53d5556ad0f3442defbb09fe1"
         },
         {
-          "path": "dist/assets/index.es-DmI9oiQz.js",
+          "path": "dist/assets/index.es-BdU2thPT.js",
           "bytes": 158791,
-          "sha256": "86441534eacfbe13b5fb08343fca0066757b99895449e4f6214cead7ac8512dd"
+          "sha256": "562a3224caad1ae14d9dc40a02e1ab89f2d4baf256cd3158cbba5bdf5a150812"
         },
         {
           "path": "dist/assets/purify.es-DfZ_cBTv.js",
@@ -138,7 +151,7 @@
         {
           "path": "dist/index.html",
           "bytes": 758,
-          "sha256": "b56d6a859dabd38783fea87cce603629fe8cfe3ee0f5ed56e6ca5d7ec15a97f5"
+          "sha256": "46fc6c83a27b54874e709ade3e373ea11a997be7495890474cb0e0994e4ed8a5"
         },
         {
           "path": "dist/logo.png",
@@ -167,8 +180,40 @@
         }
       ],
       "warnings": [
-        "Vite large-chunk warning: main JavaScript chunk 2171.75 kB before gzip; existing configuration retained."
+        "Existing Vite large-chunk warning; main JavaScript approximately 2.17 MB before gzip."
       ]
+    },
+    "patchApplyTarget": "Explicit baseline directory under the Cal-Eats workspace",
+    "iframePermissions": {
+      "exactChildOrigin": "https://eats.calai.info",
+      "modernFeatures": [
+        "autoplay",
+        "loopback-network"
+      ],
+      "legacyFeatures": [
+        "autoplay",
+        "local-network-access"
+      ],
+      "wildcardOrigins": false,
+      "modernLanPermissionGranted": false,
+      "sandboxChanged": false,
+      "calaiHeadersOrKioskPoliciesChanged": false,
+      "physicalSurfaceVerified": false,
+      "primaryReferences": [
+        "https://learn.microsoft.com/en-us/deployedge/ms-edge-local-network-access",
+        "https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access",
+        "https://developer.chrome.com/blog/autoplay"
+      ]
+    },
+    "liveEatsEmbeddingHeaders": {
+      "date": "2026-11-22",
+      "embeddedStatus": 200,
+      "frameAncestors": [
+        "https://calai.info"
+      ],
+      "embeddedXFrameOptions": null,
+      "normalOwnerXFrameOptions": "DENY",
+      "calaiHeaderChangesNeeded": false
     }
   },
   "releaseStatus": {
@@ -176,8 +221,33 @@
     "deployed": false,
     "originalSourceEdited": false,
     "originalBackendExecuted": false,
-    "currentRemoteHeadVerified": false,
-    "blocker": "Verify the current authorised Calai frontend baseline and an already-supported assets-only publication/rollback route that changes no protected host, container, backend, runtime, proxy or deployment configuration."
+    "currentRemoteHeadVerified": true,
+    "blocker": "GitHub main is verified. The established frontend-assets-only publication/rollback route for actual https://calai.info remains unverified; do not use protected containers, DNS, host/proxy changes or a new pipeline as a workaround.",
+    "productionSourceCommitVerified": false,
+    "existingVercelProject": {
+      "repository": "calai-operation/calai-platform",
+      "rootDirectory": "frontend",
+      "framework": "Vite",
+      "nodeVersion": "24",
+      "productionDomains": [
+        "calai-platform.vercel.app"
+      ],
+      "calaiInfoDomainPresent": false,
+      "latestMainDeployment": {
+        "id": "99THchaG5ezTNWj9EfpibocxuExe",
+        "date": "2026-11-07",
+        "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c",
+        "status": "Blocked",
+        "reason": "Commit author NKRifat47 lacks contributing access; Vercel reports that Hobby private-repository collaboration requires Pro."
+      },
+      "deploymentOrAccountChangesPerformed": false
+    },
+    "actualCalaiHost": {
+      "origin": "https://calai.info",
+      "observedServer": "nginx/1.31.3",
+      "productionCommitVerified": false,
+      "assetOnlyPublishAndRollbackVerified": false
+    }
   },
   "localEvidenceDirectory": "artifacts/calai-business-frontend-20261122/"
 }

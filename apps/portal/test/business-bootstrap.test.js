@@ -77,3 +77,43 @@ test("only a successful explicit human sign-in can release the same-page logout 
   assert.equal(verified.length,1);assert.equal(verified[0].afterSignIn,true);assert.equal(verified[0].terminalContext.principalKind,"terminal");
   assert.ok(f.sessions.filter(value=>value.user).every(value=>value.user===human));f.controller.stop();
 });
+
+test("manual Connect invokes the local request synchronously before cloud reads and preserves the human principal", async()=>{
+  const order=[],human={id:"existing-owner",role:"restaurant"};let finish,verified=0;
+  const f=fixture({readHuman:async()=>{order.push("cloud");return{user:human};},connectTerminal:options=>{order.push("local");assert.equal(options.userInitiated,true);return new Promise(resolve=>{finish=()=>{f.setStatus({status:"ready",paired:true,context:terminalResult()});resolve();};});},onTerminal:()=>{verified++;}});
+  const opening=f.controller.connectFromInteraction();
+  assert.deepEqual(order,["local"]);
+  finish();await opening;
+  assert.deepEqual(order,["local","cloud"]);
+  assert.equal(verified,1);
+  assert.equal(f.sessions.at(-1).user,human);
+  assert.ok(f.principals.every(value=>value==="human"));
+  f.controller.stop();
+});
+
+test("logout cancels a pending manual connection and its late result cannot publish or retry a session", async()=>{
+  let finish,connections=0;const f=fixture({connectTerminal:()=>{connections++;return new Promise(resolve=>{finish=()=>{f.setStatus({status:"ready",paired:true,context:terminalResult()});resolve();};});}});
+  const opening=f.controller.connectFromInteraction();
+  f.controller.signOut();finish();await opening;
+  assert.equal(f.sessions.length,0);assert.equal(f.timers.size,0);
+  await assert.rejects(f.controller.connectFromInteraction(),error=>error.code==="TERMINAL_SIGN_IN_REQUIRED");
+  assert.equal(connections,1);
+});
+
+test("permission-required and denied states do not retry automatically even for a previously paired tablet", async()=>{
+  for(const status of["permission_required","permission_denied"]){
+    const f=fixture({connectTerminal:async()=>{throw Object.assign(Error("Browser permission required"),{status:403,code:status==="permission_denied"?"TERMINAL_PERMISSION_DENIED":"TERMINAL_PERMISSION_REQUIRED"});}});
+    f.setStatus({status,paired:true});await f.controller.refresh();
+    assert.equal(f.timers.size,0);assert.equal(f.principals.includes("terminal"),false);f.controller.stop();
+  }
+});
+
+test("logout forgets discovery synchronously before an asynchronous server sign-out can start", async()=>{
+  const events=[];
+  const f=fixture({onSignOut:()=>events.push("forget-discovery")});
+  f.controller.signOut();
+  assert.deepEqual(events,["forget-discovery"]);
+  assert.equal(f.controller.isSuspended(),true);
+  await assert.rejects(f.controller.connectFromInteraction(),error=>error.code==="TERMINAL_SIGN_IN_REQUIRED");
+  assert.equal(f.calls.length,0);
+});
