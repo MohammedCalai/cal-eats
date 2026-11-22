@@ -1,6 +1,6 @@
 # Combined business workspace: implementation and release guide
 
-Status as of 22 November 2026: the Cal-Eats workspace, central system-administrator tablet fleet and central signed enrolment follow-up are deployed through PRs #6, #7 and #8; health, integrity and data-preservation checks passed. The read-only Microsoft collector is implemented but remains disabled pending its approved connection. Original Calai remains unchanged. A web deployment is not evidence of a signed mobile release, working physical printer or delivered push notification.
+Status as of 22 November 2026: the Cal-Eats workspace, central system-administrator tablet fleet and central signed enrolment follow-up are deployed through PRs #6, #7 and #8; health, integrity and data-preservation checks passed. PR #9 completes the official manager Android configuration guard. One signed internal Android APK is ready, and the separately approved Microsoft read-only connection and Android-only manager sender are active. Original Calai remains unchanged. Physical Surface/printer/phone checks and manager iOS/TestFlight remain outstanding; an APK or web deployment does not prove those outcomes.
 
 ## Boundaries and architecture
 
@@ -98,8 +98,8 @@ Exact remaining release dependencies:
 1. Current original Calai source confirmation and an already-supported frontend-assets-only release/rollback route.
 2. Actual Surface installation/key/browser-permission and app lifecycle check; coordinated replacement of the existing ordinary ordering session.
 3. Verified isolated shared-printer arrangement and actual hardware diagnostics/output. Paper/cover capability is currently unsupported, not secretly simulated.
-4. Manager-app official Firebase SDK configuration file, APNs/Apple account transition, signed distribution build and physical foreground/background/locked-phone delivery. The existing manager Expo Android credential is now associated with the existing approved FCM key; customer credentials are unchanged. See `apps/admin-mobile/NATIVE_PUSH_SETUP.md` for the remaining exact prerequisites.
+4. Apple company-transition clearance, manager-specific iOS signing/App Store Connect record and TestFlight build; physical Android installation, navigation and foreground/background/locked-phone notification checks. The official Android SDK configuration, existing signing/FCM connection, verified internal APK and Android-only backend sender are complete. Customer credentials are unchanged. See `apps/admin-mobile/NATIVE_PUSH_SETUP.md` for the install links and exact remaining steps.
 5. Deployment sizing and throughput verification for large simultaneous outages; bounded local tests do not establish a 10,000-restaurant alert-delivery SLA.
-6. Dedicated Microsoft certificate identity and read-only consent to activate the implemented collector. Remote startup delivery and cross-restaurant physical cleanup/rebinding remain separate unsupported operations; the read-only collector cannot perform them. See `TABLET_MANAGEMENT_CONNECTION.md`.
+6. Authenticated administrator mapping of the actual pilot/fleet records, plus the separate supported mechanism for remote startup delivery and cross-restaurant physical cleanup/rebinding. The dedicated Microsoft read-only certificate connection is active and verified; it cannot perform Windows writes or physical cleanup. See `TABLET_MANAGEMENT_CONNECTION.md`.
 
 Final command results and local screenshots are recorded in the verification report next to this guide. Implemented, locally tested and deployed must remain separate statuses.
