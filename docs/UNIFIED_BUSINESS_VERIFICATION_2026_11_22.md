@@ -13,6 +13,15 @@
 
 The production backup was also migrated in a private local copy from schema 66 to the new fleet schema 71: all original-column values in 146 tables and all 34 orders were preserved, with foreign-key/integrity checks passing (38 ms). This copy test did not modify production.
 
+## Central fleet follow-up verification
+
+- Eight new fleet/migration full-router checks passed, including current/revoked administrator access after awaited work, native read-only access, cross-location/alias quarantine, delayed pairing, revocation, optimistic revision conflicts, same-business registration reconciliation and unsupported acknowledgement rejection.
+- Forty-nine existing terminal, Surface, unified-policy and broker checks passed after the new guards. These overlap previous coverage and are not an additional unique system-wide count.
+- The final portal suite passed 143 tests and its production build passed. Manager tests passed 14 checks, including a forged numeric Firebase sender with the correct textual project name and a wrong manager app registration.
+- Actual isolated browser UAT used fresh synthetic local records only: paginated 24-record inventory, search, Calai-only location without an Eats account, alias/startup request, explicit unassignment/quarantine with an unchanged old location/history, and new record creation. Device receipt/application/physical states remained unconfirmed; unbound inventory never claimed that an application key or Calai session had been revoked.
+- UAT caught and fixed disappearing save feedback. The final browser check confirmed the saved message remains visible after the record revision/form refresh; creating a record also leaves visible confirmation.
+- The fleet detail page had no horizontal page overflow at 768×1024 and 390×844. The temporary viewport override was reset. Screenshots are under `artifacts/tablet-fleet-local-portrait-20261122.png` and `artifacts/tablet-fleet-local-phone-20261122.png`; these are synthetic UI evidence, not physical Surface or phone tests.
+
 ## Checks actually run
 
 | Check | Result |
