@@ -48,6 +48,12 @@
           "enableBackgroundRecording": false,
           "enableBackgroundPlayback": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "cal-eats-business-incidents"
+        }
       ]
     ],
     "extra": {

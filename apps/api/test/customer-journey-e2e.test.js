@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
@@ -45,11 +46,11 @@ test("native customer discovery, owner-priced delivery, order chat, CRM reply an
     assert.ok((await customer(messageRoute)).body.data.items.some(row => row.message.includes("Our driver")));
     assert.equal((await f.json(messageRoute, { cookie: otherOwner })).status, 404);
     const eta = "2026-01-01T02:00:00.000Z";
-    const confirmed = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted", estimatedReadyAt: eta } });
+    const confirmed = await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH",  body: { status: "accepted", estimatedReadyAt: eta } });
     assert.equal(confirmed.status, 200, confirmed.text); assert.equal(confirmed.body.data.customerEtaAt, eta);
     await f.json(`${root}/delivery`, { method: "PATCH", cookie: owner, body: { ...delivery, deliveryFeeMinor: 350 } });
     assert.equal((await customer(`/api/orders/${order.id}`)).body.data.deliveryFeeMinor, 275);
-    for (const status of ["preparing", "ready", "out_for_delivery", "completed"]) assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status } })).status, 200);
+    for (const status of ["preparing", "ready", "out_for_delivery", "completed"]) assert.equal((await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH",  body: { status } })).status, 200);
     await customer("/api/account/marketing-preferences", { method: "PATCH", body: { inAppPromotions: true, pushPromotions: false, source: "journey-test" } });
     const conversation = await f.json(`${root}/customers/${order.customerId}/conversation`, { method: "POST", cookie: owner, headers: { "Idempotency-Key": "journey-follow-up" }, body: { message: "How was your meal? We can help here." } });
     assert.equal(conversation.status, 201, conversation.text);
@@ -67,7 +68,7 @@ test("native customer discovery, owner-priced delivery, order chat, CRM reply an
     assert.equal(quote.status, 200, quote.text); assert.equal(quote.body.data.restaurantDiscountMinor, 145); assert.equal(quote.body.data.totalMinor, 1305);
     const redemption = await customer("/api/orders", { method: "POST", headers: { "Idempotency-Key": "journey-offer-order" }, body: { ...quoteBody, paymentMethod: "mock_card" } });
     assert.equal(redemption.status, 201, redemption.text);
-    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await f.json(`/api/restaurant/orders/${redemption.body.data.id}/status`, { method: "PATCH", cookie: owner, body: { status } })).status, 200);
+    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await tabletJson(f, owner, `/api/restaurant/orders/${redemption.body.data.id}/status`, { method: "PATCH",  body: { status } })).status, 200);
     assert.equal((await customer("/api/offers")).body.data.find(row => row.id === offer.id).status, "redeemed");
     assert.ok((await customer("/api/orders/quote", { method: "POST", body: quoteBody })).status >= 400);
     assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length, 0);

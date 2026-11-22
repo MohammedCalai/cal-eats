@@ -16,7 +16,7 @@ export function assertHostedPreviewSafe(db, config) {
   if (db.prepare(`SELECT 1 FROM users WHERE email IN (${placeholders}) LIMIT 1`).get(...DEMO_ACCOUNTS.map((account) => account.email))) throw new Error("Hosted preview refuses a database containing reserved demo accounts");
 }
 
-export async function seedDemoData(db, now = new Date(), { runMode = "local" } = {}) {
+export async function seedDemoData(db, now = new Date(), { runMode = "local", businessProducts = true } = {}) {
   if (runMode !== "local") throw new Error("Demo seed is available only in local mode");
   const timestamp = now.toISOString();
   for (const account of DEMO_ACCOUNTS) {
@@ -32,7 +32,7 @@ export async function seedDemoData(db, now = new Date(), { runMode = "local" } =
       if (!membership) withTransaction(db, () => {
         const restaurantId = randomUUID();
         db.prepare("INSERT INTO restaurants(id,name,status,created_at,delivery_enabled,delivery_outcodes,delivery_fee_minor,min_delivery_subtotal_minor) VALUES(?,?,?,?,?,?,?,?)").run(restaurantId, account.restaurant.name, account.restaurant.status, timestamp, 1, JSON.stringify(["LU1", "LU2"]), 250, 1000);
-        db.prepare("UPDATE restaurants SET description=?,cuisine=?,address=?,always_open=1 WHERE id=?").run("Fictional local demo restaurant", "Demo food", "Fictional address, Luton", restaurantId);
+        db.prepare("UPDATE restaurants SET description=?,cuisine=?,address=?,phone=?,always_open=1 WHERE id=?").run("Fictional local demo restaurant", "Demo food", "Fictional address, Luton", "01632 960001", restaurantId);
         db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at) VALUES(?,?,?)").run(restaurantId, user.id, timestamp);
         db.prepare("INSERT INTO contracts VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(), restaurantId, 700, 24, "demo-v1", 1, timestamp, user.id, timestamp);
         if (account.restaurant.status === "approved") {
@@ -42,6 +42,7 @@ export async function seedDemoData(db, now = new Date(), { runMode = "local" } =
       });
       else {
         const existing = db.prepare("SELECT * FROM restaurants WHERE id=?").get(membership.restaurant_id);
+        if (!existing.phone?.trim()) db.prepare("UPDATE restaurants SET phone=? WHERE id=?").run("01632 960001", existing.id);
         if (existing.delivery_outcodes === JSON.stringify(["N1", "N2"]) && existing.delivery_fee_minor === 250 && existing.min_delivery_subtotal_minor === 1000) {
           db.prepare("UPDATE restaurants SET delivery_outcodes=? WHERE id=?").run(JSON.stringify(["LU1", "LU2"]), membership.restaurant_id);
         }
@@ -68,5 +69,17 @@ export async function seedDemoData(db, now = new Date(), { runMode = "local" } =
     ["notifications", "mock", 1, "Local outbox sink only"],
     ["printing", "mock", 1, "Browser handoff records only"]
   ]) db.prepare("INSERT OR IGNORE INTO integration_status VALUES(?,?,?,?,?,?)").run(randomUUID(), ...integration, timestamp);
+  // Local fixtures explicitly authorise their synthetic merchants; this never runs in hosted mode.
+  // Restrict this to the two reserved demo owners. Running a local seed must
+  // never enable an unrelated merchant or overwrite an existing admin choice.
+  if(businessProducts&&db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='business_product_permissions'").get()){
+    for(const restaurant of db.prepare("SELECT DISTINCT r.id,r.name,r.created_at FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id JOIN users u ON u.id=m.user_id WHERE u.email IN ('restaurant@calai.local','restaurant2@calai.local')").all()){
+      const businessId=db.prepare("SELECT business_id FROM business_product_links WHERE product='cal-eats' AND restaurant_id=?").get(restaurant.id)?.business_id??restaurant.id;
+      db.prepare('INSERT OR IGNORE INTO business_accounts(id,name,created_at,updated_at) VALUES(?,?,?,?)').run(businessId,restaurant.name,timestamp,timestamp);
+      db.prepare("INSERT OR IGNORE INTO business_product_links(id,business_id,product,source_account_id,restaurant_id,status,created_at,updated_at) VALUES(?,?,'cal-eats',?,?,'active',?,?)").run(restaurant.id,businessId,restaurant.id,restaurant.id,timestamp,timestamp);
+      db.prepare("INSERT OR IGNORE INTO business_account_memberships(business_id,user_id,permission,created_at,membership_source) SELECT ?,user_id,permission,created_at,'cal-eats' FROM restaurant_memberships WHERE restaurant_id=?").run(businessId,restaurant.id);
+      for(const product of ['calai','cal-eats'])db.prepare('INSERT OR IGNORE INTO business_product_permissions(business_id,product,allowed,changed_at) VALUES(?,?,?,?)').run(businessId,product,product==='cal-eats'?1:0,timestamp);
+    }
+  }
   return { accounts: DEMO_ACCOUNTS.length };
 }

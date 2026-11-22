@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
+import {tabletJson} from "./registered-tablet-fixture.js";
 import { runOrderConfirmationAlerts } from "../src/order-confirmation.js";
 import { runCustomerTransactionalEmails } from "../src/customer-emails.js";
 
@@ -39,8 +40,8 @@ test("business/admin HTTP acceptance crosses menu, offer, delivery, escalation, 
     await runOrderConfirmationAlerts(f.db, f.config, { adapter: alertAdapter }); assert.equal(escalationPreviews, 1);
     const ended = await f.json(`${manage}/loyalty/promotions/${campaign.body.data.id}/end`, { method: "POST", cookie: admin, body: {} }); assert.equal(ended.status, 200, ended.text);
     assert.equal((await f.json(`/api/promotions/${campaign.body.data.id}/claim`, { method: "POST", cookie: customer, body: {} })).status, 404);
-    for (const [cookie, expected] of [[customer, 403], [foreignOwner, 404], [admin, 403]]) assert.equal((await f.json(statusPath, { method: "PATCH", cookie, body: { status: "accepted" } })).status, expected);
-    const eta = new Date(clock + 45 * 60000).toISOString(), confirmed = await f.json(statusPath, { method: "PATCH", cookie: owner, body: { status: "accepted", estimatedReadyAt: eta } }); assert.equal(confirmed.status, 200, confirmed.text); assert.equal(confirmed.body.data.totalMinor, 1475); assert.equal(confirmed.body.data.commissionMinor, 103); assert.equal(confirmed.body.data.customerEtaAt, eta);
+    for (const cookie of [customer,foreignOwner,admin,owner]) assert.equal((await f.json(statusPath, { method: "PATCH", cookie, body: { status: "accepted" } })).status, 403);
+    const eta = new Date(clock + 45 * 60000).toISOString(), confirmed = await tabletJson(f, owner, statusPath, { method: "PATCH", body: { status: "accepted", estimatedReadyAt: eta } }); assert.equal(confirmed.status, 200, confirmed.text); assert.equal(confirmed.body.data.totalMinor, 1475); assert.equal((await f.json(`/api/orders/${order.id}`,{cookie:owner})).body.data.commissionMinor, 103); assert.equal(confirmed.body.data.customerEtaAt, eta);
     assert.equal((await adminQueue()).body.data.summary.needsConfirmation, 0);
     const customerOrder = await f.json(`/api/orders/${order.id}`, { cookie: customer }); assert.equal(customerOrder.status, 200, customerOrder.text); assert.equal(customerOrder.body.data.status, "accepted"); assert.equal(customerOrder.body.data.customerEtaAt, eta);
     const help = await f.json("/api/support", { method: "POST", cookie: owner, headers: { "Idempotency-Key": "uat-business-help" }, body: { restaurantId: restaurant.id, subject: "Help with kitchen operations", message: "PRIVATE_BUSINESS_HELP_MARKER" } }); assert.equal(help.status, 201, help.text); assert.equal(help.body.data.assignedTo, "platform");
@@ -49,7 +50,7 @@ test("business/admin HTTP acceptance crosses menu, offer, delivery, escalation, 
     assert.equal((await f.json(`/api/support/${ticketId}`, { cookie: foreignOwner })).status, 404);
     const reply = await f.json(`/api/support/${ticketId}/messages`, { method: "POST", cookie: admin, headers: { "Idempotency-Key": "uat-admin-help-reply" }, body: { message: "PRIVATE_ADMIN_REPLY_MARKER" } }); assert.equal(reply.status, 201, reply.text);
     const thread = await f.json(`/api/support/${ticketId}`, { cookie: owner }); assert.equal(thread.status, 200, thread.text); assert.equal(thread.body.data.messages.at(-1).message, "PRIVATE_ADMIN_REPLY_MARKER"); assert.equal(thread.body.data.waitingFor, "customer");
-    for (const status of ["preparing", "ready", "out_for_delivery", "completed"]) { const progressed = await f.json(statusPath, { method: "PATCH", cookie: owner, body: { status } }); assert.equal(progressed.status, 200, progressed.text); if (status === "out_for_delivery") assert.equal((await f.json(`${root}/dashboard?period=today`, { cookie: owner })).body.data.operations.liveOrders, 0); }
+    for (const status of ["preparing", "ready", "out_for_delivery", "completed"]) { const progressed = await tabletJson(f, owner, statusPath, { method: "PATCH", body: { status } }); assert.equal(progressed.status, 200, progressed.text); if (status === "out_for_delivery") assert.equal((await f.json(`${root}/dashboard?period=today`, { cookie: owner })).body.data.operations.liveOrders, 0); }
     const notices = (await f.json("/api/notifications", { cookie: customer })).body.data.items; assert.ok(notices.some(row => row.title === "Order confirmed")); assert.ok(notices.some(row => row.title === "Out for delivery"));
     const previews = [];
     const emailed = await runCustomerTransactionalEmails(f.db, f.config, { adapter: async (mail, { beforeSend }) => { assert.equal(beforeSend(), true); previews.push(mail); return { status: "local_saved" }; } }); assert.equal(emailed.failed, 0); assert.ok(previews.some(mail => mail.to === "admin@calai.local")); assert.ok(previews.some(mail => mail.to === "restaurant@calai.local")); assert.ok(previews.some(mail => mail.to === "customer@calai.local"));

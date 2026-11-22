@@ -1,4 +1,6 @@
 import { requireCurrentCustomerLegal } from "./customer-legal.js";
+import { assertBusinessTerminalSessionLive } from "./business-terminals.js";
+import {assertBusinessIntakeAllowed,assertBusinessOwnerSettings} from './business-product-policy.js';
 import { requireVerifiedCustomerEmail } from "./account-access.js";
 import { normalizeOrderHealthConsent, requireOrderHealthConsent, recordOrderHealthConsent } from "./customer-privacy.js";
 import { orderCustomerLegalSnapshot, snapshotOrderCustomerLegal } from "./customer-legal-archive.js";
@@ -13,7 +15,7 @@ import { assertRestaurantServiceArea } from "./service-areas.js";
 import { customerOrderHistoryCutoff, customerOrderHistorySql } from "./customer-order-history.js";
 import { createHash, randomUUID } from "node:crypto";
 import { calculateCommissionAtRate, DEFAULT_COMMISSION_BASE, VALIDATION } from "../../../packages/contracts/src/index.js";
-import { requireRole, requireRestaurantMembership, requireRestaurantOwner, requireUser } from "./auth/authorization.js";
+import { requireRole, requireRestaurantMembership, requireRestaurantOwner, requireRestaurantCapability, restaurantCapabilities, requireUser } from "./auth/authorization.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { withTransaction } from "./db/index.js";
 import { authorizeMockPayment, captureMockPayment } from "./payments/mock.js";
@@ -53,9 +55,10 @@ function deliveryFromRow(row) {
 }
 export function restaurantDto(row, { privateDetails = false, now = new Date(), db = null } = {}) {
   const availability = row.archived_at ? {acceptingOrders:false,closedReason:"Restaurant is archived"} : restaurantAvailability(row, now);
+  let integrationDisabled=false;if(db){try{assertBusinessIntakeAllowed(db,row.id,{now:()=>now});}catch(error){if(!['CAL_EATS_DISABLED','CAL_EATS_SETUP_REQUIRED'].includes(error.code))throw error;integrationDisabled=true;availability.acceptingOrders=false;availability.closedReason='Cal-Eats ordering is unavailable for this restaurant.';}}
   const profile = { description: row.description, cuisine: row.cuisine, phone: row.phone, address: row.address, collectionEnabled: Boolean(row.collection_enabled), cashEnabled: Boolean(row.cash_enabled), paused: Boolean(row.paused), busyMinutes: row.busy_minutes, estimatedDeliveryMinutes: row.estimated_delivery_minutes, estimatedCollectionMinutes: row.estimated_collection_minutes, openingHours: JSON.parse(row.opening_hours ?? "[]"), holidayDates: JSON.parse(row.holiday_dates ?? "[]"), alwaysOpen: Boolean(row.always_open) };
   const rating = row.rating_count !== undefined ? { ratingCount: row.rating_count, ratingAverage: row.rating_average === null ? null : Math.round(row.rating_average * 10) / 10 } : db ? restaurantRatingSummary(db, row.id) : { ratingCount: 0, ratingAverage: null };
-  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, ...(privateDetails ? {archivedAt:row.archived_at??null,archiveReason:row.archive_reason??""} : {}), availableOfferId: row.available_offer_id ?? null, ...(row.search_terms ? { searchTerms: row.search_terms } : {}), coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, schedulingAvailable:row.status==="approved"&&!row.archived_at&&!row.suspended&&!row.paused&&(profile.alwaysOpen||profile.openingHours.length>0), ...availability, ...rating, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
+  return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, ...(privateDetails ? {archivedAt:row.archived_at??null,archiveReason:row.archive_reason??""} : {}), availableOfferId: row.available_offer_id ?? null, ...(row.search_terms ? { searchTerms: row.search_terms } : {}), coverImageUrl: row.cover_media_id ? `/api/media/${row.cover_media_id}` : null, ...(row.permission ? { permission: row.permission } : {}), delivery: deliveryFromRow(row), profile, schedulingAvailable:!integrationDisabled&&row.status==="approved"&&!row.archived_at&&!row.suspended&&!row.paused&&(profile.alwaysOpen||profile.openingHours.length>0), ...availability, ...rating, suspended: Boolean(row.suspended), foodInformation: { verificationStatus: row.food_verification_status, source: row.food_source, checkedAt: row.food_checked_at } };
 }
 export function itemDto(row) {
   return { id: row.id, restaurantId: row.restaurant_id, name: row.name, description: row.description, priceMinor: row.price_minor, available: Boolean(row.available), category: row.category, allergens: JSON.parse(row.allergens ?? "[]"), dietaryTags: JSON.parse(row.dietary_tags ?? "[]"), modifierGroups: JSON.parse(row.modifier_groups ?? "[]"), sortOrder: row.sort_order ?? 0, productType: row.product_type ?? "", energyKcal: row.energy_kcal ?? null, energyKj: row.energy_kj ?? null, photoUrl: row.photo_media_id ? `/api/media/${row.photo_media_id}` : null };
@@ -157,7 +160,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/restaurant/restaurants") {
     const user = requireRole(session, "restaurant");
     const rows = db.prepare("SELECT r.*,m.permission FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id WHERE m.user_id=? AND r.archived_at IS NULL ORDER BY r.created_at").all(user.id);
-    return sendJson(res, 200, { data: rows.map((row) => restaurantDto(row, { privateDetails: true, now: config.now(), db })) });
+    return sendJson(res, 200, { data: rows.map((row) => ({...restaurantDto(row, { privateDetails: session?.principalKind !== "terminal", now: config.now(), db }),capabilities:restaurantCapabilities(db,session,row.id)})) });
   }
   if (req.method === "POST" && url.pathname === "/api/restaurant/restaurants") {
     const user = requireRole(session, "restaurant");
@@ -180,21 +183,23 @@ export async function routeJourney({ req, res, url, db, config, session }) {
     return sendJson(res, 200, { data: { restaurant: restaurantDto(restaurant, { privateDetails: true, now: config.now(), db }), items: db.prepare("SELECT * FROM menu_items WHERE restaurant_id=? ORDER BY sort_order,created_at,rowid").all(match[1]).map(itemDto) } });
   }
   if (match && req.method === "POST") {
-    requireRestaurantOwner(db, session, match[1]);
+    requireRestaurantCapability(db, session, match[1], "manageMenu");
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["name", "description", "priceMinor", "category", "allergens", "dietaryTags", "modifierGroups", "productType", "energyKcal", "energyKj"]);
     const now = config.now().toISOString();
     const item = { ...menuDetails(body), id: randomUUID(), restaurant_id: match[1], name: text(body.name, 1, VALIDATION.menuNameMax, "Item name"), description: text(body.description ?? "", 0, 4000, "Description"), price_minor: integer(body.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), available: 1, created_at: now, updated_at: now, category: text(body.category ?? "", 0, 80, "Category"), allergens: JSON.stringify(stringList(body.allergens ?? [], "Allergens")), dietary_tags: JSON.stringify(stringList(body.dietaryTags ?? [], "Dietary tags")), modifier_groups: JSON.stringify(validateModifierGroups(body.modifierGroups ?? [])), sort_order: db.prepare("SELECT COALESCE(MAX(sort_order),-1)+1 next FROM menu_items WHERE restaurant_id=?").get(match[1]).next };
+    requireRestaurantCapability(db, session, match[1], "manageMenu");
     db.prepare("INSERT INTO menu_items(product_type,energy_kcal,energy_kj,id,restaurant_id,name,description,price_minor,available,created_at,updated_at,category,allergens,dietary_tags,modifier_groups,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(item));
     return sendJson(res, 201, { data: itemDto(item) });
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/menu\/([^/]+)$/);
   if (match && req.method === "PATCH") {
-    requireRestaurantOwner(db, session, match[1]);
+    requireRestaurantCapability(db, session, match[1], "manageMenu");
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["name", "description", "priceMinor", "available", "category", "allergens", "dietaryTags", "modifierGroups", "productType", "energyKcal", "energyKj"]);
     if (!Object.keys(body).length) throw new HttpError(400, "VALIDATION_ERROR", "At least one field is required");
     const current = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=?").get(match[2], match[1]);
     if (!current) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     const updated = { ...current, ...menuDetails(body,current), name: body.name === undefined ? current.name : text(body.name, 1, VALIDATION.menuNameMax, "Item name"), description: body.description === undefined ? current.description : text(body.description, 0, 4000, "Description"), price_minor: body.priceMinor === undefined ? current.price_minor : integer(body.priceMinor, 0, VALIDATION.priceMaxMinor, "Price"), available: body.available === undefined ? current.available : Number(bool(body.available, "Available")), category: body.category === undefined ? current.category : text(body.category, 0, 80, "Category"), allergens: body.allergens === undefined ? current.allergens : JSON.stringify(stringList(body.allergens, "Allergens")), dietary_tags: body.dietaryTags === undefined ? current.dietary_tags : JSON.stringify(stringList(body.dietaryTags, "Dietary tags")), modifier_groups: body.modifierGroups === undefined ? current.modifier_groups : JSON.stringify(validateModifierGroups(body.modifierGroups)), updated_at: config.now().toISOString() };
+    requireRestaurantCapability(db, session, match[1], "manageMenu");
     db.prepare("UPDATE menu_items SET name=?,description=?,price_minor=?,available=?,category=?,allergens=?,dietary_tags=?,modifier_groups=?,updated_at=?,product_type=?,energy_kcal=?,energy_kj=? WHERE id=?").run(updated.name, updated.description, updated.price_minor, updated.available, updated.category, updated.allergens, updated.dietary_tags, updated.modifier_groups, updated.updated_at, updated.product_type, updated.energy_kcal, updated.energy_kj, updated.id);
     return sendJson(res, 200, { data: itemDto(updated) });
   }
@@ -215,6 +220,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (match && req.method === "PATCH") {
     requireRestaurantOwner(db, session, match[1]);
     const body = await readJson(req, config.bodyLimit); exactObject(body, ["name", "description", "cuisine", "phone", "address", "collectionEnabled", "cashEnabled", "paused", "busyMinutes", "estimatedDeliveryMinutes", "estimatedCollectionMinutes", "openingHours", "holidayDates", "alwaysOpen"]);
+    if(session.user.role!=='admin')assertBusinessOwnerSettings(body);
     if (body.cashEnabled === true && config.paymentProviderMode === "stripe_live") throw new HttpError(409, "LIVE_CARD_ONLY", "Cash payments are unavailable for real orders. Customers must use secure card checkout.");
     for (const field of ["name", "description", "cuisine", "address"]) assertCustomerContentAllowed(body[field], "listing");
     const row = db.prepare("SELECT * FROM restaurants WHERE id=?").get(match[1]); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
@@ -311,7 +317,7 @@ export async function routeJourney({ req, res, url, db, config, session }) {
 
 async function quoteOrder({req,res,db,config,session}){
   const user=requireRole(session,"customer"),body=await readJson(req,config.bodyLimit);exactObject(body,["restaurantId","items","fulfillment","deliveryAddress","offerId","autoApplyOffers","scheduledFor","voucherId","autoApplyVouchers","paymentMethod"]);if(typeof body.restaurantId!=="string"||!Array.isArray(body.items)||!body.items.length||body.items.length>VALIDATION.orderItemsMax||!["collection","delivery"].includes(body.fulfillment)||(body.autoApplyOffers!==undefined&&typeof body.autoApplyOffers!=="boolean"))throw new HttpError(400,"VALIDATION_ERROR","Quote is invalid");
-  const restaurant=db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);if(!restaurant)throw new HttpError(404,"NOT_FOUND","Resource not found");const address=body.fulfillment==="delivery"?normalizeAddress(body.deliveryAddress):null;if(body.fulfillment==="collection"&&body.deliveryAddress!==undefined)throw new HttpError(400,"VALIDATION_ERROR","Collection quotes cannot include an address");
+  const restaurant=db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);if(!restaurant)throw new HttpError(404,"NOT_FOUND","Resource not found");assertBusinessIntakeAllowed(db,restaurant.id,config);const address=body.fulfillment==="delivery"?normalizeAddress(body.deliveryAddress):null;if(body.fulfillment==="collection"&&body.deliveryAddress!==undefined)throw new HttpError(400,"VALIDATION_ERROR","Collection quotes cannot include an address");
   const schedule=validateOrderSchedule(restaurant,body.fulfillment,normalizeScheduledFor(body.scheduledFor),config.now());
   assertRestaurantServiceArea(db,restaurant,body.fulfillment,address);
   const normalized=body.items.map((entry)=>{exactObject(entry,["menuItemId","quantity","modifiers"]);return{menuItemId:text(entry.menuItemId,1,100,"Menu item"),quantity:integer(entry.quantity,1,VALIDATION.quantityMax,"Quantity"),modifiers:entry.modifiers??[]};});if(new Set(normalized.map(x=>x.menuItemId)).size!==normalized.length)throw new HttpError(400,"VALIDATION_ERROR","Duplicate menu items are not allowed");
@@ -361,6 +367,7 @@ async function createOrder({ req, res, db, config, session }) {
   requireCurrentCustomerLegal(db, config, user.id);
   requireOrderHealthConsent(config, allergyNotes, allergyConsent);
   const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved' AND archived_at IS NULL").get(body.restaurantId);
+  if(restaurant)assertBusinessIntakeAllowed(db,restaurant.id,config);
   if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
   if (restaurant.suspended) throw new HttpError(409, "RESTAURANT_SUSPENDED", "Restaurant is suspended");
   assertRestaurantServiceArea(db,restaurant,body.fulfillment,address);
@@ -439,6 +446,7 @@ async function createOrder({ req, res, db, config, session }) {
       if ((grant.offer_type ?? "free_item") === "free_item") { gift = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(grant.menu_item_id, restaurant.id); if (!gift || JSON.parse(gift.modifier_groups ?? "[]").some((group) => group.minSelections > 0)) throw new HttpError(409, "OFFER_ITEM_UNAVAILABLE", "Offer item is unavailable"); gift.offerName = grant.item_name; gift.offerValue = grant.item_value_minor; }
     }
     db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,delivery_address,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,contract_rate_bps,contract_policy_version,contract_demo_only,customer_name,customer_email,customer_phone,delivery_instructions,allergy_notes,offer_grant_id,offer_snapshot,commission_base,gross_food_minor,restaurant_discount_minor,promotion_snapshot,scheduled_for,schedule_minimum_lead_minutes,customer_payable_minor,platform_voucher_minor,platform_voucher_snapshot,commission_control_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...Object.values(order));
+    assertBusinessIntakeAllowed(db,order.restaurant_id,config);
     recordOrderFinancialEnvironment(db,order,config);
     snapshotOrderCustomerLegal(db,config,order);
     snapshotOrderMerchantCommercial(db,order,commercialTerms);
@@ -461,6 +469,8 @@ async function updateStatus({ req, res, db, config, session, id }) {
   const body = await readJson(req, config.bodyLimit); exactObject(body, ["status","estimatedReadyAt"]);
   const initial=db.prepare("SELECT * FROM orders WHERE id=?").get(id),initialMembership=initial&&db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(initial.restaurant_id,user.id);
   if(!initial||!initialMembership)throw new HttpError(404,"NOT_FOUND","Resource not found");
+  const authorizeTerminal = () => assertBusinessTerminalSessionLive({db,config,session,restaurantId:initial.restaurant_id});
+  authorizeTerminal();
   if(body.estimatedReadyAt!==undefined&&body.status!=="accepted")throw new HttpError(400,"VALIDATION_ERROR","Use the preparation endpoint to update an existing customer ETA");
   if(body.status===initial.status)return sendJson(res,200,{data:orderDto(db,initial,initialMembership.permission==="owner",initialMembership.permission==="owner",config)});
   requireOrderFinancialEnvironment(db,initial,config);
@@ -472,9 +482,10 @@ async function updateStatus({ req, res, db, config, session, id }) {
   const stripeOrder=db.prepare("SELECT * FROM orders WHERE id=? AND payment_method='card'").get(id);
   if(stripeOrder&&["accepted","rejected"].includes(body.status)){
     const membership=db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(stripeOrder.restaurant_id,user.id);if(!membership)throw new HttpError(404,"NOT_FOUND","Resource not found");
-    stripeTransition=await prepareStripeOrderTransition(db,config,{orderId:id,userId:user.id,targetStatus:body.status});
+    stripeTransition=await prepareStripeOrderTransition(db,config,{orderId:id,userId:user.id,targetStatus:body.status,authorize:authorizeTerminal});
   }
   const result = withTransaction(db, () => {
+    authorizeTerminal();
     const order = db.prepare("SELECT * FROM orders WHERE id=?").get(id);
     const membership = order && db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(order.restaurant_id, user.id);
     if (!order || !membership) throw new HttpError(404, "NOT_FOUND", "Resource not found");

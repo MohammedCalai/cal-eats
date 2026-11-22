@@ -1,0 +1,183 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "repository": "calai-operation/calai-platform",
+    "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c",
+    "archiveSha256": "ac0b3631c40d60e5f3728a021b77ad31c9182cd824be2cd6076e614fc89aa69d",
+    "currentMainVerified": false
+  },
+  "patch": {
+    "path": "calai-business-frontend.patch",
+    "sha256": "9eb5d64c6ef9c1b4433488c738166a4d15f4c6d48bc98d10b56accc08a015da8",
+    "bytes": 27989,
+    "changedFiles": [
+      {
+        "path": "frontend/src/components/cal-eats/CalEatsWorkspace.jsx",
+        "beforeSha256": null,
+        "afterSha256": "407dd6e2e3fded9599ac0f301a90ca62849e6a79206e848e001ef194f60cd747"
+      },
+      {
+        "path": "frontend/src/components/cal-eats/workspace-model.mjs",
+        "beforeSha256": null,
+        "afterSha256": "6bde4a91e44665e9aead861d98ddba6c1dbd2fca9e394b8934b83ea047bb419e"
+      },
+      {
+        "path": "frontend/src/components/cal-eats/workspace-model.test.mjs",
+        "beforeSha256": null,
+        "afterSha256": "64e94b87b56cf141c2922130e5315ff5e5f3a29de8378725a9edf1cdb6fcf5bd"
+      },
+      {
+        "path": "frontend/src/components/layout/Sidebar.jsx",
+        "beforeSha256": "b36f8f90709a007e51b27df94318f255bce122548c4dd584ef52c5dd8ce9e6d1",
+        "afterSha256": "ed010a464a47e39c59b24dfa72263aa1acab2159e2a50f94ae811313410a82eb"
+      },
+      {
+        "path": "frontend/src/layout/DashboardLayout.jsx",
+        "beforeSha256": "b8c71511dd42e31fde90803db641eb9079b46d58d933ddf163595d662e1d4e3b",
+        "afterSha256": "2ebd3b8d88459183da06dc365406aaaf317a13e8a23eaaadb515a68848289d58"
+      },
+      {
+        "path": "frontend/src/pages/owner/Dashboard.jsx",
+        "beforeSha256": "a85cd76f2bd7a1aba34af2da15577afc3fc9389c0b3dbec5b5d12363aeba23ea",
+        "afterSha256": "e3ac8d17bf1896f3dd17dabd7ef58f553f6f7c1cf2a45108b4fee2f11e90f10a"
+      },
+      {
+        "path": "frontend/src/router/router.jsx",
+        "beforeSha256": "3e6d7391ff2de8fb0b3c92af9220010eaef9208b7f295e3d8b149a8f1db49b91",
+        "afterSha256": "70837be22c681b0c32e62718ca58166aebc9f3375a4f6ce513bbbed734757873"
+      }
+    ]
+  },
+  "scope": {
+    "existingFrontendFilesChanged": 4,
+    "newFrontendFiles": 3,
+    "totalChangedFiles": 7,
+    "unchangedOriginalFrontendFiles": 139,
+    "originalSnapshotFilesMatchingArchive": 314,
+    "protectedHashes": "protected-file-hashes.json"
+  },
+  "verification": {
+    "messageModelTests": {
+      "passed": 8,
+      "failed": 0
+    },
+    "jsxFilesParsed": 5,
+    "patchApplyCheck": true,
+    "protectedFrontendPathsUnchanged": true,
+    "originalArchiveUnchanged": true,
+    "fullIsolatedCandidateBuild": {
+      "success": true,
+      "buildSeconds": 40.9,
+      "commands": [
+        "npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/",
+        "npm run build"
+      ],
+      "dependencyLifecycleScriptsEnabled": false,
+      "dependencyRegistryHosts": [
+        "registry.npmjs.org"
+      ],
+      "preservedBuildManifests": {
+        "package.json": {
+          "candidateSha256": "e83c0558feb27839cd5e33147e335579ddc755fc30415ec107ed00c4c60d2bbc",
+          "buildCopySha256": "e83c0558feb27839cd5e33147e335579ddc755fc30415ec107ed00c4c60d2bbc",
+          "unchanged": true
+        },
+        "package-lock.json": {
+          "candidateSha256": "b91e87cccf21958cc749edb571423883f2205209e22ba70af9354792283b9935",
+          "buildCopySha256": "b91e87cccf21958cc749edb571423883f2205209e22ba70af9354792283b9935",
+          "unchanged": true
+        },
+        "vite.config.js": {
+          "candidateSha256": "75d7120ae5667c0df201e489df6c49148934ecd91c49e9ba08653747cc645992",
+          "buildCopySha256": "75d7120ae5667c0df201e489df6c49148934ecd91c49e9ba08653747cc645992",
+          "unchanged": true
+        }
+      },
+      "outputAssetCount": 14,
+      "outputAssetHashes": [
+        {
+          "path": "dist/assets/html2canvas.esm-DXEQVQnt.js",
+          "bytes": 201041,
+          "sha256": "7b07a9ca175c614e8e7de447198d35b0d161dd50db2c63b5f7fd6ea0e1e876f2"
+        },
+        {
+          "path": "dist/assets/index-CILsf2Ok.css",
+          "bytes": 114393,
+          "sha256": "b18ea1707da1e2c2ea46cfd6dfd6e1778cf9640e3d9be5c1fb8e2a421f63dbca"
+        },
+        {
+          "path": "dist/assets/index-CTtwOA0F.js",
+          "bytes": 2171750,
+          "sha256": "0e2a102977e461c0ff84ab0d4cc66a8fb0f9304557e9d09fc416c0150f9644d5"
+        },
+        {
+          "path": "dist/assets/index.es-DmI9oiQz.js",
+          "bytes": 158791,
+          "sha256": "86441534eacfbe13b5fb08343fca0066757b99895449e4f6214cead7ac8512dd"
+        },
+        {
+          "path": "dist/assets/purify.es-DfZ_cBTv.js",
+          "bytes": 24107,
+          "sha256": "d803b2062e7b08986620889710e998083636708f4cd67af70963596d560b8525"
+        },
+        {
+          "path": "dist/Banner.mp4",
+          "bytes": 1708250,
+          "sha256": "effcf36feaaaa68d393cfdf553d529041db7365e00329d8f98ddd22714430ca3"
+        },
+        {
+          "path": "dist/CALAI.mp4",
+          "bytes": 14640528,
+          "sha256": "f820e282b20269f97d51acbb9e744a4d3c4e673b660afa00ce8f4ace9747b34d"
+        },
+        {
+          "path": "dist/Hand.png",
+          "bytes": 3271,
+          "sha256": "5796ea9c0d256a5fac32c90d8cca408845879ed3914a2bf272d40af020a7514b"
+        },
+        {
+          "path": "dist/index.html",
+          "bytes": 758,
+          "sha256": "b56d6a859dabd38783fea87cce603629fe8cfe3ee0f5ed56e6ca5d7ec15a97f5"
+        },
+        {
+          "path": "dist/logo.png",
+          "bytes": 2900,
+          "sha256": "145b4efbf8b93edba4d202f32ac1f8a7d41bfee39aa2531eb4b4566098b456c9"
+        },
+        {
+          "path": "dist/moon.png",
+          "bytes": 260653,
+          "sha256": "cc43fd4d46d6e612f3c28654e1354c2d5059b62aeb90df6e79f7a2aa51a9afb7"
+        },
+        {
+          "path": "dist/notification.wav",
+          "bytes": 1672944,
+          "sha256": "e3f780ecdbfe7b463908909549095039de5b1c8a0efee5898f85bb0352a6bdfc"
+        },
+        {
+          "path": "dist/title.png",
+          "bytes": 1077,
+          "sha256": "6d7b25973dcd35a64ead3ca4ba5c4db607a505975c0708fd7b516fbe10b0d365"
+        },
+        {
+          "path": "dist/unconfirmed-notification.wav",
+          "bytes": 105884,
+          "sha256": "bee986417db63c110c484b983803c006286c63a8cd48e452f01af35f3b4f9d5f"
+        }
+      ],
+      "warnings": [
+        "Vite large-chunk warning: main JavaScript chunk 2171.75 kB before gzip; existing configuration retained."
+      ]
+    }
+  },
+  "releaseStatus": {
+    "appliedToOriginalRepository": false,
+    "deployed": false,
+    "originalSourceEdited": false,
+    "originalBackendExecuted": false,
+    "currentRemoteHeadVerified": false,
+    "blocker": "Verify the current authorised Calai frontend baseline and an already-supported assets-only publication/rollback route that changes no protected host, container, backend, runtime, proxy or deployment configuration."
+  },
+  "localEvidenceDirectory": "artifacts/calai-business-frontend-20261122/"
+}

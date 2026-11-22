@@ -1,8 +1,9 @@
+import {surfaceNotificationSql} from "./surface-notification-policy.js";
 import { restaurantContactBlocked, assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import {releasePlatformVoucher} from "./platform-vouchers.js";
 import { createHash, randomUUID } from "node:crypto";
 import { assertCustomerContentAllowed } from "./content-moderation.js";
-import { requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
+import { requireRestaurantCapability, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { routeCustomerRelationships } from "./customer-relationships.js";
@@ -90,7 +91,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 100, before = url.searchParams.get("before"), beforeId = url.searchParams.get("beforeId");
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (before && Number.isNaN(Date.parse(before))) || (beforeId && (!before || beforeId.length > 100))) throw new HttpError(400,"VALIDATION_ERROR","Notification pagination is invalid");
     const params = { uid: user.id, role: user.role, permitsOffers: Number(permitsOffers) };
-    const allowed = `user_id=$uid AND (type<>'offer' OR $permitsOffers=1)
+    const allowed = `user_id=$uid AND ${surfaceNotificationSql()} AND (type<>'offer' OR $permitsOffers=1)
       AND (restaurant_id IS NULL OR ($role NOT IN ('restaurant','admin') AND type<>'offer') OR EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=user_notifications.restaurant_id AND ar.archived_at IS NULL))
       AND ($role<>'restaurant' OR restaurant_id IS NULL OR EXISTS(SELECT 1 FROM restaurant_memberships mm WHERE mm.restaurant_id=user_notifications.restaurant_id AND mm.user_id=$uid))
       AND (type<>'customer_message' OR EXISTS(SELECT 1 FROM restaurant_customer_threads t WHERE t.id=user_notifications.conversation_id AND (t.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships cm WHERE cm.restaurant_id=t.restaurant_id AND cm.user_id=$uid AND cm.permission='owner'))))
@@ -116,7 +117,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     return sendJson(res, 200, { data: notificationDto(db.prepare("SELECT * FROM user_notifications WHERE id=?").get(row.id)) });
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/offers$/);
-  if (match && req.method === "GET") { requireRestaurantOwner(db, session, match[1]); return sendJson(res, 200, { data: db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(match[1]).map((row) => campaignDto(db, row)) }); }
+  if (match && req.method === "GET") { requireRestaurantCapability(db, session, match[1], "manageMarketing"); return sendJson(res, 200, { data: db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(match[1]).map((row) => campaignDto(db, row)) }); }
   if (match && req.method === "POST") return createCampaign({ req, res, db, config, session, restaurantId: match[1] });
   if (req.method === "GET" && url.pathname === "/api/offers") {
     return customerOffers({res,url,db,config,user:requireRole(session,"customer")});
@@ -146,7 +147,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
 }
 
 async function createCampaign({ req, res, db, config, session, restaurantId }) {
-  const user = requireRestaurantOwner(db, session, restaurantId); const key = clean(req.headers["idempotency-key"], 1, 100, "Idempotency-Key");
+  const user = requireRestaurantCapability(db, session, restaurantId, "manageMarketing"); const key = clean(req.headers["idempotency-key"], 1, 100, "Idempotency-Key");
   const body = await readJson(req, config.bodyLimit); exactObject(body, ["customerIds", "title", "message", "menuItemId", "minSubtotalMinor", "expiresInDays"]);
   if (!Array.isArray(body.customerIds) || body.customerIds.length < 1 || body.customerIds.length > 100 || new Set(body.customerIds).size !== body.customerIds.length || body.customerIds.some((id) => typeof id !== "string" || !id)) throw new HttpError(400, "VALIDATION_ERROR", "Recipients are invalid");
   if (!Number.isSafeInteger(body.minSubtotalMinor) || body.minSubtotalMinor < 0 || body.minSubtotalMinor > 100000 || !Number.isInteger(body.expiresInDays) || body.expiresInDays < 1 || body.expiresInDays > 90) throw new HttpError(400, "VALIDATION_ERROR", "Offer terms are invalid");
@@ -155,6 +156,7 @@ async function createCampaign({ req, res, db, config, session, restaurantId }) {
   if (prior) { if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request"); return sendJson(res, 200, { data: campaignDto(db, prior) }); }
   assertCustomerContentAllowed(normalized.title, "listing"); assertCustomerContentAllowed(normalized.message, "listing");
   const created = withTransaction(db, () => {
+    requireRestaurantCapability(db, session, restaurantId, "manageMarketing");
     const existing = db.prepare("SELECT * FROM offer_campaigns WHERE created_by_user_id=? AND idempotency_key=?").get(user.id, key);
     if (existing) { if (existing.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used for another request"); return { row: existing, replay: true }; }
     const item = db.prepare("SELECT * FROM menu_items WHERE id=? AND restaurant_id=? AND available=1").get(normalized.menuItemId, restaurantId);

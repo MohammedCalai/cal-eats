@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import test from "node:test";
@@ -53,6 +54,6 @@ test("offers reserved on an order cannot be dismissed or lose their reservation"
   const f=await journeyFixture();try{
     const s=await setup(f),grant=s.grant(),placed=await f.json("/api/orders",{method:"POST",cookie:s.customer,headers:{"Idempotency-Key":"reserved-customer-offer"},body:{restaurantId:s.restaurant.id,items:[{menuItemId:s.paid.id,quantity:1}],paymentMethod:"mock_card",fulfillment:"collection",offerId:grant.id}});assert.equal(placed.status,201,placed.text);
     const before=f.db.prepare("SELECT * FROM offer_grants WHERE id=?").get(grant.id),denied=await f.json(`/api/offers/${grant.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}});assert.equal(denied.status,409);assert.equal(denied.body.error.code,"OFFER_IN_ORDER");const after=f.db.prepare("SELECT * FROM offer_grants WHERE id=?").get(grant.id);assert.equal(after.dismissed_at,null);assert.equal(after.status,"reserved");assert.equal(after.reserved_order_id,before.reserved_order_id);assert.equal(after.reserved_discount_minor,before.reserved_discount_minor);
-    await f.json(`/api/restaurant/orders/${placed.body.data.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"rejected"}});assert.equal((await f.json(`/api/offers/${grant.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}})).status,200);assert.ok(f.db.prepare("SELECT offer_grant_id FROM orders WHERE id=?").get(placed.body.data.id).offer_grant_id);
+    await tabletJson(f, s.owner, `/api/restaurant/orders/${placed.body.data.id}/status`, {method:"PATCH",body:{status:"rejected"}});assert.equal((await f.json(`/api/offers/${grant.id}`,{method:"PATCH",cookie:s.customer,body:{dismissed:true}})).status,200);assert.ok(f.db.prepare("SELECT offer_grant_id FROM orders WHERE id=?").get(placed.body.data.id).offer_grant_id);
   }finally{await f.close();}
 });

@@ -9,12 +9,13 @@ export { STRIPE_TRANSITION_SQL } from "./stripe-transitions-schema.js";
 const adapterFor = (config) => config.stripeProvider ?? config.paymentProvider;
 const safeError = (value) => typeof value === "string" && /^[A-Z0-9_]{1,80}$/i.test(value) ? value : "PROVIDER_RESULT_UNKNOWN";
 
-export async function prepareStripeOrderTransition(db, config, { orderId, userId, targetStatus }) {
+export async function prepareStripeOrderTransition(db, config, { orderId, userId, targetStatus, authorize }) {
   if (!['accepted', 'rejected'].includes(targetStatus)) throw new TypeError("Stripe order target is invalid");
   const stamp = config.now().toISOString();
   const leaseOwner = randomUUID();
   const leaseExpiresAt = new Date(config.now().getTime() + 120_000).toISOString();
   const claimed = withTransaction(db, () => {
+    authorize?.();
     const order = db.prepare("SELECT * FROM orders WHERE id=? AND payment_method='card'").get(orderId);
     const membership = order && db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(order.restaurant_id, userId);
     if (!order || !membership) throw new HttpError(404, "NOT_FOUND", "Resource not found");
@@ -44,6 +45,7 @@ export async function prepareStripeOrderTransition(db, config, { orderId, userId
     if (targetStatus === "accepted") {
       if (authoritative.paymentState !== "captured") {
         if (authoritative.paymentState !== "authorized") throw new HttpError(409, "PAYMENT_NOT_AUTHORIZED", "Card payment authorization is required");
+        authorize?.();
         await adapter.capturePayment({ paymentIntentId: payment.payment_intent_id, amountMinor: customerPayableMinor(claimed.order), idempotencyKey: `capture:${orderId}` });
         authoritative = bind(await adapter.retrievePayment({ paymentIntentId: payment.payment_intent_id }));
       }
@@ -51,6 +53,7 @@ export async function prepareStripeOrderTransition(db, config, { orderId, userId
     } else {
       if (authoritative.paymentState === "captured") throw new HttpError(409, "PAYMENT_CAPTURED_RECONCILE", "Captured payment must be reconciled before rejection");
       if (authoritative.paymentState !== "cancelled") {
+        authorize?.();
         await adapter.cancelPayment({ paymentIntentId: payment.payment_intent_id, idempotencyKey: `cancel:${orderId}` });
         authoritative = bind(await adapter.retrievePayment({ paymentIntentId: payment.payment_intent_id }));
       }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { VALIDATION } from "../../../packages/contracts/src/index.js";
-import { requireRestaurantMembership, requireRestaurantOwner, requireRole, requireUser } from "./auth/authorization.js";
+import { requireRestaurantMembership, requireRestaurantOwner, restaurantCapabilities, requireRole, requireUser } from "./auth/authorization.js";
 import { hashPassword } from "./auth/passwords.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
@@ -18,8 +18,8 @@ export async function routeProduct({ req, res, url, db, config, session, checkRa
   let match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/staff$/);
   if (match && req.method === "GET") {
     requireRestaurantOwner(db, session, match[1]);
-    const rows = db.prepare("SELECT u.id,u.name,u.email,m.permission FROM users u JOIN restaurant_memberships m ON m.user_id=u.id WHERE m.restaurant_id=? ORDER BY m.created_at").all(match[1]);
-    return sendJson(res, 200, { data: rows });
+    const rows = db.prepare("SELECT u.id,u.name,u.email,m.permission FROM users u JOIN restaurant_memberships m ON m.user_id=u.id WHERE m.restaurant_id=? AND u.principal_kind='human' ORDER BY m.created_at").all(match[1]);
+    return sendJson(res, 200, { data: rows.map(row=>({...row,capabilities:restaurantCapabilities(db,{user:{id:row.id,role:"restaurant"}},match[1])})) });
   }
   if (match && req.method === "POST") {
     requireRestaurantOwner(db, session, match[1]);
@@ -32,6 +32,26 @@ export async function routeProduct({ req, res, url, db, config, session, checkRa
     try { withTransaction(db, () => { db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?)").run(id, name, email, passwordHash, "restaurant", now); db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at,permission) VALUES(?,?,?,'staff')").run(match[1], id, now); }); }
     catch (error) { if (String(error.message).includes("UNIQUE")) throw new HttpError(409, "EMAIL_EXISTS", "An account with this email already exists"); throw error; }
     return sendJson(res, 201, { data: { id, name, email, permission: "staff" } });
+  }
+  match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/staff\/([^/]+)\/capabilities$/);
+  if (match && req.method === "PATCH") {
+    requireRestaurantOwner(db,session,match[1]);
+    const columns={viewFinance:'can_view_finance',viewDevices:'can_view_devices',manageMenu:'can_manage_menu',manageMarketing:'can_manage_marketing'};
+    const body=await readJson(req,config.bodyLimit);exactObject(body,Object.keys(columns));
+    if(!Object.keys(body).length||Object.values(body).some(value=>typeof value!=='boolean'))throw new HttpError(400,'VALIDATION_ERROR','Choose explicit staff permissions using true or false.');
+    const result=withTransaction(db,()=>{
+      const actor=requireRestaurantOwner(db,session,match[1]);
+      if(!restaurantCapabilities(db,session,match[1]).manageTerminal)throw new HttpError(403,'OWNER_REQUIRED','A current native restaurant owner must change staff permissions.');
+      if(actor.id===match[2])throw new HttpError(403,'SELF_PERMISSION_CHANGE_FORBIDDEN','You cannot change your own permissions.');
+      const member=db.prepare("SELECT m.*,u.name,u.email FROM restaurant_memberships m JOIN users u ON u.id=m.user_id WHERE m.restaurant_id=? AND m.user_id=? AND m.permission='staff' AND u.role='restaurant' AND u.account_enabled=1 AND u.principal_kind='human'").get(match[1],match[2]);
+      if(!member)throw new HttpError(404,'NOT_FOUND','An active staff account was not found in this restaurant.');
+      const before=Object.fromEntries(Object.entries(columns).map(([key,column])=>[key,member[column]===1]));
+      for(const [key,value]of Object.entries(body))db.prepare("UPDATE restaurant_memberships SET "+columns[key]+"=? WHERE restaurant_id=? AND user_id=? AND permission='staff'").run(Number(value),match[1],match[2]);
+      const after={...before,...body};
+      db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor.id,'restaurant_membership',match[2],'staff_capabilities_changed',JSON.stringify({product:'cal-eats',restaurantId:match[1],userId:match[2],previous:before,current:after}),config.now().toISOString());
+      return{id:match[2],name:member.name,email:member.email,permission:'staff',capabilities:restaurantCapabilities(db,{user:{id:match[2],role:'restaurant'}},match[1])};
+    });
+    return sendJson(res,200,{data:result});
   }
   if (req.method === "GET" && url.pathname === "/api/account") {
     const user = requireUser(session); return sendJson(res, 200, { data: accountDto(db.prepare("SELECT * FROM users WHERE id=?").get(user.id)) });

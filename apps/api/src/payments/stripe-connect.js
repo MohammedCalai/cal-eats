@@ -1,6 +1,7 @@
 import {customerPayableMinor,platformVoucherMinor,fullyVoucherFunded,assertVoucherFunding,voucherProviderBinding} from "../platform-vouchers.js";
+import {assertBusinessIntakeAllowed} from '../business-product-policy.js';
 import { randomUUID } from "node:crypto";
-import { requireRestaurantOwner, requireRole } from "../auth/authorization.js";
+import { requireRestaurantOwner, requireRestaurantCapability, requireRole } from "../auth/authorization.js";
 import { withTransaction } from "../db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "../http.js";
 import { finalizeStripeRefund, queueStripeTransferReversal, recordMarketplaceAcceptance } from "../marketplace.js";
@@ -141,7 +142,11 @@ export async function routeStripeConnect(ctx) {
   }
   match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/stripe(?:\/(onboarding|refresh|dashboard|payouts|banking))?$/);
   if (match) {
-    const owner = requireRestaurantOwner(db,session,match[1]),bankConfig=restaurantBankingConfig(config,match[1]),bankCtx={...ctx,config:bankConfig},mode=stripeMode(bankConfig),scope=bankingPaymentScope(bankConfig);
+    const bankConfig=restaurantBankingConfig(config,match[1]),bankCtx={...ctx,config:bankConfig},mode=stripeMode(bankConfig),scope=bankingPaymentScope(bankConfig);
+    // Isolated live onboarding keeps its original genuine-owner quarantine.
+    // Normal financial readers may inspect a completed connection, but every
+    // live banking detail/action still requires the established secure credential.
+    const owner=req.method==="GET"&&!scope.onboardingOnly?requireRestaurantCapability(db,session,match[1],"viewFinance"):requireRestaurantOwner(db,session,match[1]);
     if(mode==="stripe_live"&&match[2]){requireRole(session,"restaurant");requireLiveBankingCredential(db,owner.id);}
     if (req.method === "GET" && !match[2]) {
       const row = mode ? accountForMode(db,match[1],bankConfig) : null;
@@ -169,6 +174,7 @@ export async function routeStripeConnect(ctx) {
 }
 
 async function checkout({ req, res, db, config, order, payment }) {
+  assertBusinessIntakeAllowed(db,order.restaurant_id,config);
   const body = await readJson(req,config.bodyLimit); exactObject(body,[]); key(req);
   if (order.status !== "placed") throw new HttpError(409,"CHECKOUT_NOT_ALLOWED","Checkout is not available for this order");
   if (Date.parse(order.created_at) <= config.now().getTime()-config.orderExpiryMinutes*60_000) throw new HttpError(409,"CHECKOUT_EXPIRED","This order has expired. Start a new order with current prices");
@@ -177,6 +183,7 @@ async function checkout({ req, res, db, config, order, payment }) {
   const stamp = now(config), mode = stripeMode(config);
   withTransaction(db,()=>db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,status,created_at,updated_at) VALUES(?,?,'pending',?,?) ON CONFLICT(order_id) DO NOTHING").run(order.id,mode,stamp,stamp));
   // This key is fixed by the server, so changing client retry keys cannot create another session.
+  assertBusinessIntakeAllowed(db,order.restaurant_id,config);
   const result = await provider(config).createCheckoutSession({orderId:order.id,restaurantId:order.restaurant_id,amountMinor:customerPayableMinor(order),transferGroup:`order:${order.id}`,successUrl:new URL(`/order/?payment_order=${encodeURIComponent(order.id)}`,config.origin).href,cancelUrl:new URL(`/order/?payment_order=${encodeURIComponent(order.id)}&payment_cancelled=1`,config.origin).href,idempotencyKey:`checkout:${mode}:${order.id}`});
   if (result?.ok === false || !result?.checkoutUrl || !/^cs_[A-Za-z0-9_]+$/.test(result.providerReference || "")) {
     db.prepare("UPDATE stripe_order_payments SET status='unknown',error='CHECKOUT_CREATION_UNCONFIRMED',updated_at=? WHERE order_id=? AND status<>'captured'").run(now(config),order.id);
@@ -189,6 +196,7 @@ async function checkout({ req, res, db, config, order, payment }) {
     if (!db.prepare("SELECT 1 FROM orders WHERE id=? AND status='placed'").get(order.id)) throw new HttpError(409,"CHECKOUT_EXPIRED","This order is no longer awaiting payment");
     db.prepare("UPDATE stripe_order_payments SET checkout_session_id=COALESCE(checkout_session_id,?),payment_intent_id=COALESCE(payment_intent_id,?),checkout_url=?,status=CASE WHEN status='captured' THEN status ELSE 'pending' END,error=NULL,updated_at=? WHERE order_id=? AND provider_mode=?").run(result.providerReference,result.paymentIntentId ?? null,destination.href,now(config),order.id,mode);
   });
+  assertBusinessIntakeAllowed(db,order.restaurant_id,config);
   return sendJson(res,200,{data:paymentDto(db.prepare("SELECT * FROM stripe_order_payments WHERE order_id=?").get(order.id),order)});
 }
 async function refreshPayment({ req, res, db, config, order, payment }) {
@@ -223,9 +231,9 @@ async function accountAction({ req, res, db, config, owner, restaurantId, action
   if (!result?.actionUrl || result.ok === false) throw new HttpError(503,"STRIPE_LINK_UNAVAILABLE","Stripe dashboard is unavailable. Try again");
   return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode,...bankingPaymentScope(config)}});
 }
-async function bankingDetails({ res, db, config, restaurantId }) {
+async function bankingDetails({ res, db, config, session, restaurantId }) {
   const mode=stripeMode(config),row=mode?accountForMode(db,restaurantId,config):null;
-  const base={providerMode:config.paymentProviderMode,configured:configured(config),connected:Boolean(row?.provider_reference),canManageBankDetails:Boolean(configured(config)&&row?.provider_reference),account:accountDto(db,row),bankDetailsAvailable:false,bankAccounts:[],...unverifiedSchedule(),refreshedAt:null,...bankingPaymentScope(config)};
+  const base={providerMode:config.paymentProviderMode,configured:configured(config),connected:Boolean(row?.provider_reference),canManageBankDetails:Boolean(configured(config)&&row?.provider_reference&&session?.principalKind!=="terminal"&&session?.user?.role==="restaurant"&&db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=? AND permission='owner'").get(restaurantId,session.user.id)),account:accountDto(db,row),bankDetailsAvailable:false,bankAccounts:[],...unverifiedSchedule(),refreshedAt:null,...bankingPaymentScope(config)};
   if(!mode||!configured(config)||!row?.provider_reference)return sendJson(res,200,{data:{...base,note:"No bank account is connected for this payment mode. Complete payment setup to view your bank and payout information."}});
   await ensurePlatform(config);
   const adapter=provider(config),account=await adapter.refreshConnectedAccount({accountId:row.provider_reference});

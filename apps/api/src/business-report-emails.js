@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from "node:crypto";
 import path from "node:path";
-import {requireRole,requireRestaurantOwner} from "./auth/authorization.js";
+import {requireRole,requireRestaurantCapability,restaurantCapabilities} from "./auth/authorization.js";
 import {withTransaction} from "./db/index.js";
 import {HttpError,exactObject,readJson,sendJson} from "./http.js";
 import {buildOwnerDashboardCsv} from "./dashboard-exports.js";
@@ -29,9 +29,10 @@ function boundedCsv(value){
   if(quoted)throw fail("REPORT_INVALID","This report could not be prepared safely.",409);
   if(!csv.endsWith("\n"))rows++;if(rows>MAX_ROWS+1)throw tooLarge();return csv;
 }
-function owner(db,session,restaurantId){
-  const actor=requireRole(session,"restaurant");requireRestaurantOwner(db,session,restaurantId);
-  const row=db.prepare("SELECT u.id,u.email,r.name restaurant_name FROM users u JOIN restaurant_memberships m ON m.user_id=u.id AND m.permission='owner' JOIN restaurants r ON r.id=m.restaurant_id WHERE u.id=? AND u.role='restaurant' AND u.account_enabled=1 AND r.id=? AND r.archived_at IS NULL").get(actor.id,restaurantId);
+const reportCapability=kind=>kind==="menu-template"?"manageMenu":"viewFinance";
+function owner(db,session,restaurantId,capability="viewFinance"){
+  const actor=requireRole(session,"restaurant");requireRestaurantCapability(db,session,restaurantId,capability);
+  const row=db.prepare("SELECT u.id,u.email,r.name restaurant_name FROM users u JOIN restaurant_memberships m ON m.user_id=u.id JOIN restaurants r ON r.id=m.restaurant_id WHERE u.id=? AND u.role='restaurant' AND u.account_enabled=1 AND r.id=? AND r.archived_at IS NULL").get(actor.id,restaurantId);
   if(!row)throw fail("OWNER_REQUIRED","An active restaurant owner is required.",403);
   if(!email(row.email))throw fail("REPORT_OWNER_EMAIL_UNAVAILABLE","Update your business account email before requesting a report.",409);return row;
 }
@@ -53,7 +54,7 @@ export function resolveBusinessReport(db,config,session,reportPath){
   }else throw fail("REPORT_NOT_ALLOWED","Choose an available business CSV report.");
   const seen=new Set();for(const[key,value]of url.searchParams){if(seen.has(key)||!allowed.includes(key)||!value)throw fail("REPORT_QUERY_INVALID","The report options are invalid.");seen.add(key);}
   if(!new RegExp(`^${identifier}$`).test(restaurantId??""))throw fail("REPORT_QUERY_INVALID","Choose a restaurant.");
-  const recipient=owner(db,session,restaurantId),scope=resolveFinanceScope(config,url);url.searchParams.sort();
+  const recipient=owner(db,session,restaurantId,reportCapability(kind)),scope=resolveFinanceScope(config,url);url.searchParams.sort();
   return {url,restaurantId,kind,scope,owner:recipient,reportPath:url.pathname+(url.search?url.search:"")};
 }
 function render(db,config,session,report){
@@ -92,7 +93,7 @@ export async function routeBusinessReportEmails({req,res,url,db,config,session})
   const status=/^\/api\/restaurant\/report-emails\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
   if(req.method==="GET"&&status){
     const user=requireRole(session,"restaurant"),row=db.prepare("SELECT * FROM business_report_email_outbox WHERE id=? AND user_id=?").get(status[1],user.id);
-    if(!row)throw fail("NOT_FOUND","Report email not found.",404);owner(db,session,row.restaurant_id);return sendJson(res,200,{data:dto(row)});
+    if(!row)throw fail("NOT_FOUND","Report email not found.",404);owner(db,session,row.restaurant_id,reportCapability(row.report_kind));return sendJson(res,200,{data:dto(row)});
   }
   if(req.method!=="POST"||url.pathname!=="/api/restaurant/report-emails")return false;
   const body=await readJson(req,config.bodyLimit);exactObject(body,["reportPath"]);
@@ -105,7 +106,7 @@ export async function routeBusinessReportEmails({req,res,url,db,config,session})
   const stamp=config.now().toISOString();rate(db,session.user.id,stamp);const snapshot=render(db,config,session,report);
   const row=withTransaction(db,()=>{
     const previous=prior();if(previous){if(previous.request_hash!==digest)throw fail("IDEMPOTENCY_CONFLICT","This request reference was already used.",409);return previous;}
-    const current=owner(db,session,report.restaurantId);if(current.email!==report.owner.email)throw fail("REPORT_OWNER_CHANGED","Your business account changed. Refresh and try again.",409);
+    const current=owner(db,session,report.restaurantId,reportCapability(report.kind));if(current.email!==report.owner.email)throw fail("REPORT_OWNER_CHANGED","Your business account changed. Refresh and try again.",409);
     rate(db,session.user.id,stamp);
     const uncertain=db.prepare("SELECT id FROM business_report_email_outbox WHERE user_id=? AND report_path=? AND (status='unknown' OR (status='claimed' AND dispatch_started_at IS NOT NULL)) AND created_at>?").get(session.user.id,report.reportPath,new Date(Date.parse(stamp)-DAY).toISOString());
     if(uncertain)throw fail("REPORT_DELIVERY_UNCERTAIN","This report may already have been sent. Contact support before requesting it again.",409);
@@ -121,7 +122,8 @@ export function buildBusinessReportEmail(row,config){
   return {id:row.id,to:row.recipient,from:config.orderAlertEmail.from,messageId:row.message_id,subject:`Cal-Eats | Your requested ${row.report_kind.replaceAll("-"," ")} report`,text:`Cal-Eats\n\nYour requested report is attached as a CSV file, which opens in Excel and other spreadsheet apps.\n${label}. Prepared ${row.created_at}.\n\nKeep the attachment private. The file reflects the recorded information when requested; it is not proof of a bank deposit.\n\nView your business platform: ${link}\nFor help: support@calai.info`,attachments:[{filename:row.filename,contentType:"text/csv",contentBase64:Buffer.from(csv).toString("base64")}]};
 }
 function sourceFailure(db,config,row){
-  const user=db.prepare("SELECT u.email FROM users u JOIN restaurant_memberships m ON m.user_id=u.id AND m.permission='owner' JOIN restaurants r ON r.id=m.restaurant_id WHERE u.id=? AND u.account_enabled=1 AND u.role='restaurant' AND r.id=? AND r.archived_at IS NULL").get(row.user_id,row.restaurant_id);
+  if(!restaurantCapabilities(db,{user:{id:row.user_id,role:"restaurant"}},row.restaurant_id)[reportCapability(row.report_kind)])return "REPORT_PERMISSION_CHANGED";
+  const user=db.prepare("SELECT u.email FROM users u JOIN restaurant_memberships m ON m.user_id=u.id JOIN restaurants r ON r.id=m.restaurant_id WHERE u.id=? AND u.account_enabled=1 AND u.role='restaurant' AND r.id=? AND r.archived_at IS NULL").get(row.user_id,row.restaurant_id);
   if(!user||!email(user.email)||user.email.toLowerCase()!==row.recipient.toLowerCase())return "REPORT_OWNER_OR_EMAIL_CHANGED";
   if(!deliveryAllowed(config)||mode(config)!==row.mode)return "REPORT_DELIVERY_DISABLED_OR_CHANGED";
   if(row.provider_mode!==config.paymentProviderMode||(row.platform_account_id??null)!==(config.stripePlatformAccountId??null))return "REPORT_FINANCIAL_ENVIRONMENT_CHANGED";

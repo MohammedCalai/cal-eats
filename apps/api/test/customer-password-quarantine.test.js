@@ -95,6 +95,21 @@ test("quarantine rejects customers, privileged or strong-password targets and ch
   } finally { await f.close(); }
 });
 
+test("an ordinary reset completed before quarantine preflight rejects the stale reviewed scope without partial changes", async () => {
+  const f = await setup();
+  try {
+    await f.json("/api/auth/password/forgot", { method: "POST", body: { email: f.first.email } }); const token = resetToken(f, f.first.email);
+    const reset = await f.json("/api/auth/password/reset", { method: "POST", body: { token, password: replacement } });
+    assert.equal(reset.status, 200, reset.text);
+    // Deliberate barrier: reset has committed before the maintenance preflight
+    // may read a customer. This is one legal ordering of the overlap below.
+    await assert.rejects(f.flag(), error => error.code === "CUSTOMER_SECURITY_SCOPE_MISMATCH");
+    assert.equal(status(f, f.first.id).password_reset_required, 0); assert.equal(status(f, f.second.id).password_reset_required, 0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM audit_events WHERE action='legacy_customer_password_quarantined'").get().n, 0);
+    assert.equal((await f.login(f.first.email, replacement, true)).status, 200); assert.equal((await f.login(f.first.email, weak, true)).status, 401);
+  } finally { await f.close(); }
+});
+
 test("a simultaneous ordinary reset and quarantine cannot authenticate the old password or re-quarantine a newly reset account", async () => {
   const f = await setup();
   try {
@@ -103,7 +118,18 @@ test("a simultaneous ordinary reset and quarantine cannot authenticate the old p
       f.json("/api/auth/password/reset", { method: "POST", body: { token, password: replacement } }),
       f.flag().then(value => ({ value }), error => ({ error }))
     ]);
-    assert.equal(reset.status, 200, reset.text); if (quarantine.error) assert.equal(quarantine.error.code, "CUSTOMER_SECURITY_SCOPE_CHANGED");
+    assert.equal(reset.status, 200, reset.text);
+    if (quarantine.error) {
+      // Reset can win before initial scope verification, or after its weak
+      // hash snapshot and before the transactional recheck. Both fail closed;
+      // no other error or partial maintenance outcome is acceptable.
+      assert.ok(["CUSTOMER_SECURITY_SCOPE_MISMATCH", "CUSTOMER_SECURITY_SCOPE_CHANGED"].includes(quarantine.error.code), quarantine.error.code);
+      assert.equal(status(f, f.second.id).password_reset_required, 0);
+      assert.equal(f.db.prepare("SELECT COUNT(*) n FROM audit_events WHERE action='legacy_customer_password_quarantined'").get().n, 0);
+    } else {
+      assert.equal(quarantine.value.accountsChanged, 2);
+      assert.equal(status(f, f.second.id).password_reset_required, 1);
+    }
     assert.equal(status(f, f.first.id).password_reset_required, 0); assert.equal((await f.login(f.first.email, replacement, true)).status, 200); assert.equal((await f.login(f.first.email, weak, true)).status, 401);
   } finally { await f.close(); }
 });

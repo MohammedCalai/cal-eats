@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
@@ -69,7 +70,7 @@ test("published menu/profile/import and campaign text cannot bypass screening or
     const allowed = await s.f.json(`${s.root}/menu/${s.item.id}`, { method: "PATCH", cookie: s.owner, body: { name: "Chicken breast", description: "Shiitake mushrooms, cumin and nuts. Ask about allergies." } });
     assert.equal(allowed.status, 200, allowed.text);
     rejected(await s.f.json(`${s.root}/offers`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "blocked-offer" }, body: { customerIds: [s.order.customerId], title: "Dinner offer", message: "send me nudes", menuItemId: s.item.id, minSubtotalMinor: 0, expiresInDays: 7 } }));
-    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await s.f.json(`/api/restaurant/orders/${s.order.id}/status`, { method: "PATCH", cookie: s.owner, body: { status } })).status, 200);
+    for (const status of ["accepted", "preparing", "ready", "completed"]) assert.equal((await tabletJson(s.f, s.owner, `/api/restaurant/orders/${s.order.id}/status`, { method: "PATCH",  body: { status } })).status, 200);
     assert.equal((await s.f.json("/api/account/marketing-preferences", { method: "PATCH", cookie: s.customer, body: { inAppPromotions: true, pushPromotions: false, source: "moderation-fixture" } })).status, 200);
     const now = s.f.config.now(), promotion = { title: "Dinner offer", message: "10% off your next meal", campaignType: "percent_order", offerType: "percent_off", value: 1000, minSubtotalMinor: 0, startsAt: new Date(+now - 1000).toISOString(), expiresAt: new Date(+now + 86400000).toISOString(), redemptionLimit: 100, eligibleItemIds: [], eligibleCategories: [], recipientSegment: "all", customerIds: [], stackingPolicy: "exclusive", fundingParty: "restaurant" };
     rejected(await s.f.json(`${s.root}/loyalty/promotions`, { method: "POST", cookie: s.owner, headers: { "Idempotency-Key": "blocked-promotion" }, body: { ...promotion, title: "Fuck you" } }));

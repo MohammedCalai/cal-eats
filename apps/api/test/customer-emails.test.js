@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
@@ -13,7 +14,7 @@ async function setup() {
   const f=await journeyFixture({now:()=>new Date(stamp),orderAlertEmail:{mode:"local",from:"caleats-support@calai.info"}});
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310");
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
-  return {...f,owner,customer,admin,restaurant,set(value){stamp=value;},async place(){const r=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`customer-email-order-${index++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:"delivery",deliveryAddress:{line1:"10 Private Fixture Street",city:"Luton",postcode:"LU1 2AB"}}});assert.equal(r.status,201,r.text);return r.body.data;},async confirm(order){const r=await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted",estimatedReadyAt:new Date(stamp+45*60000).toISOString()}});assert.equal(r.status,200,r.text);return r.body.data;}};
+  return {...f,owner,customer,admin,restaurant,set(value){stamp=value;},async place(){const r=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`customer-email-order-${index++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:"delivery",deliveryAddress:{line1:"10 Private Fixture Street",city:"Luton",postcode:"LU1 2AB"}}});assert.equal(r.status,201,r.text);return r.body.data;},async confirm(order){const r=await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, {method:"PATCH",body:{status:"accepted",estimatedReadyAt:new Date(stamp+45*60000).toISOString()}});assert.equal(r.status,200,r.text);return r.body.data;}};
 }
 
 test("confirmation, ETA and order progress queue once for the actual customer and render branded private local mail",async()=>{
@@ -22,8 +23,8 @@ test("confirmation, ETA and order progress queue once for the actual customer an
     await f.confirm(order);await f.confirm(order);
     let rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox").all();assert.equal(rows.length,1);assert.equal(rows[0].customer_id,order.customerId);
     assert.equal(rows[0].recipient,"customer@calai.local");assert.equal(JSON.parse(rows[0].payload).order.etaAt,"2026-01-01T01:45:00.000Z");
-    const eta=await f.json(`/api/restaurant/orders/${order.id}/preparation`,{method:"PATCH",cookie:f.owner,body:{estimatedReadyAt:"2026-01-01T01:55:00.000Z"}});assert.equal(eta.status,200,eta.text);
-    for(const status of["preparing","ready","out_for_delivery"])assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status}})).status,200);
+    const eta=await tabletJson(f, f.owner, `/api/restaurant/orders/${order.id}/preparation`, {method:"PATCH",body:{estimatedReadyAt:"2026-01-01T01:55:00.000Z"}});assert.equal(eta.status,200,eta.text);
+    for(const status of["preparing","ready","out_for_delivery"])assert.equal((await tabletJson(f, f.owner, `/api/restaurant/orders/${order.id}/status`, {method:"PATCH",body:{status}})).status,200);
     addNotification(f.db,{userId:order.customerId,type:"offer",title:"Marketing",message:"Not a service email",restaurantId:f.restaurant.id,eventKey:"offer:fixture",now:f.config.now().toISOString()});
     rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox").all();assert.equal(rows.length,5);assert.ok(rows.some(row=>JSON.parse(row.payload).orderStatus==="out_for_delivery"));
     const mail=buildCustomerEmail(rows[0],f.config);assert.match(mail.html,/YOUR CAL-EATS UPDATE/);assert.match(mail.html,/Estimated arrival/);assert.match(mail.html,/caleats-support@calai.info/);assert.match(mail.subject,/Order confirmed/);assert.match(mail.text,/test\/simulated payments/);assert.match(mail.text,new RegExp(`orderId=${order.id}`));

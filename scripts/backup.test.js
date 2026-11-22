@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { BACKUP_ROOT, createBackup } from "./backup.js";
 import { checkBackup } from "./restore-check.js";
 import { journeyFixture } from "../apps/api/test/helpers.js";
+import { enrolRegisteredTablet } from "../apps/api/test/registered-tablet-fixture.js";
 import { addNotification } from "../apps/api/src/offers.js";
 
 function fixture(name) {
@@ -82,7 +83,8 @@ test("a migrated backup cannot revive native customer sessions or replay Live Ac
     } });
     assert.equal(response.status, 201, response.text);
     const order = response.body.data;
-    const accepted = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted", estimatedReadyAt: "2026-01-01T01:30:00.000Z" } });
+    const tablet = await enrolRegisteredTablet(f, { ownerCookie: owner });
+    const accepted = await tablet.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", body: { status: "accepted", estimatedReadyAt: "2026-01-01T01:30:00.000Z" } });
     assert.equal(accepted.status, 200, accepted.text);
     assert.ok(f.db.prepare("SELECT COUNT(*) n FROM ledger_entries WHERE order_id=?").get(order.id).n > 0);
     const stamp = "2026-01-01T01:01:00.000Z", expires = "2026-01-01T08:00:00.000Z";
@@ -133,6 +135,18 @@ test("backup refuses to overwrite an existing destination", async () => {
     await assert.rejects(createBackup({ source: item.source, destination: item.destination }), /Refusing to overwrite/);
     assert.equal(fs.readFileSync(item.destination, "utf8"), "keep me");
   } finally { item.cleanup(); }
+});
+
+test("business-only backup clears connection secrets and revoked-device authority from bytes without altering its source",async()=>{
+  const item=fixture(`business-monitoring-${process.pid}`),marker='private-business-connection-sentinel-never-restored';
+  try{
+    item.db.exec("CREATE TABLE business_terminal_grants(id TEXT); CREATE TABLE surface_application_presence(id TEXT); CREATE TABLE native_business_sessions(id TEXT); CREATE TABLE native_platform_sessions(id TEXT); CREATE TABLE business_terminals(id TEXT,revoked_at TEXT,last_contact_at TEXT,last_screen_at TEXT,screen_id TEXT); CREATE TABLE business_product_links(product TEXT,source_account_id TEXT,encrypted_credentials TEXT,credential_expires_at TEXT,credential_checked_at TEXT,last_error_code TEXT); INSERT INTO business_terminal_grants VALUES('retired-grant'); INSERT INTO surface_application_presence VALUES('presence'); INSERT INTO native_business_sessions VALUES('phone-session'); INSERT INTO native_platform_sessions VALUES('platform-session'); INSERT INTO business_terminals VALUES('surface',NULL,'contact','screen','screen-id'); INSERT INTO orders VALUES('retained-financial-order');");
+    item.db.prepare("INSERT INTO business_product_links VALUES('calai','native-account',?,'expiry','checked',NULL)").run(marker);
+    await createBackup({source:item.source,destination:item.destination});
+    const copy=new DatabaseSync(item.destination,{readOnly:true});
+    try{for(const table of ['business_terminal_grants','surface_application_presence','native_business_sessions','native_platform_sessions'])assert.equal(copy.prepare('SELECT COUNT(*) n FROM '+table).get().n,0);assert.ok(copy.prepare('SELECT revoked_at FROM business_terminals').get().revoked_at);const link=copy.prepare('SELECT * FROM business_product_links').get();assert.equal(link.source_account_id,'native-account');assert.equal(link.encrypted_credentials,null);assert.equal(link.last_error_code,'CALAI_RECONNECT_REQUIRED');assert.equal(copy.prepare('SELECT id FROM orders').get().id,'retained-financial-order');}finally{copy.close();}
+    assert.equal(item.db.prepare('SELECT encrypted_credentials FROM business_product_links').get().encrypted_credentials,marker);assert.equal(item.db.prepare('SELECT revoked_at FROM business_terminals').get().revoked_at,null);assert.equal(fs.readFileSync(item.destination).includes(Buffer.from(marker)),false);
+  }finally{item.cleanup();}
 });
 
 test("concurrent backups to one destination allow one owner and preserve its backup", async () => {

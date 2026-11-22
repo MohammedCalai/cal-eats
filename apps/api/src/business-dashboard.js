@@ -1,4 +1,4 @@
-import { requireRestaurantMembership } from "./auth/authorization.js";
+import { requireRestaurantMembership, restaurantCapabilities } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { buildFinanceSummary, parseLondonDateRange, resolveFinanceScope, operationFinancePredicate } from "./marketplace-reporting.js";
 import { orderEnvironmentPredicate } from "./financial-environment.js";
@@ -128,7 +128,7 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
   const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/(dashboard|message-attention)$/);
   if (req.method !== "GET" || !match) return false;
   const restaurantId = match[1], user = requireRestaurantMembership(db, session, restaurantId);
-  const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id).permission, owner = permission === "owner";
+  const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(restaurantId, user.id)?.permission ?? "scoped_admin", owner = permission === "owner" || user.role === "admin";
   if (match[2] === "message-attention") {
     const now = config.now().toISOString();
     const revision = restaurantMessageArrivalRevision(db, restaurantId, user.id);
@@ -136,7 +136,7 @@ export async function routeBusinessDashboard({ req, res, url, db, config, sessio
   }
   const view = url.searchParams.get("view") ?? "full";
   if (!["full", "operations"].includes(view)) throw new HttpError(400, "VALIDATION_ERROR", "Dashboard view is invalid");
-  const includeFinance = owner && view === "full",scope=resolveFinanceScope(config,url),environmentSql=includeFinance?` AND ${orderEnvironmentPredicate("o",scope)}`:"";
+  const includeFinance = restaurantCapabilities(db,session,restaurantId).viewFinance && view === "full",scope=resolveFinanceScope(config,url),environmentSql=includeFinance?` AND ${orderEnvironmentPredicate("o",scope)}`:"";
   const now = config.now(), range = dashboardRange(url.searchParams.get("period") ?? "today", now), page = pageValue(url.searchParams.get("page"), 1, 1000000), pageSize = pageValue(url.searchParams.get("pageSize"), 20, 100);
   const summary = db.prepare(`SELECT COUNT(*) AS ordersPlaced,COALESCE(SUM(CASE WHEN ${recognized()} THEN 1 ELSE 0 END),0) AS confirmedOrders,COALESCE(SUM(CASE WHEN o.status='completed' THEN 1 ELSE 0 END),0) AS completedOrders,COALESCE(SUM(CASE WHEN o.status IN ('rejected','cancelled','expired') THEN 1 ELSE 0 END),0) AS cancelledOrders FROM orders o WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<?${environmentSql}`).get(restaurantId, range.from, range.toExclusive);
   const topItems = db.prepare(`SELECT i.name,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${recognized()}${environmentSql} GROUP BY i.name ORDER BY quantity DESC,i.name LIMIT 5`).all(restaurantId, range.from, range.toExclusive);

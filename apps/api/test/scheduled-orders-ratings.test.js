@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
@@ -53,14 +54,14 @@ test("scheduled delivery remains a customer snapshot through business ETA, recei
     const place = payload => f.json("/api/orders", { method: "POST", cookie: customerSession, headers: { "Idempotency-Key": "scheduled-delivery" }, body: payload });
     const placed = await place(body); assert.equal(placed.status, 201, placed.text); const id = placed.body.data.id;
     assert.equal(placed.body.data.scheduledFor, scheduledFor); assert.equal(placed.body.data.scheduleMinimumLeadMinutes, 35);
-    const confirmed = await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: owner, body: { status: "accepted" } });
+    const confirmed = await tabletJson(f, owner, `/api/restaurant/orders/${id}/status`, { method: "PATCH",  body: { status: "accepted" } });
     assert.equal(confirmed.status, 200, confirmed.text); assert.equal(confirmed.body.data.customerEtaAt, scheduledFor);
     const printed = JSON.parse(f.db.prepare("SELECT receipt FROM device_print_jobs WHERE order_id=? AND printer_id=?").get(id, printer.id).receipt);
     assert.equal(printed.scheduledFor, scheduledFor);
     const payload = JSON.parse(f.db.prepare("SELECT payload FROM customer_transactional_email_outbox WHERE order_id=? AND source_key=?").get(id, `order:${id}:accepted`).payload);
     assert.equal(payload.order.scheduledFor, scheduledFor);
     const adjustedEta = "2026-01-03T12:15:00.000Z";
-    const adjusted = await f.json(`/api/restaurant/orders/${id}/preparation`, { method: "PATCH", cookie: owner, body: { estimatedReadyAt: adjustedEta } });
+    const adjusted = await tabletJson(f, owner, `/api/restaurant/orders/${id}/preparation`, { method: "PATCH",  body: { estimatedReadyAt: adjustedEta } });
     assert.equal(adjusted.status, 200, adjusted.text); assert.equal(adjusted.body.data.customerEtaAt, adjustedEta); assert.equal(adjusted.body.data.scheduledFor, scheduledFor);
     const business = (await f.json(`${root}/orders`, { cookie: owner })).body.data.find(row => row.id === id);
     assert.equal(business.scheduledFor, scheduledFor);
@@ -91,9 +92,9 @@ test("shop ratings are customer-owned completed-order stars, with genuine aggreg
     assert.equal(order.scheduledFor, null); assert.equal(order.shopRating, null); assert.equal(order.canRateShop, false);
     assert.equal((await f.json(route, { method: "POST", cookie: customer, body: { stars: 5 } })).body.error.code, "RATING_NOT_ELIGIBLE");
     for (const cookie of [otherCustomer, otherOwner]) assert.equal((await f.json(route, { method: "POST", cookie, body: { stars: 5 } })).status, cookie === otherOwner ? 403 : 404);
-    const complete = async order => { for (const status of ["accepted", "preparing", "ready", "completed"]) { const result = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status } }); assert.equal(result.status, 200, result.text); } };
+    const complete = async order => { for (const status of ["accepted", "preparing", "ready", "completed"]) { const result = await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH",  body: { status } }); assert.equal(result.status, 200, result.text); } };
     await complete(order);
-    await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status: "completed" } });
+    await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH",  body: { status: "completed" } });
     queueShopRatingPrompt(f.db, f.db.prepare("SELECT * FROM orders WHERE id=?").get(order.id), now.toISOString());
     const prompts = () => f.db.prepare("SELECT * FROM user_notifications WHERE order_id=? AND type='shop_rating'").all(order.id);
     assert.equal(prompts().length, 1); assert.equal(prompts()[0].read_at, null);
@@ -116,7 +117,7 @@ test("shop ratings are customer-owned completed-order stars, with genuine aggreg
     f.db.prepare("UPDATE orders SET created_at='2025-10-01T10:00:00.000Z' WHERE id=?").run(older.id);
     assert.equal((await f.json(`/api/orders/${older.id}/shop-rating`, { method: "POST", cookie: customer, body: { stars: 3 } })).status, 404);
     const unrateable = await place("rating-rejected");
-    await f.json(`/api/restaurant/orders/${unrateable.id}/status`, { method: "PATCH", cookie: owner, body: { status: "rejected" } });
+    await tabletJson(f, owner, `/api/restaurant/orders/${unrateable.id}/status`, { method: "PATCH",  body: { status: "rejected" } });
     assert.equal((await f.json(`/api/orders/${unrateable.id}/shop-rating`, { method: "POST", cookie: customer, body: { stars: 3 } })).body.error.code, "RATING_NOT_ELIGIBLE");
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM restaurant_order_ratings").get().n, 2);
     assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length, 0);

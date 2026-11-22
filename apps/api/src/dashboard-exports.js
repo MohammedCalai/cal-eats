@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { requireRestaurantOwner, requireRole } from "./auth/authorization.js";
+import { requireRestaurantCapability, requireRole } from "./auth/authorization.js";
 import { dashboardRange } from "./business-dashboard.js";
 import { HttpError } from "./http.js";
 import { buildFinanceSummary, parseLondonDateRange, resolveFinanceScope } from "./marketplace-reporting.js";
@@ -108,7 +108,7 @@ function restaurantsExport(db, restaurants, url, range, stamp,config) {
 }
 
 function ownerReport(db,config,session,url,match,rowLimit=MAX_ROWS){
-  const restaurantId=match[1],kind=match[2],user=requireRestaurantOwner(db,session,restaurantId),now=config.now(),range=dashboardRange(url.searchParams.get("period")??"today",now),financialScope=resolveFinanceScope(config,url);
+  const restaurantId=match[1],kind=match[2],user=requireRestaurantCapability(db,session,restaurantId,"viewFinance"),now=config.now(),range=dashboardRange(url.searchParams.get("period")??"today",now),financialScope=resolveFinanceScope(config,url);
   const restaurant=db.prepare("SELECT id,name FROM restaurants WHERE id=?").get(restaurantId);
   const report=kind==="orders"?ordersExport(db,restaurantId,range,false,financialScope,rowLimit):ownerMetrics(db,restaurant,user,range,now.toISOString(),financialScope);
   if(report.rows.length>rowLimit)throw new HttpError(413,"EXPORT_TOO_LARGE","Choose a shorter date range for this export.");

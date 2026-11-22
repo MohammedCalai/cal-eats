@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {journeyFixture} from "./helpers.js";
+import {tabletJson} from "./registered-tablet-fixture.js";
 
 test("campaign editing is owner scoped, sends no new offers, and ending preserves reserved order confirmation",async()=>{
  const f=await journeyFixture({now:()=>new Date("2026-01-01T01:00:00.000Z")});
@@ -25,9 +26,9 @@ test("campaign editing is owner scoped, sends no new offers, and ending preserve
   assert.equal(f.db.prepare("SELECT status FROM offer_grants WHERE id=?").get(offerId).status,"reserved");
   assert.equal((await f.json(`/api/promotions/${id}/claim`,{method:"POST",cookie:customer,body:{}})).status,404);
   assert.equal((await f.json(path,{method:"PATCH",cookie:owner,body:{title:"Reopen"}})).body.error.code,"CAMPAIGN_ENDED");
-  const confirmed=await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted",estimatedReadyAt:"2026-01-01T01:30:00Z"}});assert.equal(confirmed.status,200,confirmed.text);
+  const confirmed=await tabletJson(f,owner,`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",body:{status:"accepted",estimatedReadyAt:"2026-01-01T01:30:00Z"}});assert.equal(confirmed.status,200,confirmed.text);
   assert.deepEqual(f.db.prepare("SELECT total_minor,commission_minor,promotion_snapshot FROM orders WHERE id=?").get(order.id),before);
-  for(const status of ["preparing","ready","completed"]){const result=await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(result.status,200,result.text);}
+  for(const status of ["preparing","ready","completed"]){const result=await tabletJson(f,owner,`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",body:{status}});assert.equal(result.status,200,result.text);}
   assert.equal(f.db.prepare("SELECT status FROM offer_grants WHERE id=?").get(offerId).status,"redeemed");
  }finally{await f.close();}
 });

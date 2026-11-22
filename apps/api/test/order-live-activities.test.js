@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { generateKeyPairSync, randomUUID, verify } from "node:crypto";
@@ -22,7 +23,7 @@ async function fixture() {
   const body = (orderId, extra = {}) => ({ installationId: install, activityId: randomUUID(), orderId, pushToken: "aa".repeat(32), platform: "ios", projectId: LIVE_ACTIVITY_PROJECT, ...extra });
   const register = (value, customHeaders = headers) => f.json("/api/native/live-activities", { method: "POST", headers: customHeaders, body: value });
   const advance = ms => { clock += ms; };
-  const transition = async (order, status, extra = {}) => { advance(2000); const response = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: owner, body: { status, ...extra } }); assert.equal(response.status, 200, response.text); return response.body.data; };
+  const transition = async (order, status, extra = {}) => { advance(2000); const response = await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH",  body: { status, ...extra } }); assert.equal(response.status, 200, response.text); return response.body.data; };
   const sent = [], adapter = { send: async (token, payload, { beforeSend, priority }) => { if (!beforeSend()) return { status: "cancelled" }; sent.push({ token, payload, priority }); return { status: "accepted", apnsId: randomUUID() }; } };
   const session = (await f.json("/api/native/auth/me", { headers })).body.data.session;
   return { ...f, headers, auth: login.body.data, session, owner, admin, restaurant, place, body, register, advance, transition, sent, adapter, now: () => clock };
@@ -84,7 +85,7 @@ test("canonical customer status and ETA update independently of notification rea
     assert.equal(update["content-state"].name, LIVE_ACTIVITY_NAME); assert.equal(content.statusLabel, "Order confirmed"); assert.equal(content.etaUnix, Date.parse(confirmed.customerEtaAt) / 1000); assert.equal(content.etaUnix, Date.parse(eta) / 1000);
     assert.equal(update["stale-date"], Date.parse(eta) / 1000 + 15 * 60);
     const newEta = new Date(f.now() + 60 * 60000).toISOString(); f.advance(2000);
-    const changed = await f.json(`/api/restaurant/orders/${order.id}/preparation`, { method: "PATCH", cookie: f.owner, body: { estimatedReadyAt: newEta } }); assert.equal(changed.status, 200, changed.text);
+    const changed = await tabletJson(f, f.owner, `/api/restaurant/orders/${order.id}/preparation`, { method: "PATCH",  body: { estimatedReadyAt: newEta } }); assert.equal(changed.status, 200, changed.text);
     await runOrderLiveActivities(f.db, f.config, { adapter: f.adapter }); assert.equal(JSON.parse(f.sent.at(-1).payload.aps["content-state"].props).etaUnix, Date.parse(changed.body.data.customerEtaAt) / 1000);
     for (const status of ["preparing", "ready", "out_for_delivery"]) { await f.transition(order, status); await runOrderLiveActivities(f.db, f.config, { adapter: f.adapter }); }
     assert.equal(f.sent.at(-1).payload.aps.event, "update"); assert.equal(JSON.parse(f.sent.at(-1).payload.aps["content-state"].props).statusLabel, "Your food is on its way");

@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -129,7 +130,7 @@ test('persisted customer notifications deliver safe current actions and honor re
  const s=await setup(),calls=[],adapter=fakeTransport(calls);try{
   assert.equal((await s.register()).status,200);
   const placed=await s.f.json('/api/orders',{method:'POST',headers:{...s.headers,'Idempotency-Key':'push-order'},body:{restaurantId:s.restaurant.id,items:[{menuItemId:s.item.id,quantity:1}],paymentMethod:'mock_card',fulfillment:'collection'}});assert.equal(placed.status,201,placed.text);const order=placed.body.data;
-  const status=async value=>{const r=await s.f.json(`/api/restaurant/orders/${order.id}/status`,{method:'PATCH',cookie:s.owner,body:{status:value}});assert.equal(r.status,200,r.text);};
+  const status=async value=>{const r=await tabletJson(s.f, s.owner, `/api/restaurant/orders/${order.id}/status`, {method:'PATCH',body:{status:value}});assert.equal(r.status,200,r.text);};
   await status('accepted');s.notice('order_status',`order:${order.id}:accepted`,{orderId:order.id,restaurantId:s.restaurant.id});assert.equal(s.f.db.prepare('SELECT COUNT(*) n FROM customer_push_outbox').get().n,1,'Notification replay never duplicates a device job');
   await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,1);assert.deepEqual(calls[0].data,{notificationId:s.f.db.prepare("SELECT id FROM user_notifications WHERE user_id=? AND type='order_status'").get(s.customerId).id,recipientUserId:s.customerId,kind:'order',orderId:order.id});assert.equal(calls[0].sound,undefined);assert.equal(calls[0].channelId,'cal-eats-updates-quiet');
   await status('preparing');await status('ready');await runCustomerPush(s.f.db,s.f.config,{adapter});assert.equal(calls.length,2,'Only the latest order status is dispatched');

@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -78,7 +79,7 @@ test("actual confirmation delivery contains the full exact accepted Terms after 
   try {
     const setup = await orderSetup(f); assert.equal((await setup.agree(policy)).status, 200);
     const placed = await setup.place("durable-contract-email"); assert.equal(placed.status, 201, placed.text); const order = placed.body.data;
-    const confirm = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie: setup.owner, body: { status: "accepted", estimatedReadyAt: "2026-01-01T01:45:00.000Z" } }); assert.equal(confirm.status, 200, confirm.text);
+    const confirm = await tabletJson(f, setup.owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH",  body: { status: "accepted", estimatedReadyAt: "2026-01-01T01:45:00.000Z" } }); assert.equal(confirm.status, 200, confirm.text);
     const queued = f.db.prepare("SELECT * FROM customer_transactional_email_outbox WHERE order_id=? AND event_kind='order_update'").get(order.id); assert.ok(queued);
     const payload = JSON.parse(queued.payload); assert.equal(payload.termsCopy.text, policy.documents.terms.text); assert.equal(payload.termsCopy.sha256, policy.documents.terms.sha256);
     f.config.customerLegal = loadCustomerLegalConfig(documents("fixture-v2"), f.config.origin); initializeCustomerLegal(f.db, f.config);

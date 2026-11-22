@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -35,9 +36,9 @@ test("7% commission follows £15 less a £4 restaurant offer through saved earni
       return response.body.data;
     };
     const advance = async (orderId, status) => {
-      const response = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
+      const response = await registeredTabletJson(f, owner, `/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
       assert.equal(response.status, 200, response.text);
-      return response.body.data;
+      const financial=await f.json(`/api/orders/${orderId}`,{cookie:owner});assert.equal(financial.status,200,financial.text);return financial.body.data;
     };
 
     // Establish the completed purchase required for a real targeted offer grant.
@@ -177,9 +178,9 @@ test("new delivery commission includes the charged fee, excludes waived fees and
       return response.body.data;
     };
     const advance = async (orderId, status) => {
-      const response = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
+      const response = await registeredTabletJson(f, owner, `/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie: owner, body: { status } });
       assert.equal(response.status, 200, response.text);
-      return response.body.data;
+      const financial=await f.json(`/api/orders/${orderId}`,{cookie:owner});assert.equal(financial.status,200,financial.text);return financial.body.data;
     };
     const history = await place("delivery-commission-relationship", basket);
     for (const status of ["accepted", "preparing", "ready", "completed"]) await advance(history.id, status);

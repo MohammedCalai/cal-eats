@@ -32,6 +32,9 @@ COPY --chown=node:node apps/print-bridge/src ./apps/print-bridge/src
 COPY --chown=node:node apps/print-bridge/windows ./apps/print-bridge/windows
 COPY --chown=node:node apps/print-bridge/calai-native ./apps/print-bridge/calai-native
 COPY --chown=node:node apps/print-bridge/package.json ./apps/print-bridge/package.json
+COPY --chown=node:node apps/terminal-auth/src ./apps/terminal-auth/src
+COPY --chown=node:node apps/terminal-auth/windows ./apps/terminal-auth/windows
+COPY --chown=node:node apps/terminal-auth/package.json ./apps/terminal-auth/package.json
 COPY --chown=node:node packages/contracts ./packages/contracts
 COPY --from=api-dependencies --chown=node:node /build/node_modules ./node_modules
 COPY --from=portal-build --chown=node:node /build/apps/portal/dist ./apps/portal/dist

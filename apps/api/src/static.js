@@ -114,7 +114,7 @@ async function servePortal(req, res, pathname) {
   const extension = path.extname(relative);
   let resource = relative;
   if (!extension) {
-    if (relative && !/^(login|owner|staff|admin)(\/|$)/.test(relative)) return false;
+    if (relative && !/^(login|owner|staff|admin|embedded)(\/|$)/.test(relative)) return false;
     resource = "index.html";
   } else if (!portalTypes.has(extension)) return false;
   const absolute = path.resolve(portalRoot, resource);
@@ -123,7 +123,9 @@ async function servePortal(req, res, pathname) {
     const body = await readFile(absolute);
     const offline = resource === "offline-portal.html";
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
+    const embedded=/^embedded(?:\/|$)/.test(relative);
+    if(embedded)res.removeHeader('X-Frame-Options');
+    res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self'${offline ? " 'unsafe-inline'" : ""}; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self' http://127.0.0.1:17864; object-src 'none'; base-uri 'none'; frame-ancestors ${embedded?'https://calai.info':"'none'"}`);
     res.writeHead(200, { "Content-Type": portalTypes.get(path.extname(resource)), "Content-Length": body.length, "Cache-Control": "no-store" });
     res.end(req.method === "HEAD" ? undefined : body);
     return true;

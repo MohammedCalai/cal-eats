@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { restaurantAvailability } from "../src/availability.js";
 import { journeyFixture } from "./helpers.js";
+import {tabletJson} from "./registered-tablet-fixture.js";
 import { seedDemoData } from "../src/seed.js";
 
 const creds = { admin: ["admin@calai.local", "LocalAdmin!4310"], owner: ["restaurant@calai.local", "LocalRestaurant!4310"], owner2: ["restaurant2@calai.local", "LocalRestaurant2!4310"], customer: ["customer@calai.local", "LocalCustomer!4310"] };
 async function auth(f) { return { admin: await f.login(...creds.admin), owner: await f.login(...creds.owner), owner2: await f.login(...creds.owner2), customer: await f.login(...creds.customer) }; }
 
 test("restaurant onboarding stays pending and owner/staff permissions are isolated", async () => {
-  const f = await journeyFixture();
+  const f = await journeyFixture({rateLimit:{attempts:100,windowMs:60000}});
   try {
     const a = await auth(f);
     const onboarded = await f.json("/api/auth/restaurant-register", { method: "POST", body: { name: "New Owner", email: "new-owner@example.test", restaurantName: "Pending Place", address: "12 Market Street, London E1 1AA", mobile: "07700 900123" } });
@@ -30,7 +31,8 @@ test("restaurant onboarding stays pending and owner/staff permissions are isolat
     const order = await f.json("/api/orders", { method: "POST", cookie: a.customer, headers: { "Idempotency-Key": "staff-privacy" }, body: { restaurantId: owned.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection" } });
     const staffOrder = (await f.json(`/api/restaurant/restaurants/${owned.id}/orders`, { cookie: staffCookie })).body.data[0];
     assert.equal(staffOrder.id, order.body.data.id); assert.equal("ledger" in staffOrder, false); assert.equal("contract" in staffOrder, false); assert.equal("commissionMinor" in staffOrder, false);
-    const staffProgress = await f.json(`/api/restaurant/orders/${staffOrder.id}/status`, { method: "PATCH", cookie: staffCookie, body: { status: "accepted" } }); assert.equal(staffProgress.status, 200); assert.equal("ledger" in staffProgress.body.data, false); assert.equal("contract" in staffProgress.body.data, false);
+    const staffProgress = await f.json(`/api/restaurant/orders/${staffOrder.id}/status`, { method: "PATCH", cookie: staffCookie, body: { status: "accepted" } }); assert.equal(staffProgress.status, 403);assert.equal(staffProgress.body.error.code,"REGISTERED_TABLET_REQUIRED");
+    const tabletProgress=await tabletJson(f,a.owner,`/api/restaurant/orders/${staffOrder.id}/status`,{method:"PATCH",body:{status:"accepted"}});assert.equal(tabletProgress.status,200,tabletProgress.text);assert.equal("ledger" in tabletProgress.body.data,false);assert.equal("contract" in tabletProgress.body.data,false);
     const other = (await f.json("/api/restaurant/restaurants", { cookie: a.owner2 })).body.data[0];
     assert.equal((await f.json(`/api/restaurant/restaurants/${other.id}/orders`, { cookie: staffCookie })).status, 404);
   } finally { await f.close(); }
@@ -46,15 +48,16 @@ test("opening, overnight, DST, holiday, pause, fulfillment and cash gates are se
     const a = await auth(f); const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: a.owner })).body.data[0]; const item = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const place = (key, overrides = {}) => f.json("/api/orders", { method: "POST", cookie: a.customer, headers: { "Idempotency-Key": key }, body: { restaurantId: restaurant.id, items: [{ menuItemId: item.id, quantity: 1 }], paymentMethod: "mock_card", fulfillment: "collection", ...overrides } });
     await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: a.owner, body: { alwaysOpen: false, openingHours: [] } });
-    assert.equal((await place("closed")).body.error.code, "RESTAURANT_CLOSED");
-    await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: a.owner, body: { alwaysOpen: true, paused: true } });
+    assert.equal((await place("closed")).body.error.code, "CAL_EATS_SETUP_REQUIRED");
+    assert.equal((await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: a.owner, body: { paused: true } })).status,403);
+    await f.json(`/api/admin/restaurants/${restaurant.id}/manage/profile`, { method: "PATCH", cookie: a.admin, body: { alwaysOpen: true, paused: true } });
     assert.equal((await place("paused")).body.error.code, "RESTAURANT_CLOSED");
-    await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: a.owner, body: { paused: false, collectionEnabled: false } });
+    await f.json(`/api/admin/restaurants/${restaurant.id}/manage/profile`, { method: "PATCH", cookie: a.admin, body: { paused: false, collectionEnabled: false } });
     assert.equal((await place("no-collection")).body.error.code, "COLLECTION_DISABLED");
     await f.json(`/api/restaurant/restaurants/${restaurant.id}/profile`, { method: "PATCH", cookie: a.owner, body: { collectionEnabled: true, cashEnabled: false } });
     assert.equal((await place("no-cash", { paymentMethod: "cash" })).body.error.code, "CASH_DISABLED");
     await f.json(`/api/admin/restaurants/${restaurant.id}/suspension`, { method: "PATCH", cookie: a.admin, body: { suspended: true, reason: "Local review" } });
-    assert.equal((await place("suspended")).body.error.code, "RESTAURANT_SUSPENDED");
+    assert.equal((await place("suspended")).body.error.code, "CAL_EATS_SETUP_REQUIRED");
     assert.equal((await f.json("/api/restaurants")).body.data.some((row) => row.id === restaurant.id), false);
   } finally { await f.close(); }
 });

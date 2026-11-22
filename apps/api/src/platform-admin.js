@@ -49,6 +49,18 @@ function assertContext(db,config,context){const row=record(db,context.sessionId)
 export async function requirePlatformConnection(db,config,session){
  requireEnabled(config);admin(db,session,config);let databases=flights.get(config);if(!databases){databases=new WeakMap();flights.set(config,databases);}let group=databases.get(db);if(!group){group=new Map();databases.set(db,group);}let flight=group.get(session.sessionId);if(!flight){flight=revalidate(db,config,session);group.set(session.sessionId,flight);flight.finally(()=>{if(group.get(session.sessionId)===flight)group.delete(session.sessionId);}).catch(()=>{});}return flight;
 }
+export async function readCalaiBusinessDirectory(db,config,session){
+ const context=await requirePlatformConnection(db,config,session);assertContext(db,config,context);
+ const response=await adapter(config).request('GET','/tenants',undefined,context.accessToken);assertContext(db,config,context);
+ if(response?.status!==200||response?.success!==true)throw new HttpError(503,'CALAI_DIRECTORY_UNAVAILABLE','The authorised native Calai business directory is unavailable. No integration records were changed.');
+ if(!Array.isArray(response.data)||response.data.length>10000)throw new HttpError(502,'CALAI_DIRECTORY_INVALID','Calai returned an unsupported business directory.');
+ const seen=new Set();
+ return response.data.map(row=>{
+  if(!row||typeof row!=='object'||Array.isArray(row)||!isCalaiUserId(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>200||/[\u0000-\u001f\u007f]/.test(row.name)||typeof row.status!=='string'||!row.status.trim()||row.status.length>64||/[\u0000-\u001f\u007f]/.test(row.status))throw new HttpError(502,'CALAI_DIRECTORY_INVALID','Calai returned an unsupported native business reference.');
+  const id=row.id.toLowerCase();if(seen.has(id))throw new HttpError(502,'CALAI_DIRECTORY_INVALID','Calai returned conflicting native business references.');seen.add(id);
+  return{id,name:row.name.trim(),status:row.status};
+ });
+}
 export async function enforcePlatformAdminAuthority({req,url,db,config,session}){
  if(!session?.platformFederated)return;
  // HTML/assets must still load during an upstream outage. Public sign-in and

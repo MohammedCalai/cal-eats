@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
 import {journeyFixture} from "./helpers.js";
@@ -52,7 +53,7 @@ test("zero-rate orders snapshot after discounts plus delivery and retain histori
     const waived=(await quote(grant.body.data.id)).body.data;assert.equal(waived.commissionMinor,0);assert.notDeepEqual(waived.commission.control,before.commission.control);
     const free=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":"commission-during-control"},body:{...basket,paymentMethod:"mock_card",offerId:grant.body.data.id}});assert.equal(free.status,201,free.text);assert.equal(free.body.data.totalMinor,1300);assert.equal(free.body.data.commissionMinor,0);assert.equal(free.body.data.contract.rateBasisPoints,0);
     await f.json(path,{method:"PATCH",cookie:admin,body:{action:"enable",expectedRevision:1}});
-    for(const status of ["accepted","preparing","ready","out_for_delivery","completed"]){const advanced=await f.json(`/api/restaurant/orders/${free.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(advanced.status,200,advanced.text);assert.equal(advanced.body.data.commissionMinor,0);}
+    for(const status of ["accepted","preparing","ready","out_for_delivery","completed"]){const advanced=await registeredTabletJson(f, owner, `/api/restaurant/orders/${free.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(advanced.status,200,advanced.text);assert.equal((await f.json(`/api/orders/${free.body.data.id}`,{cookie:owner})).body.data.commissionMinor,0);}
     assert.equal((await f.json(`/api/orders/${normal.body.data.id}`,{cookie:customer})).body.data.commissionMinor,119);
     const snapshot=JSON.parse(f.db.prepare("SELECT commission_control_snapshot FROM orders WHERE id=?").get(free.body.data.id).commission_control_snapshot);assert.equal(snapshot.mode,"disabled");assert.equal(snapshot.rateBasisPoints,0);
     assert.equal(f.db.prepare("SELECT commission_minor FROM orders WHERE id=?").get(free.body.data.id).commission_minor,0);

@@ -4,6 +4,7 @@ import { crc32 } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { journeyFixture } from "./helpers.js";
+import {enrolRegisteredTablet} from "./registered-tablet-fixture.js";
 import { buildPrinterBridgePackage } from "../src/printer-bridge-package.js";
 import { loadConfig } from "../../print-bridge/src/config.js";
 
@@ -26,6 +27,7 @@ test("archived restaurants cannot claim paired printer jobs and existing acknowl
   try{
     const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],root=`/api/restaurant/restaurants/${restaurant.id}`;
+    const tablet=await enrolRegisteredTablet(f,{ownerCookie:owner});
     const item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
     const printer=(await f.json(`${root}/printers`,{method:"POST",cookie:owner,body:{name:"Archived kitchen",enabled:true}})).body.data;
     const code=(await f.json(`${root}/printers/${printer.id}/pairing-code`,{method:"POST",cookie:owner,body:{}})).body.data.code;
@@ -33,7 +35,7 @@ test("archived restaurants cannot claim paired printer jobs and existing acknowl
     const headers={authorization:`Bearer ${paired.body.data.token}`};
     for(let i=0;i<2;i++){
       const order=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`archived-printer-${i}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"cash",fulfillment:"collection"}});assert.equal(order.status,201,order.text);
-      const accepted=await f.json(`/api/restaurant/orders/${order.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status:"accepted"}});assert.equal(accepted.status,200,accepted.text);
+      const accepted=await tablet.json(`/api/restaurant/orders/${order.body.data.id}/status`,{method:"PATCH",body:{status:"accepted"}});assert.equal(accepted.status,200,accepted.text);
     }
     const first=await f.json("/api/devices/jobs/claim",{method:"POST",headers,body:{}});assert.equal(first.status,200,first.text);assert.ok(first.body.data.job);
     const jobs=()=>f.db.prepare("SELECT * FROM device_print_jobs ORDER BY id").all(),tokens=()=>f.db.prepare("SELECT * FROM printer_job_claim_tokens ORDER BY job_id,token_hash").all();
@@ -109,6 +111,11 @@ test("automatic setup ZIP contains scoped bootstrap, validated config and no dev
     const filename=path.join(f.directory,"download-config.json");await writeFile(filename,files.get("config.json"));const parsed=await loadConfig(filename);assert.equal(parsed.apiBaseUrl,"https://eats.calai.info");
     config.apiBaseUrl="https://api.calai.info";await writeFile(filename,JSON.stringify(config));await assert.rejects(loadConfig(filename),/forbidden/);
     const installer=files.get("windows/install.ps1").toString("utf8");assert.match(installer,/allow-physical-transport/);assert.match(installer,/CalEatsPrinter-/);assert.match(installer,/Start-ScheduledTask/);assert.match(installer,/SetAccessRuleProtection/);
+    // Setup must never ship the legacy native-Calai patcher or load its service.
+    assert.ok(![...files.keys()].some(name=>/shared-calai|patch-calai|calai-native/.test(name)));
+    assert.doesNotMatch(installer,/&\s*\(Join-Path[^\r\n]*connect-shared-calai/);
+    assert.match(installer,/existing Calai printing service was detected and left unchanged/);
+    assert.match(files.get("README.txt").toString("utf8"),/does not modify, restart or reuse/);
     assert.equal(files.get("src/index.js").toString("utf8"),await readFile(new URL("../../print-bridge/src/index.js",import.meta.url),"utf8"));
   }finally{await f.close();}
 });

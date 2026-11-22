@@ -1,0 +1,1830 @@
+{
+  "source": {
+    "repository": "calai-operation/calai-platform",
+    "commit": "dec58e32f9fffff16ffc5409a4ba3369193ad68c",
+    "archiveSha256": "ac0b3631c40d60e5f3728a021b77ad31c9182cd824be2cd6076e614fc89aa69d",
+    "currentMainVerified": false
+  },
+  "algorithm": "SHA-256",
+  "unchangedCandidateFrontendFiles": [
+    {
+      "path": "frontend/.dockerignore",
+      "sha256": "74658778ae3a37336b77f2c626700f904d63793b4d7fa754959ddbe19d620009"
+    },
+    {
+      "path": "frontend/.gitattributes",
+      "sha256": "b9f100ed2b5d729ed5fa958ce1464925fb8229c7cc3d9a3794f5b8071632787e"
+    },
+    {
+      "path": "frontend/.gitignore",
+      "sha256": "9da06de7245fb86d0a37841f178b9bd4af7d71cc001f9b09abba1b4d700c8a01"
+    },
+    {
+      "path": "frontend/components.json",
+      "sha256": "338ef82d6ba8cf3a5aa92594bbf1b65436427c1630eaceaf2e9cd5be2357eb05"
+    },
+    {
+      "path": "frontend/Dockerfile",
+      "sha256": "316ecfb0b69a0d3bfd65430fc527da43e7b8a66502d09e1dd1b6e4b20b221ef5"
+    },
+    {
+      "path": "frontend/eslint.config.js",
+      "sha256": "da0cbf3213f2994741024e2aa5165d017e0345f389dcd2f8a0db97fee7289d1b"
+    },
+    {
+      "path": "frontend/index.html",
+      "sha256": "c064a74f07fa9954b775a7f1ccbd72ff6fada0ea526eda0df163963d15b773cb"
+    },
+    {
+      "path": "frontend/jsconfig.json",
+      "sha256": "6dfda1ddf53329b2f1da5cc7e81740c654082fd2921177549754fb688b306d68"
+    },
+    {
+      "path": "frontend/nginx.conf",
+      "sha256": "7ac219bf032da71f602a87e45bd0e6bddcc0d02e6128bb9df68d0d5877968086"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "sha256": "b91e87cccf21958cc749edb571423883f2205209e22ba70af9354792283b9935"
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256": "e83c0558feb27839cd5e33147e335579ddc755fc30415ec107ed00c4c60d2bbc"
+    },
+    {
+      "path": "frontend/public/Banner.mp4",
+      "sha256": "effcf36feaaaa68d393cfdf553d529041db7365e00329d8f98ddd22714430ca3"
+    },
+    {
+      "path": "frontend/public/CALAI.mp4",
+      "sha256": "f820e282b20269f97d51acbb9e744a4d3c4e673b660afa00ce8f4ace9747b34d"
+    },
+    {
+      "path": "frontend/public/Hand.png",
+      "sha256": "5796ea9c0d256a5fac32c90d8cca408845879ed3914a2bf272d40af020a7514b"
+    },
+    {
+      "path": "frontend/public/logo.png",
+      "sha256": "145b4efbf8b93edba4d202f32ac1f8a7d41bfee39aa2531eb4b4566098b456c9"
+    },
+    {
+      "path": "frontend/public/moon.png",
+      "sha256": "cc43fd4d46d6e612f3c28654e1354c2d5059b62aeb90df6e79f7a2aa51a9afb7"
+    },
+    {
+      "path": "frontend/public/notification.wav",
+      "sha256": "e3f780ecdbfe7b463908909549095039de5b1c8a0efee5898f85bb0352a6bdfc"
+    },
+    {
+      "path": "frontend/public/title.png",
+      "sha256": "6d7b25973dcd35a64ead3ca4ba5c4db607a505975c0708fd7b516fbe10b0d365"
+    },
+    {
+      "path": "frontend/public/unconfirmed-notification.wav",
+      "sha256": "bee986417db63c110c484b983803c006286c63a8cd48e452f01af35f3b4f9d5f"
+    },
+    {
+      "path": "frontend/README.md",
+      "sha256": "4a3fe8fe629ae61cae2d8c9d093c3055fb4ed41899897393a6fb05489adf00bf"
+    },
+    {
+      "path": "frontend/src/App.css",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "sha256": "29e13ee2c8384f4747592823ee1234705c20a765babd425250d21576b44e0f47"
+    },
+    {
+      "path": "frontend/src/components/AllTenantsList.jsx",
+      "sha256": "2d080a19abc4a7f0e2cfe061b90bd06a2c764329eb5d726f9ad2baeaf3455334"
+    },
+    {
+      "path": "frontend/src/components/Breadcrumb.jsx",
+      "sha256": "d361180a3abb1f911d4d1917db191e951c6dbd7ef97fafa012cefd823b645dea"
+    },
+    {
+      "path": "frontend/src/components/CallActivityChart.jsx",
+      "sha256": "8c2cd0540749f6646230cbcb559eb11bb0611b73bc1d15bbf9ff9365aeee2cd5"
+    },
+    {
+      "path": "frontend/src/components/CallDuration.jsx",
+      "sha256": "aaf399781fa0c64d0f01276519fa78ee59e24f0649d163b3750573f00ee8b969"
+    },
+    {
+      "path": "frontend/src/components/CallLogTabContent.jsx",
+      "sha256": "6569b6afedded5c98d56b8e973eef93ae1d72b9661a08c30f7e401d72a5b9fc9"
+    },
+    {
+      "path": "frontend/src/components/ConnectedServices.jsx",
+      "sha256": "599bf954efcc45383e2495471fd51dddedd83115ede41c562f007e83009b50e1"
+    },
+    {
+      "path": "frontend/src/components/Container.jsx",
+      "sha256": "66da9137c21e227dde10f4a2e4f8eb1b81dc38749283367f973dcb31afa73584"
+    },
+    {
+      "path": "frontend/src/components/DashboardTabs.jsx",
+      "sha256": "6c92219802c28aa529f70c0ee657a772bfe10bef0be8b5298279634efa853002"
+    },
+    {
+      "path": "frontend/src/components/Dropdown.jsx",
+      "sha256": "c2fe40b85cb6c047b9ffd5d789960c4297d4d6a7b76c230e7d30e071ff4c01f7"
+    },
+    {
+      "path": "frontend/src/components/EnterpriseContactModal.jsx",
+      "sha256": "4a6bbc1ac180a33c4d8a7d03c665e0c2aa545df8a8ef34fc24a4d45b37f0ac47"
+    },
+    {
+      "path": "frontend/src/components/ErrorBoundary.jsx",
+      "sha256": "6bb91e171b46659fa503c15e7f288518aba1aae931bdbcde1bac99fd73ed302e"
+    },
+    {
+      "path": "frontend/src/components/FailedCallsTabContent.jsx",
+      "sha256": "b01e5a9fda9350da18b362c20d9e5f32adc4e16993d22bad14de418b86e930a7"
+    },
+    {
+      "path": "frontend/src/components/FAQdropdown.jsx",
+      "sha256": "effa42b3c69ff1e7c7ff099ddbaa9f16a3f3fb3ca4048458d8c36abb269666ff"
+    },
+    {
+      "path": "frontend/src/components/Header.jsx",
+      "sha256": "cb3c5b97850ab85ffb30fe2a93e14cb7cddd2c6b20dd29d11cce26bf892c4265"
+    },
+    {
+      "path": "frontend/src/components/Image.jsx",
+      "sha256": "362c593fdf424bafeae1f6e3bb088cccf95e938d6357aafa567adff8270babf6"
+    },
+    {
+      "path": "frontend/src/components/Inputfield.jsx",
+      "sha256": "9f95a09e47d7e6dfc2a51f4a106b7e71ae2833cc3408d53eaecf1dfb975e7550"
+    },
+    {
+      "path": "frontend/src/components/layout/Footer.jsx",
+      "sha256": "b27b2bab3921007c05a9eaf7dc11a501c8171d49e0b7b28df8e7ee81646b3660"
+    },
+    {
+      "path": "frontend/src/components/layout/Header.jsx",
+      "sha256": "712c73789b56543dd1b6672552e81e33db21313d907c44f24af2045b6ef00667"
+    },
+    {
+      "path": "frontend/src/components/layout/Navbar.jsx",
+      "sha256": "81791d0b406ad895c538265a8c81446e62921403aec9e03fced372723e6d94ba"
+    },
+    {
+      "path": "frontend/src/components/LiveAgentUsage.jsx",
+      "sha256": "7dee64038c5af15fde27d8c9208fb59a48a464a417717ed536099c7d5d576231"
+    },
+    {
+      "path": "frontend/src/components/LiveOrderPopup.jsx",
+      "sha256": "6538cc302dcd4a876c969c40117bcdec497da8a72d7f9a14d34e5ce7e00e8afb"
+    },
+    {
+      "path": "frontend/src/components/LowBalanceTenants.jsx",
+      "sha256": "2cb6d97d9227c8d9e56940f4068e6b069b01e39291902ebd98e86efe021c6c1e"
+    },
+    {
+      "path": "frontend/src/components/MonthByMonth.jsx",
+      "sha256": "dbbd28233dbb2271c8f1dc218e272077877ccce9e59bdef87691e691ffe5dcc8"
+    },
+    {
+      "path": "frontend/src/components/OfflineBanner.jsx",
+      "sha256": "19bf9ab48324db0a9d1a0d3f8981a641d4c04e08b61bb855c84f6f6d0eb7977c"
+    },
+    {
+      "path": "frontend/src/components/OverallPerformanceReport.jsx",
+      "sha256": "59836105615fa770b9ef814386fc89b4a215f9473657b93bb96afc3cbcbd66db"
+    },
+    {
+      "path": "frontend/src/components/OverallReports.jsx",
+      "sha256": "f354a1df355a4926777419b17ca0f01b72b5795d3f1f43d1cc07d7397ed4ae3d"
+    },
+    {
+      "path": "frontend/src/components/OverviewTabContent.jsx",
+      "sha256": "c35d114f745c1cf40740ac62a97305b2bb3ed84c5de1bd9999a63140c20645fd"
+    },
+    {
+      "path": "frontend/src/components/OwnerLiveActivity.jsx",
+      "sha256": "1d180e8aa142cecc5f951f2d11c26d41c3b701b6e1dd19aef146a8cada722dd3"
+    },
+    {
+      "path": "frontend/src/components/Password.jsx",
+      "sha256": "bc7b98d0e197e9dcda904428e08256364c4061bab5073a17b186133bb9a05abe"
+    },
+    {
+      "path": "frontend/src/components/PeriodPerformance.jsx",
+      "sha256": "c041ad03f2984e5bd9e466377e61c366d6f30be66892c1b311b3ce2c3e4f03ac"
+    },
+    {
+      "path": "frontend/src/components/PlanDistribution.jsx",
+      "sha256": "9e5277d7cf63e7989c7fc8c09877e4fd6689e09e6657df3623b8f6037b98fc0d"
+    },
+    {
+      "path": "frontend/src/components/PrinterHealthTabContent.jsx",
+      "sha256": "f0926346527666a84e1df7e8c921e67aec71a8df74c028406d224a1377dbf931"
+    },
+    {
+      "path": "frontend/src/components/ProviderCallTable.jsx",
+      "sha256": "d2829f63594acaf4997367e4b4d068a30bd687e107baf08f1365e2e08bb854fa"
+    },
+    {
+      "path": "frontend/src/components/ProviderCostsTabContent.jsx",
+      "sha256": "ad00879cd21cb7782df6a97b9e3daf375e19376821217e02283eb8957a95bf1b"
+    },
+    {
+      "path": "frontend/src/components/RecentTrainingList.jsx",
+      "sha256": "29b47f8f0383112efcc2e8568e3b60ae3f6987502e2376c25b9196ef743b27e1"
+    },
+    {
+      "path": "frontend/src/components/SpecialOfferUpload.jsx",
+      "sha256": "aefed96f7b358a1ddd58acbe4705f5259ba2289f0f8404ecfa47b38ccec97746"
+    },
+    {
+      "path": "frontend/src/components/StatCard.jsx",
+      "sha256": "c996da8919105f70bb8e2106fc8d9a6d23d1b00153a7899eb89233a0312058fa"
+    },
+    {
+      "path": "frontend/src/components/Table.jsx",
+      "sha256": "22ae2b26cd88b54fa5df44f2bc1d07422aac818a9fe13bffe62558b764b16794"
+    },
+    {
+      "path": "frontend/src/components/TenantCallUsageSection.jsx",
+      "sha256": "ad17f6c096341bc5b4d7dc967a2058ff6f88116363a487827f35ae21d8dd26e2"
+    },
+    {
+      "path": "frontend/src/components/TenantCallUsageStats.jsx",
+      "sha256": "8377593e97f7986146c014bb6d403435d607318f9f27a8ce3980ac5dac746fb3"
+    },
+    {
+      "path": "frontend/src/components/TenantDetailSlideOver.jsx",
+      "sha256": "8b49babd5382dc2aa554e39a8c45baadbc36afa752dcdc2b3970bd4114b9e843"
+    },
+    {
+      "path": "frontend/src/components/TenantDistribution.jsx",
+      "sha256": "d7f9718c48c6ee06517de0c5dd93a2e7f4534162835ec6d8d03d446450f4b8b3"
+    },
+    {
+      "path": "frontend/src/components/TenantResourceTabs.jsx",
+      "sha256": "66622ba80eb1ccf9a57715cca422ac80a6f44a2a57e9ba6267c36eea52130b52"
+    },
+    {
+      "path": "frontend/src/components/TenantUsageTabContent.jsx",
+      "sha256": "bdb32c301745066b9bf81531992bd9413e57b6d5ed2107a7f46cb28e366d9a7a"
+    },
+    {
+      "path": "frontend/src/components/ToogleButton.jsx",
+      "sha256": "cc56e70b97fa0868e85163e18f2c7f987f1e33e27eecfe0d7bf951fb7f890823"
+    },
+    {
+      "path": "frontend/src/components/ui/button.jsx",
+      "sha256": "69181d3bc53a0a1cf9e9642d43dedbd80eddda3eded145d410c71c58977159e1"
+    },
+    {
+      "path": "frontend/src/components/ui/switch.jsx",
+      "sha256": "e34ca6d5ec8cccef06b83f1c8682023ecb33ebbdf350264b323dab4726d7416a"
+    },
+    {
+      "path": "frontend/src/components/UploadExcel.jsx",
+      "sha256": "32dae124b46b14b44a80139d4dc17ec2b4917947cddd683fff33fa041cc8b008"
+    },
+    {
+      "path": "frontend/src/components/UploadPdf.jsx",
+      "sha256": "12ddeb1041958317f29c61b7ea8a535f026be769a9e4b834d767b5636f6c302c"
+    },
+    {
+      "path": "frontend/src/data/mockData.js",
+      "sha256": "75ea3574f05d4d351885ac3e3f1a717882c82a58d07f68729ddc46da04f405d8"
+    },
+    {
+      "path": "frontend/src/hooks/useAdminSubscription.jsx",
+      "sha256": "0f22e94927eb4fc6094d2ac6a522b88a4b07274b8ebb6aff6ca1c84bf6ad8549"
+    },
+    {
+      "path": "frontend/src/hooks/useAuth.jsx",
+      "sha256": "dfe512d768f17245f1b80fe87635b4663f6a40656e03211b83a1b696934fcc56"
+    },
+    {
+      "path": "frontend/src/hooks/useAxiosPublic.jsx",
+      "sha256": "d6bdd1b50cf03872a5e939898261a1200b374410fea6f7040434265938ef4216"
+    },
+    {
+      "path": "frontend/src/hooks/useAxiosSecure.jsx",
+      "sha256": "66a0c7255237891380f35911c3e0260450513f7734a08224b0d3295fe3f8a5d0"
+    },
+    {
+      "path": "frontend/src/hooks/useCallSummary.jsx",
+      "sha256": "26cf8c8a503361f815435fe1885a85cfc53eac3273edd8f4168871328c3ac3bf"
+    },
+    {
+      "path": "frontend/src/hooks/useItemManagement.jsx",
+      "sha256": "031a028e8f8e821fee9c2185b119a214ba9dcf77a4c684881cbc56ae2a288133"
+    },
+    {
+      "path": "frontend/src/hooks/useNetworkStatus.jsx",
+      "sha256": "f9d0dfbf8ce14286651202ca71831d5b8a272342dd27c89501799e4a2f0a42a2"
+    },
+    {
+      "path": "frontend/src/hooks/useOrderList.jsx",
+      "sha256": "2233a4f6c36b269ed59928307b57143563294d21b7ed2cf9ad34b03f92d75120"
+    },
+    {
+      "path": "frontend/src/hooks/useOwnerDashboard.jsx",
+      "sha256": "3d7a225e297c2d6457e17849b69ba29fb2f99da506c8dd1f5a6f0ef06bdf2895"
+    },
+    {
+      "path": "frontend/src/hooks/usePrinterManagement.jsx",
+      "sha256": "cb8f21dbafd80c67fc4b40757484310d56e6cb3794d5a480d6d09b04ad130fb6"
+    },
+    {
+      "path": "frontend/src/hooks/useSystemDashboard.jsx",
+      "sha256": "6643604795583ac517a43cb205f182d4fdaf30f65a87c38953c2904c309ec5c2"
+    },
+    {
+      "path": "frontend/src/hooks/useTelephony.jsx",
+      "sha256": "8c24270a745f5f0a3c399ec5490e5659185f43c2203e0c66ccb9ea2fdef7014d"
+    },
+    {
+      "path": "frontend/src/hooks/useTenantManagement.jsx",
+      "sha256": "ef0d9c3d13d777965e5d733fd3c6880d0fd12f377fb52b47d16690d43d89f8ab"
+    },
+    {
+      "path": "frontend/src/hooks/useViewTenant.jsx",
+      "sha256": "31cede915e010318c7346aeb02a17a9d73f7afb5ea057dcb8974f23f34b81759"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "sha256": "7e31c02131468b155873d459f8002e2a4ebca2437f9c9429dc6532f667c9142b"
+    },
+    {
+      "path": "frontend/src/layout/AuthLayout.jsx",
+      "sha256": "6379572cb725c77ff917439aeba75d2df22bb4354d450959e5d91f1d9817e40d"
+    },
+    {
+      "path": "frontend/src/layout/LandingPageLayout.jsx",
+      "sha256": "1a28ef7026b36b4b7f9647e5deea47f0e8123ede41abbf01928d36e221199958"
+    },
+    {
+      "path": "frontend/src/lib/utils.js",
+      "sha256": "5ba0ae526d768600bbfb4a4d345c47f6208cb941adbf456de80804a4cf938350"
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "sha256": "71d586b16cbd9fe0d40e1819fdf0f5a98c2ff45aaf3adbf5dbdf76c7655dc193"
+    },
+    {
+      "path": "frontend/src/pages/admin/AiTraining.jsx",
+      "sha256": "2112898b32dd3985375c52d59c37a0804fb078578a69cf425f5f7c3d93601791"
+    },
+    {
+      "path": "frontend/src/pages/admin/Dashboard.jsx",
+      "sha256": "8b34c691df5178b734799b34d70960538a4f4eb9fe72680614dca713a2246b19"
+    },
+    {
+      "path": "frontend/src/pages/admin/Settings.jsx",
+      "sha256": "eb32360263d39f57a540f0f89c4145b5e10b747d5ba6c01360d364075abf75e7"
+    },
+    {
+      "path": "frontend/src/pages/admin/Subscription.jsx",
+      "sha256": "c01366f60cd30c7070c3357bb9e1b2dcd8062676357304f72c9480a728b55f15"
+    },
+    {
+      "path": "frontend/src/pages/admin/Telephony.jsx",
+      "sha256": "b4964811066a6b264a43dc1906f4ef693e76d7cac0dfa0ab0dfb92b8b62abb01"
+    },
+    {
+      "path": "frontend/src/pages/admin/TenantManagement.jsx",
+      "sha256": "5c4e7aa34ed008d096a9681f718765ffc5a7343e4f10d5eb9828801d717b763a"
+    },
+    {
+      "path": "frontend/src/pages/admin/ViewTenant.jsx",
+      "sha256": "e7fe73bbd74ff9f6abf6b49ebf8f8801a35c08044cdd6ed54977f54bd05069e4"
+    },
+    {
+      "path": "frontend/src/pages/auth/ConfirmSignUp.jsx",
+      "sha256": "c2b8232692d9a7ddea458a9a51b7971317014a0e4870fd8fb1749fc376d7925c"
+    },
+    {
+      "path": "frontend/src/pages/auth/ForgetPass.jsx",
+      "sha256": "52263454bb84527be222651672174f100e637e264b581448d46f992996610942"
+    },
+    {
+      "path": "frontend/src/pages/auth/LogIn.jsx",
+      "sha256": "f7fa3498fb56b2a385ef7c0f02fb0fb874b7a5fac150d835aa3d1a95fec7a77b"
+    },
+    {
+      "path": "frontend/src/pages/auth/NewPass.jsx",
+      "sha256": "2d3ccf734f97063d0a55dbd60c38606e3d3fac09c25361a73d9c3aa31019617b"
+    },
+    {
+      "path": "frontend/src/pages/auth/OTP.jsx",
+      "sha256": "3200495c14779f16d58d5e6aa8410820d52ddea6f52d6c7e820e814be1d47d72"
+    },
+    {
+      "path": "frontend/src/pages/auth/SignUp.jsx",
+      "sha256": "6082a571ac90782b08ac21d57544f504dcc602b0032c210ff19097195ec16db8"
+    },
+    {
+      "path": "frontend/src/pages/auth/Success.jsx",
+      "sha256": "8381010f288d6955c14ee52c7f16ce35b3fc49a6b6d2ed90a654c719fd7e9e9b"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Banner.jsx",
+      "sha256": "a5be61cc87f6bd2b0b4466b6e67c75fa308e41ba79552ca5471b1d7e0528d0bc"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/BannerVideo.jsx",
+      "sha256": "e24d8cad3ea70b99aed0ccf9e0301c5708dbc457d449d113f970c0cbed974861"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Contact.jsx",
+      "sha256": "5b817e8bdad1d1835a91d5cd9c948a620271fc74d7d361460c4ed8c19c854a0f"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/CustomerCalls.jsx",
+      "sha256": "83023bf2a0fefa103c7cb0adc860a5227c645caf6d48e2415b2f403d352fcbe9"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Demo.jsx",
+      "sha256": "3e04d1cdd20d1e8449fe5b4d4eab7d620b472a04982ec3cae39ce4179dcaec0b"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/FAQ.jsx",
+      "sha256": "050c9458eb77e6cdbbd4b8e4677aae373fc435e8e7c5ac2621ab31212561c2a8"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Features.jsx",
+      "sha256": "ed401f9aa0b0c1de6db227aff1ac0e3e0c9ea840066f557ad5bdc6bba53ab70d"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/HowItWorks.jsx",
+      "sha256": "1030bdedc353de7e12f6cf2b0ccf8ff360db19c8fd6b12e6e40484f1109eb61f"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Pricing.jsx",
+      "sha256": "188a02febb7a14f1564039ddb76945c8cf73f3e7c72f3ff9f8a5eaf47f3cc5eb"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/PrivacyPolicy.jsx",
+      "sha256": "2ee5c66c579ec13e0c6d6cd1fc3d3f50d98609b9b2dd9294d4fe66b6346813dd"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Stats.jsx",
+      "sha256": "b7fb992c5fe697d4ae1c1a6f38f01125dd3be998c5429a865785ca962015c760"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/TermsCondition.jsx",
+      "sha256": "c21689c76d0b5341db59f491ce974315277f2660acab64ccc49cbd1f69e3ae43"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/ThankYouContact.jsx",
+      "sha256": "2283474b7cffe106b84f48a9e8ad6b14446d1e22c978c525fd9f39252e75363c"
+    },
+    {
+      "path": "frontend/src/pages/owner/AgentList.jsx",
+      "sha256": "e743c3fef3c5e64de445549e8eee1fdfe235216e0df376d0df61ad07cf211411"
+    },
+    {
+      "path": "frontend/src/pages/owner/CallSummary.jsx",
+      "sha256": "ac22c55025838a3d37c85030f5068fc0f5852c89c80480ff39c2d71b2d54befa"
+    },
+    {
+      "path": "frontend/src/pages/owner/ItemManagement.jsx",
+      "sha256": "c6ac5470cee0e1dbde9b321844289bc2ab49b78d01f468667f0001d487b5aea5"
+    },
+    {
+      "path": "frontend/src/pages/owner/OrderList.jsx",
+      "sha256": "8ed90678219cdeb8b3d7ad45f105e2fe902936784c76d50ca78c320b3f7a7e9b"
+    },
+    {
+      "path": "frontend/src/pages/owner/PrinterManagement.jsx",
+      "sha256": "32a09bf880dd34d82b5124ea9e738a5a1b546a7ee23d7e50134f5dee935e5e2a"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/BillingHistory.jsx",
+      "sha256": "a0f89442e83dc642630a927ae8650ba0b37f4f2cb4ff39ba96b4b028efd186bc"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/BusinessInfo.jsx",
+      "sha256": "cd31e548cc844cf8513d0768d36082851e88df6aef6cba1eb9af9dadd2093ada"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/ConnectEmail.jsx",
+      "sha256": "58dd2a6a82ecf843cff8acb89f43db1d1a8a31f0504c0163e91da2c533135fe9"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/CurrentPlan.jsx",
+      "sha256": "b1707a50af05fcd65056bc9934fc894117c6caa5d6ca57d1e796c5b31c89118e"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/HelpSupport.jsx",
+      "sha256": "bd9a798d7c0e121760e2ce44fe0323a2227421b3c3c8e19f89f3f388f5804627"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/Plan.jsx",
+      "sha256": "e0e0d65eea89e566e244d3986e1e00d314ea20f6126c4eef257fab8e588d9202"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/PrivacySetting.jsx",
+      "sha256": "47102ff7e97402aa31e73f9e5e105f7cd984fdc842cca7c730efa9de912a9cda"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/ProfileSettings.jsx",
+      "sha256": "8e9adda7adaee062340385fe28435e0f6e3511542022827c711055172b2420fe"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/Subscription.jsx",
+      "sha256": "b8c0dbf2c0e3739a9322a191fde8e4fc41d4c961379ce5680d164a9341b2ffef"
+    },
+    {
+      "path": "frontend/src/pages/owner/Settings.jsx",
+      "sha256": "b3d6120a2402a072b1fdc18e8e41525d86018f1f19b69876dfc5f771f7bc84d9"
+    },
+    {
+      "path": "frontend/src/pages/owner/TestCallWindow.jsx",
+      "sha256": "f58a348c8bffdc7e917c6643c93366312c132cf2ae1c54b5fc04d870bc980a5f"
+    },
+    {
+      "path": "frontend/src/provider/AuthProvider.jsx",
+      "sha256": "8695849865265e2035dfcf2b099ee10f162da93372125809135ae11bc2907dd9"
+    },
+    {
+      "path": "frontend/src/utils/date.js",
+      "sha256": "6d2b2d951bc8451ab1612bab7b0f5bbd538aed9978c2429b17d9c078a10e520c"
+    },
+    {
+      "path": "frontend/src/utils/export.js",
+      "sha256": "bd4068221267c3ca46d6f475fb3816aa6475c0cde26ac56d3df9c402e1821bc8"
+    },
+    {
+      "path": "frontend/vercel.json",
+      "sha256": "0ecff71cc2ad5da02ba9cdae5333431044f59c4b7f9376e50356e856fec2e20a"
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "sha256": "75d7120ae5667c0df201e489df6c49148934ecd91c49e9ba08653747cc645992"
+    }
+  ],
+  "originalSnapshotFilesMatchingArchive": [
+    {
+      "path": "ai-codebase/app/__init__.py",
+      "sha256": "1c04ae1ac23e4a0f4b7b5069eac96627143192bdcb125a95d5ceae8c14bb2897"
+    },
+    {
+      "path": "ai-codebase/app/api/__init__.py",
+      "sha256": "2f9f69af7350fba1841450bf43ad7136c04a7468ccfd998314ed879d25759d10"
+    },
+    {
+      "path": "ai-codebase/app/api/agent_status.py",
+      "sha256": "c1027ab6593273ef490bfc15408742523d6f77bf6145c53254434730e81d027f"
+    },
+    {
+      "path": "ai-codebase/app/api/agents.py",
+      "sha256": "6db63dfd7a6843675adb83526e580251ce1125fae1c411f6ac28ade324ff6cd2"
+    },
+    {
+      "path": "ai-codebase/app/api/telephony.py",
+      "sha256": "7065ba06e0e92a623def9fc65c9d593b9d974392b8e958bf81d4cc8a255773ba"
+    },
+    {
+      "path": "ai-codebase/app/api/webhooks.py",
+      "sha256": "ee6b54180f777d50cf0c506728d8a2de53e1751eee64ae756b98dfa11e445c82"
+    },
+    {
+      "path": "ai-codebase/app/config.py",
+      "sha256": "d7fc4adeaa2451c5b6968bbe09f2ce39c628b74ec9b790a0c52e8b6731e468f2"
+    },
+    {
+      "path": "ai-codebase/app/main.py",
+      "sha256": "dda022f7aff375dd85cf3d7f3c970468b6b5e7ff7e6d05d4df7ad5669379980f"
+    },
+    {
+      "path": "ai-codebase/app/services/__init__.py",
+      "sha256": "c5bceb3e8f1ed8316e64558b2e8f28fe8fee53d7ec61eb4481f244d7b41b89fd"
+    },
+    {
+      "path": "ai-codebase/app/services/assistant_update.py",
+      "sha256": "cf40e0672e571121b7ebd78ce04887e949bdeb9f19ec25218b6685960c18eaae"
+    },
+    {
+      "path": "ai-codebase/app/services/document_service.py",
+      "sha256": "dbb2bf6455082579d703f397c3b28244aaf901a606f550ea6f8b2d586c888ae1"
+    },
+    {
+      "path": "ai-codebase/app/services/order_parser.py",
+      "sha256": "affcaaf38019c12504a85dd49fd5fb74220f05e066309853e97f03e48dca32c0"
+    },
+    {
+      "path": "ai-codebase/app/services/order_validator.py",
+      "sha256": "c2b1647506a4d0ae270d836e47bd89f4fbd5019dd4b4c76c3f37238ecfd89f62"
+    },
+    {
+      "path": "ai-codebase/app/services/prompt_service.py",
+      "sha256": "c6629164ceb841a84af795dcfdc6919bbd9fd23e4ca3afa7ce6a759e948b6205"
+    },
+    {
+      "path": "ai-codebase/app/services/vapi_service.py",
+      "sha256": "9a770550560f4aeffc55f1394d084dea393f19a8b36f4b545cce37abcdecda9a"
+    },
+    {
+      "path": "ai-codebase/app/storage/__init__.py",
+      "sha256": "39f37c175473d2c30ce56f91b048d16a9cca39d34d5a4a1f9df26f61634094b2"
+    },
+    {
+      "path": "ai-codebase/app/storage/business_store.py",
+      "sha256": "3bf72b0f7df181f474f087b4195728f5d15818be72918497526c500c464e5242"
+    },
+    {
+      "path": "ai-codebase/app/tasks/__init__.py",
+      "sha256": "ee6757162b870362b21ee39cea7292396eb48d32bf34a633fc9995dc080a01dd"
+    },
+    {
+      "path": "ai-codebase/app/tasks/forwarders.py",
+      "sha256": "7837613803d4fb1b46eee5f4a1100f6876a98242fcffcf0a22952e5918321b4b"
+    },
+    {
+      "path": "ai-codebase/README.md",
+      "sha256": "390c94395e910496aeb7beb151bb1218042c5f36ee734ee85b43e77487dd00f1"
+    },
+    {
+      "path": "ai-codebase/tests/test_assistant_update.py",
+      "sha256": "f923930321c40891866ed8f610a92eaaf52cee82d7bc4579cd7f8862796ea9b3"
+    },
+    {
+      "path": "backend/api/index.js",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/docker-compose.yml",
+      "sha256": "37f894c3d244f765188a0ed23fb72f4999c9340f440fa44fefd33eecf09bc283"
+    },
+    {
+      "path": "backend/intune/config.json",
+      "sha256": "ebc8bdafed818ba7fcc498bfdf88f5975dbb044fd883aebfdc0452e45cf137fc"
+    },
+    {
+      "path": "backend/intune/install.ps1",
+      "sha256": "5f64d38e8e1bb5fd3a6c7d175583d519253706a42c4c066b0ce51d6c56403ed0"
+    },
+    {
+      "path": "backend/intune/INTUNE_DEPLOYMENT_GUIDE.md",
+      "sha256": "cf2927082a304e8e6dd2e2c9a5459a05495a18060cab2aa5c64891a45d92778a"
+    },
+    {
+      "path": "backend/intune/package.json",
+      "sha256": "5c969683a07cd1a2b27a745fab977373b37feae2ff471982643dc1eb8a742ae7"
+    },
+    {
+      "path": "backend/intune/print-bridge.js",
+      "sha256": "9d542521a46ac61de6a58ff97a9866bc471b59ae13f4bbd6ac9edd57d0cfbdbd"
+    },
+    {
+      "path": "backend/intune/uninstall.ps1",
+      "sha256": "3983a01652072988889b9b6789c339468c6b90b13a99a752c4852e801c08e63c"
+    },
+    {
+      "path": "backend/package-lock.json",
+      "sha256": "15f803a3dbe8a2b2cf619f0e4a50b07e9b123d2f4e39591980dd54dafb644ace"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "ff28063b7792d5cc93f93997b09b0d86d7a26c58c749404a7a23281724d57cd7"
+    },
+    {
+      "path": "backend/print-bridge.js",
+      "sha256": "9d542521a46ac61de6a58ff97a9866bc471b59ae13f4bbd6ac9edd57d0cfbdbd"
+    },
+    {
+      "path": "backend/prisma/schema.prisma",
+      "sha256": "171d7645dea7eef49818b84513b8a1c8d8796ad53d18922e62f2c9b32223b6c7"
+    },
+    {
+      "path": "backend/prisma/seed.js",
+      "sha256": "77f32e33e14a65ab8deadef48369f6ea0cd563253f187e634c5b72296f296bb3"
+    },
+    {
+      "path": "backend/prisma.config.ts",
+      "sha256": "9f02278cf68104a43df05abecc739a54a7c18e14ee07f5d81f81850512bd67d9"
+    },
+    {
+      "path": "backend/README.md",
+      "sha256": "57f50b8b2469d5993a2188d398563291d9a8c57f194d622c52a9643e5ecae16c"
+    },
+    {
+      "path": "backend/src/app/config/dbConnect.js",
+      "sha256": "50430257998824f50de2cac1f957b6a47c9dd2e9adaa93cd4ad40f743d3fc588"
+    },
+    {
+      "path": "backend/src/app/config/env.js",
+      "sha256": "59f69eb094dc8c0918166c9151084c78bf22b266df9578e5efc783d0d93d5dd3"
+    },
+    {
+      "path": "backend/src/app/config/multer.config.js",
+      "sha256": "8316d7dbb85981c92c97990618a5cb648f98701fcc24ce60d232fc8816a1762a"
+    },
+    {
+      "path": "backend/src/app/config/passport.config.js",
+      "sha256": "c88149b1b09c67b0fb3decfefc15dcb4273a30e19a865f23beb7ceb563833d5b"
+    },
+    {
+      "path": "backend/src/app/config/redis.config.js",
+      "sha256": "333e9bddd63aca71280ca50a0e67a4b0ad9d70c91c7512347ea8ca2eaf318460"
+    },
+    {
+      "path": "backend/src/app/errorHelper/appError.js",
+      "sha256": "06220de40c22fee687ce3637b6702bfb946cc8d9a6beb08a8d0b052ac5c3a210"
+    },
+    {
+      "path": "backend/src/app/lib/DevBuildError.js",
+      "sha256": "4382dda38fbf39f543fafdc6db0e280c725d5349e783d3327f497fef34b84b54"
+    },
+    {
+      "path": "backend/src/app/lib/softDeletePlugin.js",
+      "sha256": "5f705a6d9fedd2c729fee98b5c4c0d94f1c07fcd8891e16478f13f370992ea3e"
+    },
+    {
+      "path": "backend/src/app/lib/utilityFunction.js",
+      "sha256": "c2c7f52f9f9535fd956cddca6367af3c6309abb725b95617d25bdd19c3bccf27"
+    },
+    {
+      "path": "backend/src/app/lib/vapi.js",
+      "sha256": "2fa88b2a0e0a47b431cdf9ed73393b7161fb60178da5c210e30a261af82d3425"
+    },
+    {
+      "path": "backend/src/app/middleware/bodyParser.js",
+      "sha256": "6d67e90857d27b2de0369a2c1078cbcf9e2f426ec00c8b9e436c832a02c70aa5"
+    },
+    {
+      "path": "backend/src/app/middleware/checkAuthMiddleware.js",
+      "sha256": "1cda6dc68892cefc928f4d8eced058d8e246e0dc6a5b2c0fc9e604f6d7140148"
+    },
+    {
+      "path": "backend/src/app/middleware/globalErrorHandeler.js",
+      "sha256": "2b1df2c876776feb8313de7753171e2912eaf43ac30839d1ad9e456c1fa0fbad"
+    },
+    {
+      "path": "backend/src/app/middleware/notFound.js",
+      "sha256": "195cf869ed11d849b8e2442f69e7246a12c1ad814aa9c2f7b607c230f2ee100c"
+    },
+    {
+      "path": "backend/src/app/middleware/validateRequest.js",
+      "sha256": "7ed0fe9891151d577b99b3c8331eb190a0e5a052bd1ff1890c47139b161eeeb3"
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.controller.js",
+      "sha256": "8e8268553d7531c4960a1b21500cdc17895ac7baa3c3371c3398d3320928b4d5"
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.route.js",
+      "sha256": "7d63073c78070597890dc9ce5d6baa8e9953188364fba1f8dc03683ae4031f87"
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.service.js",
+      "sha256": "a264286ec72124ea93e390e5172edda6f73addcf7eaf05d10730d4b9782e405d"
+    },
+    {
+      "path": "backend/src/app/modules/auth/auth.validation.js",
+      "sha256": "2238ef3f117fa47f18e87d9675008e37657f16054ab26319be7f342fe840aaa1"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.controller.js",
+      "sha256": "323cbf6ae816a14d700f4b033852c2b6bdd57da200e1b8ec982913079e7fc753"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.route.js",
+      "sha256": "7ff017a7003450a1edc5b157770fd361d5350f63b3c09ec906f4926d606ba64a"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.service.js",
+      "sha256": "60fa538485c125fce54d018a129e1071f015e98296d65cf1b4f6653bafe99f8f"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/ai-training/ai-training.validation.js",
+      "sha256": "e04b49bef40691a2e812d953e06fd0fefe673f12c9bb02d91ba7411a03c1c853"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.controller.js",
+      "sha256": "cb8d0ba17ef45e16ad6332f83737ff79223e216ec747cceb979aa10e59e6ad26"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.route.js",
+      "sha256": "6276dd0af97c554e9e284f72f5063ca83963e82bc79c06663375436e16fe0ebf"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.service.js",
+      "sha256": "f52e69da00b9feef4b69ae043837fcd0f9ac9ab47c909fa1b5e7ea600398802d"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/business_hour/business_hour.validation.js",
+      "sha256": "05a82296f343f395feff74156b22fafddcd61fcd7a654df515e6c1106c111e47"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/call-summary/call-summary.controller.js",
+      "sha256": "4706b9ec0b8b0603fa56d925ab9ea8ebec02d0b70120fdfaedc25cee9dd20ab2"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/call-summary/call-summary.route.js",
+      "sha256": "966a8dfc96873f0e5ea918d1e7385d50317a9910136857486743916818acaf75"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/call-summary/call-summary.service.js",
+      "sha256": "7b6b0e88c7b8b5a930e5a81f9eff6e77d06852ddd7987fb175c7c0100b1dc7db"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/dashboard/dashboard.controller.js",
+      "sha256": "41041cec3783a831437d16482b7247d95eb84579f21ef6aed383f6ed9503ddc7"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/dashboard/dashboard.route.js",
+      "sha256": "8ba88bfe8de93f1ad52cdacb7a5c9459238ba3539445281515c168d08c1cb322"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/dashboard/dashboard.service.js",
+      "sha256": "7cbdb3a92bcbbcc5f459144cdea360d622f1addd34aaa85cd34dedf2805f74ec"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/item_management/item_management.controller.js",
+      "sha256": "6c09189a3980bdc297f00b4de625c26cf1427b9f794aab6e3e845ba74af58ec2"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/item_management/item_management.route.js",
+      "sha256": "d1ffd9d66a21d4890f77cdc5f5fe1467d3934341ac8d990c29503750bcb6cd86"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/item_management/item_management.service.js",
+      "sha256": "d1e7f9a760accd2e4163f0552ec4e942b32da9273cb89886d4fce9880b8471a1"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/order/order.controller.js",
+      "sha256": "d6d67bb7aafe0d4890acb22d7a208fb8062952ee8bc0fb8008c9ec1bfe59af4b"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/order/order.route.js",
+      "sha256": "9004e76bb75e7bb799a1833a33b467c62010e329f5247031d08957eb4034d7cd"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/order/order.service.js",
+      "sha256": "a38fd345508d65d701584bf5109f5106f9c671bd88e66854ae4232117126c8c5"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/payment/payment.controller.js",
+      "sha256": "66de84bb2e65ba5c9e5e1b000fd0ec261c7d001fcb4b2dd44bf07dd306583e0c"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/payment/payment.route.js",
+      "sha256": "2280bb648eea00cdb127f891691676b202b013677e9a786c2366e666a463e4ff"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/payment/payment.service.js",
+      "sha256": "38dcfc2e992f15ee828116850c4ceba8186c3acc362f079effe3566e1b0666de"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/device-printer.route.js",
+      "sha256": "ce30d41f3f17a2a86cf253b896afebe090b6861b76b623084b8a8fcd31a1cc47"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/printer.controller.js",
+      "sha256": "db16e31e5fecda7a551176f9dffd7e9ef4e87e6723318a70a388ca3aa70fb4a2"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/printer.route.js",
+      "sha256": "eaf4853a840bd056531f39824c88347297f9aa07eaebc9435678fb66e1cac796"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/printer/printer.service.js",
+      "sha256": "afd2b2d405d6004919158414d66d310b91cabc2617aa3370eaf407d4728acd95"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.controller.js",
+      "sha256": "8646f73751ea817faf1bc6e31699e8da4bce67908c41bda98e5f2695e7048231"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.route.js",
+      "sha256": "fef33d2a4e28289635b384b45558eb452e889dc34aa8a437b3288367bdb793cb"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.service.js",
+      "sha256": "da73242daea1917c66487de71034c825f587b091567721cf469a4d1faf08a7c5"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/settings/settings.validation.js",
+      "sha256": "e6a24bc3252f0e3903f4a27eb1ecb2a85cd54839bef264e9d2ab5d35e9f36b2c"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/subscription/subscription.controller.js",
+      "sha256": "f02e480621e2075ffe44c5b5756cf10c79d7964dcad1caf04a0339883adb126d"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/subscription/subscription.route.js",
+      "sha256": "99cf26fac8ad6f8984da9bb4279d4b50c951b8ff27907acca4187d65c52ae5e9"
+    },
+    {
+      "path": "backend/src/app/modules/businessowner/subscription/subscription.service.js",
+      "sha256": "56c7c37fc16bd8a24aede4e8a779e029b0cb909f82ee16e3370de25b946fdb84"
+    },
+    {
+      "path": "backend/src/app/modules/freeRoute/freeRoute.controller.js",
+      "sha256": "b3d597aa8f0aa4600b842f2520b754a59379764592b196e155716366f3912915"
+    },
+    {
+      "path": "backend/src/app/modules/freeRoute/freeRoute.route.js",
+      "sha256": "00aa87ebb6ae637f8d30d6f6d709d07e805962297cd98da46cf6a6acb06c7f95"
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.controller.js",
+      "sha256": "90047e3e943f931dcbb00d2b200d78bbce4545a77abbd37f04a898dad1010e08"
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.route.js",
+      "sha256": "c9399c58fdb6bf6ced986eb671e2b8de392cb491a05e19b8d41fdcd85445dd5b"
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.service.js",
+      "sha256": "a41ea2262d9601ec9e8aa3534221a8b65f60c6b89d90026282a6328202d8bf2c"
+    },
+    {
+      "path": "backend/src/app/modules/otp/otp.validation.js",
+      "sha256": "b3eedd98adea7dff2580f29c3fadb93acbff90bc9d3090e8bef971335c6c2479"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.controller.js",
+      "sha256": "6411ad448e6e137c20e720eed92c8a5f87c5e75002716c2ea94cae621f88da1b"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.route.js",
+      "sha256": "c35345eb8514423c34b9ccd19074021fb876ae1ef10e5155554ea910d31b2cef"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.service.js",
+      "sha256": "d93f04df8294517418221e15ecd52c80c019cc4b9bbcc6053c8717f5960765c1"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/ai-training/ai-training.validation.js",
+      "sha256": "889c2a547c4f26fdbe0b67ee55a5e72248aa1d8328f1f71d79503679ea55213f"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.controller.js",
+      "sha256": "90a350a29731bb0bcc0bb86ffa0918f15d598bbf4b03f279ecd5531a2c4fced0"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.route.js",
+      "sha256": "da239b6c11a5d8cb2be96bf1418b9f447b742e27c374762ea4f50482ab692753"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.service.js",
+      "sha256": "024136536e870f49fce918c02977efb83a20246f99988af6f1fed459253596a9"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/audit_logs/audit_logs.validation.js",
+      "sha256": "e57a6a26494c9a9b42f605bb818e8f7fec0fc3e5e5016fd15adc2620489d67d2"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/dashboard.controller.js",
+      "sha256": "7c355e59399408ad21ef9d55566dd2cea0883a41ed67a1d88a78b1506b471592"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/dashboard.route.js",
+      "sha256": "aea627ba219b12bf68a2257fcea62ec58b9d8d097de753863c7fdc052814ba16"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/dashboard.service.js",
+      "sha256": "5411a70d6e76fc2ba933fecbf9221a829d47ad575fa42424a801e0f197c58f26"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/live-usage.js",
+      "sha256": "e9d556ab855e34f5d4671993ddbbe8624d9c3a77c5a243e1939a515052a9840c"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/operations.service.js",
+      "sha256": "388e5d511c1d47fa366e315da046516132ece377e2b33aefb53869ffa668aa71"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/report-metrics.js",
+      "sha256": "e135237d004d3416d937bcdf11733350f8ba22d6cf069261fe55f1116d1be40f"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/twilio-reporting.js",
+      "sha256": "1315539cf381bcbc4992278decc51fb9c651f9be273d522b4c46ccfb11ff1796"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/dashboard/helpers/vapi-reporting.js",
+      "sha256": "77e74e51664b9996a9d2944dd80d0e7bfa28a2b5aa26c2667a61d8804940ef8d"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/individual_tenant/individual_tenant.controller.js",
+      "sha256": "0b47f907ede793ddabcdda436891a7cbd21c4e578c714923fa1e9c26bdbc7738"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/individual_tenant/individual_tenant.route.js",
+      "sha256": "fe46c71e0e43bf45325e93372bf797246b71da066c0f05bfa0b3fcefd521b836"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/individual_tenant/individual_tenant.service.js",
+      "sha256": "4d4dc559764c78550e6d0fdb899c94d911c4840e9070785e332443cda104c390"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/settings/settings.controller.js",
+      "sha256": "e557b12d0ec9f7bd2cd080f7aa89d3d0461be9e381adf61daa8c7454406999fa"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/settings/settings.route.js",
+      "sha256": "247644892d230332d40e0989da359a329dcd64b3ce51a1caec27fdf868305f81"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/settings/settings.service.js",
+      "sha256": "f76976ccba8653760209b25039e31db0ff7d89ad0edaa1387d41782c83569f8e"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/subscription_billing/subscription_billing.controller.js",
+      "sha256": "79ee2b1d99eda0c861bf8172fad78918d10bcbfdc7311f99663fe04892585e83"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/subscription_billing/subscription_billing.route.js",
+      "sha256": "b9a82cfaedfaf8eba1a9b28d5e595721f958c6a292003f2ce17ec5fbaf3adc81"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/subscription_billing/subscription_billing.service.js",
+      "sha256": "de0ad10e2c816ceea8764d4e77435ae35259d2129939e44e6c48981b3643a40b"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.controller.js",
+      "sha256": "36d2f905ea4a82a32ee436fd8e9329e0adae5486e023fa03304d0f5f7763446d"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.route.js",
+      "sha256": "4966c62a138b2568eeb59a6dd227bd5de5c503713958cfca31ada36f1efdfede"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.service.js",
+      "sha256": "b6f0fe3f10a5e50d9e3cf829df215598346c955bc3537a1f01588d2254b2b325"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/telephony/telephony.validation.js",
+      "sha256": "a0f4aaa64d4224847f9b7365be7daefca4d137bc550bbdb38a7827e37a38040f"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.controller.js",
+      "sha256": "1680b6a96d8f61b298f7d42e08777b06fedef244ef2d1d99af202475a6320bcc"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.route.js",
+      "sha256": "3575187c3efb4514d44fb2b289741f4c81de5788b397e36d2b65ac5a2cee5a54"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.service.js",
+      "sha256": "0aafd4fa6a9079914b996d58b6d9836fdbe7893362f74281512596c5fea6f403"
+    },
+    {
+      "path": "backend/src/app/modules/systemOwner/tenants/tenants.validation.js",
+      "sha256": "eedbdd672b1282f644e7c6fc8ef2164b02b436c769eeafa400523aa902007cab"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/card-payment-transfer.controller.js",
+      "sha256": "1b815589f0dfe913f5a760d8737c08211c3e4d9e95e0a6d2ca3d00e43ceff207"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/card-payment-transfer.js",
+      "sha256": "92625a4372d2a6e51faca4a29373dc38881557a774c28f667d1bf46d8c074285"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/card-payment-transfer.test.js",
+      "sha256": "7ef2871d7e347926753af97a42969f475657763cd8c9442eefd99b5a6464a826"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/call-handler.js",
+      "sha256": "4f1ce7e7294ce66bb421c80c74ae76421315b90afea70b2bec975eee2700a1b0"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/closed-transfer.js",
+      "sha256": "59b0c16fbae684af1b34f64547087d55d04b213ae05548561d9b2bc779f76fd9"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/order-sync.js",
+      "sha256": "ea6c985e46978935f3758037b243d1cde0dd6ee79139faa41dddb96a57a98499"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/order-validator.js",
+      "sha256": "1b75f5f870c2c7145a16a07827ee23009e301f7c0b3f2431723d004f2bf7578e"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/helpers/self-heal.js",
+      "sha256": "03971da7e7489e5d65e04a8e891d8be0853959ad0890df00c9558348714c0098"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/unconfirmed-order.js",
+      "sha256": "bff1aa02d4422bfa5f7aa2b021791af234a4b5353bd1d974cfb716e0bd30baf9"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/webhook.controller.js",
+      "sha256": "e2aab3846b81d695c1fcc51f43612c7a8e0bb87a66a9f7cb1326ecc71c61c857"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/webhook.route.js",
+      "sha256": "38cbb1f22cbf7a759ccf6ff7e66e5355df617754b990d994fab1024ff47ab224"
+    },
+    {
+      "path": "backend/src/app/modules/webhook/webhook.service.js",
+      "sha256": "f3a51c6928e2a8e6d5ce332240ccdcc936acdd45c033caaaecd0c82b737662f7"
+    },
+    {
+      "path": "backend/src/app/prisma/client.js",
+      "sha256": "efb1b31714f5b486b812fc59bb6a76aa43c86888f15dce343dadc29fcd8167cb"
+    },
+    {
+      "path": "backend/src/app/router/index.js",
+      "sha256": "8b660705b032631ffd65df2fccf955254d5f8c082c0d0aee4a26060c4b1efd51"
+    },
+    {
+      "path": "backend/src/app/utils/auditLogger.js",
+      "sha256": "29c569dad800b1cd40ffa7518c22e7d1dd8e5757389b502cfed24184e69b0942"
+    },
+    {
+      "path": "backend/src/app/utils/business-hours.js",
+      "sha256": "4e9656d5ee2fb5c7efd1e9c9b460791bb2651b6e7778c2acaa300dc7fa7214ae"
+    },
+    {
+      "path": "backend/src/app/utils/cleanup.js",
+      "sha256": "6864e5d6a6e4ebb79a77e1b3de4c6e920808ae7efd846c93b301ff94196e12d6"
+    },
+    {
+      "path": "backend/src/app/utils/fileUpload.js",
+      "sha256": "471acfd71e333c7e84b3380a41cbedbf2c59a9152a1dbf349d7bacdc94f8bf6c"
+    },
+    {
+      "path": "backend/src/app/utils/generateToken.js",
+      "sha256": "9fa9e35f974547ab9de6b872f6df777d36c01844a312b8f7d3be09296017234f"
+    },
+    {
+      "path": "backend/src/app/utils/jwt.js",
+      "sha256": "787124a0d24eff5416fba2652e13ef59fc9144db7a98a01f9011d750a9e91b9a"
+    },
+    {
+      "path": "backend/src/app/utils/menuParser.js",
+      "sha256": "1f1db1fa5fcfbcef83cd40f525633889720fb9fdbf35b5ab22fb65359a7ea3f4"
+    },
+    {
+      "path": "backend/src/app/utils/normalizeEssayText.js",
+      "sha256": "c129a8a27a54141e14571fe1716ad552ee43015eb1ecb553ecd2403931e4de1c"
+    },
+    {
+      "path": "backend/src/app/utils/order-email.js",
+      "sha256": "ba324980147b70f4bba4dc687b7806bd25b82dc32172cb60bfc6d05203441200"
+    },
+    {
+      "path": "backend/src/app/utils/pdfGenerator.js",
+      "sha256": "93837746d93b9c69cd06aa010e813836f29e437e1fa3362e7691bce7a09e3846"
+    },
+    {
+      "path": "backend/src/app/utils/phoneRouting.js",
+      "sha256": "51a50889ed32df60fd769f613a0a79db0ea4affd2d23423e4f44c3df53c8fff8"
+    },
+    {
+      "path": "backend/src/app/utils/pilotCallReconciler.js",
+      "sha256": "b7cfe4d849b207477086f0cf8e8c42a5610524b8e1a11b7dea3d03226662504c"
+    },
+    {
+      "path": "backend/src/app/utils/QueryBuilder.js",
+      "sha256": "66a5b7e6053bb4428ce4b2c88efb2c180149f1b33160bbb61831441b5a421949"
+    },
+    {
+      "path": "backend/src/app/utils/receipt.js",
+      "sha256": "35946f70c5b8aa11bdbc581442b7079869128a07775bab6ce96922113272c7fe"
+    },
+    {
+      "path": "backend/src/app/utils/role.js",
+      "sha256": "e2cc7744136d951681f32c5ee2e1b028aab79bce5eadfca3228442860dfb52ea"
+    },
+    {
+      "path": "backend/src/app/utils/sendEmail.js",
+      "sha256": "6186afee60010df9b53c1577f9bc164508c0e3ec0e867d5317579dd3ab65010a"
+    },
+    {
+      "path": "backend/src/app/utils/sendResponse.js",
+      "sha256": "834be21e49a18d4b9614272e5fcb171842f4ede0c6e3e956958b99ad09cc6f0f"
+    },
+    {
+      "path": "backend/src/app/utils/setCookie.js",
+      "sha256": "c51dc4c0ea29dec9b29ef5930c6bfd0fc0914930e3928e333895ec194b3f65ed"
+    },
+    {
+      "path": "backend/src/app/utils/socket.js",
+      "sha256": "e8ae57277715e4576d5a55fffde0a4d8ffcb3876a9d7e9a7e8994485fbe0f9f8"
+    },
+    {
+      "path": "backend/src/app/utils/subscriptionChecker.js",
+      "sha256": "dabb3fc2578c6b3b202a5403015344f6670642cd1ab11a97d0c879e01be1faf4"
+    },
+    {
+      "path": "backend/src/app/utils/template/forgotPassword.ejs",
+      "sha256": "f93781fb3d19e5f3fe6d388fecc0fd86a3b209f0d87d445c9c242308e4bbe355"
+    },
+    {
+      "path": "backend/src/app/utils/template/otp.ejs",
+      "sha256": "330a8e335852234fe745f73e8e8d868e0cc402ca5288fab5657a5604b48f0a91"
+    },
+    {
+      "path": "backend/src/app/utils/toHtml.js",
+      "sha256": "767f72705f1ef1252d3c72903e739bf0a2cba52cc7426dbd1bd6112903e44e12"
+    },
+    {
+      "path": "backend/src/app/utils/userTokenGenerator.js",
+      "sha256": "b5c1e4793c2adeabd5c94120d79ee1b85480b4e8ebebb99f34982c5cea1f5bd2"
+    },
+    {
+      "path": "backend/src/app/utils/workingHoursScheduler.js",
+      "sha256": "921da806007636a5b56d119f811693b1851031e54ae965538d4b3bf5d5e3e960"
+    },
+    {
+      "path": "backend/src/app/views/call-summary-pdf.ejs",
+      "sha256": "507c2db2e0d93cdb66f32fbe65f7f51b2dfb17420d45d13b2fe18fef8bf7df6c"
+    },
+    {
+      "path": "backend/src/app/views/order-pdf.ejs",
+      "sha256": "3c58361ecdea41cbdeb8a4943d3faf4a303cac0f45c8e29353d2cdb8770c803b"
+    },
+    {
+      "path": "backend/src/app.js",
+      "sha256": "32c61337af29ea568fa541ac8a92046efbd6be88b84d332836b58f7a43b38755"
+    },
+    {
+      "path": "backend/src/server.js",
+      "sha256": "8098a9e80864389fd0359dd18dfc4b2ce9b04931f5370e82ea83f5b2b05c09a0"
+    },
+    {
+      "path": "backend/test/closed-transfer.test.js",
+      "sha256": "f8a3f72594ffe71dad34e2ac5aad9ff0c8633718476c8d884f120154a476ca34"
+    },
+    {
+      "path": "backend/test/live-usage.test.js",
+      "sha256": "69e9b7e5c43ee221b20392aab560aebefca9a0c2c2422538b949cc4ffcf24d6a"
+    },
+    {
+      "path": "backend/test/operations.test.js",
+      "sha256": "363551c81cce65aeebdae515fe37b354abb20825c1d1901fa94f13b3c007a3d7"
+    },
+    {
+      "path": "backend/test/order-email.test.js",
+      "sha256": "bc74b6fb0963dadc3ee3e4975c5a6220374295b7d879fe076317594ad27f5350"
+    },
+    {
+      "path": "backend/test/owner-dashboard.test.js",
+      "sha256": "893807d8d8332850c95b9aecc7db3b67a9d745ab7b6bc25628da0a8777e7d1be"
+    },
+    {
+      "path": "backend/test/receipt-layout.test.js",
+      "sha256": "598469b9961a25ef2915b4b7f45d44137bec65f7392ac7631e690771851da0bc"
+    },
+    {
+      "path": "backend/test/twilio-reporting.test.js",
+      "sha256": "4b944842d16730b3e62421caf154e97cbcfa97e46b950d4bd525dc27074ef0a1"
+    },
+    {
+      "path": "backend/test/unconfirmed-order.test.js",
+      "sha256": "8bd89e62b6c5f14c9313528c5feb09842563d3bed515564f21abbd94296df1cd"
+    },
+    {
+      "path": "backend/test/working-hours.test.js",
+      "sha256": "63c48913b31432faa96a0fca5d4328553aed2267eb9fa270783ba90411130564"
+    },
+    {
+      "path": "backend/test-print-flow.js",
+      "sha256": "f38e07f2fae5db98918fdc7c0f6e3486f6f5e6e7e867903de233039e0c83aeb6"
+    },
+    {
+      "path": "docker-compose.override.yml",
+      "sha256": "39da720d3b9aa730c7b9eca7a1174d539109f23f6477debb0f4ed9f4c4980eee"
+    },
+    {
+      "path": "docker-compose.yml",
+      "sha256": "360344cf5439fdbf93e2ac918b1bd5da61a74a45c146212fa2e1819fc7f9b65c"
+    },
+    {
+      "path": "frontend/components.json",
+      "sha256": "338ef82d6ba8cf3a5aa92594bbf1b65436427c1630eaceaf2e9cd5be2357eb05"
+    },
+    {
+      "path": "frontend/eslint.config.js",
+      "sha256": "da0cbf3213f2994741024e2aa5165d017e0345f389dcd2f8a0db97fee7289d1b"
+    },
+    {
+      "path": "frontend/index.html",
+      "sha256": "c064a74f07fa9954b775a7f1ccbd72ff6fada0ea526eda0df163963d15b773cb"
+    },
+    {
+      "path": "frontend/jsconfig.json",
+      "sha256": "6dfda1ddf53329b2f1da5cc7e81740c654082fd2921177549754fb688b306d68"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "sha256": "b91e87cccf21958cc749edb571423883f2205209e22ba70af9354792283b9935"
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256": "e83c0558feb27839cd5e33147e335579ddc755fc30415ec107ed00c4c60d2bbc"
+    },
+    {
+      "path": "frontend/README.md",
+      "sha256": "4a3fe8fe629ae61cae2d8c9d093c3055fb4ed41899897393a6fb05489adf00bf"
+    },
+    {
+      "path": "frontend/src/App.css",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "sha256": "29e13ee2c8384f4747592823ee1234705c20a765babd425250d21576b44e0f47"
+    },
+    {
+      "path": "frontend/src/components/AllTenantsList.jsx",
+      "sha256": "2d080a19abc4a7f0e2cfe061b90bd06a2c764329eb5d726f9ad2baeaf3455334"
+    },
+    {
+      "path": "frontend/src/components/Breadcrumb.jsx",
+      "sha256": "d361180a3abb1f911d4d1917db191e951c6dbd7ef97fafa012cefd823b645dea"
+    },
+    {
+      "path": "frontend/src/components/CallActivityChart.jsx",
+      "sha256": "8c2cd0540749f6646230cbcb559eb11bb0611b73bc1d15bbf9ff9365aeee2cd5"
+    },
+    {
+      "path": "frontend/src/components/CallDuration.jsx",
+      "sha256": "aaf399781fa0c64d0f01276519fa78ee59e24f0649d163b3750573f00ee8b969"
+    },
+    {
+      "path": "frontend/src/components/CallLogTabContent.jsx",
+      "sha256": "6569b6afedded5c98d56b8e973eef93ae1d72b9661a08c30f7e401d72a5b9fc9"
+    },
+    {
+      "path": "frontend/src/components/ConnectedServices.jsx",
+      "sha256": "599bf954efcc45383e2495471fd51dddedd83115ede41c562f007e83009b50e1"
+    },
+    {
+      "path": "frontend/src/components/Container.jsx",
+      "sha256": "66da9137c21e227dde10f4a2e4f8eb1b81dc38749283367f973dcb31afa73584"
+    },
+    {
+      "path": "frontend/src/components/DashboardTabs.jsx",
+      "sha256": "6c92219802c28aa529f70c0ee657a772bfe10bef0be8b5298279634efa853002"
+    },
+    {
+      "path": "frontend/src/components/Dropdown.jsx",
+      "sha256": "c2fe40b85cb6c047b9ffd5d789960c4297d4d6a7b76c230e7d30e071ff4c01f7"
+    },
+    {
+      "path": "frontend/src/components/EnterpriseContactModal.jsx",
+      "sha256": "4a6bbc1ac180a33c4d8a7d03c665e0c2aa545df8a8ef34fc24a4d45b37f0ac47"
+    },
+    {
+      "path": "frontend/src/components/ErrorBoundary.jsx",
+      "sha256": "6bb91e171b46659fa503c15e7f288518aba1aae931bdbcde1bac99fd73ed302e"
+    },
+    {
+      "path": "frontend/src/components/FailedCallsTabContent.jsx",
+      "sha256": "b01e5a9fda9350da18b362c20d9e5f32adc4e16993d22bad14de418b86e930a7"
+    },
+    {
+      "path": "frontend/src/components/FAQdropdown.jsx",
+      "sha256": "effa42b3c69ff1e7c7ff099ddbaa9f16a3f3fb3ca4048458d8c36abb269666ff"
+    },
+    {
+      "path": "frontend/src/components/Header.jsx",
+      "sha256": "cb3c5b97850ab85ffb30fe2a93e14cb7cddd2c6b20dd29d11cce26bf892c4265"
+    },
+    {
+      "path": "frontend/src/components/Image.jsx",
+      "sha256": "362c593fdf424bafeae1f6e3bb088cccf95e938d6357aafa567adff8270babf6"
+    },
+    {
+      "path": "frontend/src/components/Inputfield.jsx",
+      "sha256": "9f95a09e47d7e6dfc2a51f4a106b7e71ae2833cc3408d53eaecf1dfb975e7550"
+    },
+    {
+      "path": "frontend/src/components/layout/Footer.jsx",
+      "sha256": "b27b2bab3921007c05a9eaf7dc11a501c8171d49e0b7b28df8e7ee81646b3660"
+    },
+    {
+      "path": "frontend/src/components/layout/Header.jsx",
+      "sha256": "712c73789b56543dd1b6672552e81e33db21313d907c44f24af2045b6ef00667"
+    },
+    {
+      "path": "frontend/src/components/layout/Navbar.jsx",
+      "sha256": "81791d0b406ad895c538265a8c81446e62921403aec9e03fced372723e6d94ba"
+    },
+    {
+      "path": "frontend/src/components/layout/Sidebar.jsx",
+      "sha256": "b36f8f90709a007e51b27df94318f255bce122548c4dd584ef52c5dd8ce9e6d1"
+    },
+    {
+      "path": "frontend/src/components/LiveAgentUsage.jsx",
+      "sha256": "7dee64038c5af15fde27d8c9208fb59a48a464a417717ed536099c7d5d576231"
+    },
+    {
+      "path": "frontend/src/components/LiveOrderPopup.jsx",
+      "sha256": "6538cc302dcd4a876c969c40117bcdec497da8a72d7f9a14d34e5ce7e00e8afb"
+    },
+    {
+      "path": "frontend/src/components/LowBalanceTenants.jsx",
+      "sha256": "2cb6d97d9227c8d9e56940f4068e6b069b01e39291902ebd98e86efe021c6c1e"
+    },
+    {
+      "path": "frontend/src/components/MonthByMonth.jsx",
+      "sha256": "dbbd28233dbb2271c8f1dc218e272077877ccce9e59bdef87691e691ffe5dcc8"
+    },
+    {
+      "path": "frontend/src/components/OfflineBanner.jsx",
+      "sha256": "19bf9ab48324db0a9d1a0d3f8981a641d4c04e08b61bb855c84f6f6d0eb7977c"
+    },
+    {
+      "path": "frontend/src/components/OverallPerformanceReport.jsx",
+      "sha256": "59836105615fa770b9ef814386fc89b4a215f9473657b93bb96afc3cbcbd66db"
+    },
+    {
+      "path": "frontend/src/components/OverallReports.jsx",
+      "sha256": "f354a1df355a4926777419b17ca0f01b72b5795d3f1f43d1cc07d7397ed4ae3d"
+    },
+    {
+      "path": "frontend/src/components/OverviewTabContent.jsx",
+      "sha256": "c35d114f745c1cf40740ac62a97305b2bb3ed84c5de1bd9999a63140c20645fd"
+    },
+    {
+      "path": "frontend/src/components/OwnerLiveActivity.jsx",
+      "sha256": "1d180e8aa142cecc5f951f2d11c26d41c3b701b6e1dd19aef146a8cada722dd3"
+    },
+    {
+      "path": "frontend/src/components/Password.jsx",
+      "sha256": "bc7b98d0e197e9dcda904428e08256364c4061bab5073a17b186133bb9a05abe"
+    },
+    {
+      "path": "frontend/src/components/PeriodPerformance.jsx",
+      "sha256": "c041ad03f2984e5bd9e466377e61c366d6f30be66892c1b311b3ce2c3e4f03ac"
+    },
+    {
+      "path": "frontend/src/components/PlanDistribution.jsx",
+      "sha256": "9e5277d7cf63e7989c7fc8c09877e4fd6689e09e6657df3623b8f6037b98fc0d"
+    },
+    {
+      "path": "frontend/src/components/PrinterHealthTabContent.jsx",
+      "sha256": "f0926346527666a84e1df7e8c921e67aec71a8df74c028406d224a1377dbf931"
+    },
+    {
+      "path": "frontend/src/components/ProviderCallTable.jsx",
+      "sha256": "d2829f63594acaf4997367e4b4d068a30bd687e107baf08f1365e2e08bb854fa"
+    },
+    {
+      "path": "frontend/src/components/ProviderCostsTabContent.jsx",
+      "sha256": "ad00879cd21cb7782df6a97b9e3daf375e19376821217e02283eb8957a95bf1b"
+    },
+    {
+      "path": "frontend/src/components/RecentTrainingList.jsx",
+      "sha256": "29b47f8f0383112efcc2e8568e3b60ae3f6987502e2376c25b9196ef743b27e1"
+    },
+    {
+      "path": "frontend/src/components/SpecialOfferUpload.jsx",
+      "sha256": "aefed96f7b358a1ddd58acbe4705f5259ba2289f0f8404ecfa47b38ccec97746"
+    },
+    {
+      "path": "frontend/src/components/StatCard.jsx",
+      "sha256": "c996da8919105f70bb8e2106fc8d9a6d23d1b00153a7899eb89233a0312058fa"
+    },
+    {
+      "path": "frontend/src/components/Table.jsx",
+      "sha256": "22ae2b26cd88b54fa5df44f2bc1d07422aac818a9fe13bffe62558b764b16794"
+    },
+    {
+      "path": "frontend/src/components/TenantCallUsageSection.jsx",
+      "sha256": "ad17f6c096341bc5b4d7dc967a2058ff6f88116363a487827f35ae21d8dd26e2"
+    },
+    {
+      "path": "frontend/src/components/TenantCallUsageStats.jsx",
+      "sha256": "8377593e97f7986146c014bb6d403435d607318f9f27a8ce3980ac5dac746fb3"
+    },
+    {
+      "path": "frontend/src/components/TenantDetailSlideOver.jsx",
+      "sha256": "8b49babd5382dc2aa554e39a8c45baadbc36afa752dcdc2b3970bd4114b9e843"
+    },
+    {
+      "path": "frontend/src/components/TenantDistribution.jsx",
+      "sha256": "d7f9718c48c6ee06517de0c5dd93a2e7f4534162835ec6d8d03d446450f4b8b3"
+    },
+    {
+      "path": "frontend/src/components/TenantResourceTabs.jsx",
+      "sha256": "66622ba80eb1ccf9a57715cca422ac80a6f44a2a57e9ba6267c36eea52130b52"
+    },
+    {
+      "path": "frontend/src/components/TenantUsageTabContent.jsx",
+      "sha256": "bdb32c301745066b9bf81531992bd9413e57b6d5ed2107a7f46cb28e366d9a7a"
+    },
+    {
+      "path": "frontend/src/components/ToogleButton.jsx",
+      "sha256": "cc56e70b97fa0868e85163e18f2c7f987f1e33e27eecfe0d7bf951fb7f890823"
+    },
+    {
+      "path": "frontend/src/components/ui/button.jsx",
+      "sha256": "69181d3bc53a0a1cf9e9642d43dedbd80eddda3eded145d410c71c58977159e1"
+    },
+    {
+      "path": "frontend/src/components/ui/switch.jsx",
+      "sha256": "e34ca6d5ec8cccef06b83f1c8682023ecb33ebbdf350264b323dab4726d7416a"
+    },
+    {
+      "path": "frontend/src/components/UploadExcel.jsx",
+      "sha256": "32dae124b46b14b44a80139d4dc17ec2b4917947cddd683fff33fa041cc8b008"
+    },
+    {
+      "path": "frontend/src/components/UploadPdf.jsx",
+      "sha256": "12ddeb1041958317f29c61b7ea8a535f026be769a9e4b834d767b5636f6c302c"
+    },
+    {
+      "path": "frontend/src/data/mockData.js",
+      "sha256": "75ea3574f05d4d351885ac3e3f1a717882c82a58d07f68729ddc46da04f405d8"
+    },
+    {
+      "path": "frontend/src/hooks/useAdminSubscription.jsx",
+      "sha256": "0f22e94927eb4fc6094d2ac6a522b88a4b07274b8ebb6aff6ca1c84bf6ad8549"
+    },
+    {
+      "path": "frontend/src/hooks/useAuth.jsx",
+      "sha256": "dfe512d768f17245f1b80fe87635b4663f6a40656e03211b83a1b696934fcc56"
+    },
+    {
+      "path": "frontend/src/hooks/useAxiosPublic.jsx",
+      "sha256": "d6bdd1b50cf03872a5e939898261a1200b374410fea6f7040434265938ef4216"
+    },
+    {
+      "path": "frontend/src/hooks/useAxiosSecure.jsx",
+      "sha256": "66a0c7255237891380f35911c3e0260450513f7734a08224b0d3295fe3f8a5d0"
+    },
+    {
+      "path": "frontend/src/hooks/useCallSummary.jsx",
+      "sha256": "26cf8c8a503361f815435fe1885a85cfc53eac3273edd8f4168871328c3ac3bf"
+    },
+    {
+      "path": "frontend/src/hooks/useItemManagement.jsx",
+      "sha256": "031a028e8f8e821fee9c2185b119a214ba9dcf77a4c684881cbc56ae2a288133"
+    },
+    {
+      "path": "frontend/src/hooks/useNetworkStatus.jsx",
+      "sha256": "f9d0dfbf8ce14286651202ca71831d5b8a272342dd27c89501799e4a2f0a42a2"
+    },
+    {
+      "path": "frontend/src/hooks/useOrderList.jsx",
+      "sha256": "2233a4f6c36b269ed59928307b57143563294d21b7ed2cf9ad34b03f92d75120"
+    },
+    {
+      "path": "frontend/src/hooks/useOwnerDashboard.jsx",
+      "sha256": "3d7a225e297c2d6457e17849b69ba29fb2f99da506c8dd1f5a6f0ef06bdf2895"
+    },
+    {
+      "path": "frontend/src/hooks/usePrinterManagement.jsx",
+      "sha256": "cb8f21dbafd80c67fc4b40757484310d56e6cb3794d5a480d6d09b04ad130fb6"
+    },
+    {
+      "path": "frontend/src/hooks/useSystemDashboard.jsx",
+      "sha256": "6643604795583ac517a43cb205f182d4fdaf30f65a87c38953c2904c309ec5c2"
+    },
+    {
+      "path": "frontend/src/hooks/useTelephony.jsx",
+      "sha256": "8c24270a745f5f0a3c399ec5490e5659185f43c2203e0c66ccb9ea2fdef7014d"
+    },
+    {
+      "path": "frontend/src/hooks/useTenantManagement.jsx",
+      "sha256": "ef0d9c3d13d777965e5d733fd3c6880d0fd12f377fb52b47d16690d43d89f8ab"
+    },
+    {
+      "path": "frontend/src/hooks/useViewTenant.jsx",
+      "sha256": "31cede915e010318c7346aeb02a17a9d73f7afb5ea057dcb8974f23f34b81759"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "sha256": "7e31c02131468b155873d459f8002e2a4ebca2437f9c9429dc6532f667c9142b"
+    },
+    {
+      "path": "frontend/src/layout/AuthLayout.jsx",
+      "sha256": "6379572cb725c77ff917439aeba75d2df22bb4354d450959e5d91f1d9817e40d"
+    },
+    {
+      "path": "frontend/src/layout/DashboardLayout.jsx",
+      "sha256": "b8c71511dd42e31fde90803db641eb9079b46d58d933ddf163595d662e1d4e3b"
+    },
+    {
+      "path": "frontend/src/layout/LandingPageLayout.jsx",
+      "sha256": "1a28ef7026b36b4b7f9647e5deea47f0e8123ede41abbf01928d36e221199958"
+    },
+    {
+      "path": "frontend/src/lib/utils.js",
+      "sha256": "5ba0ae526d768600bbfb4a4d345c47f6208cb941adbf456de80804a4cf938350"
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "sha256": "71d586b16cbd9fe0d40e1819fdf0f5a98c2ff45aaf3adbf5dbdf76c7655dc193"
+    },
+    {
+      "path": "frontend/src/pages/admin/AiTraining.jsx",
+      "sha256": "2112898b32dd3985375c52d59c37a0804fb078578a69cf425f5f7c3d93601791"
+    },
+    {
+      "path": "frontend/src/pages/admin/Dashboard.jsx",
+      "sha256": "8b34c691df5178b734799b34d70960538a4f4eb9fe72680614dca713a2246b19"
+    },
+    {
+      "path": "frontend/src/pages/admin/Settings.jsx",
+      "sha256": "eb32360263d39f57a540f0f89c4145b5e10b747d5ba6c01360d364075abf75e7"
+    },
+    {
+      "path": "frontend/src/pages/admin/Subscription.jsx",
+      "sha256": "c01366f60cd30c7070c3357bb9e1b2dcd8062676357304f72c9480a728b55f15"
+    },
+    {
+      "path": "frontend/src/pages/admin/Telephony.jsx",
+      "sha256": "b4964811066a6b264a43dc1906f4ef693e76d7cac0dfa0ab0dfb92b8b62abb01"
+    },
+    {
+      "path": "frontend/src/pages/admin/TenantManagement.jsx",
+      "sha256": "5c4e7aa34ed008d096a9681f718765ffc5a7343e4f10d5eb9828801d717b763a"
+    },
+    {
+      "path": "frontend/src/pages/admin/ViewTenant.jsx",
+      "sha256": "e7fe73bbd74ff9f6abf6b49ebf8f8801a35c08044cdd6ed54977f54bd05069e4"
+    },
+    {
+      "path": "frontend/src/pages/auth/ConfirmSignUp.jsx",
+      "sha256": "c2b8232692d9a7ddea458a9a51b7971317014a0e4870fd8fb1749fc376d7925c"
+    },
+    {
+      "path": "frontend/src/pages/auth/ForgetPass.jsx",
+      "sha256": "52263454bb84527be222651672174f100e637e264b581448d46f992996610942"
+    },
+    {
+      "path": "frontend/src/pages/auth/LogIn.jsx",
+      "sha256": "f7fa3498fb56b2a385ef7c0f02fb0fb874b7a5fac150d835aa3d1a95fec7a77b"
+    },
+    {
+      "path": "frontend/src/pages/auth/NewPass.jsx",
+      "sha256": "2d3ccf734f97063d0a55dbd60c38606e3d3fac09c25361a73d9c3aa31019617b"
+    },
+    {
+      "path": "frontend/src/pages/auth/OTP.jsx",
+      "sha256": "3200495c14779f16d58d5e6aa8410820d52ddea6f52d6c7e820e814be1d47d72"
+    },
+    {
+      "path": "frontend/src/pages/auth/SignUp.jsx",
+      "sha256": "6082a571ac90782b08ac21d57544f504dcc602b0032c210ff19097195ec16db8"
+    },
+    {
+      "path": "frontend/src/pages/auth/Success.jsx",
+      "sha256": "8381010f288d6955c14ee52c7f16ce35b3fc49a6b6d2ed90a654c719fd7e9e9b"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Banner.jsx",
+      "sha256": "a5be61cc87f6bd2b0b4466b6e67c75fa308e41ba79552ca5471b1d7e0528d0bc"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/BannerVideo.jsx",
+      "sha256": "e24d8cad3ea70b99aed0ccf9e0301c5708dbc457d449d113f970c0cbed974861"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Contact.jsx",
+      "sha256": "5b817e8bdad1d1835a91d5cd9c948a620271fc74d7d361460c4ed8c19c854a0f"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/CustomerCalls.jsx",
+      "sha256": "83023bf2a0fefa103c7cb0adc860a5227c645caf6d48e2415b2f403d352fcbe9"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Demo.jsx",
+      "sha256": "3e04d1cdd20d1e8449fe5b4d4eab7d620b472a04982ec3cae39ce4179dcaec0b"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/FAQ.jsx",
+      "sha256": "050c9458eb77e6cdbbd4b8e4677aae373fc435e8e7c5ac2621ab31212561c2a8"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Features.jsx",
+      "sha256": "ed401f9aa0b0c1de6db227aff1ac0e3e0c9ea840066f557ad5bdc6bba53ab70d"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/HowItWorks.jsx",
+      "sha256": "1030bdedc353de7e12f6cf2b0ccf8ff360db19c8fd6b12e6e40484f1109eb61f"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Pricing.jsx",
+      "sha256": "188a02febb7a14f1564039ddb76945c8cf73f3e7c72f3ff9f8a5eaf47f3cc5eb"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/PrivacyPolicy.jsx",
+      "sha256": "2ee5c66c579ec13e0c6d6cd1fc3d3f50d98609b9b2dd9294d4fe66b6346813dd"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/Stats.jsx",
+      "sha256": "b7fb992c5fe697d4ae1c1a6f38f01125dd3be998c5429a865785ca962015c760"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/TermsCondition.jsx",
+      "sha256": "c21689c76d0b5341db59f491ce974315277f2660acab64ccc49cbd1f69e3ae43"
+    },
+    {
+      "path": "frontend/src/pages/landindPage/ThankYouContact.jsx",
+      "sha256": "2283474b7cffe106b84f48a9e8ad6b14446d1e22c978c525fd9f39252e75363c"
+    },
+    {
+      "path": "frontend/src/pages/owner/AgentList.jsx",
+      "sha256": "e743c3fef3c5e64de445549e8eee1fdfe235216e0df376d0df61ad07cf211411"
+    },
+    {
+      "path": "frontend/src/pages/owner/CallSummary.jsx",
+      "sha256": "ac22c55025838a3d37c85030f5068fc0f5852c89c80480ff39c2d71b2d54befa"
+    },
+    {
+      "path": "frontend/src/pages/owner/Dashboard.jsx",
+      "sha256": "a85cd76f2bd7a1aba34af2da15577afc3fc9389c0b3dbec5b5d12363aeba23ea"
+    },
+    {
+      "path": "frontend/src/pages/owner/ItemManagement.jsx",
+      "sha256": "c6ac5470cee0e1dbde9b321844289bc2ab49b78d01f468667f0001d487b5aea5"
+    },
+    {
+      "path": "frontend/src/pages/owner/OrderList.jsx",
+      "sha256": "8ed90678219cdeb8b3d7ad45f105e2fe902936784c76d50ca78c320b3f7a7e9b"
+    },
+    {
+      "path": "frontend/src/pages/owner/PrinterManagement.jsx",
+      "sha256": "32a09bf880dd34d82b5124ea9e738a5a1b546a7ee23d7e50134f5dee935e5e2a"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/BillingHistory.jsx",
+      "sha256": "a0f89442e83dc642630a927ae8650ba0b37f4f2cb4ff39ba96b4b028efd186bc"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/BusinessInfo.jsx",
+      "sha256": "cd31e548cc844cf8513d0768d36082851e88df6aef6cba1eb9af9dadd2093ada"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/ConnectEmail.jsx",
+      "sha256": "58dd2a6a82ecf843cff8acb89f43db1d1a8a31f0504c0163e91da2c533135fe9"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/CurrentPlan.jsx",
+      "sha256": "b1707a50af05fcd65056bc9934fc894117c6caa5d6ca57d1e796c5b31c89118e"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/HelpSupport.jsx",
+      "sha256": "bd9a798d7c0e121760e2ce44fe0323a2227421b3c3c8e19f89f3f388f5804627"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/Plan.jsx",
+      "sha256": "e0e0d65eea89e566e244d3986e1e00d314ea20f6126c4eef257fab8e588d9202"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/PrivacySetting.jsx",
+      "sha256": "47102ff7e97402aa31e73f9e5e105f7cd984fdc842cca7c730efa9de912a9cda"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/ProfileSettings.jsx",
+      "sha256": "8e9adda7adaee062340385fe28435e0f6e3511542022827c711055172b2420fe"
+    },
+    {
+      "path": "frontend/src/pages/owner/settings/Subscription.jsx",
+      "sha256": "b8c0dbf2c0e3739a9322a191fde8e4fc41d4c961379ce5680d164a9341b2ffef"
+    },
+    {
+      "path": "frontend/src/pages/owner/Settings.jsx",
+      "sha256": "b3d6120a2402a072b1fdc18e8e41525d86018f1f19b69876dfc5f771f7bc84d9"
+    },
+    {
+      "path": "frontend/src/pages/owner/TestCallWindow.jsx",
+      "sha256": "f58a348c8bffdc7e917c6643c93366312c132cf2ae1c54b5fc04d870bc980a5f"
+    },
+    {
+      "path": "frontend/src/provider/AuthProvider.jsx",
+      "sha256": "8695849865265e2035dfcf2b099ee10f162da93372125809135ae11bc2907dd9"
+    },
+    {
+      "path": "frontend/src/router/router.jsx",
+      "sha256": "3e6d7391ff2de8fb0b3c92af9220010eaef9208b7f295e3d8b149a8f1db49b91"
+    },
+    {
+      "path": "frontend/src/utils/date.js",
+      "sha256": "6d2b2d951bc8451ab1612bab7b0f5bbd538aed9978c2429b17d9c078a10e520c"
+    },
+    {
+      "path": "frontend/src/utils/export.js",
+      "sha256": "bd4068221267c3ca46d6f475fb3816aa6475c0cde26ac56d3df9c402e1821bc8"
+    },
+    {
+      "path": "frontend/vercel.json",
+      "sha256": "0ecff71cc2ad5da02ba9cdae5333431044f59c4b7f9376e50356e856fec2e20a"
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "sha256": "75d7120ae5667c0df201e489df6c49148934ecd91c49e9ba08653747cc645992"
+    },
+    {
+      "path": "README.md",
+      "sha256": "eb968495c059ce89d1ec8a475a202c3ede4c98a8494e3e4302fe7257bc2acdb0"
+    }
+  ],
+  "verification": {
+    "unchangedCandidateFrontendCount": 139,
+    "originalSnapshotCount": 314,
+    "originalArchiveMismatchCount": 0
+  }
+}

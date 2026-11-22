@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
+import {tabletJson} from "./registered-tablet-fixture.js";
 
 test("live kitchen counts follow paid/visible placed orders through handover, across periods and restaurant roles", async () => {
   const f = await journeyFixture({ now: () => new Date("2026-10-29T12:00:00.000Z") });
@@ -14,7 +15,7 @@ test("live kitchen counts follow paid/visible placed orders through handover, ac
     assert.equal((await read()).operations.liveOrders, 1);
     f.db.prepare("UPDATE orders SET created_at='2026-10-20T12:00:00.000Z' WHERE id=?").run(delivery);
     assert.equal((await read("yesterday")).operations.liveOrders, 1);
-    async function status(id, status) { const r = await f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: owner, body: { status } }); assert.equal(r.status, 200, r.text); }
+    async function status(id, status) { const r = await tabletJson(f, owner, `/api/restaurant/orders/${id}/status`, { method: "PATCH", body: { status } }); assert.equal(r.status, 200, r.text); }
     for (const next of ["accepted", "preparing", "ready"]) { await status(delivery, next); const data = (await read()).operations; assert.equal(data.liveOrders, 1); assert.equal(data.readyForHandover, next === "ready" ? 1 : 0); }
     await status(delivery, "out_for_delivery");
     assert.equal((await read()).operations.liveOrders, 0); assert.equal((await read()).operations.activeOrders, 1);

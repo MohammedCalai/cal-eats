@@ -1,6 +1,6 @@
 import { restaurantContactBlocked, assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import { createHash, randomUUID } from "node:crypto";
-import { requireRestaurantOwner, requireRole } from "./auth/authorization.js";
+import { requireRestaurantOwner, requireRestaurantCapability, requireRole } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { addNotification } from "./offers.js";
@@ -64,20 +64,20 @@ export async function routeLoyalty({ req, res, url, db, config, session }) {
   }
   let m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty(?:\/(settings|suggestions))?$/);
   if (m) {
-    const owner = requireRestaurantOwner(db, session, m[1]);
+    const owner = req.method === "GET" ? requireRestaurantCapability(db,session,m[1],"manageMarketing") : requireRestaurantOwner(db, session, m[1]);
     if (req.method === "GET") { const data = analytics(db, m[1], config.now()); if(url.searchParams.get("includeCustomers")==="false")delete data.customers; return sendJson(res, 200, { data: m[2] === "suggestions" ? { asOf: data.asOf, suggestions: suggestions(data) } : data }); }
     if (req.method === "PATCH" && m[2] === "settings") { const b = await readJson(req, config.bodyLimit); exactObject(b, ["regularOrderCount","regularWindowDays","lapsedAfterDays"]); const now = config.now().toISOString(); const values = [int(b.regularOrderCount,2,100,"Regular order count"),int(b.regularWindowDays,7,730,"Regular window"),int(b.lapsedAfterDays,7,730,"Lapsed period")]; db.prepare("INSERT INTO loyalty_settings VALUES(?,?,?,?,?,?) ON CONFLICT(restaurant_id) DO UPDATE SET regular_order_count=excluded.regular_order_count,regular_window_days=excluded.regular_window_days,lapsed_after_days=excluded.lapsed_after_days,updated_by_user_id=excluded.updated_by_user_id,updated_at=excluded.updated_at").run(m[1],...values,owner.id,now); return sendJson(res,200,{data:analytics(db,m[1],config.now())}); }
   }
   m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty\/promotions$/);
-  if (m && req.method === "GET") { requireRestaurantOwner(db,session,m[1]); return sendJson(res,200,{data:db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(m[1]).map(r=>campaignDto(db,r,config.now()))}); }
+  if (m && req.method === "GET") { requireRestaurantCapability(db,session,m[1],"manageMarketing"); return sendJson(res,200,{data:db.prepare("SELECT * FROM offer_campaigns WHERE restaurant_id=? ORDER BY created_at DESC").all(m[1]).map(r=>campaignDto(db,r,config.now()))}); }
   if (m && req.method === "POST") return createPromotion({req,res,db,config,session,restaurantId:m[1]});
   m = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/loyalty\/promotions\/([^/]+)(?:\/(end))?$/);
   if (m && ["GET","PATCH","POST"].includes(req.method)) {
-    const owner=requireRestaurantOwner(db,session,m[1]);
+    const owner=requireRestaurantCapability(db,session,m[1],"manageMarketing");
     const row=db.prepare("SELECT * FROM offer_campaigns WHERE id=? AND restaurant_id=?").get(m[2],m[1]);
     if(!row)throw new HttpError(404,"NOT_FOUND","Campaign not found");
     if(req.method==="GET"&&!m[3])return sendJson(res,200,{data:campaignDto(db,row,config.now())});
-    if((req.method==="PATCH"&&!m[3])||(req.method==="POST"&&m[3]==="end"))return updatePromotion({req,res,db,config,owner,restaurantId:m[1],id:m[2],end:Boolean(m[3])});
+    if((req.method==="PATCH"&&!m[3])||(req.method==="POST"&&m[3]==="end"))return updatePromotion({req,res,db,config,session,owner,restaurantId:m[1],id:m[2],end:Boolean(m[3])});
   }
   if (url.pathname === "/api/promotions" && req.method === "GET") {
     const user=requireRole(session,"customer"),restaurantId=clean(url.searchParams.get("restaurantId"),1,100,"Restaurant");
@@ -99,11 +99,12 @@ export async function routeLoyalty({ req, res, url, db, config, session }) {
   return false;
 }
 
-async function updatePromotion({req,res,db,config,owner,restaurantId,id,end}) {
+async function updatePromotion({req,res,db,config,session,owner,restaurantId,id,end}) {
   const body=await readJson(req,config.bodyLimit),allowed=["title","message","startsAt","expiresAt","redemptionLimit","budgetMinor","weeklyBudgetMinor"];
   exactObject(body,end?[]:allowed);
   const now=config.now(),timestamp=now.toISOString();
   const updated=withTransaction(db,()=>{
+    requireRestaurantCapability(db,session,restaurantId,"manageMarketing");
     const row=db.prepare("SELECT * FROM offer_campaigns WHERE id=? AND restaurant_id=?").get(id,restaurantId);
     if(!row)throw new HttpError(404,"NOT_FOUND","Campaign not found");
     if(end){
@@ -133,7 +134,7 @@ async function updatePromotion({req,res,db,config,owner,restaurantId,id,end}) {
 }
 
 async function createPromotion({req,res,db,config,session,restaurantId}) {
-  const owner=requireRestaurantOwner(db,session,restaurantId),key=clean(req.headers["idempotency-key"],1,100,"Idempotency-Key"),b=await readJson(req,config.bodyLimit);
+  const owner=requireRestaurantCapability(db,session,restaurantId,"manageMarketing"),key=clean(req.headers["idempotency-key"],1,100,"Idempotency-Key"),b=await readJson(req,config.bodyLimit);
   exactObject(b,["title","message","offerType","campaignType","buyItemId","weeklyBudgetMinor","value","menuItemId","minSubtotalMinor","startsAt","expiresAt","redemptionLimit","budgetMinor","eligibleItemIds","eligibleCategories","recipientSegment","customerIds","stackingPolicy","fundingParty"]);
   if(b.fundingParty!=="restaurant")throw new HttpError(409,"PLATFORM_FUNDING_NOT_AUTHORISED","Only restaurant-funded promotions are authorised"); if(b.stackingPolicy!=="exclusive")throw new HttpError(409,"PROMOTION_STACKING_UNSUPPORTED","Promotions cannot be combined");
   const now=config.now(),start=new Date(b.startsAt),end=new Date(b.expiresAt);if(typeof b.startsAt!=="string"||typeof b.expiresAt!=="string"||Number.isNaN(+start)||Number.isNaN(+end)||end<=start||end-start>366*DAY)throw new HttpError(400,"VALIDATION_ERROR","Promotion dates are invalid or exceed one year");
@@ -168,7 +169,7 @@ async function createPromotion({req,res,db,config,session,restaurantId}) {
   if(type==="free_delivery"&&!db.prepare("SELECT 1 FROM restaurants WHERE id=? AND delivery_enabled=1 AND delivery_fee_minor>0").get(restaurantId))throw new HttpError(409,"DELIVERY_UNAVAILABLE","Configure a paid delivery fee before offering free delivery");
   const data=analytics(db,restaurantId,now),eligible=new Set(data.customers.filter((c)=>segment==="all"?true:segment==="selected"?ids.includes(c.customerId):segment==="first_order"?false:c.segments[segment]).map((c)=>c.customerId));if(segment==="selected"&&eligible.size!==ids.length)throw new HttpError(409,"RECIPIENT_NOT_ELIGIBLE","Recipients need completed orders at this restaurant");
   const recipients=segment==="selected"?ids:[...eligible]; if(segment!=="first_order"&&!recipients.length)throw new HttpError(409,"SEGMENT_EMPTY","No customers currently match this segment");
-  const created=withTransaction(db,()=>{const consent=recipients.length?new Set(db.prepare(`SELECT user_id FROM marketing_preferences WHERE in_app_promotions=1 AND user_id IN (${recipients.map(()=>"?").join(",")})`).all(...recipients).map((r)=>r.user_id)):new Set();const final=recipients.filter((id)=>consent.has(id)&&!restaurantContactBlocked(db,id,restaurantId));if(segment!=="first_order"&&!final.length)throw new HttpError(409,"SEGMENT_NO_CONSENT","No matching customers permit in-app promotions");const id=randomUUID(),createdAt=now.toISOString(),displayName=offerType==="free_item"?item.name:type==="free_delivery"?"Free delivery":"Restaurant promotion",segmentSnapshot=JSON.stringify({asOf:createdAt,segment,definitions:data.definitions,settings:data.settings,matchedCustomerCount:recipients.length,consentedRecipientCount:final.length});db.prepare(`INSERT INTO offer_campaigns(id,restaurant_id,created_by_user_id,idempotency_key,request_hash,title,message,menu_item_id,item_name,item_value_minor,min_subtotal_minor,expires_at,created_at,offer_type,offer_value,starts_at,redemption_limit,budget_minor,eligible_item_ids,eligible_categories,recipient_segment,stacking_policy,funding_party,segment_snapshot,campaign_type,campaign_rules,weekly_budget_minor) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,restaurantId,owner.id,key,hash,normalized.title,normalized.message,item.id,displayName,offerType==="free_item"?item.price_minor:0,minimum,normalized.expiresAt,createdAt,offerType,value,normalized.startsAt,limit,budget,JSON.stringify(eligibleItems),JSON.stringify(categories),segment==="all"?"selected":segment,"exclusive","restaurant",segmentSnapshot,type,JSON.stringify(rules),weeklyBudget);for(const customerId of final){const grant=randomUUID();db.prepare("INSERT INTO offer_grants(id,campaign_id,restaurant_id,customer_id,status,viewed_at,reserved_order_id,redeemed_order_id,created_at,updated_at,reserved_discount_minor) VALUES(?,?,?,?,?,?,?,?,?,?,0)").run(grant,id,restaurantId,customerId,"available",null,null,null,createdAt,createdAt);addNotification(db,{userId:customerId,type:"offer",title:normalized.title,message:normalized.message,offerId:grant,restaurantId,eventKey:`offer:${grant}:issued`,now:createdAt});}return db.prepare("SELECT * FROM offer_campaigns WHERE id=?").get(id);});
+  const created=withTransaction(db,()=>{requireRestaurantCapability(db,session,restaurantId,"manageMarketing");const consent=recipients.length?new Set(db.prepare(`SELECT user_id FROM marketing_preferences WHERE in_app_promotions=1 AND user_id IN (${recipients.map(()=>"?").join(",")})`).all(...recipients).map((r)=>r.user_id)):new Set();const final=recipients.filter((id)=>consent.has(id)&&!restaurantContactBlocked(db,id,restaurantId));if(segment!=="first_order"&&!final.length)throw new HttpError(409,"SEGMENT_NO_CONSENT","No matching customers permit in-app promotions");const id=randomUUID(),createdAt=now.toISOString(),displayName=offerType==="free_item"?item.name:type==="free_delivery"?"Free delivery":"Restaurant promotion",segmentSnapshot=JSON.stringify({asOf:createdAt,segment,definitions:data.definitions,settings:data.settings,matchedCustomerCount:recipients.length,consentedRecipientCount:final.length});db.prepare(`INSERT INTO offer_campaigns(id,restaurant_id,created_by_user_id,idempotency_key,request_hash,title,message,menu_item_id,item_name,item_value_minor,min_subtotal_minor,expires_at,created_at,offer_type,offer_value,starts_at,redemption_limit,budget_minor,eligible_item_ids,eligible_categories,recipient_segment,stacking_policy,funding_party,segment_snapshot,campaign_type,campaign_rules,weekly_budget_minor) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,restaurantId,owner.id,key,hash,normalized.title,normalized.message,item.id,displayName,offerType==="free_item"?item.price_minor:0,minimum,normalized.expiresAt,createdAt,offerType,value,normalized.startsAt,limit,budget,JSON.stringify(eligibleItems),JSON.stringify(categories),segment==="all"?"selected":segment,"exclusive","restaurant",segmentSnapshot,type,JSON.stringify(rules),weeklyBudget);for(const customerId of final){const grant=randomUUID();db.prepare("INSERT INTO offer_grants(id,campaign_id,restaurant_id,customer_id,status,viewed_at,reserved_order_id,redeemed_order_id,created_at,updated_at,reserved_discount_minor) VALUES(?,?,?,?,?,?,?,?,?,?,0)").run(grant,id,restaurantId,customerId,"available",null,null,null,createdAt,createdAt);addNotification(db,{userId:customerId,type:"offer",title:normalized.title,message:normalized.message,offerId:grant,restaurantId,eventKey:`offer:${grant}:issued`,now:createdAt});}return db.prepare("SELECT * FROM offer_campaigns WHERE id=?").get(id);});
   return sendJson(res,201,{data:campaignDto(db,created,now)});
 }
 
