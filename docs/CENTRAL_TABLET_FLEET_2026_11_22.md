@@ -44,4 +44,8 @@ List and location lookups use bounded server-side pagination and search. Respons
 
 The separately managed Calai-0001 startup pilot must not be reinstalled or overwritten by this work. Its handover reported a script assigned/offered with no execution acknowledgement at that point. Those observations are not proof of successful startup. The terminal-identity companion is a separate Cal-Eats component; it does not replace or patch the shared Calai printer/watchdog/startup setup.
 
+An updated authorised handover later confirmed the startup-only v3 check ran at 16:50 London on 22 November and returned **AlreadyCorrect, Changed=false** for the exact pilot serial. That is a successful configuration check, not a newly applied startup change. Earlier attempts failed before startup writes or backup creation and remain part of that task's history. Its one previously requested restart completed at 16:27; this platform work requested no additional restart.
+
+The actual signed-in application window, absence of popup, authenticated business identity and physical paper output remain unverified. The central page does not import this separate local management record or turn its Intune success badge into application presence. Its trusted management-evidence adapter remains an explicit integration dependency. Keep the actual pilot evidence/history in the separate provisioning record until a supported collector is connected; do not type management results into an application-health field.
+
 For physical pairing and printer/uncertain-result procedures, see [the release and tablet guide](UNIFIED_BUSINESS_RELEASE_AND_TABLET_GUIDE_2026_11_22.md) and [monitoring guide](SURFACE_MONITORING_AND_MANAGER_2026_11_22.md).

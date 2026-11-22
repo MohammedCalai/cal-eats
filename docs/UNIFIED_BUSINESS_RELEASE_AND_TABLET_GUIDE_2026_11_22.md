@@ -1,12 +1,12 @@
 # Combined business workspace: implementation and release guide
 
-Status as of 22 November 2026: the Cal-Eats workspace is deployed through PR #6 and its health/data-preservation checks passed. Original Calai remains unchanged. Central tablet-fleet additions and their release evidence are documented separately. A web deployment is not evidence of a signed mobile release, working physical printer or delivered push notification.
+Status as of 22 November 2026: the Cal-Eats workspace and central system-administrator tablet fleet are deployed through PRs #6 and #7; health, integrity and data-preservation checks passed. Original Calai remains unchanged. A web deployment is not evidence of a signed mobile release, working physical printer or delivered push notification.
 
 ## Boundaries and architecture
 
 - Existing Cal-Eats API, SQLite migration runner, web portal, customer accounts, order/payment records, queues and existing manager app remain the product foundations. The customer app's native identity is unchanged.
 - The shared system-administrator Tablets page and safe requested-configuration/reassignment rules are described in [the central fleet guide](CENTRAL_TABLET_FLEET_2026_11_22.md). It does not deliver Intune changes or replace native tablet authentication.
-- Migrations 67–70 add the independent business association, scoped operational tablet identity, administrator product permission/verified owner proof, and Surface presence/monitoring metadata. They run only against Cal-Eats storage. Existing restaurant IDs, native Calai IDs, orders, saved commissions and payout records are retained.
+- Migrations 67–71 add the independent business association, scoped operational tablet identity, administrator product permission/verified owner proof, Surface presence/monitoring metadata and central inventory. They run only against Cal-Eats storage. Existing restaurant IDs, native Calai IDs, orders, saved commissions and payout records are retained.
 - An association references separate native accounts. Product names prefix counters and source records. There is no shared ledger, cross-product balance transfer, email/name matching, shared signing secret or replacement native identity.
 - Cal-Eats administrator permission, verified native account connection and setup readiness are separate facts. New associations default to administrator-off. Migration preserves explicit enablement of pre-existing Cal-Eats associations; synthetic seed provisioning is local development/test only.
 - The two administrator controls are **Allow Calai connection in the combined workspace** and **Enable Cal-Eats**. The former restricts only the integration, never native Calai operation. Turning either off retains references/history. Re-enablement does not need a business Resume action if the genuine setup remains ready.
