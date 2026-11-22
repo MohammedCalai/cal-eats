@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -19,7 +20,7 @@ test("live owner earnings and weekly totals exclude fictional cash/test cards an
     for(const paymentMethod of ["cash","mock_card"]){
       const placed=await f.json("/api/orders",{cookie:customer,method:"POST",headers:{"Idempotency-Key":`report-history-${paymentMethod}`},body:{restaurantId:shop.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod,fulfillment:"collection"}});
       assert.equal(placed.status,201,placed.text);old.push(placed.body.data.id);
-      for(const status of ["accepted","preparing","ready","completed"]){const r=await f.json(`/api/restaurant/orders/${placed.body.data.id}/status`,{cookie:owner,method:"PATCH",body:{status}});assert.equal(r.status,200,r.text);}
+      for(const status of ["accepted","preparing","ready","completed"]){const r=await registeredTabletJson(f, owner, `/api/restaurant/orders/${placed.body.data.id}/status`,{cookie:owner,method:"PATCH",body:{status}});assert.equal(r.status,200,r.text);}
     }
     const template=f.db.prepare("SELECT * FROM orders WHERE id=?").get(old[0]),liveId=randomUUID(),stamp=f.config.now().toISOString();
     insert(f.db,"orders",{...template,id:liveId,idempotency_key:`fixture-live-${liveId}`,total_minor:1500,subtotal_minor:1500,gross_food_minor:1500,customer_payable_minor:1500,commission_minor:105,created_at:stamp,updated_at:stamp});

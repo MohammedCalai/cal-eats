@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
 import {randomUUID} from "node:crypto";
@@ -24,7 +25,7 @@ test("admin queue includes every unconfirmed order with bounded, stable pages an
     assert.deepEqual(first.summary,{total:31,needsConfirmation:30,overdue:30,awaitingPayment:1});assert.equal(first.items.length,12);assert.equal(first.pagination.totalPages,3);assert.equal(new Set([...first.items,...second.items,...third.items].map(x=>x.id)).size,31);assert.equal(third.items.at(-1).confirmationState,"awaiting_payment");
     const unpaid=adminUnconfirmedOrders(f.db,url("/api/admin/workspace/unconfirmed-orders?state=payment"),now);assert.equal(unpaid.items.length,1);assert.equal(unpaid.items[0].id,payment.id);assert.equal(unpaid.items[0].confirmationOverdue,false);
     const literal=adminUnconfirmedOrders(f.db,url("/api/admin/workspace/unconfirmed-orders?q=%25"),now);assert.equal(literal.pagination.total,0);
-    const confirmed=await f.json(`/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}});assert.equal(confirmed.status,200,confirmed.text);assert.equal(adminUnconfirmedOrders(f.db,url("/api/admin/workspace/unconfirmed-orders"),now).summary.needsConfirmation,29);
+    const confirmed=await registeredTabletJson(f, f.owner, `/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}});assert.equal(confirmed.status,200,confirmed.text);assert.equal(adminUnconfirmedOrders(f.db,url("/api/admin/workspace/unconfirmed-orders"),now).summary.needsConfirmation,29);
     assert.throws(()=>adminUnconfirmedOrders(f.db,url("/api/admin/workspace/unconfirmed-orders?page=0"),now),e=>e.code==="VALIDATION_ERROR");assert.throws(()=>adminUnconfirmedOrders(f.db,url("/api/admin/workspace/unconfirmed-orders?state=invalid"),now),e=>e.code==="VALIDATION_ERROR");
   }finally{await f.close();}
 });
@@ -68,7 +69,7 @@ test("order directory filters in SQL and a deep link loads an order outside the 
 
 test("paged finance totals agree with saved finance records and platform vouchers reduce platform margin only",async()=>{
   const f=await setup();try{
-    assert.equal((await f.json(`/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}})).status,200);
+    assert.equal((await registeredTabletJson(f, f.owner, `/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}})).status,200);
     const before=adminFinanceSummary(f.db,url("/api/admin/workspace/finance/summary?from=2026-01-01&to=2026-01-01&pageSize=1"));assert.equal(before.items.length,1);assert.equal(before.pagination.total,2);
     const expected=buildFinanceSummary(f.db,f.restaurant.id,url("/api/admin/workspace/finance/summary?from=2026-01-01&to=2026-01-01"));assert.equal(before.totals.grossSalesMinor,expected.grossSalesMinor);assert.equal(before.totals.commissionMinor,expected.commissionMinor);assert.equal(before.totals.providerCostMinor,expected.providerCostMinor);
     f.db.prepare("UPDATE marketplace_operations SET amount_minor=amount_minor-200 WHERE order_id=? AND kind='cash_order_accepted'").run(f.order.id);
@@ -82,7 +83,7 @@ test("paged finance totals agree with saved finance records and platform voucher
 test("live admin totals and statements exclude fictional history while operational watches remain independent",async()=>{
   const f=await setup();try{
     const admin=await f.login("admin@calai.local","LocalAdmin!4310");
-    assert.equal((await f.json(`/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}})).status,200);
+    assert.equal((await registeredTabletJson(f, f.owner, `/api/restaurant/orders/${f.order.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"accepted"}})).status,200);
     const old=f.db.prepare("SELECT * FROM orders WHERE id=?").get(f.order.id),columns=Object.keys(old),insert=f.db.prepare(`INSERT INTO orders(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`);
     const live={...old,id:randomUUID(),idempotency_key:"admin-live-proof",status:"completed",subtotal_minor:5000,total_minor:5000,customer_payable_minor:5000,commission_minor:350,contract_demo_only:0,payment_status:"cash_collected"};insert.run(...columns.map(c=>live[c]));recordOrderFinancialEnvironment(f.db,live,{paymentProviderMode:"stripe_live"});
     const waiting={...old,id:randomUUID(),idempotency_key:"admin-unproven-waiting",status:"placed",confirmed_at:null};insert.run(...columns.map(c=>waiting[c]));

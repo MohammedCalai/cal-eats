@@ -131,7 +131,8 @@ test("a populated contiguous schema62 upgrades to the current schema without cha
     migrateDatabase(db);migrateDatabase(db);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM schema_migrations WHERE version=63").get().n,1);
     assert.equal(db.prepare("SELECT MAX(version) n FROM schema_migrations").get().n,migrations.at(-1).version);
-    for(const[table,key]of [["users","users"],["orders","orders"],["marketplace_operations","operations"]])assert.deepEqual(db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),before[key]);
+    for(const[table,key]of [["users","users"],["orders","orders"],["marketplace_operations","operations"]]){const originalColumns=Object.keys(before[key][0]);assert.deepEqual(db.prepare(`SELECT ${originalColumns.join(',')} FROM ${table} ORDER BY id`).all(),before[key]);}
+    assert.equal(db.prepare("SELECT principal_kind FROM users WHERE id='historical-customer'").get().principal_kind,'human');
     assert.equal(db.prepare("PRAGMA foreign_key_check").get(),undefined);assert.equal(db.prepare("SELECT COUNT(*) n FROM business_report_email_outbox").get().n,0);
   }finally{db.close();}
 });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
+import {ensureBusinessForRestaurant} from "../src/unified-business.js";
 import { assertMediaCapacity, RESTAURANT_MEDIA_LIMIT_BYTES } from "../src/media-policy.js";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII=";
@@ -54,6 +55,9 @@ test("discovery filters before bounded stable pagination and finds matches beyon
     const insert = f.db.prepare("INSERT INTO restaurants(id,name,status,created_at,cuisine,collection_enabled,delivery_enabled,delivery_outcodes) VALUES(?,?,'approved',?,'Scaling',1,1,'[\"LU1\"]')");
     for (let index = 0; index < 111; index++) insert.run(`scale-${String(index).padStart(3, "0")}`, "Same restaurant name", "2026-01-01T00:00:00.000Z");
     f.db.prepare("INSERT INTO menu_items(id,restaurant_id,name,description,price_minor,available,created_at,updated_at) VALUES('rare-item','scale-110','Rare caper platter','',100,1,?,?)").run("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+    assert.equal((await f.json("/api/restaurants?cuisine=Scaling")).body.data.length,0,"Synthetic restaurants require explicit administrator enablement");
+    const admin=f.db.prepare("SELECT id FROM users WHERE role='admin'").get(),allow=f.db.prepare("UPDATE business_product_permissions SET allowed=1,changed_by=?,changed_at=? WHERE business_id=? AND product='cal-eats'");
+    for(let index=0;index<111;index++){const business=ensureBusinessForRestaurant(f.db,`scale-${String(index).padStart(3,"0")}`,f.config);allow.run(admin.id,f.config.now().toISOString(),business.id);}
     const first = await f.json("/api/restaurants?cuisine=Scaling");
     assert.equal(first.body.data.length, 50);
     assert.deepEqual(first.body.pagination, { page: 1, pageSize: 50, hasNext: true, hasPrevious: false });

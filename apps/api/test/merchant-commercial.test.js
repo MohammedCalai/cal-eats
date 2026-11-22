@@ -96,7 +96,13 @@ test("real owner acceptance feeds new-order snapshots and readiness while saved 
     const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],item=(await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0],path=`/api/restaurant/restaurants/${restaurant.id}/merchant-agreement`;
     const body={restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"mock_card",fulfillment:"collection"};
     const place=key=>f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":key},body});
+    // Preserve a genuinely pre-policy order; current unaccepted setup must no
+    // longer admit fresh intake merely because a local payment is simulated.
+    const reviewedCommercial=f.config.merchantCommercial;
+    f.config.merchantCommercial={...reviewedCommercial,enabled:false};
     const prior=await place("merchant-before-acceptance");assert.equal(prior.status,201,prior.text);
+    f.config.merchantCommercial=reviewedCommercial;
+    const blocked=await place("merchant-unaccepted-setup");assert.equal(blocked.status,409);assert.equal(blocked.body.error.code,'CAL_EATS_SETUP_REQUIRED');
     const beforeOrder=f.db.prepare("SELECT * FROM orders WHERE id=?").get(prior.body.data.id),beforeContracts=f.db.prepare("SELECT * FROM contracts ORDER BY id").all(),beforePolicies=f.db.prepare("SELECT * FROM commission_policies ORDER BY id").all();
     assert.equal(paymentLaunchReport(f.db,f.config).restaurants.items.find(row=>row.id===restaurant.id).termsApproved,false);
     const d=(await f.json(path,{cookie:owner})).body.data.document;

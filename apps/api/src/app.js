@@ -49,6 +49,10 @@ import {routeCustomerPrivacy} from "./customer-privacy.js";
 import {routeCustomerSafety} from "./customer-safety.js";
 import {initializeMerchantCommercial, routeMerchantCommercial} from "./merchant-commercial.js";
 import {routePlatformAdmin,enforcePlatformAdminAuthority} from "./platform-admin.js";
+import {routeUnifiedBusiness} from "./unified-business.js";
+import {hasBusinessTerminalHeaders,readBusinessTerminalSession,enforceBusinessTerminalCapabilities,routeBusinessTerminals} from "./business-terminals.js";
+import {routeSurfaceMonitoring} from './surface-monitoring.js';
+import {routeBusinessMonitoringPush} from './business-monitoring-push.js';
 
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -113,14 +117,20 @@ export function createApp({ db, config, logger = console }) {
       const bearerProvided = typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ");
       const token = parseSessionCookie(req.headers.cookie);
       const nativeSession = bearerProvided ? readNativeSession(db, req, config) : null;
-      const session = bearerProvided ? nativeSession : readSession(db, token, config);
+      const terminalAuthority = hasBusinessTerminalHeaders(req);
+      const session = terminalAuthority ? await readBusinessTerminalSession({req,url,db,config}) : bearerProvided ? nativeSession : readSession(db, token, config);
+      enforceBusinessTerminalCapabilities({req,url,db,session,config});
       enforceCustomerOrderHistory({ url, db, config, session });
-      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password","/api/native/auth/email-verification/confirm"].includes(url.pathname);
+      const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/platform-admin/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password","/api/native/auth/email-verification/confirm"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
-      const pairingRoute = url.pathname === "/api/devices/pair";
-      const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute;
+      const pairingRoute = url.pathname === "/api/devices/pair" || url.pathname === "/api/terminal-devices/pair";
+      const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute || terminalAuthority;
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((req.headers.origin && req.headers.origin !== config.origin) || (config.runMode === "hosted-preview" && !originExempt && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       await enforcePlatformAdminAuthority({req,res,url,db,config,session});
+      if(await routeSurfaceMonitoring({req,res,url,db,config,session,checkRate}))return;
+      if(await routeBusinessMonitoringPush({req,res,url,db,config,session,checkRate}))return;
+      if(await routeBusinessTerminals({req,res,url,db,config,session,checkRate}))return;
+      if(await routeUnifiedBusiness({req,res,url,db,config,session,checkRate}))return;
       if(await routePlatformAdmin({req,res,url,db,config,session,checkRate}))return;
       const accountAccessHandled = await routeAccountAccess({ req, res, url, db, config, session, checkRate });
       if (accountAccessHandled || res.writableEnded || res.headersSent) return;
@@ -190,7 +200,7 @@ export function createApp({ db, config, logger = console }) {
       }
       if (req.method === "GET" && url.pathname === "/api/auth/me") {
         if (!session) throw new HttpError(401, "AUTH_REQUIRED", "Authentication required");
-        return sendJson(res, 200, { data: { user: session.user } });
+        return sendJson(res, 200, { data: { user: session.user, ...(session.principalKind === "terminal" ? {principalKind:"terminal",businessId:session.businessId,terminalId:session.terminalId,restaurantId:session.restaurantId,products:session.products} : {}) } });
       }
       if (req.method === "POST" && url.pathname === "/api/auth/logout") {
         const body = await readJson(req, config.bodyLimit);

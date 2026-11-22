@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
+import {ensureBusinessForRestaurant} from "../src/unified-business.js";
 
 test("category filtering and popularity ranking cover the whole directory before 50-row pagination", async () => {
   const f = await journeyFixture();
@@ -11,6 +12,9 @@ test("category filtering and popularity ranking cover the whole directory before
     for (let index=0;index<56;index++) insert.run(`category-${String(index).padStart(3,"0")}`,`Category ${String(index).padStart(3,"0")}`,"2026-01-01T00:00:00.000Z");
     f.db.prepare("UPDATE restaurants SET delivery_fee_minor=0,estimated_delivery_minutes=5 WHERE id='category-055'").run();
     const route = "/api/restaurants?cuisine=Category%20test&fulfillment=delivery";
+    assert.equal((await f.json(route)).body.data.length,0,"Unlinked/unapproved synthetic businesses must not enter discovery");
+    const admin=f.db.prepare("SELECT id FROM users WHERE role='admin'").get(),allow=f.db.prepare("UPDATE business_product_permissions SET allowed=1,changed_by=?,changed_at=? WHERE business_id=? AND product='cal-eats'");
+    for(let index=0;index<56;index++){const business=ensureBusinessForRestaurant(f.db,`category-${String(index).padStart(3,"0")}`,f.config);allow.run(admin.id,f.config.now().toISOString(),business.id);}
     assert.equal((await f.json(route)).body.data.length,50);
     const free = await f.json(route+"&collection=free-delivery");
     assert.equal(free.status,200,free.text); assert.deepEqual(free.body.data.map(row=>row.id),["category-055"]);

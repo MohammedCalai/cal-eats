@@ -8,8 +8,14 @@ export function sendJson(res, status, payload, headers = {}) {
   res.end(body);
 }
 
-export async function readJson(req, limit) {
-  if (req.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json");
+const requestBodies = new WeakMap();
+export function cachedRequestBody(req) { return requestBodies.get(req)?.body; }
+export async function readRequestBody(req, limit) {
+  const saved = requestBodies.get(req);
+  if (saved) return saved.body ?? saved.pending;
+  const state = {};
+  requestBodies.set(req, state);
+  state.pending = (async () => {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -17,7 +23,16 @@ export async function readJson(req, limit) {
     if (size > limit) { req.resume(); throw new HttpError(413, "BODY_TOO_LARGE", "Request body is too large"); }
     chunks.push(chunk);
   }
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+    state.body = Buffer.concat(chunks);
+    return state.body;
+  })();
+  return state.pending;
+}
+
+export async function readJson(req, limit) {
+  if (req.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json");
+  const body = await readRequestBody(req, limit);
+  try { return JSON.parse(body.toString("utf8")); }
   catch { throw new HttpError(400, "INVALID_JSON", "Request body must be valid JSON"); }
 }
 

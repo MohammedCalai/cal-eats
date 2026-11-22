@@ -1,7 +1,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { withTransaction } from "./db/index.js";
-import { requireRestaurantOwner } from "./auth/authorization.js";
+import { requireRestaurantOwner, requireRestaurantCapability } from "./auth/authorization.js";
 import { exactObject, HttpError, readJson, sendJson } from "./http.js";
 import { parseLondonDateRange, resolveFinanceScope, operationFinancePredicate, payoutFinancePredicate, journalFinancePredicate, bankPayoutFinancePredicate, bankPayoutProviderModeSql } from "./marketplace-reporting.js";
 import { financialEnvironmentScope, orderEnvironmentPredicate } from "./financial-environment.js";
@@ -203,7 +203,7 @@ export function runBusinessWeeklyStatements(db, config, options) {
 export async function handleBusinessStatementRoutes({ req, res, url, db, config, session }) {
   const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/weekly-statements(?:\/(settings|([A-Za-z0-9-]+)\.csv))?$/);
   if (!match) return false;
-  const user = requireRestaurantOwner(db, session, match[1]);
+  const user = req.method === "GET" ? requireRestaurantCapability(db,session,match[1],"viewFinance") : requireRestaurantOwner(db, session, match[1]);
   initializeBusinessWeeklyStatements(db, config);
   if (match[2] === "settings" && ["GET", "PATCH"].includes(req.method)) {
     if (req.method === "PATCH") {

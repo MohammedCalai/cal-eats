@@ -11,7 +11,8 @@ const required = [
   "apps/web/manifest.webmanifest", "apps/web/sw.js", "apps/web/offline.html",
   "packages/contracts/src/index.js", "Dockerfile", ".dockerignore", "infra/healthcheck.js",
   "docs/HOSTED_PREVIEW.md", "docs/CONTAINER_PREVIEW.md", "docs/PHONE_INSTALL.md",
-  "apps/admin-mobile/App.tsx", "apps/admin-mobile/app.json", "docs/MIGRATION_HANDOFF.md"
+  "apps/admin-mobile/App.tsx", "apps/admin-mobile/app.json", "docs/MIGRATION_HANDOFF.md",
+  "apps/terminal-auth/src/index.js", "apps/terminal-auth/windows/terminal-key.ps1", "apps/terminal-auth/windows/install-template.ps1", "apps/terminal-auth/windows/build-installer.mjs"
 ];
 
 for (const file of required) if (!existsSync(join(root, file))) failures.push(`Missing required file: ${file}`);
@@ -19,6 +20,7 @@ for (const file of required) if (!existsSync(join(root, file))) failures.push(`M
 // Operator scripts have an explicit runtime COPY list. Check their local
 // dependencies too: a valid local backup must not fail only after deployment.
 const dockerfile=readFileSync(join(root,"Dockerfile"),"utf8");
+for(const suffix of ['src','windows','package.json'])if(!dockerfile.includes(`apps/terminal-auth/${suffix} ./apps/terminal-auth/${suffix}`))failures.push(`Cal-Eats runtime is missing its terminal installer dependency: apps/terminal-auth/${suffix}`);
 const copiedScripts=new Set([...dockerfile.matchAll(/scripts\/[A-Za-z0-9_.-]+\.js/g)].map(match=>resolve(root,match[0])));
 for(const script of copiedScripts){
   if(!existsSync(script)){failures.push(`Missing packaged script: ${relative(root,script)}`);continue;}
@@ -34,7 +36,7 @@ if (lock && (lock.name !== packageJson.name || lock.lockfileVersion !== 3)) fail
 if (lock && JSON.stringify(lock.packages?.[""]?.workspaces) !== JSON.stringify(packageJson.workspaces)) failures.push("package-lock.json workspace metadata is out of date.");
 if (lock && JSON.stringify(lock.packages?.[""]?.engines) !== JSON.stringify(packageJson.engines)) failures.push("package-lock.json runtime metadata is out of date.");
 if (lock) {
-  for (const workspace of ["apps/api", "apps/web", "apps/portal", "apps/mobile", "apps/admin-mobile", "apps/print-bridge", "packages/contracts"]) {
+  for (const workspace of ["apps/api", "apps/web", "apps/portal", "apps/mobile", "apps/admin-mobile", "apps/print-bridge", "apps/terminal-auth", "packages/contracts"]) {
     const manifest = JSON.parse(readFileSync(join(root, workspace, "package.json"), "utf8"));
     const locked = lock.packages?.[workspace];
     if (!locked || locked.name !== manifest.name || locked.version !== manifest.version || JSON.stringify(locked.dependencies || {}) !== JSON.stringify(manifest.dependencies || {})) failures.push(`package-lock.json is out of date for ${workspace}.`);
@@ -49,7 +51,7 @@ function filesUnder(directory) {
   });
 }
 
-const sourceRoots = ["apps/api/src", "apps/api/scripts", "apps/web", "apps/print-bridge/src", "packages/contracts/src", "scripts", "infra"];
+const sourceRoots = ["apps/api/src", "apps/api/scripts", "apps/web", "apps/print-bridge/src", "apps/terminal-auth/src", "packages/contracts/src", "scripts", "infra"];
 const javascript = sourceRoots.flatMap((dir) => filesUnder(join(root, dir))).filter((file) => extname(file) === ".js");
 for (const file of javascript) {
   const result = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });

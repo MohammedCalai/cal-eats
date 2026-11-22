@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {requireRestaurantOwner} from "./auth/authorization.js";
+import {requireOperationalPrinterUser} from './business-terminals.js';
 import {withTransaction} from "./db/index.js";
 import {HttpError,exactObject,readJson,sendJson} from "./http.js";
 
@@ -12,10 +13,11 @@ export function samplePrinterReceipt(restaurantName,now){
 }
 
 export async function createPrinterTestReceipt({req,res,db,config,session,restaurantId,printerId}){
-  const owner=requireRestaurantOwner(db,session,restaurantId),body=await readJson(req,config.bodyLimit);exactObject(body,["requestId"]);
+  const owner=requireOperationalPrinterUser(db,config,session,restaurantId),body=await readJson(req,config.bodyLimit);exactObject(body,["requestId"]);
   if(typeof body.requestId!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId))throw new HttpError(400,"VALIDATION_ERROR","A valid test request ID is required.");
   const requestId=body.requestId.toLowerCase(),now=config.now().toISOString();
   const result=withTransaction(db,()=>{
+    requireOperationalPrinterUser(db,config,session,restaurantId);
     const restaurant=db.prepare("SELECT name FROM restaurants WHERE id=? AND archived_at IS NULL AND status='approved' AND suspended=0").get(restaurantId);
     const printer=db.prepare("SELECT * FROM restaurant_printers WHERE id=? AND restaurant_id=? AND revoked_at IS NULL").get(printerId,restaurantId);
     if(!restaurant||!printer)throw new HttpError(404,"NOT_FOUND","Active restaurant printer not found.");

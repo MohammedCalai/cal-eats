@@ -1,7 +1,7 @@
 import { resolveFinanceScope, operationFinancePredicate } from "./marketplace-reporting.js";
 import { orderEnvironmentPredicate, orderFinancialEnvironment } from "./financial-environment.js";
 import {customerPayableMinor,platformVoucherMinor} from "./platform-vouchers.js";
-import { requireRestaurantOwner } from "./auth/authorization.js";
+import { requireRestaurantCapability } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { buildOrderPaymentAdjustmentBreakdown } from "./business-payment-adjustment-reporting.js";
 
@@ -60,7 +60,7 @@ export function buildOrderFinancialBreakdown(db, order) {
 export async function routeFinanceDetails({ req, res, url, db, session,config }) {
   const match = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/finance\/orders\/([^/]+)\/breakdown$/);
   if (req.method !== "GET" || !match) return false;
-  requireRestaurantOwner(db, session, match[1]);
+  requireRestaurantCapability(db, session, match[1], "viewFinance");
   const scope=resolveFinanceScope(config,url),order = db.prepare(`SELECT o.* FROM orders o WHERE o.id=? AND o.restaurant_id=? AND ${orderEnvironmentPredicate("o",scope)}`).get(match[2], match[1]);
   if (!order) throw new HttpError(404, "NOT_FOUND", "Resource not found");
   return sendJson(res, 200, { data: buildOrderFinancialBreakdown(db, order) });

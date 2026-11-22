@@ -3,10 +3,12 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { formatReceipt } from "../../print-bridge/src/receipt.js";
 import { journeyFixture } from "./helpers.js";
+import {enrolRegisteredTablet} from "./registered-tablet-fixture.js";
 
 async function kitchen(f) {
   const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
   const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0], root = `/api/restaurant/restaurants/${restaurant.id}`;
+  const tablet = await enrolRegisteredTablet(f, {ownerCookie: owner});
   const response = await f.json(`${root}/printers`, { method: "POST", cookie: owner, body: { name: "Kitchen printer", enabled: true, ipAddress: "192.0.2.25" } });
   assert.equal(response.status, 201, response.text);
   const printer = response.body.data, printerPath = `${root}/printers/${printer.id}`;
@@ -24,21 +26,22 @@ async function kitchen(f) {
   };
   const claim = (device = first) => f.json("/api/devices/jobs/claim", { method: "POST", headers: device.headers, body: {} });
   const ack = (job, outcome = "uncertain", device = first) => f.json(`/api/devices/jobs/${job.id}/ack`, { method: "POST", headers: device.headers, body: { claimToken: job.claimToken, outcome } });
-  const diagnostic = (requestId = randomUUID(), cookie = owner) => f.json(`${printerPath}/test-receipt`, { method: "POST", cookie, body: { requestId } });
+  const diagnostic = (requestId = randomUUID(), cookie) => cookie ? f.json(`${printerPath}/test-receipt`, { method: "POST", cookie, body: { requestId } }) : tablet.json(`${printerPath}/test-receipt`, {method: "POST", body: {requestId}});
   await heartbeat();
-  return { owner, other, customer, restaurant, root, printer, printerPath, first, pair, heartbeat, claim, ack, diagnostic };
+  return { owner, other, customer, restaurant, root, printer, printerPath, first, pair, heartbeat, claim, ack, diagnostic, tablet };
 }
 
-test("sample receipts are owner-only, idempotent and separate from real orders, customer data and money", async () => {
+test("sample receipts are registered-tablet-only, idempotent and separate from real orders, customer data and money", async () => {
   let now = Date.parse("2026-01-01T01:00:00Z");
   const f = await journeyFixture({ now: () => new Date(now) });
   try {
     const k = await kitchen(f);
     const counts = () => Object.fromEntries(["orders", "order_events", "marketplace_operations", "journal_postings", "stripe_order_payments"].map((table) => [table, f.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n]));
     const before = counts();
-    assert.equal((await k.diagnostic(randomUUID(), k.other)).status, 404);
+    assert.equal((await k.diagnostic(randomUUID(), k.other)).status, 403);
     assert.equal((await k.diagnostic(randomUUID(), k.customer)).status, 403);
-    assert.equal((await f.json(`${k.printerPath}/test-receipt`, { method: "POST", cookie: k.owner, body: {} })).status, 400);
+    assert.equal((await k.diagnostic(randomUUID(), k.owner)).status, 403);
+    assert.equal((await k.tablet.json(`${k.printerPath}/test-receipt`, { method: "POST", body: {} })).status, 400);
     const requestId = randomUUID(), queued = await k.diagnostic(requestId);
     assert.equal(queued.status, 201, queued.text); assert.equal(queued.body.data.testReceipt, true); assert.match(queued.body.data.id, /^test-print-/);
     const replay = await k.diagnostic(requestId); assert.equal(replay.status, 200); assert.deepEqual(replay.body.data, queued.body.data);
@@ -79,7 +82,7 @@ test("one printer serialises real receipts and diagnostics across devices, prior
     const acceptOrder = async () => {
       const placed = await f.json("/api/orders", { method: "POST", cookie: k.customer, headers: { "Idempotency-Key": `printer-serial-${sequence++}` }, body: { restaurantId: k.restaurant.id, items: [{ menuItemId: item.id, quantity: 2 }], paymentMethod: "cash", fulfillment: "delivery", deliveryAddress: { line1: "1 Main Street", line2: "Flat 2", city: "Luton", postcode: "LU1 1AA" } } });
       assert.equal(placed.status, 201, placed.text);
-      const accepted = await f.json(`/api/restaurant/orders/${placed.body.data.id}/status`, { method: "PATCH", cookie: k.owner, body: { status: "accepted" } });
+      const accepted = await k.tablet.json(`/api/restaurant/orders/${placed.body.data.id}/status`, { method: "PATCH", body: { status: "accepted" } });
       assert.equal(accepted.status, 200, accepted.text);
       return placed.body.data;
     };

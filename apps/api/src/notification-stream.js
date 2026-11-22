@@ -1,3 +1,4 @@
+import {surfaceNotificationAllowed} from "./surface-notification-policy.js";
 import { blockedRestaurantNotification } from "./customer-safety-policy.js";
 const hubs = new WeakMap();
 
@@ -10,14 +11,14 @@ function validClient(db, client, timestamp) {
   const user = db.prepare("SELECT role FROM users WHERE id=? AND account_enabled=1").get(client.userId);
   if (!user) return false;
   if (!client.sessionId) return false;
-  if (client.native && (client.nativeAudience === "business" ? user.role !== "restaurant" || !db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(client.userId) : user.role !== "customer")) return false;
-  const table = client.native ? client.nativeAudience === "business" ? "native_business_sessions" : "native_sessions" : "sessions";
+  if(client.native){if(client.nativeAudience==="business"){if(user.role!=="restaurant"||!db.prepare("SELECT 1 FROM restaurant_memberships WHERE user_id=?").get(client.userId))return false;}else if(client.nativeAudience==="platform-admin"){if(user.role!=="admin")return false;}else if(user.role!=="customer")return false;}
+  const table = client.native ? client.nativeAudience === "business" ? "native_business_sessions" : client.nativeAudience === "platform-admin" ? "native_platform_sessions" : "native_sessions" : "sessions";
   return Boolean(db.prepare(`SELECT 1 FROM ${table} WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?`).get(client.sessionId, client.userId, timestamp));
 }
 
 export function notificationRecipientAllowed(db, row) {
   const user = db.prepare("SELECT role,account_enabled FROM users WHERE id=?").get(row.user_id);
-  if (!user?.account_enabled || blockedRestaurantNotification(db, row)) return false;
+  if (!user?.account_enabled || blockedRestaurantNotification(db, row) || !surfaceNotificationAllowed(db,row)) return false;
   if(row.restaurant_id&&(["restaurant","admin"].includes(user.role)||row.type==="offer")&&!db.prepare("SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL").get(row.restaurant_id))return false;
   if (user.role === "restaurant" && row.restaurant_id && !db.prepare("SELECT 1 FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(row.restaurant_id, row.user_id)) return false;
   if (row.support_case_id) {
@@ -70,6 +71,7 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
   };
   const poll = () => {
     try {
+      for (const client of [...clients]) if (!validClient(db,client,now().toISOString())) close(client);
       for (const client of clients) if (client.catchingUp) catchUp(client, globalRowId);
       const rows = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE rowid>? ORDER BY rowid LIMIT 500").all(globalRowId);
       for (const row of rows) { globalRowId = row.stream_rowid; for (const client of clients) if (!client.catchingUp && client.userId === row.user_id && row.stream_rowid > client.deliveredThrough) { if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; } }
@@ -88,6 +90,7 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
       let cursor = null;
       if (lastEventId) cursor = db.prepare("SELECT rowid AS stream_rowid FROM user_notifications WHERE id=? AND user_id=?").get(lastEventId, userId);
       const client = { req, res, userId, sessionId, native, nativeAudience, buffered: 0, closed: false, deliveredThrough: cursor?.stream_rowid ?? 0, catchingUp: Boolean(lastEventId) };
+      if(!validClient(db,client,now().toISOString())){close(client);return true;}
       // If a supplied cursor was deleted or belongs to someone else, replay only
       // this recipient's retained events. Event IDs let clients deduplicate.
       if (client.catchingUp) catchUp(client, globalRowId);

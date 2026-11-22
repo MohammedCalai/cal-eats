@@ -11,6 +11,11 @@ test("live checkout blocks cash even with an older cash preference; owners canno
     try{
       const owner=await login("restaurant@calai.local","LocalRestaurant!4310"),customer=await login("customer@calai.local","LocalCustomer!4310");
       const restaurant=(await json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],profile=`/api/restaurant/restaurants/${restaurant.id}/profile`;
+      if(stripe){
+        const stamp=f.config.now().toISOString();
+        f.db.prepare("INSERT INTO provider_accounts VALUES('card-policy-fixture',?,?,'enabled',?,'[]','acct_cardpolicyrestaurant',?,?)").run(restaurant.id,mode,JSON.stringify(['transfers','card_payments']),stamp,stamp);
+        f.db.prepare("INSERT INTO stripe_account_readiness VALUES(?,?,'acct_cardpolicyrestaurant',1,1,?)").run(restaurant.id,mode,stamp);
+      }
       assert.equal((await json(profile,{method:"PATCH",cookie:owner,body:{cashEnabled:false}})).status,200);
       const enabled=await json(profile,{method:"PATCH",cookie:owner,body:{cashEnabled:true}});
       const payment=(await json("/api/payments/config")).body.data;

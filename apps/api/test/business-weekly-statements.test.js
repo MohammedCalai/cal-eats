@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
@@ -32,7 +33,7 @@ async function fixture() {
   return {...f,owner,customer,other,restaurant,item,root:`/api/restaurant/restaurants/${restaurant.id}/weekly-statements`,set(value){stamp=Date.parse(value);},async place(paymentMethod="cash"){
     const response=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":`weekly-order-${sequence++}`},body:{restaurantId:restaurant.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod,fulfillment:"collection"}});
     assert.equal(response.status,201,response.text);
-    for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.json(`/api/restaurant/orders/${response.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}})).status,200);
+    for(const status of["accepted","preparing","ready","completed"])assert.equal((await registeredTabletJson(f, owner, `/api/restaurant/orders/${response.body.data.id}/status`,{method:"PATCH",cookie:owner,body:{status}})).status,200);
     return response.body.data;
   }};
 }

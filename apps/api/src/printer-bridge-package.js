@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { HttpError } from "./http.js";
 
 const bridgeRoot = new URL("../../print-bridge/", import.meta.url);
-const files = ["package.json", "src/index.js", "src/api-client.js", "src/bridge.js", "src/config.js", "src/credential-store.js", "src/journal.js", "src/logger.js", "src/receipt.js", "src/transports.js", "src/setup.js", "src/shared-calai.js", "src/patch-calai.js", "src/instance-lock.js", "calai-native/shared-prefix.txt", "calai-native/shared-suffix.txt", "calai-native/supported-hashes.json", "windows/connect-shared-calai.ps1", "windows/install.ps1", "windows/status.ps1", "windows/uninstall.ps1"];
+const files = ["package.json", "src/index.js", "src/api-client.js", "src/bridge.js", "src/config.js", "src/credential-store.js", "src/journal.js", "src/logger.js", "src/receipt.js", "src/transports.js", "src/setup.js", "src/instance-lock.js", "windows/install.ps1", "windows/status.ps1", "windows/uninstall.ps1"];
 
 const automaticInstaller=String.raw`param([string]$NodePath = "")
 $ErrorActionPreference = "Stop"
@@ -55,14 +55,13 @@ export async function buildPrinterBridgePackage(printer, origin, {setup=null} = 
     entries.push(["start.bat",'@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"\r\nif errorlevel 1 pause\r\n']);
     entries.push(["README.txt",[
       "CAL-EATS PRINTER SETUP", "", `Printer: ${String(printer.name).replace(/[\r\n\x00-\x1f]/g," ")}`, "",
-      "CALAI-MANAGED SURFACE WITH THE SHARED-BRIDGE UPDATE:",
-      "Download this ZIP while signed in as the Business User and leave it in Downloads. The managed setup connects Cal-Eats to that Surface's existing Calai bridge. Restart the bridge or Surface once to load the update.", "",
-      "OTHER WINDOWS DEVICES:",
-      "Extract the complete ZIP and run start.bat with administrator approval. An existing supported Calai bridge is reused with its printer settings and runtime; restart that bridge once. If no Calai bridge is present, the standard Cal-Eats background connection is installed.", "",
-      "Return to Cal-Eats > Printers. When Connected appears, select Test print and check the sample receipt.", "",
+      "ISOLATED CAL-EATS INSTALLATION:",
+      "Extract the complete ZIP and run start.bat with administrator approval on the registered ordering tablet. This installer only manages its own Cal-Eats files and task. It does not modify, restart or reuse an original Calai printing service or runtime.", "",
+      "If an existing Calai printing service is detected, installation stops before changing anything. Sharing that printer requires a verified supported arrangement; contact support. Do not install another producer, replace native files or restart Calai to work around this check.", "",
+      "Return to Cal-Eats > Printers on the registered ordering tablet. Use Test print there and check the sample receipt; an ordinary browser or phone cannot print.", "",
       `This private setup works once for this printer and must first be used before ${setup.expiresAt}. Download a fresh setup for another device or after expiry. No manual pairing code or customer payment is needed.`, "",
-      "Calai and Cal-Eats keep their own order queues and credentials. Shared printing uses the existing Calai printer routine, printer address and startup. Confirmed Cal-Eats orders queue automatically. Do not start extra copies for the same printer.", "",
-      "Connected means the printer network port was recently reachable. Check paper output before requesting a labelled reprint after an uncertain result.", "",
+      "Calai and Cal-Eats keep their own order queues and credentials. Confirmed Cal-Eats orders queue automatically. Do not start extra copies for the same printer.", "",
+      "A recently reachable network port does not prove that paper printed or that the printer has paper. Physical printer readiness is unavailable unless supported diagnostics report it. Check paper output before requesting a labelled reprint after an uncertain result.", "",
     ].join("\r\n")]);
     return printerZip(entries);
   }

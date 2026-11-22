@@ -1,3 +1,4 @@
+import {tabletJson} from './registered-tablet-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import {openDatabase,migrateDatabase} from "../src/db/index.js";
@@ -80,7 +81,7 @@ test("discounted delivery captures once and transfers the saved merchant net, in
       await call(`/api/orders/${orderId}/checkout`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"money-checkout"},body:{}});
       await call(`/api/orders/${orderId}/payment/refresh`,{method:"POST",cookie:customer,body:{}});
       if(scenario.scheduled)clock="2026-01-01T12:02:00.000Z";
-      const status=value=>call(`/api/restaurant/orders/${orderId}/status`,{method:"PATCH",cookie:owner,body:{status:value}});
+      const status=async value=>{const response=await tabletJson(f,owner,`/api/restaurant/orders/${orderId}/status`,{method:"PATCH",body:{status:value}});assert.ok(response.status<300,response.text);return response.body.data;};
       await status("accepted");await status("accepted");assert.equal(captureCalls,1);
       for(const value of["preparing","ready","out_for_delivery","completed"])await status(value);
       assert.equal(queueEligibleStripeTransfers(f.db,f.config).queued,1);assert.equal(queueEligibleStripeTransfers(f.db,f.config).queued,0);

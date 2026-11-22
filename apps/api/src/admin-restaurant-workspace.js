@@ -4,6 +4,7 @@ import { requireRole } from "./auth/authorization.js";
 import { scopedAdminRestaurantSession } from "./auth/admin-restaurant-scope.js";
 import { HttpError, sendJson } from "./http.js";
 import { orderDto, restaurantDto, routeJourney } from "./journey.js";
+import { routeProduct } from "./product.js";
 import { routePolish } from "./polish.js";
 import { routeLoyalty } from "./loyalty.js";
 import { routeCustomerRelationships } from "./customer-relationships.js";
@@ -72,7 +73,9 @@ export async function routeAdminRestaurantWorkspace(context) {
   if(tail==="delivery"&&req.method!=="GET")throw new HttpError(403,"OWNER_DELIVERY_SETTINGS_REQUIRED","Only the business owner can change delivery fees and delivery settings. Administrators can inspect the current settings in the restaurant overview.");
   // Only these existing owner operations are exposed. Payments, order transitions,
   // delivery settings, printers, customer-message sending and account credentials are deliberately absent.
-  const permitted=(/^menu(?:\/(?:order|import|[^/]+(?:\/photo)?))?$/.test(tail)&&["GET","POST","PATCH","PUT","DELETE"].includes(req.method))
+  const permitted=(/^staff\/[^/]+\/capabilities$/.test(tail)&&req.method==="PATCH")
+    ||(tail==="staff"&&req.method==="GET")
+    ||(/^menu(?:\/(?:order|import|[^/]+(?:\/photo)?))?$/.test(tail)&&["GET","POST","PATCH","PUT","DELETE"].includes(req.method))
     ||(tail==="cover"&&req.method==="DELETE")
     ||(tail==="profile"&&req.method==="PATCH")
     ||(tail==="loyalty"&&req.method==="GET")
@@ -88,7 +91,7 @@ export async function routeAdminRestaurantWorkspace(context) {
     return res.end(body);
   };
   const managed={...context,url:managedUrl,res:managedResponse,session:scopedAdminRestaurantSession(session,restaurantId)};
-  for(const handler of [routePolish,routeLoyalty,routeCustomerRelationships,routeJourney]){
+  for(const handler of [routePolish,routeLoyalty,routeCustomerRelationships,routeJourney,routeProduct]){
     const handled=await handler(managed);if(handled||res.headersSent||res.writableEnded)return true;
   }
   throw new HttpError(404,"NOT_FOUND","Resource not found");

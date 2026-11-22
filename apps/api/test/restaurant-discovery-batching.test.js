@@ -3,10 +3,15 @@ import test from "node:test";
 import { openDatabase, migrateDatabase, closeDatabase } from "../src/db/index.js";
 import { discoverRestaurants } from "../src/restaurant-discovery.js";
 import { DIRECTORY_NOW, directoryId, seedDirectoryFixture } from "../../../scripts/load-restaurant-directory.js";
+import {ensureBusinessForRestaurant} from "../src/unified-business.js";
 
 function fixture() {
   const db = openDatabase(":memory:"); migrateDatabase(db);
   seedDirectoryFixture(db, { restaurants: 120, menuItemsPerRestaurant: 3, historyPerRestaurant: 5 });
+  const stamp=DIRECTORY_NOW.toISOString(),adminId='directory-fixture-admin';
+  db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,'directory-admin@load.invalid','invalid-synthetic-hash','admin',?)").run(adminId,'Synthetic directory administrator',stamp);
+  const allow=db.prepare("UPDATE business_product_permissions SET allowed=1,changed_by=?,changed_at=? WHERE business_id=? AND product='cal-eats'");
+  for(let index=0;index<120;index++){const business=ensureBusinessForRestaurant(db,directoryId(index),{now:()=>DIRECTORY_NOW});allow.run(adminId,stamp,business.id);}
   return db;
 }
 function query(db, suffix, customerId = null) {

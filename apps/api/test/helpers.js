@@ -8,12 +8,13 @@ import { closeDatabase, migrateDatabase, openDatabase } from "../src/db/index.js
 import { seedDemoData } from "../src/seed.js";
 
 export async function journeyFixture(configOverrides = {}) {
+  const {configureSeedBusinesses = true, ...configSettings} = configOverrides;
   const directory = await mkdtemp(path.join(tmpdir(), "calai-journey-"));
   const db = openDatabase(path.join(directory, "test.sqlite"));
   migrateDatabase(db);
-  await seedDemoData(db, new Date("2026-01-01T00:00:00.000Z"));
+  await seedDemoData(db, new Date("2026-01-01T00:00:00.000Z"), {businessProducts: configureSeedBusinesses});
   let tick = 0;
-  const config = loadConfig({ dbPath: path.join(directory, "test.sqlite"), financialRemediesEnabled: configOverrides.runMode !== "hosted-preview", now: () => new Date(Date.parse("2026-01-01T01:00:00.000Z") + tick++ * 1000), ...configOverrides });
+  const config = loadConfig({ dbPath: path.join(directory, "test.sqlite"), financialRemediesEnabled: configSettings.runMode !== "hosted-preview", now: () => new Date(Date.parse("2026-01-01T01:00:00.000Z") + tick++ * 1000), ...configSettings });
   const app = createApp({ db, config });
   async function request(route, { method = "GET", body, cookie, headers = {} } = {}) {
     const allHeaders = Object.fromEntries(Object.entries({ host: config.expectedHost, ...(cookie ? { cookie } : {}), ...headers }).map(([key, value]) => [key.toLowerCase(), value]));
@@ -25,6 +26,7 @@ export async function journeyFixture(configOverrides = {}) {
       const responseHeaders = new Map(); const chunks = [];
       const res = { headersSent: false, statusCode: 200,
         setHeader(key, value) { responseHeaders.set(key.toLowerCase(), value); },
+        removeHeader(key) { responseHeaders.delete(key.toLowerCase()); },
         writeHead(status, values = {}) { this.statusCode = status; this.headersSent = true; for (const [key, value] of Object.entries(values)) responseHeaders.set(key.toLowerCase(), value); },
         end(chunk) { if (chunk) chunks.push(Buffer.from(chunk)); const bodyBuffer=Buffer.concat(chunks); resolve({ status: this.statusCode, headers: responseHeaders, text: bodyBuffer.toString("utf8"), bodyBuffer }); },
         destroy() { resolve({ status: this.statusCode, headers: responseHeaders, text: "" }); }

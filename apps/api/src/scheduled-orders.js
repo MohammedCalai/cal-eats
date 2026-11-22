@@ -1,6 +1,7 @@
 import { HttpError, sendJson } from "./http.js";
 import { restaurantAvailability } from "./availability.js";
 import { defaultCustomerEtaMinutes } from "./order-confirmation.js";
+import { assertBusinessIntakeAllowed } from "./business-product-policy.js";
 
 export const SCHEDULE_MAX_DAYS = 7;
 
@@ -36,6 +37,7 @@ export async function routeScheduledOrders({ req, res, url, db, config }) {
   if (!["delivery", "collection"].includes(fulfillment)) throw new HttpError(400, "VALIDATION_ERROR", "Choose delivery or collection");
   const restaurant = db.prepare("SELECT * FROM restaurants WHERE id=? AND status='approved'").get(match[1]);
   if (!restaurant) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+  assertBusinessIntakeAllowed(db, restaurant.id, config);
   const now = config.now(), minimumLeadMinutes = Math.max(30, defaultCustomerEtaMinutes({ fulfillment }, restaurant)), items = [];
   const dateFormat = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" });
   const dayFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" });

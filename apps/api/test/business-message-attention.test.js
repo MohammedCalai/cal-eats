@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {randomUUID} from "node:crypto";
@@ -61,7 +62,7 @@ test("business message attention uses actual scoped read cursors and a recipient
     const staleRead=await f.json(`/api/orders/${order.id}/messages/read`,{method:"POST",cookie:owner,body:{lastMessageId:first.id}});
     assert.equal(staleRead.body.data.messageAttentionRevision,updated.revision,"A successful read carries the server's current backlog barrier even when the client observed an older revision");assert.equal(staleRead.body.data.unreadCount,1);
     assert.equal((await f.json(`/api/orders/${order.id}/messages/read`,{method:"POST",cookie:owner,body:{lastMessageId:second.id}})).status,200);
-    for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:owner,body:{status}})).status,200);
+    for(const status of["accepted","preparing","ready","completed"])assert.equal((await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, {method:"PATCH",body:{status}})).status,200);
     const path=`${base}/customers/${order.customerId}/conversation`,started=await f.json(path,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"attention-crm-start"},body:{message:"How can we help?"}});assert.equal(started.status,201,started.text);
     const staffBeforeCrm=await attention(staff);clock+=1000;
     const reply=await f.json(`/api/customer/conversations/${started.body.data.threadId}/messages`,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"attention-crm-reply"},body:{message:"Please follow up with me."}});assert.equal(reply.status,201,reply.text);
@@ -107,7 +108,7 @@ test("dashboard message actions match reminder counts for active and closed orde
     }
     const [active,closed]=orders;
     for(const status of ["accepted","preparing","ready","completed"]){
-      const changed=await f.json(`/api/restaurant/orders/${closed.order.id}/status`,{method:"PATCH",cookie:owner,body:{status}});assert.equal(changed.status,200,changed.text);
+      const changed=await tabletJson(f, owner, `/api/restaurant/orders/${closed.order.id}/status`, {method:"PATCH",body:{status}});assert.equal(changed.status,200,changed.text);
     }
     const crmPath=`${base}/customers/${active.order.customerId}/conversation`;
     const opened=await f.json(crmPath,{method:"POST",cookie:owner,headers:{"Idempotency-Key":"dashboard-attention-crm-open"},body:{message:"How can we help?"}});

@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -21,7 +22,7 @@ async function setup() {
   const basket = (id = main.id, quantity = 1) => [{ menuItemId: id, quantity }];
   const payload = (offerId, cart = basket(), fulfillment = "collection") => ({ restaurantId: restaurant.id, items: cart, fulfillment, ...(fulfillment === "delivery" ? { deliveryAddress: { line1: "10 Fictional Road", city: "Luton", postcode: "LU1 2AB" } } : {}), ...(offerId ? { offerId } : {}) });
   async function place(offerId, cart, fulfillment, cookie = customer) { return f.json("/api/orders", { method: "POST", cookie, headers: { "Idempotency-Key": `marketing-order-${sequence++}` }, body: { ...payload(offerId, cart, fulfillment), paymentMethod: "cash" } }); }
-  async function complete(orderId, cookie = owner) { for (const status of ["accepted", "preparing", "ready", "completed"]) { const result = await f.json(`/api/restaurant/orders/${orderId}/status`, { method: "PATCH", cookie, body: { status } }); assert.equal(result.status, 200, result.text); } }
+  async function complete(orderId, cookie = owner) { for (const status of ["accepted", "preparing", "ready", "completed"]) { const result = await tabletJson(f, cookie, `/api/restaurant/orders/${orderId}/status`, { method: "PATCH",  body: { status } }); assert.equal(result.status, 200, result.text); } }
   async function consent(cookie) { const result = await f.json("/api/account/marketing-preferences", { method: "PATCH", cookie, body: { inAppPromotions: true, pushPromotions: false, source: "marketing-fixture" } }); assert.equal(result.status, 200, result.text); }
   async function newCustomer(email) {
     const response = await f.json("/api/auth/register", { method: "POST", body: { name: "Fictional second customer", email, password: "MarketingFixture!4310" } });
@@ -97,7 +98,7 @@ test("all advertised marketing mechanics quote and redeem server prices without 
     assert.equal((await f.quote(happy.id)).body.error.code, "OFFER_NOT_STARTED");
     f.set("2026-10-30T12:01:30.000Z"); assert.equal((await f.quote(happy.id)).body.data.restaurantDiscountMinor, 100);
     const timedOrder=await f.place(happy.id);assert.equal(timedOrder.status,201,timedOrder.text);assert.equal(timedOrder.body.data.totalMinor,900);
-    await f.json(`/api/restaurant/orders/${timedOrder.body.data.id}/status`,{method:"PATCH",cookie:f.owner,body:{status:"rejected"}});
+    await tabletJson(f, f.owner, `/api/restaurant/orders/${timedOrder.body.data.id}/status`, {method:"PATCH",body:{status:"rejected"}});
     f.set("2026-10-30T12:02:00.000Z"); assert.equal((await f.quote(happy.id)).body.error.code, "OFFER_EXPIRED");
 
     const all = await f.campaign("amount_order", { recipientSegment: "all", customerIds: [] }); assert.equal(all.status, 201, all.text); assert.equal(all.body.data.recipientSegment, "all");
@@ -147,7 +148,7 @@ test("weekly spend caps reserve atomically, release rejected gifts and reset at 
     const before = f.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n;
     assert.equal((await f.place(secondGrant.id, undefined, undefined, second.cookie)).body.error.code, "PROMOTION_WEEKLY_BUDGET_EXHAUSTED");
     assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n, before);
-    await f.json(`/api/restaurant/orders/${held.body.data.id}/status`, { method: "PATCH", cookie: f.owner, body: { status: "rejected" } });
+    await tabletJson(f, f.owner, `/api/restaurant/orders/${held.body.data.id}/status`, { method: "PATCH",  body: { status: "rejected" } });
     const used = await f.place(secondGrant.id, undefined, undefined, second.cookie); assert.equal(used.status, 201, used.text); await f.complete(used.body.data.id);
     assert.equal((await f.quote(firstGrant.id)).body.error.code, "PROMOTION_WEEKLY_BUDGET_EXHAUSTED");
     f.set("2026-11-02T00:00:00.000Z");

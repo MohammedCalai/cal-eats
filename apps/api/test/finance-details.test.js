@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -28,7 +29,7 @@ test("saved delivery waivers appear in owner earnings, breakdown and weekly CSV 
     const quoted=await f.json("/api/orders/quote",{method:"POST",cookie:s.customer,body:{...basket,autoApplyOffers:true}});assert.equal(quoted.status,200,quoted.text);assert.equal(quoted.body.data.offerId,claimed.body.data.id);
     const placed=await f.json("/api/orders",{method:"POST",cookie:s.customer,headers:{"Idempotency-Key":"delivery-waiver-order"},body:{...basket,paymentMethod:"mock_card",offerId:quoted.body.data.offerId,expectedTotalMinor:quoted.body.data.totalMinor}});assert.equal(placed.status,201,placed.text);
     const order=placed.body.data;assert.equal(order.totalMinor,1500);assert.equal(order.commissionMinor,105);
-    assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"accepted"}})).status,200);
+    assert.equal((await registeredTabletJson(f, s.owner, `/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"accepted"}})).status,200);
     await updateDelivery(900);
     f.db.prepare("UPDATE offer_campaigns SET title='Later campaign title' WHERE id=?").run(campaign.body.data.id);
     const detail=(await f.json(`${s.root}/orders/${order.id}/breakdown`,{cookie:s.owner})).body.data;
@@ -122,7 +123,7 @@ test("real offer checkout producers retain discount/free-item snapshots in owner
   try{
     const s=await setup(f),admin=await f.login("admin@calai.local","LocalAdmin!4310");
     const place=async(key,offerId)=>{const response=await f.json("/api/orders",{method:"POST",cookie:s.customer,headers:{"Idempotency-Key":key},body:{restaurantId:s.restaurant.id,items:[{menuItemId:s.item.id,quantity:1}],paymentMethod:"mock_card",fulfillment:"collection",...(offerId?{offerId}:{})}});assert.equal(response.status,201,response.text);return response.body.data;};
-    const complete=async order=>{for(const status of["accepted","preparing","ready","completed"])assert.equal((await f.json(`/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:s.owner,body:{status}})).status,200);};
+    const complete=async order=>{for(const status of["accepted","preparing","ready","completed"])assert.equal((await registeredTabletJson(f, s.owner, `/api/restaurant/orders/${order.id}/status`,{method:"PATCH",cookie:s.owner,body:{status}})).status,200);};
     const history=await place("real-offer-history");await complete(history);
     assert.equal((await f.json("/api/account/marketing-preferences",{method:"PATCH",cookie:s.customer,body:{inAppPromotions:true,pushPromotions:false,source:"finance-integration"}})).status,200);
     const offer=async(title,offerType,value)=>{
@@ -138,7 +139,7 @@ test("real offer checkout producers retain discount/free-item snapshots in owner
     await editPrice(s.item.priceMinor+500);
     const freeOffer=await offer("Actual free side","free_item",0);
     await editPrice(s.item.priceMinor+800);
-    const gifted=await place("real-free-order",freeOffer.id);assert.equal((await f.json(`/api/restaurant/orders/${gifted.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"accepted"}})).status,200);
+    const gifted=await place("real-free-order",freeOffer.id);assert.equal((await registeredTabletJson(f, s.owner, `/api/restaurant/orders/${gifted.id}/status`,{method:"PATCH",cookie:s.owner,body:{status:"accepted"}})).status,200);
     const free=(await f.json(`${s.root}/orders/${gifted.id}/breakdown`,{cookie:s.owner})).body.data;
     assert.equal(free.promotion.offerType,"free_item");assert.equal(free.promotion.freeItemRetailValueMinor,s.item.priceMinor+500,"Free item retail value comes from the granted offer, not today's higher menu price");assert.equal(free.promotion.discountMinor,0);assert.equal(free.items.filter(row=>row.isOfferItem).length,1);
     assert.equal(free.earnings.currentMinor,gifted.totalMinor-gifted.commissionMinor);

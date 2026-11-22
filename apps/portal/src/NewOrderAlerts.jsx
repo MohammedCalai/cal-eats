@@ -12,8 +12,8 @@ const OrderAlertsContext=createContext(null);
 const time=value=>new Intl.DateTimeFormat("en-GB",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/London"}).format(new Date(value));
 export function useOrderAlerts(){return useContext(OrderAlertsContext);}
 
-export function OrderAlertProvider({enabled,restaurants=[],onSelectRestaurant,onRefreshRestaurants,userId,children}) {
-  const scope=enabled&&userId?String(userId):"disabled";
+export function OrderAlertProvider({enabled,restaurants=[],onSelectRestaurant,onRefreshRestaurants,userId,children,operationalRestaurantId=null}) {
+  const scope=enabled&&userId?`${userId}:${operationalRestaurantId||"all"}`:"disabled";
   const scopeRef=useRef(scope);scopeRef.current=scope;
   const [queue,setQueue]=useState({scope:"",items:[],total:0,lastCheckedAt:null}),[error,setError]=useState(""),[open,setOpen]=useState(false),[selected,setSelected]=useState(""),[loading,setLoading]=useState(false),[now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[decisionError,setDecisionError]=useState(""),[rejecting,setRejecting]=useState(false),[minutes,setMinutes]=useState("30");
   const controller=businessOrderAudio();
@@ -28,10 +28,10 @@ export function OrderAlertProvider({enabled,restaurants=[],onSelectRestaurant,on
 
   const load=useCallback(async()=>{
     if(scope==="disabled")return;const request=++sequence.current,requestScope=scope;setLoading(true);
-    try{const result=await api("/api/restaurant/orders/pending-confirmation");if(scopeRef.current!==requestScope||request!==sequence.current)return;const items=pendingOrdersFromAuthoritativeQueue(result.items),prior=known.current.scope===scope?known.current.ids:new Set(),first=known.current.scope!==scope,added=items.some(item=>!prior.has(item.id)),removed=[...prior].some(id=>!items.some(item=>item.id===id));known.current={scope,ids:new Set(items.map(item=>item.id))};setQueue({scope,items,total:Number(result.total)||items.length,lastCheckedAt:new Date().toISOString()});setError("");if((first||added)&&items.length)setOpen(true);if(!items.length)setOpen(false);setSelected(old=>items.some(item=>item.id===old)?old:items[0]?.id||"");if(removed)window.dispatchEvent(new Event("cal-eats-orders-updated"));}
+    try{const result=await api("/api/restaurant/orders/pending-confirmation");if(scopeRef.current!==requestScope||request!==sequence.current)return;const items=pendingOrdersFromAuthoritativeQueue(result.items).filter(order=>!operationalRestaurantId||order.restaurantId===operationalRestaurantId),prior=known.current.scope===scope?known.current.ids:new Set(),first=known.current.scope!==scope,added=items.some(item=>!prior.has(item.id)),removed=[...prior].some(id=>!items.some(item=>item.id===id));known.current={scope,ids:new Set(items.map(item=>item.id))};setQueue({scope,items,total:operationalRestaurantId?items.length:Number(result.total)||items.length,lastCheckedAt:new Date().toISOString()});setError("");if((first||added)&&items.length)setOpen(true);if(!items.length)setOpen(false);setSelected(old=>items.some(item=>item.id===old)?old:items[0]?.id||"");if(removed)window.dispatchEvent(new Event("cal-eats-orders-updated"));}
     catch(e){if(scopeRef.current===requestScope&&request===sequence.current){setError(e.message||"Pending orders could not be refreshed.");if([401,403,404].includes(e.status)){known.current={scope,ids:new Set()};setQueue({scope,items:[],total:0,lastCheckedAt:null});setOpen(false);controller.stop();}}}
     finally{if(scopeRef.current===requestScope&&request===sequence.current)setLoading(false);}
-  },[scope]);loadRef.current=load;
+  },[scope,operationalRestaurantId]);loadRef.current=load;
 
   useEffect(()=>{sequence.current++;known.current={scope:"",ids:new Set()};setOpen(false);setSelected("");setDecisionError("");setRejecting(false);setBusy(false);attempt.current=null;if(scope==="disabled")return;const stop=connectLiveNotifications({onNotification:item=>{if(document.hidden&&["new_order","order_status"].includes(item.type))void load();},onRefresh:load});const interval=setInterval(()=>void load(),15_000),visible=()=>{if(!document.hidden)void load();};document.addEventListener("visibilitychange",visible);window.addEventListener("focus",visible);return()=>{sequence.current++;stop();clearInterval(interval);document.removeEventListener("visibilitychange",visible);window.removeEventListener("focus",visible);controller.stop();};},[scope,load]);
   useEffect(()=>{const interval=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(interval);},[]);

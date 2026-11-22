@@ -19,23 +19,23 @@ type Dashboard = {
 };
 const periods: Array<[Period, string]> = [["yesterday", "Yesterday"], ["today", "Today"], ["this_week", "This week"], ["last_week", "Last week"]];
 
-export function DashboardScreen({ token, restaurantId, canManage, onNavigate, onOrder, onFinance }: { token: string; restaurantId: string; canManage: boolean; onNavigate: (screen: Destination) => void; onOrder: (id: string) => void; onFinance: () => void }) {
+export function DashboardScreen({ token, restaurantId, canManage, canViewFinance, onNavigate, onOrder, onFinance }: { token: string; restaurantId: string; canManage: boolean; canViewFinance: boolean; onNavigate: (screen: Destination) => void; onOrder: (id: string) => void; onFinance: () => void }) {
   const [period, setPeriod] = useState<Period>("today"), [page, setPage] = useState(1);
   const result = useRemote<Dashboard>(`/api/restaurant/restaurants/${restaurantId}/dashboard?period=${period}&view=operations&page=${page}&pageSize=20`, token);
   useForegroundRefresh(result.reload, 5000);
   const current = result.value?.range.period === period && result.value?.orders.pagination.page === page && !result.error ? result.value : null;
 
   const [sharing, setSharing] = useState<"metrics" | "orders" | null>(null), [shareError, setShareError] = useState("");
-  const exportRequest = useRef<AbortController | null>(null), context = useRef({ restaurantId, period, token, canManage });
-  context.current = { restaurantId, period, token, canManage };
-  useEffect(() => { setShareError(""); setSharing(null); return () => { exportRequest.current?.abort(); exportRequest.current = null; }; }, [restaurantId, period, token, canManage]);
+  const exportRequest = useRef<AbortController | null>(null), context = useRef({ restaurantId, period, token, canViewFinance });
+  context.current = { restaurantId, period, token, canViewFinance };
+  useEffect(() => { setShareError(""); setSharing(null); return () => { exportRequest.current?.abort(); exportRequest.current = null; }; }, [restaurantId, period, token, canViewFinance]);
   async function shareCsv(kind: "metrics" | "orders") {
-    if (!canManage || exportRequest.current) return;
+    if (!canViewFinance || exportRequest.current) return;
     const requested = { restaurantId, period, token }, controller = new AbortController();
     exportRequest.current = controller; setSharing(kind); setShareError("");
     try {
       const result = await dashboardCsv({ ...requested, kind, signal: controller.signal });
-      const isCurrent = () => !controller.signal.aborted && exportRequest.current === controller && context.current.canManage && context.current.restaurantId === requested.restaurantId && context.current.period === requested.period && context.current.token === requested.token;
+      const isCurrent = () => !controller.signal.aborted && exportRequest.current === controller && context.current.canViewFinance && context.current.restaurantId === requested.restaurantId && context.current.period === requested.period && context.current.token === requested.token;
       await shareDashboardCsvFile(result.csv, result.filename, isCurrent);
     } catch (error) { if (exportRequest.current === controller && !controller.signal.aborted) setShareError((error as Error).message); }
     finally { if (exportRequest.current === controller) { exportRequest.current = null; setSharing(null); } }
@@ -46,14 +46,14 @@ export function DashboardScreen({ token, restaurantId, canManage, onNavigate, on
     {canManage&&current&&<View style={[styles.card,{borderColor:current.operations.unreadMessages?colour.blue:colour.border}]}><Text style={styles.heading}>Customer messages</Text><Text style={styles.muted}>{current.operations.unreadMessages} unread message{current.operations.unreadMessages===1?"":"s"}</Text><Button onPress={()=>onNavigate("messages")}>Open customer inbox</Button></View>}
     {current && <LiveOrders operations={current.operations} onOpen={() => onNavigate("orders")}/>}
     <Chips>{periods.map(([value, label]) => <Chip key={value} selected={value === period} onPress={() => choose(value)}>{label}</Chip>)}</Chips>
-    {canManage && <Card><Text style={styles.heading}>Export {periods.find(([value]) => value === period)?.[1].toLowerCase()}</Text><Text style={styles.hint}>Save a CSV file or share it with another app. Exports use the selected period.</Text><ErrorText message={shareError}/><Button quiet disabled={Boolean(sharing)} busy={sharing === "metrics"} onPress={() => void shareCsv("metrics")}>Save or share statistics CSV</Button><Button quiet disabled={Boolean(sharing)} busy={sharing === "orders"} onPress={() => void shareCsv("orders")}>Save or share orders CSV</Button></Card>}
+    {canViewFinance && <Card><Text style={styles.heading}>Export {periods.find(([value]) => value === period)?.[1].toLowerCase()}</Text><Text style={styles.hint}>Save a CSV file or share it with another app. Exports use the selected period.</Text><ErrorText message={shareError}/><Button quiet disabled={Boolean(sharing)} busy={sharing === "metrics"} onPress={() => void shareCsv("metrics")}>Save or share statistics CSV</Button><Button quiet disabled={Boolean(sharing)} busy={sharing === "orders"} onPress={() => void shareCsv("orders")}>Save or share orders CSV</Button></Card>}
     <ErrorText message={result.error}/>
     {!current && result.loading && <ActivityIndicator color={colour.cyan}/>}
     {current && <>
       <View style={{flexDirection:"row",gap:12,alignItems:"stretch"}}><Hero title="Orders placed" value={String(current.summary.ordersPlaced)} hint="Confirmed orders" detail={String(current.summary.confirmedOrders)}/><Hero title="Completed orders" value={String(current.summary.completedOrders)} hint="Preparing now" detail={String(current.operations.confirmedInKitchen)}/></View>
 <Text style={styles.hint}>{current.range.fromDate} – {current.range.toDate} · UK time · weeks start Monday</Text>
       <Card><Text style={styles.heading}>Needs attention now</Text>
-        <Button quiet onPress={() => onNavigate("orders")}>{current.operations.pendingConfirmation} orders to confirm{current.operations.overdueConfirmation ? ` · ${current.operations.overdueConfirmation} overdue` : ""}</Button>
+        <Button quiet onPress={() => onNavigate("orders")}>{current.operations.pendingConfirmation} orders awaiting restaurant tablet{current.operations.overdueConfirmation ? ` · ${current.operations.overdueConfirmation} overdue` : ""}</Button>
         <Text style={styles.text}>{current.operations.activeOrders} active orders</Text>
         {canManage && <><Button quiet onPress={() => onNavigate("messages")}>{current.operations.unreadMessages} unread messages</Button><Button quiet onPress={() => onNavigate("cases")}>{current.operations.openRefundCases} open refund cases</Button></>}
       </Card>

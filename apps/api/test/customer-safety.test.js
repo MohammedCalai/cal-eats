@@ -1,3 +1,4 @@
+import { tabletJson } from "./registered-tablet-fixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { journeyFixture } from "./helpers.js";
@@ -111,7 +112,7 @@ test("restaurant block cancels queued contact, blocks new contact and offer read
     assert.equal(history.status, 200); assert.equal(history.body.data.items[0].message, "A restaurant message");
     const orderMessage = await f.json(`/api/orders/${s.order.id}/messages`, { cookie: s.owner, method: "POST", headers: { "Idempotency-Key": "blocked-order-contact" }, body: { message: "This must not arrive either" } });
     assert.equal(orderMessage.status, 409, orderMessage.text);
-    const accepted = await f.json(`/api/restaurant/orders/${s.order.id}/status`, { cookie: s.owner, method: "PATCH", body: { status: "accepted" } });
+    const accepted = await tabletJson(f, s.owner, `/api/restaurant/orders/${s.order.id}/status`, {  method: "PATCH", body: { status: "accepted" } });
     assert.equal(accepted.status, 200, accepted.text);
     const update = f.db.prepare("SELECT * FROM user_notifications WHERE user_id=? AND type='order_status'").get(s.order.customerId);
     assert.equal(notificationRecipientAllowed(f.db, update), true);

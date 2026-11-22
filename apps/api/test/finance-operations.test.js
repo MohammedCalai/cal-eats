@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { processLocalOutbox, runExpiryWorker, runOperationsCycle } from "../src/operations.js";
@@ -17,7 +18,7 @@ async function setup(f) {
 async function order(f, auth, key, paymentMethod = "mock_card") {
   return (await f.json("/api/orders", { method: "POST", cookie: auth.customer, headers: { "Idempotency-Key": key }, body: { restaurantId: auth.restaurant.id, items: [{ menuItemId: auth.item.id, quantity: 1 }], paymentMethod, fulfillment: "collection" } })).body.data;
 }
-async function status(f, auth, id, value) { return f.json(`/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: auth.owner, body: { status: value } }); }
+async function status(f, auth, id, value) { return registeredTabletJson(f, auth.owner, `/api/restaurant/orders/${id}/status`, { method: "PATCH", cookie: auth.owner, body: { status: value } }); }
 
 test("simulated card partial/full refunds are idempotent and reverse rounded commission exactly", async () => {
   const f = await journeyFixture();

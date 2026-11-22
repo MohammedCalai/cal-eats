@@ -15,18 +15,20 @@ export function businessReturnPath(raw,role) {
   if(typeof raw!=="string"||!raw.startsWith("/")||raw.startsWith("//")||/[\\\r\n]/.test(raw))return home;
   try{const target=new URL(raw,"https://cal-eats.invalid");return target.origin==="https://cal-eats.invalid"&&target.pathname.startsWith(prefix)?`${target.pathname}${target.search}`:home;}catch{return home;}
 }
-export function ownerNavigation(permission = "owner") {
+export function ownerNavigation(permission = "owner",capabilities={}) {
   const core = [
     ["Dashboard", "/owner/dashboard"], ["Orders", "/owner/orders"], ["Menu", "/owner/menu"],
-    ["Printers", "/owner/printers"],
+    ...(permission==="owner"||capabilities.viewDevices===true?[["Printers", "/owner/printers"]]:[]),
   ];
   if (permission === "owner") core.splice(3, 0, ["Inbox", "/owner/inbox"], ["Customers", "/owner/customers"], ["Marketing", "/owner/offers"], ["Support", "/owner/support"]);
   if (permission === "owner") core.push(["Earnings & payouts", "/owner/earnings"], ["Settings", "/owner/settings"]);
+  if(permission!=="owner"&&capabilities.manageMarketing===true)core.splice(3,0,["Marketing","/owner/offers"]);
+  if(permission!=="owner"&&capabilities.viewFinance===true)core.push(["Earnings & payouts","/owner/earnings"]);
   return core;
 }
-export const ownerMobileNavigation = permission => permission === "owner" ? [["Home","/owner/dashboard"],["Marketing","/owner/offers"],["Orders","/owner/orders"],["Menu","/owner/menu"]] : [["Home","/owner/dashboard"],["Orders","/owner/orders"],["Menu","/owner/menu"]];
+export const ownerMobileNavigation = (permission,capabilities={}) => permission === "owner"||capabilities.manageMarketing===true ? [["Home","/owner/dashboard"],["Marketing","/owner/offers"],["Orders","/owner/orders"],["Menu","/owner/menu"]] : [["Home","/owner/dashboard"],["Orders","/owner/orders"],["Menu","/owner/menu"]];
 export const adminNavigation = [
-  ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Customers", "/admin/customers"], ["Orders", "/admin/orders"],
+  ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Business accounts", "/admin/business-accounts"], ["Surface monitoring", "/admin/surface-monitoring"], ["Customers", "/admin/customers"], ["Orders", "/admin/orders"],
   ["Finance", "/admin/finance"], ["Payment readiness", "/admin/stripe"], ["Resolution history", "/admin/refunds"], ["Support", "/admin/support"], ["Service areas", "/admin/service-areas"], ["Account access", "/admin/governance"], ["Operations", "/admin/operations"],
 ];
 

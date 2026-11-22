@@ -1,3 +1,4 @@
+import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -29,7 +30,7 @@ test("business dashboard scopes periods, roles, earnings, messages and transfer 
       assert.equal(result.status, 201, result.text);
       const order = result.body.data;
       if (target !== "placed") for (const status of target === "accepted" ? ["accepted"] : ["accepted", "preparing", "ready", "completed"]) {
-        const response = await f.json(`/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie, body: { status } });
+        const response = await registeredTabletJson(f, cookie, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH", cookie, body: { status } });
         assert.equal(response.status, 200, response.text);
       }
       f.db.prepare("UPDATE orders SET created_at=? WHERE id=?").run(createdAt, order.id);

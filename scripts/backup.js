@@ -1,3 +1,4 @@
+import {sanitizeBusinessMonitoringBackup} from "../apps/api/src/business-monitoring-retention.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +66,8 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
       }
       // Delete delivery dependants before registrations, and registrations before
       // the native session they reference. This also works with older schemas.
+      copy.exec("PRAGMA secure_delete=ON");
+      const businessMonitoringSanitized=sanitizeBusinessMonitoringBackup(copy).sanitized;
       const temporaryTables = ["business_report_email_outbox", "customer_safety_reports", "customer_erasure_confirmation_outbox", "order_live_activity_outbox", "customer_order_live_activities", "customer_push_outbox", "customer_push_devices", "native_sessions", "order_messages", "order_message_reads", "order_message_rate_limits", "restaurant_customer_messages", "restaurant_customer_message_reads", "restaurant_customer_message_rate_limits"];
       const present = temporaryTables.filter(table => copy.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
       if (present.length) {
@@ -78,7 +81,7 @@ export async function createBackup({ source = DEFAULT_SOURCE, destination, now }
         // must not make later messages reuse an earlier ingestion sequence.
         copy.exec("VACUUM;");
       }
-      if(platformSanitized&&!present.length)copy.exec("VACUUM");
+      if((platformSanitized||businessMonitoringSanitized)&&!present.length)copy.exec("VACUUM");
       if (copy.prepare("PRAGMA foreign_key_check").get()) throw new Error("Sanitized backup has a foreign key violation");
       const integrity = copy.prepare("PRAGMA integrity_check").all();
       if (integrity.length !== 1 || integrity[0].integrity_check !== "ok") throw new Error("Sanitized backup failed its integrity check");

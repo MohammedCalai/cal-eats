@@ -28,10 +28,17 @@ if ($Setup.printerId -notmatch $UuidPattern -or $Setup.restaurantId -notmatch $U
     throw "The downloaded printer identity is invalid. Download a fresh printer setup."
 }
 $PrinterId = ([guid]$Setup.printerId).ToString()
-# Prefer the already-working Calai bridge when its printer matches this setup.
-# Its original config, runtime, launcher and Calai queue remain in use.
-$SharedConnection = & (Join-Path $PSScriptRoot 'connect-shared-calai.ps1') -ConfigPath $ConfigPath -SetupPath $SetupPath
-if ($SharedConnection -eq $true) { return }
+# This installer owns Cal-Eats only. Do not patch, restart, load or reuse the
+# original Calai service/runtime. Shared hardware needs a separately verified
+# supported arrangement before a second producer is installed.
+$ProtectedCalaiFiles = @(
+    'C:\Calai\PrinterBridge\printer-bridge\print-bridge.js',
+    'C:\Calai\PrinterBridge\print-bridge.js',
+    (Join-Path $env:ProgramData 'CalaiPrintBridge\print-bridge.js')
+)
+if ($ProtectedCalaiFiles | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) {
+    throw 'An existing Calai printing service was detected and left unchanged. Cal-Eats shared-printer installation is not verified for this tablet. Contact support before installing another printer connection.'
+}
 $TaskName = "CalEatsPrinter-$PrinterId"
 $ProgramDataRoot = [IO.Path]::GetFullPath($env:ProgramData)
 $PrintersRoot = [IO.Path]::GetFullPath((Join-Path $ProgramDataRoot "CalEats\Printers"))

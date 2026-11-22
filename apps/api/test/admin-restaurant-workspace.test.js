@@ -47,7 +47,7 @@ test('admin availability display follows workspace acceptingOrders for open, clo
   f.db.prepare("UPDATE restaurants SET always_open=0,opening_hours='[]' WHERE id=?").run(f.restaurant.id);await inspect('Closed now',false);
   f.db.prepare('UPDATE restaurants SET always_open=1,paused=1 WHERE id=?').run(f.restaurant.id);await inspect('Paused',false);
   f.db.prepare('UPDATE restaurants SET suspended=1 WHERE id=?').run(f.restaurant.id);await inspect('Suspended',false);
-  f.db.prepare("UPDATE restaurants SET suspended=0,paused=0,status='pending' WHERE id=?").run(f.restaurant.id);await inspect('Pending approval',true);
+  f.db.prepare("UPDATE restaurants SET suspended=0,paused=0,status='pending' WHERE id=?").run(f.restaurant.id);await inspect('Pending approval',false);
   f.db.prepare('UPDATE restaurants SET archived_at=? WHERE id=?').run(f.config.now().toISOString(),f.restaurant.id);await inspect('Archived',false);
  }finally{await f.close();}
 });
