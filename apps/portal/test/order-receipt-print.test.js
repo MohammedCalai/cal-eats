@@ -66,6 +66,10 @@ test("a refusal before sending any copy releases the request and unavailable tab
     throw Object.assign(new Error("Order not confirmed"), { status: 409, code: "ORDER_NOT_CONFIRMED" });
   }), /not confirmed/);
   assert.equal(requests.read(order), null);
+  await assert.rejects(requests.submit(order, printer, () => {
+    throw Object.assign(new Error("The printer needs a paired device"), { status: 409, code: "PRINTER_DEVICE_REQUIRED" });
+  }), /paired device/);
+  assert.equal(requests.read(order), null);
 
   const unavailable = createReceiptPrintRequests({ storage: () => { throw new Error("blocked"); } });
   await assert.rejects(unavailable.submit(order, printer, () => assert.fail("A receipt was sent")), /keep track/);
