@@ -11,6 +11,7 @@ const binding = { managedDeviceId: randomUUID(), entraDeviceId: randomUUID(), di
 const config = { enabled: true, tenantId: randomUUID(), clientId: randomUUID(), certificateThumbprint: 'a'.repeat(64), privateKeyFile: './isolated-key.pem', targets: [binding] };
 const body = { jobId: randomUUID(), managedDeviceId: binding.managedDeviceId, entraDeviceId: binding.entraDeviceId,
   serialNumber: binding.serialNumber, scriptContent: 'Write-Output "Synthetic offline test"\r\n' };
+const nextScript = 'Write-Output "Synthetic offline retry"\r\n';
 const stamp = new Date(start - 1000).toISOString();
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 
@@ -62,6 +63,12 @@ function fixture(options = {}) {
       state.modern = command.deviceManagementScriptAssignments;
       return new Response(null, { status: 204 });
     }
+    if (!action && method === 'PATCH') {
+      state.log.push('update');
+      Object.assign(script, JSON.parse(options.body), { lastModifiedDateTime: stamp });
+      if (state.missingUpdateResponse) throw new Error('This provider error cannot escape the adapter.');
+      return json(script);
+    }
     assert.equal(method, 'GET');
     return json(script);
   };
@@ -75,7 +82,10 @@ function fixture(options = {}) {
     beginCreate() { state.log.push('begin'); return true; }
   } : {}) });
   const observe = (extra = {}) => adapter.observe({ ...body, requestedAt, scriptId: state.scripts[0]?.id, ...extra });
-  return { state, adapter, dispatch, observe };
+  const redeliver = (extra = {}) => adapter.redeliver({ ...body, scriptId: state.scripts[0]?.id,
+    previousScriptContent: body.scriptContent, scriptContent: nextScript, ...extra,
+    ...(extra.allowUpdate && !extra.beginUpdate ? { beginUpdate() { state.log.push('begin-update'); return true; } } : {}) });
+  return { state, adapter, dispatch, observe, redeliver };
 }
 
 test('managed provisioning defaults disabled and requires separate certificate settings plus exact pinned device/group triples', async () => {
@@ -119,6 +129,75 @@ test('a potentially accepted create is reconciled by exact name/bytes without a 
   f.state.scripts.push({ ...f.state.scripts[0], id: randomUUID() });
   await assert.rejects(f.dispatch(), { code: 'MANAGED_SETUP_GRAPH_SCRIPT_AMBIGUOUS' });
   assert.equal(f.state.calls.filter(call => call.method === 'POST').length, 2);
+});
+
+test('redelivery verifies the exact assigned script, fences the write and patches only the package bytes', async () => {
+  const f = fixture();
+  const sent = await f.dispatch({ allowCreate: true });
+  f.state.calls.length = 0;
+  await assert.rejects(f.redeliver(), { code: 'MANAGED_SETUP_GRAPH_UPDATE_UNCONFIRMED', retry: true });
+  await assert.rejects(f.redeliver({ allowUpdate: true, beginUpdate: () => false }), { code: 'MANAGED_SETUP_GRAPH_UPDATE_BLOCKED' });
+  assert.ok(f.state.calls.every(call => call.method === 'GET'));
+  assert.deepEqual(await f.redeliver({ allowUpdate: true }), sent);
+  assert.deepEqual(await f.redeliver({ allowUpdate: true, beginUpdate: () => { assert.fail('already current'); } }), sent);
+  assert.deepEqual(f.state.log, ['begin', 'create', 'assign', 'begin-update', 'update']);
+  const writes = f.state.calls.filter(call => call.method !== 'GET');
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0], { url: `${graph}${scriptRoot}/${sent.scriptId}`, method: 'PATCH',
+    sent: { scriptContent: Buffer.from(nextScript, 'utf8').toString('base64') } });
+});
+
+test('accepted or unconfirmed PATCH outcomes reconcile read-only, with no automatic second update', async () => {
+  const accepted = fixture();
+  const sent = await accepted.dispatch({ allowCreate: true });
+  accepted.state.missingUpdateResponse = true;
+  await assert.rejects(accepted.redeliver({ allowUpdate: true }), error => error.code === 'MANAGED_SETUP_GRAPH_NETWORK' &&
+    error.ambiguousUpdate === true && error.retry === true && !error.message.includes('provider error'));
+  assert.deepEqual(await accepted.redeliver(), sent);
+  assert.equal(accepted.state.calls.filter(call => call.method === 'PATCH').length, 1);
+
+  const unconfirmed = fixture();
+  await unconfirmed.dispatch({ allowCreate: true });
+  unconfirmed.state.responseOverride = (route, method) => method === 'PATCH' ? json({ ignored: true }, 503) : null;
+  await assert.rejects(unconfirmed.redeliver({ allowUpdate: true }), { code: 'MANAGED_SETUP_GRAPH_PROVIDER_RETRY', ambiguousUpdate: true, retry: true });
+  unconfirmed.state.responseOverride = null;
+  await assert.rejects(unconfirmed.redeliver(), { code: 'MANAGED_SETUP_GRAPH_UPDATE_UNCONFIRMED', retry: true });
+  assert.equal(unconfirmed.state.calls.filter(call => call.method === 'PATCH').length, 1);
+});
+
+test('redelivery rejects changed execution settings, assignment and provider script scope before updating', async () => {
+  for (const [issue, expected] of Object.entries({
+    content: 'SCRIPT_MISMATCH', runAs: 'SCRIPT_MISMATCH', foreign: 'SCRIPT_MISMATCH', duplicate: 'SCRIPT_AMBIGUOUS',
+    unassigned: 'ASSIGNMENT_UNCONFIRMED', allDevices: 'ASSIGNMENT_UNSAFE', lateGroup: 'GROUP_UNSAFE', sameBytes: 'SCRIPT_INVALID'
+  })) {
+    const f = fixture();
+    await f.dispatch({ allowCreate: true });
+    const input = { allowUpdate: true };
+    if (issue === 'content') f.state.scripts[0].scriptContent = Buffer.from('Out-of-band changes').toString('base64');
+    if (issue === 'runAs') f.state.scripts[0].runAsAccount = 'user';
+    if (issue === 'foreign') input.scriptId = randomUUID();
+    if (issue === 'duplicate') f.state.scripts.push({ ...f.state.scripts[0], id: randomUUID() });
+    if (issue === 'unassigned') f.state.modern = [];
+    if (issue === 'allDevices') f.state.modern[0].target = { '@odata.type': '#microsoft.graph.allDevicesAssignmentTarget' };
+    if (issue === 'lateGroup') {
+      let reads = 0;
+      f.state.responseOverride = route => route.endsWith('/members') && ++reads > 1 ? json({ value: [] }) : null;
+    }
+    if (issue === 'sameBytes') input.scriptContent = body.scriptContent;
+    await assert.rejects(f.redeliver(input), { code: `MANAGED_SETUP_GRAPH_${expected}` }, issue);
+    assert.ok(!f.state.log.includes('begin-update'), issue);
+    assert.ok(f.state.calls.every(call => call.method !== 'PATCH'), issue);
+  }
+});
+
+test('redelivery rechecks the group and assignment after PATCH before reporting delivery', async () => {
+  const f = fixture();
+  await f.dispatch({ allowCreate: true });
+  f.state.responseOverride = route => route.endsWith('/assignments') && f.state.log.includes('update')
+    ? json({ value: [{ target: { '@odata.type': '#microsoft.graph.allDevicesAssignmentTarget' } }] }) : null;
+  await assert.rejects(f.redeliver({ allowUpdate: true }), { code: 'MANAGED_SETUP_GRAPH_ASSIGNMENT_UNSAFE', retry: false });
+  assert.equal(f.state.calls.filter(call => call.method === 'PATCH').length, 1);
+  await assert.rejects(f.redeliver(), { code: 'MANAGED_SETUP_GRAPH_ASSIGNMENT_UNSAFE', retry: false });
 });
 
 test('late Graph visibility is retriable and a changed group is rechecked immediately before assignment', async () => {
@@ -182,6 +261,30 @@ test('observe returns only the fresh successful exact-device result after valida
   f.state.modern[0].target = { '@odata.type': '#microsoft.graph.allDevicesAssignmentTarget' };
   await assert.rejects(f.observe(), { code: 'MANAGED_SETUP_GRAPH_ASSIGNMENT_UNSAFE' });
   assert.equal(f.state.calls.filter(call => call.method === 'POST').length, 2);
+});
+
+test('retry observation refuses runs at the script modification or request time while initial delivery remains compatible', async () => {
+  const f = fixture();
+  await f.dispatch({ allowCreate: true });
+  const resultMessage = 'Synthetic evidence';
+  const run = { id: randomUUID(), managedDevice: { id: binding.managedDeviceId }, runState: 'success',
+    lastStateUpdateDateTime: requestedAt, resultMessage };
+  f.state.runs = [run];
+  assert.deepEqual(await f.observe(), { resultMessage, observedAt: requestedAt });
+  await f.redeliver({ allowUpdate: true });
+  const retry = (extra = {}) => f.observe({ deliveryRevision: 2, scriptContent: nextScript, ...extra });
+  assert.equal(await retry(), null);
+  run.lastStateUpdateDateTime = stamp;
+  assert.equal(await retry(), null);
+  run.runState = 'scriptError';
+  assert.equal(await retry(), null);
+  run.lastStateUpdateDateTime = new Date(Date.parse(stamp) + 1).toISOString();
+  await assert.rejects(retry(), { code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED', observedAt: run.lastStateUpdateDateTime });
+  assert.equal(await retry({ priorFailureAt: run.lastStateUpdateDateTime }), null);
+  run.runState = 'success';
+  assert.equal(await retry({ requestedAt: run.lastStateUpdateDateTime }), null);
+  assert.deepEqual(await retry(), { resultMessage, observedAt: run.lastStateUpdateDateTime });
+  await assert.rejects(retry({ deliveryRevision: 0 }), { code: 'MANAGED_SETUP_GRAPH_EVIDENCE_INVALID' });
 });
 
 test('malicious continuation and stalled authorisation never initiate a write', async () => {

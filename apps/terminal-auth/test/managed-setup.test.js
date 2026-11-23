@@ -8,6 +8,7 @@ import test from "node:test";
 import {TerminalDevice,readManagedSetup} from "../src/device.js";
 import {managedSetupPoller} from "../src/index.js";
 import {encodeManagedEvidence,requestAllowed} from "../src/protocol.js";
+import {WindowsDeviceKey} from "../src/windows-key.js";
 import {buildManagedTerminalInstaller,buildTerminalInstaller} from "../windows/build-installer.mjs";
 
 const jobId="11111111-1111-4111-8111-111111111111";
@@ -47,6 +48,70 @@ test("managed installer is deterministic and contains only the public selected-d
     {targetSerial:""},{targetSerial:"trailing "},{targetSerial:"x';throw 'injection"},
     {enrolment:"not-allowed"},{apiBaseUrl:"https://other.invalid"},{expiresAt:"not-allowed"},
   ])assert.throws(()=>buildManagedTerminalInstaller({targetSerial,entraDeviceId,jobId,...overrides}));
+});
+
+test("managed delivery revisions produce distinct deterministic scripts without replacing the broker payload",()=>{
+  const options={targetSerial,entraDeviceId,jobId};
+  const original=buildManagedTerminalInstaller(options);
+  assert.equal(buildManagedTerminalInstaller({...options,deliveryRevision:1}),original);
+  const second=buildManagedTerminalInstaller({...options,deliveryRevision:2});
+  const third=buildManagedTerminalInstaller({...options,deliveryRevision:3});
+  assert.notEqual(second,original);assert.notEqual(second,third);
+  assert.equal(buildManagedTerminalInstaller({...options,deliveryRevision:2}),second);
+  const decode=script=>JSON.parse(Buffer.from(/\$TerminalManagedSetupBase64='([A-Za-z0-9+/=]+)'/.exec(script)[1],"base64"));
+  const payload=script=>/\$TerminalPayload=\[Convert\]::FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(script)[1];
+  assert.deepEqual(decode(second),{jobId,entraDeviceId,deliveryRevision:2});
+  assert.deepEqual(decode(third),{jobId,entraDeviceId,deliveryRevision:3});
+  assert.equal(payload(original),payload(second));
+  assert.equal(payload(second),payload(third));
+  for(const deliveryRevision of [0,-1,2.5,"2",null,undefined,Infinity,2**53]) {
+    assert.throws(()=>buildManagedTerminalInstaller({...options,deliveryRevision}),/Invalid managed tablet setup/);
+  }
+  const getter=Object.defineProperty({...options},"deliveryRevision",{get(){throw Error("Unexpected getter");}});
+  assert.throws(()=>buildManagedTerminalInstaller(getter),/Invalid managed tablet setup/);
+});
+
+test("Windows PowerShell 5.1 checks delivery revision before building native arguments",
+  {skip:process.platform!=="win32"},async t=>{
+  const directory=await temp(t);
+  const options={targetSerial,entraDeviceId,jobId};
+  await fs.writeFile(path.join(directory,"generated.ps1"),buildManagedTerminalInstaller({...options,deliveryRevision:2}));
+  await fs.writeFile(path.join(directory,"cases.json"),JSON.stringify([
+    {setup:{jobId,entraDeviceId},expected:1},
+    {setup:{jobId,entraDeviceId,deliveryRevision:2},expected:2},
+    {setup:{jobId,entraDeviceId,deliveryRevision:Number.MAX_SAFE_INTEGER},expected:Number.MAX_SAFE_INTEGER},
+    ...[0,1,2.5,"2",null,2**53].map(deliveryRevision=>({setup:{jobId,entraDeviceId,deliveryRevision},expected:null})),
+    {setup:{jobId,entraDeviceId,DeliveryRevision:2},expected:null},
+    {setup:{jobId,entraDeviceId,deliveryRevision:2,extra:true},expected:null},
+  ]));
+  const runner=[
+    "$ErrorActionPreference='Stop'",
+    "$parseErrors=$null",
+    "$tree=[Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) 'generated.ps1'),[ref]$null,[ref]$parseErrors)",
+    "if ($parseErrors.Count) { throw $parseErrors[0].Message }",
+    "$fn=$tree.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-TerminalManagedSetupRevision'},$true)",
+    "if (-not $fn) { throw 'Missing delivery revision check' }",
+    ". ([scriptblock]::Create($fn.Extent.Text))",
+    "$ManagedUuid='\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z'",
+    "$cases=Get-Content -LiteralPath 'cases.json' -Raw -Encoding UTF8 | ConvertFrom-Json",
+    "foreach ($case in $cases) {",
+    " $actual=$null",
+    " try { $actual=Get-TerminalManagedSetupRevision $case.setup } catch {}",
+    " if ($actual -cne $case.expected) { throw 'Unexpected delivery revision decision' }",
+    "}",
+    "$argsNode=$tree.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$EvidenceArguments'},$true)",
+    "$revisionNode=$tree.Find({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.StartsWith('if ($TerminalManagedDeliveryRevision -gt 1)')},$true)",
+    "$TerminalConfig='C:\\Synthetic Tablet\\config.json';$TerminalManagedSetup=$cases[0].setup",
+    "foreach ($TerminalManagedDeliveryRevision in @(1,2)) {",
+    " . ([scriptblock]::Create($argsNode.Extent.Text));. ([scriptblock]::Create($revisionNode.Extent.Text))",
+    " $expectedCount=if ($TerminalManagedDeliveryRevision -eq 1) {4} else {5}",
+    " if ($EvidenceArguments.Count -ne $expectedCount -or $EvidenceArguments[3] -cne $TerminalManagedSetup.jobId -or ($expectedCount -eq 5 -and $EvidenceArguments[4] -cne '2')) { throw 'Unexpected managed installer arguments' }",
+    "}",
+    "Write-Output 'offline-delivery-revision-ok'",
+  ].join("\r\n");
+  const result=spawnSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",runner],{cwd:directory,encoding:"utf8",timeout:15000,windowsHide:true});
+  assert.equal(result.status,0,result.stderr||result.stdout||String(result.error));
+  assert.equal(result.stdout.trim(),"offline-delivery-revision-ok");
 });
 
 test("Windows PowerShell 5.1 parses managed installer and quietly rejects missing, wrong and ambiguous join proofs",
@@ -253,6 +318,44 @@ test("managed evidence proves exact job and public key without pre-activating or
   await assert.rejects(f.device.prepareManagedSetup(otherJob,f.managedPath),{code:"TABLET_MANAGED_SETUP_CONFLICT"});
   assert.equal(requestAllowed("POST",target,null,businessId),false);
   await assert.rejects(f.device.enrol({terminalId:otherJob,code:"synthetic-test-value",deviceName:"manual"}),{code:"TABLET_MANAGED_SETUP_CONFLICT"});
+});
+
+test("reissued delivery evidence binds revision and reuses the same protected pending job and key",async t=>{
+  const f=await testDevice(t);
+  const first=await f.device.prepareManagedSetup(jobId,f.managedPath);
+  const original=await fs.readFile(f.managedPath,"utf8");
+  const second=await f.device.prepareManagedSetup(jobId,f.managedPath,2);
+  assert.deepEqual(Object.keys(second),["jobId","deliveryRevision","publicKeySpki","signature"]);
+  assert.equal(second.publicKeySpki,first.publicKeySpki);
+  const prefix="CAL_EATS_MANAGED_SETUP_V1:";
+  const line=encodeManagedEvidence(second);
+  assert.ok(line.startsWith(prefix));
+  assert.deepEqual(JSON.parse(Buffer.from(line.slice(prefix.length),"base64url")),second);
+  f.verify(second.signature,"Cal-Eats managed terminal evidence v2\n"+jobId+"\n2\n"+f.publicKeySpki);
+  assert.throws(()=>f.verify(second.signature,"Cal-Eats managed terminal evidence v2\n"+jobId+"\n3\n"+f.publicKeySpki));
+  assert.throws(()=>f.verify(second.signature,"Cal-Eats managed terminal evidence v1\n"+jobId+"\n"+f.publicKeySpki));
+  assert.equal(await fs.readFile(f.managedPath,"utf8"),original);
+  assert.deepEqual(f.keyAccess,[{id:jobId,create:true},{id:jobId,create:false}]);
+  await assert.rejects(f.device.prepareManagedSetup(jobId,f.managedPath,2.1),{code:"TABLET_MANAGED_SETUP_INVALID"});
+  await f.poll();
+  assert.deepEqual(f.requests,[{jobId,publicKeySpki:f.publicKeySpki}]);
+});
+
+test("existing Windows key adapter accepts delivery evidence v2 within its protected signing contexts",async()=>{
+  const keys=crypto.generateKeyPairSync("ec",{namedCurve:"prime256v1"});
+  const publicKeySpki=keys.publicKey.export({type:"spki",format:"der"}).toString("base64");
+  let calls=0;
+  const key=new WindowsDeviceKey(jobId,{helper:async input=>{
+    calls++;
+    assert.equal(input.action,"sign");assert.equal(input.terminalId,jobId);
+    const signature=crypto.sign("sha256",Buffer.from(input.messageBase64,"base64"),
+      {key:keys.privateKey,dsaEncoding:"ieee-p1363"}).toString("base64url");
+    return {publicKeySpki,signature,machineKey:true,nonExportable:true,aclVerified:true,
+      provider:"Microsoft Software Key Storage Provider"};
+  }});
+  assert.match(await key.sign("Cal-Eats managed terminal evidence v2\n"+jobId+"\n2\n"+publicKeySpki),/^[A-Za-z0-9_-]{86}$/);
+  await assert.rejects(key.sign("Cal-Eats managed terminal activation v2\n"+jobId+"\n"+challenge+"\n"+publicKeySpki),/Unsupported tablet signing context/);
+  assert.equal(calls,1);
 });
 
 test("pending poll backs off, authenticates the challenge and recovers exactly after a lost activation response",async t=>{

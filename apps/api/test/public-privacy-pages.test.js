@@ -51,14 +51,25 @@ test("public privacy and applicant information stays accessible without the app,
 test("public entry pages expose current policies, company details and a proportionate complaint route", async () => {
   const f = await journeyFixture();
   try {
+    const companyLink = "/privacy-security/#contact";
     for (const route of ["/", "/download/", "/support/", "/account-deletion/"]) {
       const { status, text } = await f.request(route);
       assert.equal(status, 200);
       const footer = text.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/)?.[0];
       assert.ok(footer, route);
       for (const link of ["/legal/terms", "/legal/privacy", "/privacy-security/"]) assert.ok(footer.includes(`href="${link}`), `${route} missing ${link}`);
-      assert.match(footer, /CALAI LTD/); assert.match(footer, /16995419/); assert.match(footer, /62 Cades Close/);
+      assert.match(footer, /CALAI LTD/); assert.match(footer, /16995419/); assert.match(footer, /England and Wales/);
+      assert.equal(footer.match(/<a\b[^>]*\bhref="([^"]+)"[^>]*>Company details<\/a>/)?.[1], companyLink, route);
     }
+    const target = new URL(companyLink, f.config.origin);
+    const response = await f.request(target.pathname);
+    assert.equal(response.status, 200, companyLink);
+    const contact = [...response.text.matchAll(/<section\b[^>]*\bid="([^"]+)"[^>]*>[\s\S]*?<\/section>/g)]
+      .find(([, sectionId]) => `#${sectionId}` === target.hash)?.[0];
+    assert.ok(contact, companyLink);
+    assert.match(contact, /CALAI LTD[\s\S]*Registered in England and Wales[\s\S]*16995419/);
+    assert.match(contact, /Registered office: 62 Cades Close, Luton, England, LU1 5QQ/);
+    assert.match(contact, /href="mailto:support@calai\.info"/);
     const support = (await f.request("/support/")).text;
     assert.match(support, /case.by.case|reviewed individually/i);
     assert.match(support, /evidence/i);

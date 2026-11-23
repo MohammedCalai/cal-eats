@@ -7,6 +7,7 @@ import { assertTabletSelectionActivation } from './tablet-assignment-safety.js';
 import { assertFleetNewEnrolmentAllowed } from './tablet-fleet-policy.js';
 import { createTabletManagedSetupGraph } from './tablet-managed-setup-graph.js';
 import { buildManagedTerminalInstaller } from '../../terminal-auth/windows/build-installer.mjs';
+import { managedEvidenceCanonical } from '../../terminal-auth/src/protocol.js';
 
 const lifetimeMs = 72 * 60 * 60_000;
 const challengeMs = 5 * 60_000;
@@ -99,6 +100,7 @@ function sameAssignment(job, row, target) {
 export function queueTabletManagedSetup(db, config, row, actorId, { calaiOwnerBinding = null } = {}) {
   const target = available(db, config, row);
   if (!target || row.terminal_id) return false;
+  const requestedBy = actorId;
   const stamp = at(config);
   const existing = db.prepare('SELECT * FROM tablet_managed_setups WHERE tablet_id=?').get(row.id);
   if (!eatsLink(db, row.business_id)) {
@@ -128,17 +130,22 @@ export function queueTabletManagedSetup(db, config, row, actorId, { calaiOwnerBi
   }
   db.prepare(`UPDATE tablet_managed_setups SET state='attention',failure_code='expired' WHERE business_id=? AND expires_at<=?
     AND state IN('pending','assigned','verified')`).run(row.business_id, stamp);
+  const builder = config.tabletManagedSetup.buildInstaller ?? buildManagedTerminalInstaller;
   if (existing) {
+    const requiresNewRun = existing.script_id && !existing.retry_script_content && existing.failure_code === 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED';
+    const deliveryRevision = existing.delivery_revision + (requiresNewRun ? 1 : 0);
+    if (deliveryRevision > 10000) throw new HttpError(409, 'MANAGED_SETUP_RETRY_LIMIT', 'This tablet connection needs a system administrator to review it.');
+    const retryScript = requiresNewRun ? builder({targetSerial: row.serial_number, entraDeviceId: row.entra_device_id,
+      jobId: existing.id, deliveryRevision}) : existing.retry_script_content;
     db.prepare(`UPDATE tablet_managed_setups SET record_revision=?,requested_by=?,calai_owner_binding=?,expires_at=?,next_check_at=?,
       state=CASE WHEN script_id IS NULL THEN 'pending' ELSE 'assigned' END,
       verified_at=NULL,challenge=NULL,challenge_until=NULL,
-      lease_id=NULL,lease_until=NULL,failure_code=NULL WHERE id=?`)
-      .run(row.revision, actorId, calaiOwnerBinding, at(config, lifetimeMs), stamp, existing.id);
-    db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(), actorId, 'tablet_fleet', row.id, 'tablet_managed_connection_retried', JSON.stringify({ jobId: existing.id, businessId: row.business_id }), stamp);
+      lease_id=NULL,lease_until=NULL,failure_code=NULL,delivery_revision=?,retry_script_content=? WHERE id=?`)
+      .run(row.revision, actorId, calaiOwnerBinding, at(config, lifetimeMs), stamp, deliveryRevision, retryScript, existing.id);
+    db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(), requestedBy, 'tablet_fleet', row.id, 'tablet_managed_connection_retried', JSON.stringify({ jobId: existing.id, businessId: row.business_id, deliveryRevision }), stamp);
     return true;
   }
   const id = randomUUID();
-  const builder = config.tabletManagedSetup.buildInstaller ?? buildManagedTerminalInstaller;
   const script = builder({ targetSerial: row.serial_number, entraDeviceId: row.entra_device_id, jobId: id });
   db.prepare(`INSERT INTO tablet_managed_setups(id,tablet_id,record_revision,business_id,requested_by,calai_owner_binding,managed_device_id,
     entra_device_id,serial_number,group_id,directory_object_id,script_content,requested_at,expires_at,next_check_at,state)
@@ -197,24 +204,34 @@ function validSignature(key, input, signature) {
 }
 
 function verifiedRunKey(job, result, now) {
-  const reportTime = Date.parse(result.observedAt), createdAt = Date.parse(job.create_started_at);
-  if (!Number.isFinite(reportTime) || !Number.isFinite(createdAt) || reportTime < createdAt || reportTime > now + 60_000) return null;
+  const reportTime = Date.parse(result.observedAt), startedAt = Date.parse(job.delivery_started_at ?? job.create_started_at);
+  if (!Number.isFinite(reportTime) || !Number.isFinite(startedAt) || reportTime > now + 60_000) return null;
+  if (reportTime < startedAt || job.delivery_revision > 1 && (reportTime === startedAt || reportTime <= Date.parse(job.failed_run_at))) return { stale: true };
   const match = /^CAL_EATS_MANAGED_SETUP_V1:([A-Za-z0-9_-]{1,1024})$/.exec(result.resultMessage);
   if (!match) return null;
   try {
     const bytes = Buffer.from(match[1], 'base64url');
     if (bytes.toString('base64url') !== match[1]) return null;
     const report = JSON.parse(bytes.toString('utf8'));
-    exactObject(report, ['jobId', 'publicKeySpki', 'signature']);
+    exactObject(report, ['jobId', 'publicKeySpki', 'signature', 'deliveryRevision']);
     if (report.jobId !== job.id) return null;
+    const revision = Object.hasOwn(report, 'deliveryRevision') ? report.deliveryRevision : 1;
+    if (!Number.isSafeInteger(revision) || revision < 1 || revision > job.delivery_revision ||
+        revision === 1 && Object.hasOwn(report, 'deliveryRevision')) return null;
     const key = readKey(report.publicKeySpki);
-    return key && validSignature(key.key, `Cal-Eats managed terminal evidence v1\n${job.id}\n${report.publicKeySpki}`, report.signature) ? key.sha256 : null;
+    if (!key || !validSignature(key.key, managedEvidenceCanonical({jobId: job.id, deliveryRevision: revision,
+      publicKeySpki: report.publicKeySpki}), report.signature)) return null;
+    return revision < job.delivery_revision ? { stale: true } : { sha256: key.sha256 };
   } catch { return null; }
 }
 
-function closeJob(db, jobId, code) {
+function closeJob(db, jobId, code, failedRunAt = null) {
   db.prepare(`UPDATE tablet_managed_setups SET state='attention',failure_code=?,lease_id=NULL,lease_until=NULL,
-    challenge=NULL,challenge_until=NULL WHERE id=? AND state IN('pending','assigned','verified')`).run(code, jobId);
+    failed_run_at=COALESCE(?,failed_run_at),challenge=NULL,challenge_until=NULL WHERE id=? AND state IN('pending','assigned','verified')`).run(code, failedRunAt, jobId);
+}
+
+function revokeVerification(db, jobId, lease) {
+  db.prepare('UPDATE tablet_managed_setups SET verified_at=NULL WHERE id=? AND lease_id=? AND verified_at IS NOT NULL').run(jobId, lease);
 }
 
 // Worker commits its creation intent immediately before the external POST. After an
@@ -255,24 +272,42 @@ export async function runTabletManagedSetup(db, config, { graph, limit = 2 } = {
         assertLease();
         if (!uuid.test(result?.scriptId ?? '')) throw new Error('Invalid managed script reference');
         db.prepare("UPDATE tablet_managed_setups SET state='assigned',script_id=? WHERE id=? AND lease_id=?").run(result.scriptId, job.id, lease);
+      } else if (job.retry_script_content) {
+        const result = await adapter.redeliver({ ...request, scriptId: job.script_id, previousScriptContent: job.script_content,
+          scriptContent: job.retry_script_content, allowUpdate: !job.retry_update_started_at,
+          beginUpdate: () => withTransaction(db, () => {
+            assertLease();
+            return db.prepare(`UPDATE tablet_managed_setups SET retry_update_started_at=?
+              WHERE id=? AND lease_id=? AND retry_update_started_at IS NULL`).run(at(config), job.id, lease).changes === 1;
+          })
+        });
+        assertLease();
+        if (result?.scriptId !== job.script_id) throw new Error('Invalid managed script reference');
+        const committed = db.prepare(`UPDATE tablet_managed_setups SET script_content=retry_script_content, retry_script_content=NULL,
+          delivery_started_at=retry_update_started_at,retry_update_started_at=NULL,state='assigned'
+          WHERE id=? AND lease_id=? AND retry_update_started_at IS NOT NULL`).run(job.id, lease);
+        if (committed.changes !== 1) throw closed();
       } else {
         const active = getJob(db, job.id);
-        const result = await adapter.observe({ ...request, scriptId: active.script_id, requestedAt: active.create_started_at });
+        const result = await adapter.observe({ ...request, scriptId: active.script_id, deliveryRevision: active.delivery_revision,
+          requestedAt: active.delivery_started_at ?? active.create_started_at, priorFailureAt: active.failed_run_at });
         assertLease();
         if (result) {
-          const keyHash = verifiedRunKey(active, result, config.now().getTime());
-          if (!keyHash || active.verified_key_hash && active.verified_key_hash !== keyHash) closeJob(db, job.id, 'invalid_evidence');
+          const evidence = verifiedRunKey(active, result, config.now().getTime());
+          if (evidence?.stale) revokeVerification(db, job.id, lease);
+          else if (!evidence || active.verified_key_hash && active.verified_key_hash !== evidence.sha256) closeJob(db, job.id, 'invalid_evidence');
           else db.prepare("UPDATE tablet_managed_setups SET state='verified',verified_key_hash=?,verified_at=? WHERE id=? AND lease_id=?")
-            .run(keyHash, at(config), job.id, lease);
+            .run(evidence.sha256, at(config), job.id, lease);
         } else if (active.state === 'verified') {
-          db.prepare('UPDATE tablet_managed_setups SET verified_at=NULL WHERE id=? AND lease_id=?').run(job.id, lease);
+          revokeVerification(db, job.id, lease);
         }
       }
     } catch (error) {
       // A later worker may own the lease. An old network response never closes it.
       if (getJob(db, job.id)?.lease_id === lease && (error instanceof HttpError || error?.retry === false)) {
         const code = /^MANAGED_SETUP_GRAPH_[A-Z_]{1,55}$/.test(error.code) ? error.code : 'connection_check_failed';
-        closeJob(db, job.id, code);
+        const observed = code === 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED' ? Date.parse(error.observedAt) : NaN;
+        closeJob(db, job.id, code, Number.isFinite(observed) && observed <= config.now().getTime() + 60_000 ? new Date(observed).toISOString() : null);
       }
     } finally {
       db.prepare('UPDATE tablet_managed_setups SET lease_id=NULL,lease_until=NULL,next_check_at=? WHERE id=? AND lease_id=?').run(at(config, checkMs), job.id, lease);

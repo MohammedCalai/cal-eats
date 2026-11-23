@@ -4,7 +4,7 @@ import { generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto'
 import { journeyFixture } from './helpers.js';
 import { readSession } from '../src/auth/sessions.js';
 import { runTabletManagedSetup } from '../src/tablet-managed-setup.js';
-import { requestCanonical } from '../../terminal-auth/src/protocol.js';
+import { managedEvidenceCanonical, requestCanonical } from '../../terminal-auth/src/protocol.js';
 
 const endpoint = '/api/terminal-devices/managed-enrolment';
 function keyPair() {
@@ -33,7 +33,7 @@ async function fixture(t) {
   f.config.tabletManagedSetup = { enabled: true, targets: new Map([[managedDeviceId, { groupId, directoryObjectId, entraDeviceId, serialNumber }]]), buildInstaller: args => {
     assert.equal(args.targetSerial, serialNumber);
     assert.equal(args.entraDeviceId, entraDeviceId);
-    return script;
+    return args.deliveryRevision ? `${script} ${args.deliveryRevision}` : script;
   } };
   const save = (revision = 1, cookie = admin) => f.json(`/api/admin/tablets/${tabletId}/configuration`, { method: 'POST', cookie,
     body: { expectedRevision: revision, businessId, applicationProducts: 'cal-eats', displayName: 'Synthetic tablet' } });
@@ -56,8 +56,10 @@ async function fixture(t) {
 
 function evidence(job, key, observedAt, overrides = {}) {
   const { publicKeySpki } = key;
-  const signature = key.sign(`Cal-Eats managed terminal evidence v1\n${job.id}\n${publicKeySpki}`);
-  return { observedAt, resultMessage: 'CAL_EATS_MANAGED_SETUP_V1:' + Buffer.from(JSON.stringify({ jobId: job.id, publicKeySpki, signature, ...overrides })).toString('base64url') };
+  const deliveryRevision = job.delivery_revision;
+  const signature = key.sign(managedEvidenceCanonical({ jobId: job.id, deliveryRevision, publicKeySpki }));
+  const record = { jobId: job.id, publicKeySpki, signature, ...(deliveryRevision > 1 ? { deliveryRevision } : {}), ...overrides };
+  return { observedAt, resultMessage: 'CAL_EATS_MANAGED_SETUP_V1:' + Buffer.from(JSON.stringify(record)).toString('base64url') };
 }
 
 test('fleet Save provisions once, only the key verified by Intune can activate, and a registered tablet can sign in', async t => {
@@ -135,6 +137,73 @@ test('uncertain Graph creation is reconciled without another POST, and mismatche
   assert.equal(f.get().script_id, scriptId);
   await f.run({ async observe() { return evidence(job, keys, f.config.now().toISOString()); } });
   assert.equal(f.get().state, 'verified');
+});
+
+test('explicit Retry redelivers the existing Intune job once and waits for proof of the new delivery', async t => {
+  const f = await fixture(t), keys = keyPair();
+  assert.equal((await f.save()).status, 200);
+  await f.run();
+  const first = f.get();
+  f.advance(61_000);
+  const observedAt = new Date(f.config.now().getTime() + 1000).toISOString();
+  await f.run({ async observe() { throw Object.assign(new Error('Intune execution failed'), {
+    code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED', retry: false, observedAt
+  }); } });
+  const failed = await f.state();
+  assert.equal(failed.managedSetup.state, 'attention');
+  assert.equal((await f.post({ jobId: first.id, publicKeySpki: keys.publicKeySpki })).status, 202);
+
+  const retry = await f.save(failed.revision);
+  assert.equal(retry.status, 200, retry.text);
+  assert.equal((await f.save(failed.revision)).status, 409, 'a stale repeat cannot request an extra delivery');
+  assert.equal(f.get().delivery_revision, 2);
+  let updates = 0, updatedScript;
+  const delivery = {
+    async redeliver(request) {
+      assert.equal(request.jobId, first.id);
+      assert.equal(request.scriptId, first.script_id);
+      assert.equal(request.previousScriptContent, first.script_content);
+      assert.notEqual(request.scriptContent, first.script_content);
+      if (request.allowUpdate) {
+        assert.equal(request.beginUpdate(), true);
+        updates += 1;
+        updatedScript = request.scriptContent;
+        throw Object.assign(new Error('simulated reply loss after PATCH'), { retry: true });
+      }
+      assert.equal(request.scriptContent, updatedScript);
+      return { scriptId: first.script_id };
+    }
+  };
+  await Promise.all([f.run(delivery), f.run(delivery)]);
+  assert.equal(updates, 1);
+  assert.ok(f.get().retry_update_started_at);
+  f.advance(61_000);
+  await f.run(delivery);
+  assert.equal(updates, 1);
+  assert.equal(f.get().retry_script_content, null);
+  assert.equal(f.get().script_content, updatedScript);
+  assert.equal(f.get().create_started_at, first.create_started_at);
+
+  // An older invocation can finish after the replacement was sent. Its valid
+  // signature still binds the earlier revision and cannot grant tablet access.
+  f.advance(61_000);
+  await f.run({ async observe(input) {
+    assert.equal(input.deliveryRevision, 2);
+    assert.equal(input.requestedAt, f.get().delivery_started_at);
+    assert.equal(input.priorFailureAt, observedAt);
+    return evidence(first, keys, f.config.now().toISOString());
+  } });
+  assert.equal(f.get().state, 'assigned');
+  assert.equal((await f.post({ jobId: first.id, publicKeySpki: keys.publicKeySpki })).status, 202);
+  f.advance(61_000);
+  await f.run({ async observe() { return evidence(f.get(), keys, f.config.now().toISOString()); } });
+  const { challenge } = (await f.post({ jobId: first.id, publicKeySpki: keys.publicKeySpki })).body.data;
+  assert.ok(challenge);
+  const proof = keys.sign(`Cal-Eats managed terminal activation v1\n${first.id}\n${challenge}\n${keys.publicKeySpki}`);
+  const paired = await f.post({ jobId: first.id, publicKeySpki: keys.publicKeySpki, challenge, signature: proof });
+  assert.equal(paired.status, 201, paired.text);
+  assert.equal(paired.body.data.terminalId, first.id);
+  assert.equal(f.graph.calls, 1);
 });
 
 test('revoking the requesting administrator or changing assignment denies activation of a verified job', async t => {

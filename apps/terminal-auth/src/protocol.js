@@ -2,10 +2,12 @@ import crypto from "node:crypto";
 export const API_ORIGIN="https://eats.calai.info", BROKER_PORT=17864, UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const zeroUuid="00000000-0000-0000-0000-000000000000",p256SpkiPrefix=Buffer.from("3059301306072a8648ce3d020106082a8648ce3d03010703420004","hex");
 export const managedJobId=value=>typeof value==="string"&&UUID.test(value)&&value!==zeroUuid;
+export const validManagedDeliveryRevision=value=>Number.isSafeInteger(value)&&value>=1;
 export const managedPublicKey=value=>typeof value==="string"&&/^[A-Za-z0-9+/]{122}==$/.test(value)&&
   Buffer.from(value,"base64").toString("base64")===value&&Buffer.from(value,"base64").subarray(0,27).equals(p256SpkiPrefix);
-export function managedEvidenceCanonical({jobId,publicKeySpki}){
-  if(!managedJobId(jobId)||!managedPublicKey(publicKeySpki))throw Error("Invalid managed tablet evidence");
+export function managedEvidenceCanonical({jobId,publicKeySpki,deliveryRevision=1}){
+  if(!managedJobId(jobId)||!managedPublicKey(publicKeySpki)||!validManagedDeliveryRevision(deliveryRevision))throw Error("Invalid managed tablet evidence");
+  if(deliveryRevision>1)return ["Cal-Eats managed terminal evidence v2",jobId,deliveryRevision,publicKeySpki].join("\n");
   return ["Cal-Eats managed terminal evidence v1",jobId,publicKeySpki].join("\n");
 }
 export function managedActivationCanonical({jobId,challenge,publicKeySpki}){
@@ -13,10 +15,11 @@ export function managedActivationCanonical({jobId,challenge,publicKeySpki}){
       !/^[A-Za-z0-9_-]{43}$/.test(challenge))throw Error("Invalid managed tablet activation");
   return ["Cal-Eats managed terminal activation v1",jobId,challenge,publicKeySpki].join("\n");
 }
-export function encodeManagedEvidence({jobId,publicKeySpki,signature}){
-  managedEvidenceCanonical({jobId,publicKeySpki});
+export function encodeManagedEvidence({jobId,publicKeySpki,signature,deliveryRevision=1}){
+  managedEvidenceCanonical({jobId,publicKeySpki,deliveryRevision});
   if(typeof signature!=="string"||!/^[A-Za-z0-9_-]{86}$/.test(signature))throw Error("Invalid managed tablet evidence signature");
-  return "CAL_EATS_MANAGED_SETUP_V1:"+Buffer.from(JSON.stringify({jobId,publicKeySpki,signature}),"utf8").toString("base64url");
+  const output={jobId,...(deliveryRevision>1?{deliveryRevision}:{}),publicKeySpki,signature};
+  return "CAL_EATS_MANAGED_SETUP_V1:"+Buffer.from(JSON.stringify(output),"utf8").toString("base64url");
 }
 export const digest=value=>crypto.createHash("sha256").update(value).digest("hex");
 export function pairingCanonical({terminalId,challenge,publicKeySpki}){
