@@ -1,14 +1,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {API_ORIGIN,UUID,exactObject,failure,pairingCanonical,requestCanonical,requestAllowed} from "./protocol.js";
+import {API_ORIGIN,UUID,exactObject,failure,pairingCanonical,requestCanonical,requestAllowed,managedJobId,managedPublicKey,managedEvidenceCanonical,managedActivationCanonical} from "./protocol.js";
 import {WindowsDeviceKey} from "./windows-key.js";
 export class TerminalDevice{
-  constructor({identityPath,apiBaseUrl=API_ORIGIN,fetchImpl=globalThis.fetch,keyFactory=id=>new WindowsDeviceKey(id),clock=Date.now,randomBytes=crypto.randomBytes,timeoutMs=10000}){
+  constructor({identityPath,managedPath=null,apiBaseUrl=API_ORIGIN,fetchImpl=globalThis.fetch,keyFactory=id=>new WindowsDeviceKey(id),clock=Date.now,randomBytes=crypto.randomBytes,timeoutMs=10000}){
     const url=new URL(apiBaseUrl);
     if(url.origin!==API_ORIGIN&&!(url.protocol==="http:"&&url.hostname==="127.0.0.1"))throw Error("Tablet API origin is not approved");
     if(url.origin!==apiBaseUrl)throw Error("Tablet API must be an origin");
-    this.apiBaseUrl=apiBaseUrl;this.identityPath=identityPath;this.fetch=fetchImpl;this.keyFactory=keyFactory;this.clock=clock;this.randomBytes=randomBytes;this.timeoutMs=timeoutMs;this.identity=null;this.grant=null;this.windows=new Map();this.pairing=false;this.connecting=null;this.generation=0;this.closed=false;
+    this.apiBaseUrl=apiBaseUrl;this.identityPath=identityPath;this.managedPath=managedPath;this.fetch=fetchImpl;this.keyFactory=keyFactory;this.clock=clock;this.randomBytes=randomBytes;this.timeoutMs=timeoutMs;this.identity=null;this.grant=null;this.windows=new Map();this.pairing=false;this.connecting=null;this.generation=0;this.closed=false;this.managedSetupPending=false;
   }
   async load(){
     try{
@@ -20,19 +20,26 @@ export class TerminalDevice{
     }catch(error){if(error.code!=="ENOENT")throw error;}
     return this;
   }
-  async saveIdentity(value){
-    await fs.mkdir(path.dirname(this.identityPath),{recursive:true,mode:0o700});
-    const tmp=this.identityPath+"."+process.pid+"."+this.randomBytes(8).toString("hex")+".tmp";
-    await fs.writeFile(tmp,JSON.stringify(value)+"\n",{mode:0o600,flag:"wx"});
-    await fs.rename(tmp,this.identityPath);this.identity=value;
+  async saveProtectedJson(destination,value){
+    await fs.mkdir(path.dirname(destination),{recursive:true,mode:0o700});
+    const tmp=destination+"."+process.pid+"."+this.randomBytes(8).toString("hex")+".tmp";
+    const file=await fs.open(tmp,"wx",0o600);
+    try{
+      try{await file.writeFile(JSON.stringify(value)+"\n");}finally{await file.close();}
+      await fs.rename(tmp,destination);
+    }finally{await fs.rm(tmp,{force:true});}
   }
-  bootstrap(){return {paired:this.identity?.paired===true,terminalId:this.identity?.terminalId||null,businessId:this.identity?.businessId||null,revoked:this.revoked===true};}
+  async saveIdentity(value){
+    await this.saveProtectedJson(this.identityPath,value);
+    this.identity=value;
+  }
+  bootstrap(){return {paired:this.identity?.paired===true,terminalId:this.identity?.terminalId||null,businessId:this.identity?.businessId||null,revoked:this.revoked===true,...(!this.identity&&this.managedSetupPending?{managedSetupPending:true}:{})};}
   clearGrant(expected=this.grant){if(this.grant!==expected)return;this.grant=null;this.windows.clear();this.generation++;this.connecting=null;}
   assertCurrent(identity,generation,{grant=null,windowProof=null,windowBinding=null}={}){
     if(this.closed||this.identity!==identity||this.generation!==generation||(grant&&this.grant!==grant))throw failure("TABLET_SESSION_CHANGED",409);
     if(windowBinding&&(this.windows.get(windowProof)!==windowBinding||windowBinding.expiresAt<=this.clock()))throw failure("TABLET_WINDOW_PROOF_REQUIRED",403);
   }
-  async _fetch(method,target,rawBody,headers={}){
+  async _fetch(method,target,rawBody,headers={},includeStatus=false){
     let response;
     try{response=await this.fetch(new URL(target,this.apiBaseUrl),{method,headers:{accept:"application/json","content-type":"application/json",...headers},...(method==="GET"?{}:{body:rawBody}),redirect:"error",signal:AbortSignal.timeout(this.timeoutMs)});}
     catch{throw failure("TABLET_NETWORK_UNAVAILABLE",503);}
@@ -40,11 +47,66 @@ export class TerminalDevice{
     for await(const chunk of response.body||[]){size+=chunk.length;if(size>1048576)throw failure("TABLET_RESPONSE_TOO_LARGE",503);chunks.push(chunk);}
     let value;try{value=JSON.parse(Buffer.concat(chunks).toString("utf8"));}catch{throw failure("TABLET_RESPONSE_INVALID",503);}
     if(!response.ok){const code=/^[A-Z][A-Z0-9_]{2,80}$/.test(value.error?.code||"")?value.error.code:"TABLET_REQUEST_REJECTED";throw failure(code,response.status);}
-    return Object.hasOwn(value,"data")?value.data:value;
+    const data=Object.hasOwn(value,"data")?value.data:value;
+    return includeStatus?{status:response.status,data}:data;
+  }
+  async prepareManagedSetup(jobId,setupPath){
+    if(!managedJobId(jobId))throw failure("TABLET_MANAGED_SETUP_INVALID");
+    if(this.identity&&(!this.identity.paired||this.identity.terminalId!==jobId))throw failure("TABLET_LOCAL_REPLACEMENT_REQUIRED",409);
+    const pending=await readManagedSetup(setupPath);
+    if(pending&&pending.jobId!==jobId&&pending.state!=="closed")throw failure("TABLET_MANAGED_SETUP_CONFLICT",409);
+    if(pending?.jobId===jobId&&pending.state==="closed")throw failure("MANAGED_SETUP_CLOSED",410);
+    const key=this.keyFactory(jobId);
+    const {publicKeySpki}=await key.publicKey({create:!this.identity&&pending?.jobId!==jobId});
+    if(!managedPublicKey(publicKeySpki)||(this.identity&&this.identity.publicKeySpki!==publicKeySpki)||
+        (pending?.jobId===jobId&&pending.publicKeySpki!==publicKeySpki))throw failure("TABLET_MANAGED_KEY_CHANGED",409);
+    const signature=await key.sign(managedEvidenceCanonical({jobId,publicKeySpki}));
+    if(!/^[A-Za-z0-9_-]{86}$/.test(signature))throw failure("TABLET_SIGNATURE_INVALID",503);
+    if(!this.identity?.paired&&pending?.jobId!==jobId){
+      await this.saveProtectedJson(setupPath,{schemaVersion:1,jobId,publicKeySpki,state:"pending"});
+    }
+    return {jobId,publicKeySpki,signature};
+  }
+  async activateManagedSetup({jobId,publicKeySpki}){
+    if(!managedJobId(jobId)||!managedPublicKey(publicKeySpki))throw failure("TABLET_MANAGED_SETUP_INVALID");
+    if(this.identity){
+      if(this.identity.terminalId===jobId&&this.identity.publicKeySpki===publicKeySpki&&this.identity.paired)return true;
+      throw failure("TABLET_LOCAL_REPLACEMENT_REQUIRED",409);
+    }
+    if(this.pairing)throw failure("TABLET_ENROLMENT_BUSY",409);
+    if(this.closed)throw failure("TABLET_SERVICE_STOPPED",503);
+    this.pairing=true;
+    const generation=this.generation;
+    try{
+      const key=this.keyFactory(jobId),publicKey=await key.publicKey();
+      if(publicKey.publicKeySpki!==publicKeySpki)throw failure("TABLET_MANAGED_KEY_CHANGED",409);
+      const target="/api/terminal-devices/managed-enrolment";
+      const intent={jobId,publicKeySpki};
+      this.assertCurrent(null,generation);
+      const {status,data}=await this._fetch("POST",target,JSON.stringify(intent),{},true);
+      this.assertCurrent(null,generation);
+      if(status===202)return false;
+      if(status!==200)throw failure("TABLET_MANAGED_RESPONSE_INVALID",503);
+      const challenge=data?.challenge;
+      if(typeof challenge!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(challenge))throw failure("TABLET_MANAGED_RESPONSE_INVALID",503);
+      const signature=await key.sign(managedActivationCanonical({...intent,challenge}));
+      if(!/^[A-Za-z0-9_-]{86}$/.test(signature))throw failure("TABLET_SIGNATURE_INVALID",503);
+      this.assertCurrent(null,generation);
+      const result=await this._fetch("POST",target,JSON.stringify({...intent,challenge,signature}),{},true);
+      this.assertCurrent(null,generation);
+      const saved=result.data;
+      if(result.status!==201||saved?.paired!==true||saved.terminalId!==jobId||!managedJobId(saved.businessId)||
+        typeof saved.registeredAt!=="string"||!Number.isFinite(Date.parse(saved.registeredAt)))throw failure("TABLET_MANAGED_RESPONSE_INVALID",503);
+      await this.saveIdentity({schemaVersion:1,product:"calai-business-terminal",terminalId:jobId,publicKeySpki,
+        paired:true,businessId:saved.businessId,pairedAt:saved.registeredAt});
+      this.clearGrant();this.revoked=false;
+      return true;
+    }finally{this.pairing=false;}
   }
   async enrol(body){
     exactObject(body,["terminalId","code","challenge","deviceName","businessId","apiBaseUrl","expiresAt"]);
     if(!UUID.test(body.terminalId)||typeof body.code!=="string"||!/^[A-Za-z0-9_-]{8,200}$/.test(body.code)||typeof body.deviceName!=="string"||body.deviceName.trim().length<2||body.deviceName.length>80||(body.businessId!==undefined&&!UUID.test(body.businessId))||(body.apiBaseUrl!==undefined&&body.apiBaseUrl!==this.apiBaseUrl))throw failure("TABLET_ENROLMENT_INVALID");
+    if(this.managedPath&&(await readManagedSetup(this.managedPath))?.state==="pending")throw failure("TABLET_MANAGED_SETUP_CONFLICT",409);
     if(this.pairing)throw failure("TABLET_ENROLMENT_BUSY",409);
     if(this.closed)throw failure("TABLET_SERVICE_STOPPED",503);
     if(this.identity&&this.identity.terminalId!==body.terminalId)throw failure("TABLET_LOCAL_REPLACEMENT_REQUIRED",409);
@@ -129,4 +191,19 @@ export class TerminalDevice{
   }
   heartbeat(){return this.signed("POST","/api/terminal-devices/"+this.identity?.terminalId+"/heartbeat",{});}
   close(){this.closed=true;this.clearGrant();}
+}
+export async function readManagedSetup(setupPath){
+  try{
+    const stat=await fs.stat(setupPath);
+    if(stat.size<1||stat.size>4096)throw failure("TABLET_MANAGED_SETUP_INVALID");
+    const value=JSON.parse(await fs.readFile(setupPath,"utf8"));
+    exactObject(value,["schemaVersion","jobId","publicKeySpki","state"]);
+    if(value.schemaVersion!==1||!managedJobId(value.jobId)||!managedPublicKey(value.publicKeySpki)||
+        !["pending","closed"].includes(value.state))throw failure("TABLET_MANAGED_SETUP_INVALID");
+    return value;
+  }catch(error){
+    if(error.code==="ENOENT")return null;
+    if(error instanceof SyntaxError||error.code==="TABLET_BODY_INVALID")throw failure("TABLET_MANAGED_SETUP_INVALID");
+    throw error;
+  }
 }

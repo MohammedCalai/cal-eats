@@ -10,6 +10,7 @@ import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,assertFleetPai
 import {tabletApplicationProducts,tabletPrinterProductPermitted,tabletProductPermitted,tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 import {assertTabletSelectionActivation} from './tablet-assignment-safety.js';
 import {readTabletDirectory} from './tablet-directory.js';
+import {assertNoManagedBusinessSetup,queueTabletManagedSetup,routeManagedTabletSetup,tabletManagedSetupState} from './tablet-managed-setup.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -89,6 +90,14 @@ function issuerAllowed(db, userId, businessId) {
 
 function audit(db, actor, businessId, action, details, stamp) {
   db.prepare("INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)").run(randomUUID(), actor, "business_terminal", businessId, action, JSON.stringify(details), stamp);
+}
+
+function registerTerminal(db, { terminalId, businessId, actorId, deviceName, publicKeySpki, keyHash, stamp, replaced = null, calaiOwnerBinding = null }) {
+  const operatorId = randomUUID();
+  db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at,principal_kind) VALUES(?,?,?,?,?,?,?)").run(operatorId, deviceName, "terminal+" + terminalId + "@device.calai.invalid", "!device-only:" + randomBytes(32).toString("hex"), "restaurant", stamp, "terminal");
+  db.prepare("INSERT INTO business_account_memberships(business_id,user_id,permission,created_at,can_view_calai) VALUES(?,?,'staff',?,1)").run(businessId, operatorId, stamp);
+  db.prepare("INSERT INTO business_terminals(id,business_id,operator_user_id,name,public_key_spki,public_key_sha256,registered_by,registered_at,calai_owner_authority_binding) VALUES(?,?,?,?,?,?,?,?,?)").run(terminalId, businessId, operatorId, deviceName, publicKeySpki, keyHash, actorId, stamp, calaiOwnerBinding);
+  audit(db, actorId, businessId, "terminal_enrolled", { terminalId, replaced, publicKeySha256: keyHash }, stamp);
 }
 
 function terminalContext(db, config, terminal) {
@@ -327,6 +336,7 @@ export function issueBusinessTerminalSetup(db,config,session,businessId,{replace
  const business=businessAccountState(db,businessId,{config});if(!business.eatsRestaurantId&&(!business.products.calai.active||!business.products.calai.readiness.ready||!hasNativeCalaiSetupAuthority(db,user.id,businessId)))throw failure('CALAI_AUTHORITY_REQUIRED','Verify the exact native Calai account as the current setup issuer before pairing this Calai-only tablet.');
  if(typeof replace!=='boolean')throw failure('VALIDATION_ERROR','Tablet replacement is invalid.',400);
  assertFleetNewEnrolmentAllowed(db,businessId);
+ assertNoManagedBusinessSetup(db,config,businessId);
  const current=db.prepare('SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL').get(businessId);
  if(expectedTerminalId!==undefined&&(current?.id??null)!==expectedTerminalId)throw failure('TERMINAL_PAIRING_CHANGED','The current registered tablet changed. Reload it before issuing setup.',409);
  if(current&&!replace)throw failure('TERMINAL_ALREADY_REGISTERED','This business already has a registered tablet. Confirm its exact registration before replacement.',409);
@@ -365,9 +375,11 @@ async function routeCalaiFirstSetup({ req, res, db, config, session, checkRate, 
 
   if (req.method === 'GET') {
     const selected = db.prepare("SELECT * FROM admin_tablets WHERE business_id=? AND lifecycle_state='assigned' AND application_products='calai' AND terminal_id IS NULL ORDER BY display_name,id");
-    const send = (eligible, rows = []) => sendJson(res, 200, { data: { eligible, tablets: rows.map(row => ({
-      tabletId: row.id, tabletName: row.display_name, serialNumber: row.serial_number, revision: row.revision
-    })) } }, noStore);
+    const send = (eligible, rows = []) => sendJson(res, 200, { data: { eligible, tablets: rows.map(row => {
+      const managedSetup = tabletManagedSetupState(db, config, row);
+      return { tabletId: row.id, tabletName: row.display_name, serialNumber: row.serial_number, revision: row.revision,
+        ...(managedSetup.available || managedSetup.state ? { managedSetup } : {}) };
+    }) } }, noStore);
     if (!authority()) return send(false);
     if (!selected.all(businessId).some(canOfferOwnerCalaiSetup)) return send(true);
     const directory = await directoryReader(config);
@@ -387,16 +399,20 @@ async function routeCalaiFirstSetup({ req, res, db, config, session, checkRate, 
   const selected = () => db.prepare('SELECT * FROM admin_tablets WHERE id=? AND business_id=?').get(body.tabletId, businessId);
   if (!validSelection(selected(), body.expectedRevision)) throw changed();
   const directory = await directoryReader(config);
-  const bytes = withTransaction(db, () => {
+  const setup = withTransaction(db, () => {
     const current = authority(), row = selected();
     if (!current || !validSelection(row, body.expectedRevision) ||
         !directory.items.some(device => matchesManagedTablet(row, device))) throw changed();
     assertTabletSelectionActivation(db, config, businessId, 'calai');
-    const stamp = now(config);
-    const enrolment = issueBusinessTerminalSetup(db, config, session, businessId, { expectedTerminalId: null });
     const binding = JSON.stringify({ tabletId: row.id, serialNumber: row.serial_number,
       intuneManagedDeviceId: row.intune_managed_device_id, entraDeviceId: row.entra_device_id,
       linkId: current.proof.link_id, sourceAccountId: current.proof.source_account_id, sourceUserId: current.proof.source_user_id });
+    if (tabletManagedSetupState(db, config, row).available) {
+      if (!queueTabletManagedSetup(db, config, row, current.user.id, { calaiOwnerBinding: binding })) throw changed();
+      return { managed: true };
+    }
+    const stamp = now(config);
+    const enrolment = issueBusinessTerminalSetup(db, config, session, businessId, { expectedTerminalId: null });
     db.prepare('INSERT INTO tablet_fleet_pairing_requests VALUES(?,?,?,?,?,?,?)').run(
       enrolment.terminalId, row.id, row.revision, businessId, current.user.id, stamp, enrolment.expiresAt);
     db.prepare('INSERT INTO tablet_fleet_owner_calai_setups VALUES(?,?)').run(enrolment.terminalId, binding);
@@ -405,14 +421,16 @@ async function routeCalaiFirstSetup({ req, res, db, config, session, checkRate, 
     db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(), current.user.id,
       'tablet_fleet', row.id, 'tablet_owner_calai_package_issued', JSON.stringify({ businessId,
         tabletRevision: row.revision, terminalId: enrolment.terminalId, expiresAt: enrolment.expiresAt }), stamp);
-    return content;
+    return { bytes: content };
   });
-  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="CalEats-Tablet-Setup.ps1"', 'Content-Length': bytes.length, ...noStore });
-  res.end(bytes);
+  if (setup.managed) return sendJson(res, 202, { data: { managed: true } }, noStore);
+  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="CalEats-Tablet-Setup.ps1"', 'Content-Length': setup.bytes.length, ...noStore });
+  res.end(setup.bytes);
   return true;
 }
 
 export async function routeBusinessTerminals({ req, res, url, db, config, session, checkRate, directoryReader = readTabletDirectory }) {
+  if (await routeManagedTabletSetup({ req, res, url, db, config, checkRate }, details => registerTerminal(db, details))) return true;
   const firstSetup = /^\/api\/business\/accounts\/([^/]+)\/terminals\/calai-first-setup$/.exec(url.pathname);
   if (firstSetup && ['GET', 'POST'].includes(req.method)) {
     return routeCalaiFirstSetup({ req, res, db, config, session, checkRate, directoryReader, businessId: firstSetup[1] });
@@ -448,6 +466,7 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       withTransaction(db, () => {
         owner(db, session, match[1], config);
         const currentNow = db.prepare("SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL").get(match[1]);
+        if (!currentNow) assertNoManagedBusinessSetup(db, config, match[1]);
         if (currentNow) retire(db, currentNow, user.id, stamp);
         db.prepare("UPDATE business_terminal_pairings SET consumed_at=? WHERE business_id=? AND consumed_at IS NULL").run(stamp, match[1]);
         audit(db, user.id, match[1], "terminal_revoked", { terminalId: currentNow?.id ?? null }, stamp);
@@ -479,13 +498,12 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       if (fresh.consumed_at || Date.parse(fresh.expires_at) <= config.now().getTime()) throw failure("TERMINAL_PAIRING_INVALID", "Tablet setup is invalid or expired.", 401);
       const current = db.prepare("SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL").get(fresh.business_id);
       if ((current?.id ?? null) !== fresh.expected_terminal_id) throw failure("TERMINAL_PAIRING_CHANGED", "The registered tablet changed. Request fresh setup.", 409);
-      const stamp = now(config), actorId = randomUUID();
+      const stamp = now(config);
       if (current) retire(db, current, fresh.issued_by, stamp);
-      db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at,principal_kind) VALUES(?,?,?,?,?,?,?)").run(actorId, body.deviceName.trim(), "terminal+" + fresh.terminal_id + "@device.calai.invalid", "!device-only:" + randomBytes(32).toString("hex"), "restaurant", stamp, "terminal");
-      db.prepare("INSERT INTO business_account_memberships(business_id,user_id,permission,created_at,can_view_calai) VALUES(?,?,'staff',?,1)").run(fresh.business_id, actorId, stamp);
-      db.prepare("INSERT INTO business_terminals(id,business_id,operator_user_id,name,public_key_spki,public_key_sha256,registered_by,registered_at,calai_owner_authority_binding) VALUES(?,?,?,?,?,?,?,?,?)").run(fresh.terminal_id, fresh.business_id, actorId, body.deviceName.trim(), body.publicKeySpki, publicKey.sha256, fresh.issued_by, stamp, calaiOwnerBinding ?? null);
+      registerTerminal(db, { terminalId: fresh.terminal_id, businessId: fresh.business_id, actorId: fresh.issued_by,
+        deviceName: body.deviceName.trim(), publicKeySpki: body.publicKeySpki, keyHash: publicKey.sha256,
+        stamp, replaced: current?.id ?? null, calaiOwnerBinding });
       db.prepare("UPDATE business_terminal_pairings SET consumed_at=? WHERE terminal_id=? AND consumed_at IS NULL").run(stamp, fresh.terminal_id);
-      audit(db, fresh.issued_by, fresh.business_id, "terminal_enrolled", { terminalId: fresh.terminal_id, replaced: current?.id ?? null, publicKeySha256: publicKey.sha256 }, stamp);
       const registered=activeTerminal(db,fresh.terminal_id);recordEnrolledTabletInventory(db,registered);return registered;
     });
     return sendJson(res, 201, { data: { paired: true, terminalId: enrolled.id, businessId: enrolled.business_id, registeredAt: enrolled.registered_at } });

@@ -6,6 +6,7 @@ import {verifyPassword} from './auth/passwords.js';
 import {businessProductState,businessProductPermission,ensureBusinessProductPermissions,terminalHasCalaiAuthority} from './business-product-policy.js';
 import {businessAccountMembership as membership} from './business-account-membership.js';
 import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration} from './tablet-product-policy.js';
+import {managedTabletAwaitingBrowser} from './tablet-managed-setup.js';
 import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
 import {PAYABLE_ORDER_SQL} from './order-confirmation.js';
@@ -263,7 +264,11 @@ export async function routeUnifiedBusiness({req,res,url,db,config,session,checkR
   if(!url.pathname.startsWith('/api/business/'))return false;
   if(req.method==='POST'&&url.pathname==='/api/business/auth/calai/login')return calaiHumanLogin({req,res,db,config,checkRate});
   const user=actor(db,session);let match;
-  if(req.method==='GET'&&url.pathname==='/api/business/context')return sendJson(res,200,{data:selectedContext(db,session,config)},noStore);
+  if(req.method==='GET'&&url.pathname==='/api/business/context'){
+    const data=selectedContext(db,session,config);
+    if(!session.nativeAudience&&data.principalKind==='human'&&managedTabletAwaitingBrowser(db,config,data.id))data.managedTabletAwaitingConnection=true;
+    return sendJson(res,200,{data},noStore);
+  }
   if(req.method==='GET'&&url.pathname==='/api/business/accounts')return sendJson(res,200,{data:terminal(session)?[selectedContext(db,session,config)]:accountIds(db,user).map(id=>({...businessAccountState(db,id),canManageProducts:access(db,session,id).canManageProducts}))},noStore);
   if(req.method==='GET'&&url.pathname==='/api/business/dashboard')return sendJson(res,200,{data:await unifiedBusinessDashboard(db,session,config)},noStore);
   if(req.method==='POST'&&url.pathname==='/api/business/accounts'){

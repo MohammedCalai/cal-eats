@@ -10,6 +10,7 @@ import { journeyFixture } from "../apps/api/test/helpers.js";
 import { enrolRegisteredTablet } from "../apps/api/test/registered-tablet-fixture.js";
 import { addNotification } from "../apps/api/src/offers.js";
 import {runTabletManagementRefresh} from "../apps/api/src/tablet-management.js";
+import {runTabletManagedSetup} from "../apps/api/src/tablet-managed-setup.js";
 import {runBusinessMonitoringRetention} from "../apps/api/src/business-monitoring-retention.js";
 
 function fixture(name) {
@@ -194,6 +195,68 @@ test('schema72 backup removes real central pairing children and cancels queued o
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM tablet_fleet_pairing_requests').get().n,1);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM business_terminal_pairings').get().n,1);
   assert.equal(fs.readFileSync(destination).includes(Buffer.from(issued.body.data.enrolment.code)),false);
  }finally{await f.close();for(const file of[destination,`${destination}-wal`,`${destination}-shm`,`${destination}.media-objects.jsonl`])fs.rmSync(file,{force:true});}
+});
+
+test('schema76 backup cannot restart a pending managed install or revive a verified setup', async () => {
+  const f = await centralTabletFixture();
+  const destination = path.join(BACKUP_ROOT, `managed-tablet-${process.pid}-backup.sqlite`);
+  const script = 'synthetic-managed-script-that-must-not-restore';
+  const challenge = 'synthetic-verified-challenge-that-must-not-restore';
+  try {
+    assert.ok(f.db.prepare('SELECT 1 FROM schema_migrations WHERE version=76').get());
+    const verified = await f.create('VERIFIED');
+    const otherBusiness = f.db.prepare("SELECT business_id FROM business_product_links WHERE product='cal-eats' AND business_id<>? LIMIT 1").get(verified.businessId).business_id;
+    const pending = await f.call('', { displayName: 'Synthetic pending tablet', businessId: otherBusiness,
+      serialNumber: 'BACKUP-SYNTHETIC-PENDING', intuneManagedDeviceId: randomUUID(), entraDeviceId: randomUUID() });
+    assert.equal(pending.status, 201, pending.text);
+    const adminId = f.db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get().id;
+    const stamp = f.config.now().toISOString();
+    const expires = new Date(f.config.now().getTime() + 180_000).toISOString();
+    const targets = new Map();
+    const insert = f.db.prepare(`INSERT INTO tablet_managed_setups(id,tablet_id,record_revision,business_id,
+      requested_by,managed_device_id,entra_device_id,serial_number,group_id,directory_object_id,script_content,
+      requested_at,expires_at,next_check_at,state,verified_key_hash,verified_at,challenge,challenge_until)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const jobs = [[verified, 'verified'], [pending.body.data, 'pending']];
+    for (const [tablet, state] of jobs) {
+      const jobId = randomUUID(), groupId = randomUUID(), directoryObjectId = randomUUID();
+      const { intuneManagedDeviceId, entraDeviceId } = tablet.mapping;
+      targets.set(intuneManagedDeviceId, { groupId, directoryObjectId, entraDeviceId, serialNumber: tablet.serialNumber });
+      insert.run(jobId, tablet.id, tablet.revision, tablet.businessId, adminId, intuneManagedDeviceId, entraDeviceId,
+        tablet.serialNumber, groupId, directoryObjectId, script, stamp, expires, stamp, state,
+        state === 'verified' ? 'a'.repeat(64) : null, state === 'verified' ? stamp : null,
+        state === 'verified' ? challenge : null, state === 'verified' ? expires : null);
+      f.db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(), adminId, 'tablet_fleet', tablet.id,
+        'tablet_managed_connection_requested', JSON.stringify({ jobId, businessId: tablet.businessId }), stamp);
+    }
+    const rows = (db, table) => db.prepare('SELECT * FROM ' + table + ' ORDER BY id').all();
+    const sourceJobs = rows(f.db, 'tablet_managed_setups');
+    const sourceInventory = rows(f.db, 'admin_tablets');
+    const sourceHistory = rows(f.db, 'audit_events');
+
+    await createBackup({ source: f.config.dbPath, destination });
+    const copy = new DatabaseSync(destination);
+    try {
+      assert.deepEqual(rows(copy, 'tablet_managed_setups'), []);
+      assert.deepEqual(rows(copy, 'admin_tablets'), sourceInventory);
+      assert.deepEqual(rows(copy, 'audit_events'), sourceHistory);
+      let graphCalls = 0;
+      const unexpectedGraphCall = () => { graphCalls++; throw Error('Restored setup must require a fresh request'); };
+      await runTabletManagedSetup(copy, { ...f.config, tabletManagedSetup: { enabled: true, targets } },
+        { graph: { dispatch: unexpectedGraphCall, observe: unexpectedGraphCall } });
+      assert.equal(graphCalls, 0);
+      assert.deepEqual(copy.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(copy.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    } finally { copy.close(); }
+    assert.deepEqual(rows(f.db, 'tablet_managed_setups'), sourceJobs);
+    const backupBytes = fs.readFileSync(destination);
+    for (const removed of [script, challenge]) assert.equal(backupBytes.includes(Buffer.from(removed)), false);
+  } finally {
+    await f.close();
+    for (const file of [destination, `${destination}-wal`, `${destination}-shm`, `${destination}.media-objects.jsonl`]) {
+      fs.rmSync(file, { force: true });
+    }
+  }
 });
 
 test('approved30-day monitoring retention removes old finished management evidence and jobs while preserving current and active operations',async()=>{

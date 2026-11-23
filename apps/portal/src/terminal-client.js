@@ -198,7 +198,8 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     const unavailable = error.code === "TERMINAL_LOCAL_UNAVAILABLE";
     const retainDiscovery = (stage === "bootstrap" || state.paired === true) && knownGrantedTransportFailure(error.code);
     if (!retainDiscovery && (revoked || unpaired || unavailable || permission === "permission_denied" || permission === "permission_required" && state.permission === "prompt" || ["TERMINAL_LOCAL_INVALID", "TERMINAL_TIMEOUT"].includes(error.code))) { localAccessObserved = false; hint(false); }
-    invalidate(permission || (revoked ? "revoked" : unpaired ? "unpaired" : unavailable ? "connection_unavailable" : "offline"),
+    const managedPending = error.code === "TERMINAL_MANAGED_SETUP_PENDING" && state.permission === "granted";
+    invalidate(permission || (revoked ? "revoked" : unpaired ? "unpaired" : managedPending ? "managed_setup" : unavailable ? "connection_unavailable" : "offline"),
       error.code, state.paired === true && isTerminalConnectionError(error));
     if (unpaired) publish({ paired: false });
   }
@@ -225,9 +226,10 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     try { return await Promise.race([work, abortPromise]); }
     finally { cancel(timer); requests.delete(controller); signal?.removeEventListener("abort", externalAbort); controller.signal.removeEventListener("abort", abortListener); }
   }
-  function connectAutomaticTerminal({ signal, screenId, userInitiated = false, expectedTerminal = null } = {}) {
+  function connectAutomaticTerminal({ signal, screenId, userInitiated = false, expectedTerminal = null, managedBusinessId = null } = {}) {
     const selectedScreen = screenId || currentScreenId || screenIdFactory();
     const requireExpected = result => {
+      if (managedBusinessId && result.businessId !== managedBusinessId) throw failure("The registered tablet belongs to a different business.", 403, "TERMINAL_LOCAL_INVALID");
       if (expectedTerminal && (result.terminalId !== expectedTerminal.terminalId || result.businessId !== expectedTerminal.businessId ||
           result.restaurantId !== expectedTerminal.restaurantId || result.user?.id !== expectedTerminal.user?.id)) {
         throw failure("The registered tablet identity changed.", 403, "TERMINAL_LOCAL_INVALID");
@@ -238,11 +240,11 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     if (signal?.aborted) return Promise.reject(aborted());
     if (connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted && !(userInitiated && !connecting.userInitiated)) {
       const promise = connecting.signal === signal ? connecting.promise : waitForCaller(connecting.promise, signal);
-      return expectedTerminal ? promise.then(requireExpected) : promise;
+      return expectedTerminal || managedBusinessId ? promise.then(requireExpected) : promise;
     }
     if (windowProof && state.status === "ready" && currentScreenId === selectedScreen && Date.parse(context.expiresAt) > clock() + RENEW_BEFORE_MS) {
       const promise = Promise.resolve(clone(context));
-      return expectedTerminal ? promise.then(requireExpected) : promise;
+      return expectedTerminal || managedBusinessId ? promise.then(requireExpected) : promise;
     }
     invalidate("connecting"); currentScreenId = selectedScreen;
     const expected = generation, attempt = { screenId: selectedScreen, signal, userInitiated, promise: null };
@@ -251,7 +253,7 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
       try {
         if (!userInitiated) {
           const permission = await readPermission({ signal, expected });
-          if (permission === "denied" || permission !== "granted" && !(permission === "unknown" && (localAccessObserved || hinted()))) throw permissionFailure(permission);
+          if (permission === "denied" || permission !== "granted" && (managedBusinessId || !(permission === "unknown" && (localAccessObserved || hinted())))) throw permissionFailure(permission);
         }
         // The trusted Connect path reaches fetch synchronously, before querying
         // permissions or reading a cloud session consumes transient activation.
@@ -261,7 +263,13 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
         if (!plain(bootstrap) || bootstrap.product !== PRODUCT || !PROOF.test(bootstrap.csrfToken) || typeof bootstrap.paired !== "boolean" || bootstrap.terminalId !== undefined && bootstrap.terminalId !== null && !UUID.test(bootstrap.terminalId)) throw failure("Update the restaurant tablet connection.", 502, "TERMINAL_LOCAL_INVALID");
         localAccessObserved = true;
         publish({ terminalId: bootstrap.terminalId || null, paired: bootstrap.paired });
-        if (!bootstrap.paired) throw failure("Register this restaurant tablet once before using automatic sign-in.", 403, "TABLET_NOT_ENROLLED");
+        if (!bootstrap.paired) {
+          if (bootstrap.managedSetupPending === true && (userInitiated ? await readPermission({ signal, expected }) : state.permission) === "granted") {
+            hint(true);
+            throw failure("This tablet is finishing its managed connection.", 425, "TERMINAL_MANAGED_SETUP_PENDING", true);
+          }
+          throw failure("Register this restaurant tablet once before using automatic sign-in.", 403, "TABLET_NOT_ENROLLED");
+        }
         csrfToken = bootstrap.csrfToken; stage = "session";
         const result = await local("/v1/automatic-session", { screenId: selectedScreen }, { expected, signal });
         assertCurrent(expected);

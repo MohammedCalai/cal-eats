@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { adminNavigation, ownerNavigation } from "../src/model.js";
 import { calaiNavigation } from "../src/calai-platform-model.js";
 import { tabletQuery, tabletRecordPath, tabletMetadataDraft, tabletMetadataPayload, tabletReassignmentPayload, tabletDisablePayload, tabletRegistrationPayload, tabletCurrentTerminalId, tabletEnrolmentPayload, tabletManagementRefreshPayload, tabletManagementPresentation, tabletEvidence, tabletHistory } from "../src/admin-tablet-model.js";
-import {tabletApplicationPayload,tabletDirectoryAssignmentPath,tabletApplicationModeLabel} from '../src/admin-tablet-model.js';
+import {tabletApplicationPayload,tabletDirectoryAssignmentPath,tabletApplicationModeLabel,tabletSetupPresentation} from '../src/admin-tablet-model.js';
 
 const first="11111111-1111-4111-8111-111111111111",second="22222222-2222-4222-8222-222222222222",terminal="33333333-3333-4333-8333-333333333333";
 const draft={displayName:"Calai-0001",serialNumber:"0F02-ABC/01",requestedStartupProduct:"cal-eats",intuneManagedDeviceId:first,entraDeviceId:"",startupGroupId:second,startupProfileId:""};
@@ -20,6 +20,30 @@ test('tablet app selection sends one versioned device command without granting r
  assert.throws(()=>tabletApplicationPayload({displayName:'Kitchen tablet',businessId:first,applicationProducts:'both'},{expectedRevision:0}),/Refresh/);
  assert.equal(tabletDirectoryAssignmentPath(first),`/api/admin/tablets/directory/${first}`);assert.throws(()=>tabletDirectoryAssignmentPath('../../devices'),/identifier/);
  assert.equal(tabletRecordPath(first,'configuration'),`/api/admin/tablets/${first}/configuration`);assert.equal(tabletApplicationModeLabel(null),'Existing business access');
+});
+test('managed tablet setup shows saving, progress and attention without offering a manual setup file',()=>{
+ const requestedAt='2026-11-23T10:00:00Z';
+ const row={lifecycleState:'assigned',applicationProducts:'both',applicationAccess:{paired:false}};
+ for(const [state,label] of [[null,'Save to start tablet setup'],['waiting','Waiting for tablet setup'],['in_progress','Connecting tablet'],['attention','Tablet setup needs attention']]){
+  const setup={available:true,state,requestedAt:state?requestedAt:null};
+  const result=tabletSetupPresentation({...row,managedSetup:setup});
+  assert.deepEqual(result,{label,receivedAt:null,requestedAt:setup.requestedAt,manualSetup:false});
+ }
+ assert.equal(tabletSetupPresentation(row).manualSetup,true);
+ assert.equal(tabletSetupPresentation({...row,managedSetup:{available:false,state:'in_progress'}}).manualSetup,false,'A writer outage cannot introduce a competing setup file');
+ assert.equal(tabletSetupPresentation({...row,lifecycleState:'pending_handoff',managedSetup:{available:true,state:'waiting'}}).label,'Physical handoff required');
+});
+test('the signed app receipt controls delivery status in tablet details and the directory',()=>{
+ const requestedAt='2026-11-23T10:00:00Z',receivedAt='2026-11-23T10:03:00Z';
+ const configuration={status:'received',receivedAt};
+ const row={lifecycleState:'assigned',applicationProducts:'cal-eats',managedSetup:{available:true,state:'registered',requestedAt}};
+ assert.equal(tabletSetupPresentation({...row,applicationAccess:{paired:false,configuration}}).label,'Checking tablet connection');
+ const waiting=tabletSetupPresentation({...row,applicationAccess:{paired:true,configuration:{status:'waiting_for_tablet'}}});
+ assert.equal(waiting.label,'Waiting for tablet to receive app choice');
+ assert.equal(waiting.receivedAt,null);
+ const delivered={label:'Received by tablet',receivedAt,requestedAt:null,manualSetup:false};
+ assert.deepEqual(tabletSetupPresentation({...row,applicationAccess:{paired:true,configuration}}),delivered);
+ assert.deepEqual(tabletSetupPresentation({...row,applicationRegistered:true,configuration}),delivered);
 });
 test("the central fleet has an administrator route and does not become an owner menu",async()=>{
  assert.ok(adminNavigation.some(([name,path])=>name==="Tablets"&&path==="/admin/tablets"));

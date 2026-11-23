@@ -9,7 +9,7 @@ export async function requestCalaiFirstTabletSetup(path, payload, { signal, requ
     mode: "same-origin",
     cache: "no-store",
     redirect: "error",
-    headers: { "Content-Type": "application/json", Accept: "application/octet-stream" },
+    headers: { "Content-Type": "application/json", Accept: "application/octet-stream, application/json" },
     body: JSON.stringify(payload),
     signal,
   });
@@ -19,7 +19,12 @@ export async function requestCalaiFirstTabletSetup(path, payload, { signal, requ
   }
   const type = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
   const disposition = response.headers.get("content-disposition") ?? "";
-  if (type !== "application/octet-stream" || !/^attachment(?:\s*;|$)/i.test(disposition.trim())) {
+  if (response.status === 202 && type === "application/json" && !disposition) {
+    const data = (await response.json().catch(() => null))?.data;
+    if (data?.managed === true && Object.keys(data).length === 1) return { managed: true };
+    throw new Error("Could not confirm the tablet approval. Check the assignment before trying again.");
+  }
+  if (response.status !== 200 || type !== "application/octet-stream" || !/^attachment(?:\s*;|$)/i.test(disposition.trim())) {
     throw new Error("The server did not provide a private tablet setup file. Check the assignment and try again.");
   }
   const packageFile = await response.blob();

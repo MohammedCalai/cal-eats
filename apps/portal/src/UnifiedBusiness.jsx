@@ -32,11 +32,14 @@ export function useBusinessResource(path, { poll = 0, request = api, scope = nul
 }
 function Feedback({ error, notice }) { return <>{error && <p className="alert" role="alert">{error}</p>}{notice && <p className="alert success" role="status">{notice}</p>}</>; }
 function Resource({ value, loading, error, reload, children }) { return <>{error && <p className="alert" role="alert">{error} <button type="button" className="quiet" onClick={() => void reload()}>Try again</button></p>}{loading && !value ? <p role="status">Loading account information…</p> : value ? children : !error && <p className="empty">No account information is available.</p>}</>; }
-export function BusinessWorkspaceProvider({ userId, embedded = false, children }) {
+export function BusinessWorkspaceProvider({ userId, embedded = false, observeManagedSetup, children }) {
   const context = useBusinessResource("/api/business/context", { poll: 30000 });
   const accounts = useBusinessResource("/api/business/accounts");
   const [terminal, setTerminal] = useState(terminalStatus);
   useEffect(() => subscribeTerminalStatus(setTerminal), []);
+  useEffect(() => {
+    if (context.value?.managedTabletAwaitingConnection === true) void observeManagedSetup?.(context.value.id);
+  }, [context.value, observeManagedSetup]);
   useEffect(() => {
     const reload = () => void context.reload();
     window.addEventListener("cal-eats-terminal-session-restored", reload);
@@ -124,8 +127,11 @@ function CalaiFirstTabletSetup({ business, path }) {
   }, []);
   const selected = tablets.length === 1 ? tablets[0] : tablets.find(row => row.tabletId === selectedId);
   const currentPayload = calaiFirstSetupPayload(confirmation, selected);
+  const managed = selected?.managedSetup?.available === true;
+  const setupState = selected?.managedSetup?.state;
+  const pending = setupState === "waiting" || setupState === "in_progress";
 
-  async function download() {
+  async function prepareSetup() {
     if (request.current || !path || checkError || !currentPayload) return;
     const controller = new AbortController();
     request.current = controller;
@@ -133,14 +139,17 @@ function CalaiFirstTabletSetup({ business, path }) {
     setSaving(true);
     setFeedback({});
     try {
-      const file = await requestCalaiFirstTabletSetup(path, currentPayload, { signal: controller.signal });
+      const result = await requestCalaiFirstTabletSetup(path, currentPayload, { signal: controller.signal });
       if (request.current !== controller || controller.signal.aborted) return;
-      saveCalaiFirstTabletSetup(file);
-      setFeedback({ notice: `Private setup file downloaded for ${confirmation.tabletName}. Pairing completes when the tablet connects.` });
+      if (result.managed === true) setFeedback({ notice: `Tablet setup approved for ${confirmation.tabletName}.` });
+      else {
+        saveCalaiFirstTabletSetup(result);
+        setFeedback({ notice: `Private setup file downloaded for ${confirmation.tabletName}. Pairing completes when the tablet connects.` });
+      }
     } catch (error) {
       if (request.current !== controller) return;
       setFeedback({ error: error.name === "AbortError"
-        ? "The request timed out. Check the current assignment before requesting a new file."
+        ? "The request timed out. Check the current assignment before trying again."
         : error.message });
     } finally {
       clearTimeout(timeout);
@@ -172,21 +181,23 @@ function CalaiFirstTabletSetup({ business, path }) {
           </select>
         </label>}
         {selected && <p><strong>{selected.tabletName}</strong> · Serial {selected.serialNumber}</p>}
+        {pending && <p role="status">{setupState === "waiting" ? "Waiting to send setup to this tablet." : "Waiting for this tablet to connect."}</p>}
+        {setupState === "attention" && <p role="status">The tablet setup needs attention. Check the assignment before trying again.</p>}
       </> : <p>Ask your administrator to assign a Windows tablet to this location.</p>)}
     <div className="button-row">
-      {!checkError && tablets.length > 0 && <button type="button" className="quiet" disabled={!selected || saving} onClick={() => {
+      {!checkError && tablets.length > 0 && !pending && <button type="button" className="quiet" disabled={!selected || saving} onClick={() => {
         setFeedback({});
         setConfirmation(selected);
-      }}>Download tablet setup</button>}
+      }}>{managed ? "Approve tablet" : "Download tablet setup"}</button>}
       <button type="button" className="quiet" disabled={loading || saving} onClick={() => { setConfirmation(null); void reload(); }}>Check assignment</button>
     </div>
-    {confirmation && currentPayload && !checkError &&
-      <WorkspaceDialog title="Download private tablet setup?" onClose={() => { if (!request.current) setConfirmation(null); }}>
+    {confirmation && currentPayload && !checkError && !pending &&
+      <WorkspaceDialog title={managed ? "Approve tablet setup?" : "Download private tablet setup?"} onClose={() => { if (!request.current) setConfirmation(null); }}>
         <p><strong>{confirmation.tabletName}</strong> · Serial {confirmation.serialNumber} · <strong>{business.name}</strong></p>
-        <p>Keep this one-use file private. Run it on the named Windows tablet as an administrator within ten minutes.</p>
+        <p>{managed ? "Setup will be sent to the assigned Windows tablet after you approve it." : "Keep this one-use file private. Run it on the named Windows tablet as an administrator within ten minutes."}</p>
         <div className="button-row">
           <button type="button" className="quiet" disabled={saving} onClick={() => setConfirmation(null)}>Cancel</button>
-          <button type="button" className="primary" disabled={saving} onClick={() => void download()}>{saving ? "Preparing setup…" : "Confirm and download"}</button>
+          <button type="button" className="primary" disabled={saving} onClick={() => void prepareSetup()}>{saving ? (managed ? "Approving tablet…" : "Preparing setup…") : managed ? "Approve tablet" : "Confirm and download"}</button>
         </div>
       </WorkspaceDialog>}
   </div>;

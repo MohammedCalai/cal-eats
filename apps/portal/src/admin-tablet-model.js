@@ -20,6 +20,27 @@ export function tabletQuery({ q = "", status = "all", page = 1, businessId } = {
 export function tabletRecordPath(id, action = "") { if (!["", "disable", "reassign", "registration", "enrolment", "installer", "setup-package", "management/refresh", "configuration"].includes(action)) throw new Error("Unsupported tablet action."); return `/api/admin/tablets/${uuid(id, "Tablet")}${action ? `/${action}` : ""}`; }
 export const TABLET_APPLICATION_MODES = ['calai','cal-eats','both'];
 export const tabletApplicationModeLabel = value => ({calai:'Calai','cal-eats':'Cal-Eats',both:'Calai + Cal-Eats'})[value] || 'Existing business access';
+export function tabletSetupPresentation(row) {
+  const setup = row.managedSetup;
+  const paired = (row.applicationAccess?.paired ?? row.applicationRegistered ?? row.registration?.registered) === true;
+  const configuration = row.applicationAccess?.configuration ?? row.configuration;
+  const restricted = ['disabled', 'pending_handoff'].includes(row.lifecycleState);
+  const managed = setup?.available === true || ['waiting', 'in_progress', 'registered', 'attention'].includes(setup?.state);
+  const view = { label: 'Pairing required', receivedAt: null, requestedAt: null, manualSetup: !restricted && !managed };
+  if (restricted) view.label = tabletStateLabel(row.lifecycleState);
+  else if (paired && row.applicationProducts && configuration?.status === 'received' && configuration.receivedAt) {
+    view.label = 'Received by tablet';
+    view.receivedAt = configuration.receivedAt;
+  } else if (paired) view.label = row.applicationProducts ? 'Waiting for tablet to receive app choice' : 'Tablet connected';
+  else if (setup?.requiresOwnerApproval) view.label = 'Calai owner approval needed';
+  else if (setup?.state === 'attention') view.label = 'Tablet setup needs attention';
+  else if (setup?.state === 'registered') view.label = 'Checking tablet connection';
+  else if (setup?.state === 'in_progress') view.label = 'Connecting tablet';
+  else if (setup?.state === 'waiting') view.label = 'Waiting for tablet setup';
+  else if (setup?.available === true) view.label = 'Save to start tablet setup';
+  if (!restricted && !paired) view.requestedAt = setup?.requestedAt ?? null;
+  return view;
+}
 export function tabletApplicationPayload(draft, {expectedRevision, creating = false} = {}) {
   const displayName = String(draft.displayName || '').trim();
   if(displayName.length < 2 || displayName.length > 100 || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(displayName)) throw new Error('Tablet name must contain 2–100 characters.');

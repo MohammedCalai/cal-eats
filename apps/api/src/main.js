@@ -30,6 +30,7 @@ import {evaluateSurfaceMonitoring,getSurfaceSettings} from './surface-monitoring
 import {runBusinessMonitoringPush} from './business-monitoring-push.js';
 import {runBusinessMonitoringRetention} from './business-monitoring-retention.js';
 import {runTabletManagementRefresh} from './tablet-management.js';
+import {runTabletManagedSetup} from './tablet-managed-setup.js';
 
 const config = loadConfig();
 const db = openDatabase(config.dbPath);
@@ -62,6 +63,15 @@ let surfaceRunning=false,currentSurfaceWorker=Promise.resolve(),surfaceLastStart
 let businessPushRunning=false,currentBusinessPushWorker=Promise.resolve();
 let currentTabletManagementWorker=Promise.resolve();
 function triggerTabletManagement(){currentTabletManagementWorker=runTabletManagementRefresh(db,config,{limit:2}).catch(()=>{console.error('Read-only tablet management collection failed');});return currentTabletManagementWorker;}
+let managedSetupRunning = false, currentManagedSetupWorker = Promise.resolve();
+function triggerManagedSetup() {
+  if (managedSetupRunning) return currentManagedSetupWorker;
+  managedSetupRunning = true;
+  currentManagedSetupWorker = runTabletManagedSetup(db, config).catch(() => {
+    console.error('Managed tablet setup worker failed');
+  }).finally(() => { managedSetupRunning = false; });
+  return currentManagedSetupWorker;
+}
 function triggerSurfaceMonitoring(){if(surfaceRunning)return currentSurfaceWorker;surfaceRunning=true;surfaceLastStarted=config.now().getTime();currentSurfaceWorker=evaluateSurfaceMonitoring(db,config).catch(()=>{console.error('Business tablet monitoring cycle failed');}).finally(()=>{surfaceRunning=false;});return currentSurfaceWorker;}
 function triggerBusinessMonitoringPush(){if(businessPushRunning)return currentBusinessPushWorker;businessPushRunning=true;currentBusinessPushWorker=runBusinessMonitoringPush(db,config).catch(()=>{console.error('Business device notification cycle failed');}).finally(()=>{businessPushRunning=false;});return currentBusinessPushWorker;}
 function triggerMediaCleanup(){
@@ -142,6 +152,7 @@ void triggerMediaCleanup();
 void triggerSurfaceMonitoring();
 void triggerBusinessMonitoringPush();
 void triggerTabletManagement();
+void triggerManagedSetup();
 const worker = setInterval(() => { void triggerWorkers(); }, 60_000);
 worker.unref();
 const alertWorker=setInterval(()=>{void triggerOrderAlerts();},5000);
@@ -164,6 +175,8 @@ const businessMonitoringPushWorker=setInterval(()=>{void triggerBusinessMonitori
 businessMonitoringPushWorker.unref();
 const tabletManagementWorker=setInterval(()=>{void triggerTabletManagement();},30000);
 tabletManagementWorker.unref();
+const managedSetupWorker = config.tabletManagedSetup.enabled ? setInterval(() => { void triggerManagedSetup(); }, 30000) : null;
+managedSetupWorker?.unref();
 
 let shuttingDown = false;
 async function shutdown() {
@@ -171,11 +184,11 @@ async function shutdown() {
   shuttingDown = true; clearInterval(worker);clearInterval(alertWorker);clearInterval(commissionWorker);clearInterval(accountEmailWorker);clearInterval(customerPushWorker);clearInterval(liveActivityWorker);clearInterval(mediaCleanupWorker);
   clearInterval(reportEmailWorker);
   clearInterval(surfaceMonitoringWorker);clearInterval(businessMonitoringPushWorker);
-  clearInterval(tabletManagementWorker);
+  clearInterval(tabletManagementWorker);clearInterval(managedSetupWorker);
   notificationStreamHub(db).close();
   const result = await closeServer(server, { graceMs: 5_000 });
   if (!result.drained) process.exit(1);
-  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentReportEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup,currentSurfaceWorker,currentBusinessPushWorker,currentTabletManagementWorker]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
+  const workerDrained = await Promise.race([Promise.all([currentWorker,currentAlertWorker,currentCommissionWorker,currentAccountEmailWorker,currentReportEmailWorker,currentCustomerPushWorker,currentLiveActivityWorker,currentMediaCleanup,currentSurfaceWorker,currentBusinessPushWorker,currentTabletManagementWorker,currentManagedSetupWorker]).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5_000))]);
   if (!workerDrained) process.exit(1);
   closeDatabase(db);
 }

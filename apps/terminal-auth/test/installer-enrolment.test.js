@@ -162,7 +162,7 @@ foreach($name in $names){
 }
 function Test-WithinFunction($Node){$parent=$Node.Parent;while($parent){if($parent -is [Management.Automation.Language.FunctionDefinitionAst]){return $true};$parent=$parent.Parent};return $false}
 $calls=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.CommandAst]},$true)|Where-Object{-not (Test-WithinFunction $_)})
-$write=@($calls|Where-Object{$_.GetCommandName() -in @('New-Item','Set-Acl','Move-Item','Copy-Item','Stop-ScheduledTask','Register-ScheduledTask','Start-ScheduledTask')}|Sort-Object {$_.Extent.StartOffset})[0].Extent.StartOffset
+$write=@($calls|Where-Object{$_.GetCommandName() -in @('Initialize-TerminalDirectory','New-Item','Set-Acl','Move-Item','Copy-Item','Stop-ScheduledTask','Register-ScheduledTask','Start-ScheduledTask')}|Sort-Object {$_.Extent.StartOffset})[0].Extent.StartOffset
 foreach($name in @('Assert-TerminalEnrolmentData','Assert-TerminalSetupIdentity')){
  $validation=@($calls|Where-Object{$_.GetCommandName() -ceq $name})
  if($validation.Count -lt 1 -or @($validation|Where-Object{$_.Extent.StartOffset -lt $write}).Count -lt 1){throw 'Setup validation is ordered after an installation write.'}

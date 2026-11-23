@@ -30,7 +30,8 @@ export class WindowsDeviceKey{
   }
   async publicKey({create=false}={}){return this.validate(await this.helper({action:create?"create":"public",terminalId:this.terminalId,provider:"software"}));}
   async sign(canonical){
-    if(typeof canonical!=="string"||!/^CAL-EATS-(PAIR|TERMINAL)-V1\n/.test(canonical)||Buffer.byteLength(canonical)>16384)throw Error("Unsupported tablet signing context");
+    if(typeof canonical!=="string"||!(/^(?:CAL-EATS-(?:PAIR|TERMINAL)-V1|Cal-Eats managed terminal (?:evidence|activation) v1)\n/.test(canonical))||
+      Buffer.byteLength(canonical)>16384)throw Error("Unsupported tablet signing context");
     const value=this.validate(await this.helper({action:"sign",terminalId:this.terminalId,provider:"software",messageBase64:Buffer.from(canonical).toString("base64")}));
     if(!/^[A-Za-z0-9_-]{86}$/.test(value.signature||"")||!crypto.verify("sha256",Buffer.from(canonical),{key:crypto.createPublicKey({key:Buffer.from(value.publicKeySpki,"base64"),format:"der",type:"spki"}),dsaEncoding:"ieee-p1363"},Buffer.from(value.signature,"base64url")))throw Error("Tablet signature verification failed");
     return value.signature;

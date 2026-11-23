@@ -16,20 +16,43 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
   function retryLater(expected, error, recovery = null) {
     const snapshot = terminalStatus();
     const startupRetry = snapshot?.startupRetryEligible === true;
+    const managedRetry = snapshot?.status === "managed_setup" && snapshot.permission === "granted";
     if (!current(expected) || signedOut || denied.has(error?.code)) return;
     if (recovery) {
       if (verifiedCalai !== recovery || !recoverableCalai(snapshot, recovery) || retry >= BACKOFF.length) return;
-    } else if ((snapshot?.paired !== true && (!startupRetry || retry >= BACKOFF.length)) || ["revoked", "unpaired", "not_installed", "permission_required", "permission_denied"].includes(snapshot?.status) || [401, 403].includes(error?.status)) return;
+    } else if ((snapshot?.paired !== true && !managedRetry && (!startupRetry || retry >= BACKOFF.length)) || ["revoked", "unpaired", "not_installed", "permission_required", "permission_denied"].includes(snapshot?.status) || [401, 403].includes(error?.status)) return;
     const delay = BACKOFF[Math.min(retry++, BACKOFF.length - 1)];
     clearTimer(); timer = schedule(() => {
       timer = null;
       if (current(expected) && !pending && (!startupRetry || terminalStatus()?.startupRetryEligible === true) &&
+          (!managedRetry || terminalStatus()?.status === "managed_setup" && terminalStatus()?.permission === "granted") &&
           (!recovery || recoverableCalai(terminalStatus(), recovery))) void run(expected, { recovery });
     }, delay);
   }
   function observeTerminal(snapshot) {
     if (signedOut || pending || timer !== null || !recoverableCalai(snapshot, verifiedCalai)) return;
     retryLater(generation, null, verifiedCalai);
+  }
+  // An authenticated workspace may still be open when Intune completes the
+  // first install. Its existing account poll can look for the companion, only
+  // with previously granted browser permission and the same selected business.
+  async function observeManagedSetup(businessId) {
+    if (!businessId || signedOut || pending || timer !== null || !lastUser || !canDiscover(lastUser) || terminalStatus()?.status === "ready") return;
+    const expected = generation, controller = new AbortController(), attempt = { controller, promise: null };
+    pending = attempt;
+    attempt.promise = (async () => {
+      try {
+        await connectTerminal({ signal: controller.signal, managedBusinessId: businessId });
+        if (!current(expected) || controller.signal.aborted || signedOut) return;
+        const verified = await readTerminal({ signal: controller.signal });
+        if (!current(expected) || controller.signal.aborted || signedOut || verified.businessId !== businessId || !sameTerminal(terminalStatus(), verified)) return;
+        retry = 0;
+        verifiedCalai = isCalaiOnly(verified) ? verified : null;
+        onTerminal({ afterSignIn: false, terminalContext: verified });
+      } catch { /* The existing workspace poll may try again. */ }
+      finally { if (pending === attempt) pending = null; }
+    })();
+    return attempt.promise;
   }
   async function run(expected, { afterSignIn = false, alreadyConnected = false, recovery = null } = {}) {
     if (!current(expected)) return;
@@ -114,5 +137,5 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
     })();
     return attempt.promise;
   }
-  return { refresh, connectFromInteraction, observeTerminal, signOut, stop, isSuspended: () => signedOut };
+  return { refresh, connectFromInteraction, observeTerminal, observeManagedSetup, signOut, stop, isSuspended: () => signedOut };
 }

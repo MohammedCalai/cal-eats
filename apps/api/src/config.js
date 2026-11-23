@@ -11,6 +11,7 @@ import {loadMediaObjectStore} from "./media-object-store.js";
 import {loadPlatformAdminConfig} from "./platform-admin-config.js";
 import {loadBusinessPushConfig} from './business-monitoring-push.js';
 import {loadTabletManagementConfig} from './tablet-management-graph.js';
+import {loadTabletManagedSetupSettings} from './tablet-managed-setup-graph.js';
 
 export function loadConfig(overrides = {}) {
   const runMode = overrides.runMode ?? process.env.CALAI_RUN_MODE ?? "local";
@@ -89,6 +90,7 @@ export function loadConfig(overrides = {}) {
     businessPush:overrides.businessPush??loadBusinessPushConfig(),
     surfaceMonitoring:overrides.surfaceMonitoring??{},
     tabletManagement:loadTabletManagementConfig(overrides.tabletManagement),
+    tabletManagedSetup:loadTabletManagedSetupSettings(overrides.tabletManagedSetup),
     mediaObjectStore:loadMediaObjectStore(overrides.mediaObjectStore),
     hostname,
     runMode,
