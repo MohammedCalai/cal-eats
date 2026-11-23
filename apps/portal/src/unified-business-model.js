@@ -38,15 +38,63 @@ export function canConnectBusinessProduct(business, product) {
   if (!BUSINESS_PRODUCTS.includes(product) || business?.principalKind === "terminal" || business?.canConnectProducts !== true) return false;
   return productPresentation(business, product).canConnect === true;
 }
-export function calaiTabletAuthorizationPath(business) {
+function calaiTabletOwnerPath(business, operation) {
   const calai = productPresentation(business, "calai");
   if (!business?.id || business.principalKind !== "human" || business.canManageProducts === true || business.canViewCalai !== true ||
       !canConnectBusinessProduct(business, "calai") || !calai.linked || !calai.ready || calai.status !== "ready") return null;
-  return `/api/business/accounts/${encodeURIComponent(business.id)}/terminals/calai-authorization`;
+  return `/api/business/accounts/${encodeURIComponent(business.id)}/terminals/${operation}`;
+}
+export function calaiTabletAuthorizationPath(business) {
+  return calaiTabletOwnerPath(business, "calai-authorization");
+}
+export function calaiTabletFirstSetupPath(business) {
+  if (business?.eatsRestaurantId) return null;
+  return calaiTabletOwnerPath(business, "calai-first-setup");
+}
+export function calaiFirstSetupTablets(result) {
+  if (result?.eligible !== true || !Array.isArray(result.tablets)) return [];
+  const ids = new Set();
+  const tablets = [];
+  for (const row of result.tablets) {
+    if (typeof row?.tabletId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.tabletId) ||
+        typeof row.tabletName !== "string" || !row.tabletName.trim() ||
+        typeof row.serialNumber !== "string" || !row.serialNumber.trim() ||
+        !Number.isSafeInteger(row.revision) || row.revision < 1 || ids.has(row.tabletId)) return [];
+    ids.add(row.tabletId);
+    tablets.push({ tabletId: row.tabletId, tabletName: row.tabletName, serialNumber: row.serialNumber, revision: row.revision });
+  }
+  return tablets;
+}
+export function calaiFirstSetupPayload(confirmed, current) {
+  if (!confirmed || !current || confirmed.tabletId !== current.tabletId || confirmed.revision !== current.revision ||
+      confirmed.tabletName !== current.tabletName || confirmed.serialNumber !== current.serialNumber) return null;
+  return { tabletId: current.tabletId, expectedRevision: current.revision };
 }
 export function canLoadEatsRestaurantWorkspace(business) {
   return Boolean(business?.eatsRestaurantId && business.canViewEats === true &&
     business.products?.["cal-eats"]?.allowedOnTablet !== false);
+}
+export function dashboardOrderProducts(business) {
+  if (!business?.id) return [];
+  const calai = productPresentation(business, "calai");
+  const eats = productPresentation(business, "cal-eats");
+  return [
+    ...(business.canViewCalai && calai.linked && calai.allowed && calai.allowedOnTablet !== false ? ["calai"] : []),
+    ...(canLoadEatsRestaurantWorkspace(business) && eats.linked && eats.allowed ? ["cal-eats"] : []),
+  ];
+}
+export function dashboardOrderActivity(value, businessId, products) {
+  const scoped = value?.business?.id === businessId && value.counterPeriod === "today" ? value : null;
+  const counters = products.map(product => {
+    const counter = scoped?.counts?.[product];
+    const available = counter?.available === true && Number.isSafeInteger(counter.today) && counter.today >= 0;
+    return { product, count: available ? counter.today : null };
+  });
+  const total = counters.length && counters.every(({ count }) => count !== null)
+    ? counters.reduce((sum, { count }) => sum + count, 0) : null;
+  const visibleSources = new Set(counters.filter(({ count }) => count !== null).map(({ product }) => product));
+  const rows = (scoped?.orders || []).filter(row => visibleSources.has(row.source)).slice(0, 12);
+  return { counters, total, rows };
 }
 export function businessNavigation(business, eatsNavigation = []) {
   const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats");

@@ -22,6 +22,7 @@ import { businessReturnPath } from "./model.js";
 import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
 import OwnerDashboardView, { DashboardCsvDownload } from "./OwnerDashboard.jsx";
+import { OrderActivityDashboard } from "./DashboardOrderActivity.jsx";
 import EarningsPage from "./EarningsPage.jsx";
 import MerchantAgreement from "./MerchantAgreement.jsx";
 import OrderFinancialBreakdown from "./OrderFinancialBreakdown.jsx";
@@ -38,7 +39,7 @@ import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
 import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
-import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace } from "./unified-business-model.js";
+import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
 
@@ -117,7 +118,7 @@ function App() {
       <Route path="/owner" element={<OwnerBootstrap />}>
         <Route element={<Shell kind="owner" />}>
           <Route path="dashboard" element={<OwnerDashboard />} />
-          <Route path="connections" element={<BusinessConnections/>}/>
+          <Route path="connections" element={<BusinessConnections tabletConnection={<TabletConnectionAccess/>}/>}/>
           <Route path="statements" element={<ProductStatements/>}/>
           <Route path="devices" element={<Navigate to="/owner/printers" replace/>}/>
           <Route path="calai/orders" element={<NativeCalaiView section="orders"/>}/>
@@ -176,7 +177,18 @@ function RequireRole({ role }) { const { user } = React.useContext(SessionContex
 function useRestaurantTools(){const context=React.useContext(RestaurantContext),workspace=useBusinessWorkspace();return businessToolPermissions({permission:context?.permission,capabilities:context?.restaurant?.capabilities,principalKind:workspace?.business?.principalKind});}
 function FinanceOnly({children}){const tools=useRestaurantTools();return tools.viewFinance?children:<Denied message="Financial viewing permission is required for this restaurant."/>;}
 function OwnerOnly({ children }) { const { permission, restaurant } = React.useContext(RestaurantContext); return restaurant && permission === "owner" ? children : <Denied message="A Cal-Eats account with owner permission is required." />; }
-function RequireEatsAccount(){const context=React.useContext(RestaurantContext),workspace=useBusinessWorkspace();if(workspace?.business?.products?.["cal-eats"]?.allowedOnTablet===false)return <Navigate to="/owner/dashboard" replace/>;return context?.restaurant?<Outlet/>:<section className="panel"><h1>Cal-Eats account required</h1><p>Connect an authorised Cal-Eats restaurant account to open this section.</p><NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink></section>;}
+function RequireEatsAccount() {
+  const context = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
+  if (workspace?.business?.products?.["cal-eats"]?.allowedOnTablet === false) return <Navigate to="/owner/dashboard" replace/>;
+  if (context?.eatsError) return <section className="panel">
+    <h1>Cal-Eats tools unavailable</h1>
+    <button className="quiet" type="button" onClick={context.refreshRestaurants}>Try again</button>
+  </section>;
+  return context?.restaurant ? <Outlet/> : <section className="panel">
+    <h1>Cal-Eats account required</h1><p>Connect an authorised Cal-Eats restaurant account to open this section.</p>
+    <NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink>
+  </section>;
+}
 
 function Login() {
   const { user, refresh, embedded } = React.useContext(SessionContext), navigate=useNavigate(),location=useLocation();
@@ -203,7 +215,8 @@ function OwnerRestaurantWorkspace({ user }) {
   const needsEats = canLoadEatsRestaurantWorkspace(workspace?.business);
   const result = useLoad(() => needsEats ? api("/api/restaurant/restaurants") : [], [user.id, needsEats]);
   const storageKey = `cal-eats:business:last-restaurant:${user.id}`;
-  const restaurants = needsEats ? listItems(result.value) : [];
+  const eatsError = needsEats && Boolean(result.error);
+  const restaurants = needsEats && !eatsError ? listItems(result.value) : [];
   const [selected, setSelectedId] = useState(() => {
     try { return window.localStorage.getItem(storageKey) || ""; } catch { return ""; }
   });
@@ -225,9 +238,9 @@ function OwnerRestaurantWorkspace({ user }) {
   }, [restaurants, storageKey]);
   if (!["restaurant", "owner", "staff"].includes(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
   if (needsEats && result.loading) return <PageState text="Loading your business…"/>;
-  if (needsEats && result.error) return <PageState error={result.error} retry={result.reload}/>;
+  if (eatsError && !dashboardOrderProducts(workspace?.business).includes("calai")) return <PageState error={result.error} retry={result.reload}/>;
   const permission = restaurant?.permission || restaurant?.membershipPermission || "staff";
-  return <RestaurantContext.Provider key={selectedBusinessId} value={{ restaurant, restaurants, setSelected, permission, refreshRestaurants:result.reload }}><Outlet /></RestaurantContext.Provider>;
+  return <RestaurantContext.Provider key={selectedBusinessId} value={{ restaurant, restaurants, setSelected, permission, eatsError, refreshRestaurants:result.reload }}><Outlet /></RestaurantContext.Provider>;
 }
 
 function NavIcon({label}) {
@@ -253,9 +266,21 @@ function Shell({ kind }) {
 
 function OwnerDashboard() {
   const {user}=React.useContext(SessionContext);
-  const { restaurant, permission } = React.useContext(RestaurantContext);
-  const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant?.id,workspace?.terminal);
-  return <>{!restaurant&&<header className="page-heading"><h1>Dashboard</h1><p>{workspace?.business?.name}</p></header>}{restaurant?<OwnerDashboardView key={`${restaurant.id}:${permission}`} restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate}/>:<section className="panel"><h2>Calai</h2><p>Open your orders, calls and settings from the Calai menu.</p><NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink></section>}</>;
+  const { restaurant, permission, eatsError, refreshRestaurants } = React.useContext(RestaurantContext);
+  const workspace = useBusinessWorkspace(), business = workspace?.business;
+  const canOperate = operationalTabletFor(business?.id, restaurant?.id, workspace?.terminal);
+  const products = dashboardOrderProducts(business);
+  if (restaurant) return <OwnerDashboardView key={`${restaurant.id}:${permission}`}
+    restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate}
+    business={business} products={products}/>;
+  if (products.includes("calai")) return <OrderActivityDashboard business={business} products={products}
+    onRetryRestaurant={eatsError ? refreshRestaurants : undefined}/>;
+  return <>
+    <header className="page-heading"><h1>Dashboard</h1><p>{business?.name}</p></header>
+    <section className="panel"><h2>Orders</h2><p>Connect your business account to view orders.</p>
+      <NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink>
+    </section>
+  </>;
 }
 
 function Orders() {

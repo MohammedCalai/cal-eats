@@ -12,9 +12,13 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
   function signOut() { signedOut = true; try { onSignOut(); } finally { stop(); } }
   function retryLater(expected, error) {
     const snapshot = terminalStatus();
-    if (!current(expected) || signedOut || snapshot?.paired !== true || ["revoked", "unpaired", "not_installed", "permission_required", "permission_denied"].includes(snapshot.status) || denied.has(error?.code) || [401, 403].includes(error?.status)) return;
+    const startupRetry = snapshot?.startupRetryEligible === true;
+    if (!current(expected) || signedOut || (snapshot?.paired !== true && (!startupRetry || retry >= BACKOFF.length)) || ["revoked", "unpaired", "not_installed", "permission_required", "permission_denied"].includes(snapshot?.status) || denied.has(error?.code) || [401, 403].includes(error?.status)) return;
     const delay = BACKOFF[Math.min(retry++, BACKOFF.length - 1)];
-    clearTimer(); timer = schedule(() => { timer = null; if (current(expected) && !pending) void run(expected); }, delay);
+    clearTimer(); timer = schedule(() => {
+      timer = null;
+      if (current(expected) && !pending && (!startupRetry || terminalStatus()?.startupRetryEligible === true)) void run(expected);
+    }, delay);
   }
   async function run(expected, { afterSignIn = false, alreadyConnected = false } = {}) {
     if (!current(expected)) return;

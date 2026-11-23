@@ -114,11 +114,11 @@ test('an Eats-only tablet issuer cannot delegate Calai records and revoked sourc
 });
 
 
-test('daily Eats dashboard counts all current orders but returns at most one hundred rows across London DST boundaries',async()=>{
+test('daily Eats dashboard counts all current merchant-visible orders but returns at most one hundred rows across London DST boundaries',async()=>{
  const f=await businessFixture();try{
   const customer=f.db.prepare("SELECT id FROM users WHERE role='customer' LIMIT 1").get(),foreign=f.db.prepare('SELECT id,name FROM restaurants WHERE id<>? LIMIT 1').get(f.restaurant.id);
-  const insert=f.db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at) VALUES(?,?,?,?,'placed',100,100,7,'cash','cash_due','collection',?,?,?,?)");
-  const add=(at,restaurant=f.restaurant)=>{const id=randomUUID();insert.run(id,restaurant.id,restaurant.name,customer.id,id,'synthetic-daily-range',at,at);return id;};
+  const insert=f.db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,merchant_visible_at) VALUES(?,?,?,?,'placed',100,100,7,'cash','cash_due','collection',?,?,?,?,?)");
+  const add=(at,restaurant=f.restaurant)=>{const id=randomUUID();insert.run(id,restaurant.id,restaurant.name,customer.id,id,'synthetic-daily-range',at,at,at);return id;};
   f.advance(Date.parse('2031-03-30T12:00:00.000Z')-f.config.now().getTime());
   for(let n=0;n<121;n++)add(new Date(Date.parse('2031-03-30T12:00:00.000Z')+n*1000).toISOString());
   for(let n=0;n<300;n++)add(new Date(Date.parse('2031-03-28T12:00:00.000Z')+n*1000).toISOString());
@@ -129,5 +129,36 @@ test('daily Eats dashboard counts all current orders but returns at most one hun
   const autumn=[add('2031-10-25T23:00:00.000Z'),add('2031-10-26T00:30:00.000Z'),add('2031-10-26T01:30:00.000Z'),add('2031-10-26T23:59:59.999Z')];
   add('2031-10-25T22:59:59.999Z');add('2031-10-27T00:00:00.000Z');
   response=await f.call('/api/business/dashboard',{session:f.sessionFor(f.owner)});assert.equal(response.status,200,response.text);assert.equal(response.body.data.counts['cal-eats'].today,4);assert.deepEqual(response.body.data.orders.map(row=>row.sourceOrderId).sort(),autumn.sort());
+ }finally{await f.close();}
+});
+
+test('combined daily orders deduplicate native repeats, keep colliding source IDs distinct and omit unexposed checkouts',async()=>{
+ const f=await businessFixture();try{
+  assert.equal((await f.allow('calai')).status,200);
+  assert.equal((await f.link()).status,200);
+  const customer=f.db.prepare("SELECT id FROM users WHERE role='customer' LIMIT 1").get(),at=f.config.now().toISOString();
+  const insert=f.db.prepare(`INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,subtotal_minor,total_minor,
+    commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at,merchant_visible_at)
+    VALUES(?,?,?,?,?,100,100,7,?,?,'collection',?,?,?,?,?)`);
+  function add(status,method,paymentStatus,merchantVisibleAt){const id=randomUUID();insert.run(id,f.restaurant.id,f.restaurant.name,customer.id,status,method,paymentStatus,id,'test-dashboard-intake',at,at,merchantVisibleAt);return id;}
+  const pending=add('placed','cash','cash_due',at),paid=add('completed','card','stripe_captured',at),closed=add('rejected','card','stripe_expired',at);
+  const hidden=[add('placed','card','stripe_pending',null),add('placed','card','stripe_pending',at),add('rejected','card','stripe_expired',null)];
+  const calai=Array.from({length:105},(_,index)=>({id:randomUUID(),confirmationStatus:true,createdAt:new Date(Date.parse(at)+index*1000).toISOString(),totalPrice:1}));
+  calai[104].id=pending;
+  const repeated={...calai[104],id:pending.toUpperCase(),createdAt:calai[103].createdAt};
+  f.adapter.read=async()=>[repeated,...calai];
+  const response=await f.call('/api/business/dashboard');
+  assert.equal(response.status,200,response.text);
+  const summary=response.body.data;
+  assert.equal(summary.counts.calai.today,105);
+  assert.equal(summary.counts['cal-eats'].today,3);
+  assert.equal(summary.counts.total.today,108);
+  assert.equal(summary.orders[0].id,`calai:${pending}`,'Newest native row survives the source display cap');
+  assert.equal(summary.orders.filter(row=>row.source==='calai').length,100);
+  assert.equal(summary.orders.filter(row=>row.sourceOrderId.toLowerCase()===pending).length,2,'Product namespaces stay distinct');
+  assert.deepEqual(summary.orders.filter(row=>row.requiresAcceptance).map(row=>row.sourceOrderId),[pending]);
+  assert.equal(summary.orders.some(row=>hidden.includes(row.sourceOrderId)),false);
+  assert.ok(summary.orders.some(row=>row.sourceOrderId===paid)&&summary.orders.some(row=>row.sourceOrderId===closed));
+  assert.ok(summary.orders.every(row=>!row.canProcess));
  }finally{await f.close();}
 });

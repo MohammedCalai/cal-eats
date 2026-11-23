@@ -96,3 +96,37 @@
 .business-dashboard .dashboard-active-card .dashboard-active-actions>.button-link{background:#fff;color:#2a538a;border-color:#9cb7db}
 .business-dashboard .dashboard-order-scheduled{display:block;padding:8px 10px;border:1px solid #a293d0;border-radius:8px;background:#e4dcfa;color:#573b91;font-size:12px;line-height:1.5;font-weight:750}
 .dashboard-action-prompt.order-help{background:#403566;border-color:#9781d0;color:#eee7ff}
+
+.dashboard-source-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .8rem 2.5rem;
+  margin: .75rem 0 1.1rem;
+  padding: .85rem 0;
+  border-block: 1px solid var(--line);
+}
+.dashboard-source-counts dt, .dashboard-source-caption {
+  color: var(--muted);
+  font-size: .82rem;
+}
+.dashboard-source-counts dd {
+  margin: .25rem 0 0;
+  font-weight: 700;
+}
+.dashboard-source-caption {
+  text-align: left;
+  padding: 0 .5rem .55rem;
+}
+.dashboard-order-source {
+  display: inline-block;
+  border-radius: .4rem;
+  padding: .2rem .5rem;
+  background: #1c3653;
+  color: #c3e0ff;
+  font-size: .76rem;
+  font-weight: 650;
+}
+.dashboard-order-source.source-calai {
+  background: #38325a;
+  color: #e0d8ff;
+}

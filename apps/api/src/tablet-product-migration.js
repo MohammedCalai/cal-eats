@@ -27,3 +27,14 @@ export const terminalCalaiApprovalMigration74 = {
     approved_at TEXT NOT NULL
   );`
 };
+
+export const terminalCalaiFirstSetupMigration75 = {
+  version: 75,
+  name: 'owner_issued_calai_first_setup',
+  sql: `CREATE TABLE tablet_fleet_owner_calai_setups(
+    terminal_id TEXT PRIMARY KEY REFERENCES tablet_fleet_pairing_requests(terminal_id) ON DELETE CASCADE,
+    authority_binding TEXT NOT NULL CHECK(json_valid(authority_binding))
+  );
+  ALTER TABLE business_terminals ADD COLUMN calai_owner_authority_binding TEXT
+    CHECK(calai_owner_authority_binding IS NULL OR json_valid(calai_owner_authority_binding));`
+};

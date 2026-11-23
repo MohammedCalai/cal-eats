@@ -1,6 +1,11 @@
-import { terminalApi, terminalStatus, connectAutomaticTerminal } from "./terminal-client.js";
+import { terminalApi, terminalStatus, connectAutomaticTerminal, isLocalTerminalProofError } from "./terminal-client.js";
 
 const sequences = new Map();
+const offline = snapshot => ["offline", "connection_unavailable"].includes(snapshot?.status);
+const canReconnect = snapshot => offline(snapshot) && snapshot.reconnectEligible === true;
+const connectionBlocked = snapshot => ["revoked", "unpaired", "permission_required", "permission_denied"].includes(snapshot?.status) ||
+  (offline(snapshot) && !canReconnect(snapshot));
+const accessDenied = error => [401, 403, 409].includes(error?.status) && !isLocalTerminalProofError(error);
 export function createSurfacePresenceClient({ status = terminalStatus, request = terminalApi, reconnect = options => connectAutomaticTerminal(options), schedule = setTimeout, cancel = clearTimeout, heartbeatMs = 30000, nextSequence = id => { const value = (sequences.get(id) || 0) + 1; sequences.set(id, value); return value; }, onState = () => {} } = {}) {
   let scope = null, running = false, generation = 0, timer = null, pending = null, interval = heartbeatMs, closing = null, retry = 0, explicitlySignedOut = false;
   const verified = new Map(), retryDelays = [5000, 10000, 30000, 60000], scopeKey = selected => `${selected?.businessId}:${selected?.restaurantId}`;
@@ -9,15 +14,45 @@ export function createSurfacePresenceClient({ status = terminalStatus, request =
   function stop() { running = false; generation++; clearTimer(); pending?.controller.abort(); }
   function plan(expected, delay = interval) { if (running && expected === generation) { clearTimer(); timer = schedule(() => { timer = null; void tick(); }, delay); } }
   async function recover(expected, selected, snapshot) {
-    const known=verified.get(scopeKey(selected));
-    if(explicitlySignedOut||snapshot?.paired!==true||snapshot.status!=="offline"||!known||known.terminalId!==snapshot.terminalId){plan(expected);return;}
-    const controller=new AbortController(),attempt={controller,promise:null};pending=attempt;
-    attempt.promise=(async()=>{let restored=false;try{await reconnect({signal:controller.signal});const fresh=status();if(!running||expected!==generation||controller.signal.aborted)return;if(fresh.status!=="ready"||!sameScope(fresh.context,selected)||fresh.context.terminalId!==known.terminalId){running=false;onState({state:"not_reporting",code:"TERMINAL_SCOPE_MISMATCH"});return;}retry=0;restored=true;onState({state:"terminal_restored"});}catch(error){if(expected===generation&&!controller.signal.aborted)onState({state:"not_reporting",code:error.code||"TERMINAL_RECONNECT_UNAVAILABLE"});}finally{if(pending===attempt)pending=null;if(running&&expected===generation){if(restored)void tick();else plan(expected,retryDelays[Math.min(retry++,retryDelays.length-1)]);}}})();return attempt.promise;
+    const known = verified.get(scopeKey(selected));
+    if (explicitlySignedOut || snapshot?.paired !== true || !canReconnect(snapshot) || known?.terminalId !== snapshot.terminalId) {
+      plan(expected);
+      return;
+    }
+    const controller = new AbortController(), attempt = { controller, promise: null };
+    pending = attempt;
+    attempt.promise = (async () => {
+      let restored = false;
+      try {
+        await reconnect({ signal: controller.signal });
+        const fresh = status();
+        if (!running || expected !== generation || controller.signal.aborted) return;
+        if (fresh.status !== "ready" || !sameScope(fresh.context, selected) || fresh.context.terminalId !== known.terminalId) {
+          stop();
+          onState({ state: "not_reporting", code: "TERMINAL_SCOPE_MISMATCH" });
+          return;
+        }
+        retry = 0;
+        restored = true;
+        onState({ state: "terminal_restored" });
+      } catch (error) {
+        if (expected !== generation || controller.signal.aborted) return;
+        onState({ state: "not_reporting", code: error.code || "TERMINAL_RECONNECT_UNAVAILABLE" });
+        if (accessDenied(error) || connectionBlocked(status())) stop();
+      } finally {
+        if (pending === attempt) pending = null;
+        if (running && expected === generation) {
+          if (restored) void tick();
+          else plan(expected, retryDelays[Math.min(retry++, retryDelays.length - 1)]);
+        }
+      }
+    })();
+    return attempt.promise;
   }
   async function tick() {
     if (!running || pending) return;
     const expected = generation, selected = scope, snapshot = status();
-    if (snapshot?.status !== "ready" || !sameScope(snapshot.context, selected)) { onState({ state: "not_reporting" }); if(["revoked","unpaired"].includes(snapshot?.status)){stop();return;}return recover(expected,selected,snapshot); }
+    if (snapshot?.status !== "ready" || !sameScope(snapshot.context, selected)) { onState({ state: "not_reporting" }); if(connectionBlocked(snapshot)){stop();return;}return recover(expected,selected,snapshot); }
     const context = snapshot.context, controller = new AbortController(), attempt = { controller, promise: null }; pending = attempt;
     verified.set(scopeKey(selected),{terminalId:context.terminalId});let retryDelay=null;
     attempt.promise = (async () => {
@@ -33,8 +68,8 @@ export function createSurfacePresenceClient({ status = terminalStatus, request =
       } catch (error) {
         if (expected !== generation || controller.signal.aborted) return;
         onState({ state: "not_reporting", code: error.code || "PRESENCE_UNAVAILABLE" });
-        if ([401, 403, 409].includes(error.status)) { running = false; clearTimer(); }
-        else if(error.status===0||error.status>=500)retryDelay=retryDelays[Math.min(retry++,retryDelays.length-1)];
+        if (accessDenied(error) || connectionBlocked(status())) stop();
+        else if(isLocalTerminalProofError(error)||error.status===0||error.status>=500)retryDelay=retryDelays[Math.min(retry++,retryDelays.length-1)];
       } finally { if (pending === attempt) pending = null; plan(expected,retryDelay??interval); }
     })();
     return attempt.promise;
