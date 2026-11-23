@@ -24,6 +24,10 @@ test("registered tablet confirmations queue one original receipt per enabled pri
       return response.body.data;
     }
     const front = await printer("Front counter"), kitchen = await printer("Kitchen"), disabled = await printer("Disabled", false), revoked = await printer("Revoked");
+    const pairing = await f.json(`${root}/printers/${front.id}/pairing-code`, { method: "POST", cookie: owner, body: {} });
+    assert.equal(pairing.status, 201, pairing.text);
+    const paired = await f.json("/api/devices/pair", { method: "POST", body: { code: pairing.body.data.code, name: "Synthetic front counter" } });
+    assert.equal(paired.status, 201, paired.text);
     await f.json(`${root}/printers/${revoked.id}`, { method: "PATCH", cookie: owner, body: { revoked: true } });
     await printer("Other restaurant", true, `/api/restaurant/restaurants/${otherRestaurant.id}`, otherOwner);
     let sequence = 0;

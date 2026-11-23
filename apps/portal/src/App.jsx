@@ -6,7 +6,7 @@ import BusinessHomeLink from "./BusinessHomeLink.jsx";
 import TabletConnectionControls from "./TabletConnectionControls.jsx";
 import {BusinessMessageReminderProvider} from "./BusinessMessageReminder.jsx";
 import "./BusinessOrders.css";
-import { canPrintOrderReceipt, orderCustomerName, orderDeliveryAddress, orderDestination, orderStatusText, orderDatePreset } from "./order-presentation.js";
+import { canPrintOrderReceipt, orderReceiptPrincipal, orderCustomerName, orderDeliveryAddress, orderDestination, orderStatusText, orderDatePreset } from "./order-presentation.js";
 import { deliveryDeadlineAt, deliveryDispatchWarning } from "./delivery-deadline.js";
 import { DeliveryDeadlineBadge, useDeliveryDeadlineClock } from "./DeliveryDeadline.jsx";
 import CalaiPrinters from "./CalaiPrinters.jsx";
@@ -297,7 +297,8 @@ function Orders() {
 }
 function OrdersWorkspace({ restaurant, permission, alerts }) {
   const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant.id,workspace?.terminal);
-  const canPrint = canOperate && workspace?.business?.products?.["cal-eats"]?.allowedOnTablet !== false;
+  const printPrincipal = orderReceiptPrincipal(workspace?.business, restaurant.id, permission, canOperate);
+  const canPrint = Boolean(printPrincipal);
   const [printOrder, setPrintOrder] = useState(null);
   const tools=businessToolPermissions({permission,capabilities:restaurant.capabilities,principalKind:workspace?.business?.principalKind});
   const [page, setPage] = useState(1), [status, setStatus] = useState("all"), [datePreset,setDatePreset]=useState("all"),[dates,setDates]=useState({from:"",to:""});
@@ -354,10 +355,7 @@ function OrdersWorkspace({ restaurant, permission, alerts }) {
   const pagination = result.value?.pagination;
   useEffect(() => { if (pagination && page > Math.max(1, pagination.totalPages)) setPage(Math.max(1, pagination.totalPages)); }, [pagination?.totalPages, page]);
   const statuses = [["all", "All orders"], ["placed", "Awaiting confirmation"], ["accepted", "Confirmed"], ["preparing", "Preparing"], ["ready", "Ready"], ["out_for_delivery", "Out for delivery"], ["completed", "Completed"], ["rejected", "Rejected"]];
-  return <Page title="Orders" intro={<>View order details and messages. {!canPrint && <>
-    Print receipts and process orders from the registered restaurant tablet.
-    {tools.manageSettings && <> Check its setup in <NavLink to="/owner/printers">Printers</NavLink>.</>}
-  </>}</>}>
+  return <Page title="Orders" intro={<>View order details and messages. {!canPrint && "Restaurant owners and the registered tablet can print copies of confirmed receipts. "}{!canOperate && "Order updates are available on the registered restaurant tablet."}</>}>
     <section className="business-order-dates" aria-label="Order date range"><div className="business-order-date-presets" role="group" aria-label="Order date presets">{[["all","All dates"],["today","Today"],["yesterday","Yesterday"],["this_week","This week"],["last_week","Last week"],["custom","Custom dates"]].map(([value,label])=><button type="button" key={value} aria-pressed={datePreset===value} onClick={()=>{setError("");setDatePreset(value);if(value!=="custom"){setDates(orderDatePreset(value));setPage(1);}}}>{label}</button>)}</div>{datePreset==="custom"&&<form className="business-order-custom-dates" key={`${dates.from}:${dates.to}`} onSubmit={event=>{event.preventDefault();const fields=new FormData(event.currentTarget),from=String(fields.get("from")||""),to=String(fields.get("to")||"");if(from>to){setError("Choose an end date on or after the start date.");return;}setError("");setDates({from,to});setPage(1);}}><label>From<input name="from" type="date" required defaultValue={dates.from}/></label><label>To<input name="to" type="date" required defaultValue={dates.to}/></label><button className="primary">Apply dates</button></form>}<small>{dates.from||dates.to?`Placed from ${dates.from||"the beginning"} to ${dates.to||"today"}`:"Showing all order dates"} · London time · weeks start Monday</small></section>
     <div className="workspace-toolbar"><label>Order status<select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button className="quiet" disabled={result.loading} onClick={() => void result.reload()}>Refresh orders</button></div>
     {error && !active && <Alert>{error}</Alert>}
@@ -367,7 +365,7 @@ function OrdersWorkspace({ restaurant, permission, alerts }) {
       onPrint={order => { if (canPrint && canPrintOrderReceipt(order, restaurant.id)) setPrintOrder(order); }}/>}
     {pagination && <div className="finance-pagination" aria-label="Order pages"><button className="quiet" disabled={page <= 1 || result.loading} onClick={() => setPage(value => value - 1)}>Previous orders</button><span>{pagination.total} orders · Page {page} of {Math.max(1, pagination.totalPages)}</span><button className="quiet" disabled={!pagination.hasNext || result.loading} onClick={() => setPage(value => value + 1)}>Next orders</button></div>}
     {printOrder && <OrderReceiptPrintDialog key={printOrder.id} order={printOrder} businessId={workspace?.business?.id}
-      restaurantId={restaurant.id} allowed={canPrint} onClose={() => setPrintOrder(null)}/>}
+      restaurantId={restaurant.id} principal={printPrincipal} onClose={() => setPrintOrder(null)}/>}
     {selectedOrder && detailLoading && !active && <Dialog title={`Order ${selectedOrder.slice(0, 8).toUpperCase()}`} onClose={() => setParams({})}><p role="status">Loading order…</p></Dialog>}
     {active?.id === selectedOrder && active.restaurantId === restaurant.id && <Dialog title={active.fulfillment === "delivery" ? "Delivery order" : `Collection · ${orderCustomerName(active)}`} onClose={() => setParams({})}>
       {error && <Alert>{error}</Alert>}
@@ -393,7 +391,9 @@ function Printers() {
   const { restaurant, permission } = React.useContext(RestaurantContext);
   const workspace = useBusinessWorkspace();
   const canPrint = operationalTabletFor(workspace?.business?.id, restaurant.id, workspace?.terminal);
-  return <CalaiPrinters key={restaurant.id} restaurant={restaurant} permission={permission} canPrint={canPrint} tabletSetup={<TabletConnectionAccess/>}/>;
+  const canBrowserReprint = orderReceiptPrincipal(workspace?.business, restaurant.id, permission, false) === "owner";
+  return <CalaiPrinters key={restaurant.id} restaurant={restaurant} permission={permission} canPrint={canPrint}
+    canBrowserReprint={canBrowserReprint} tabletSetup={<TabletConnectionAccess/>}/>;
 }
 
 function PrinterWorkspace({ restaurant, permission }) {
@@ -619,7 +619,7 @@ function OrderTable({ items, onOpen, onPrint, restaurantId, now, canOperate, can
         <div className="business-order-row-actions">
           <button type="button" className="primary" aria-label={`${open} for ${customer}`} onClick={() => onOpen(order)}>{open}</button>
           <button type="button" className="quiet" aria-label={`Print receipt for ${customer}`} disabled={!canPrint || !printable}
-            title={!canPrint ? "Print from the registered restaurant tablet" : !printable ? "Available for confirmed orders" : undefined}
+            title={!canPrint ? "Ask a restaurant owner or use the registered tablet" : !printable ? "Available for confirmed orders" : undefined}
             onClick={() => onPrint(order)}>Print</button>
         </div>,
       ];

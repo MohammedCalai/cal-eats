@@ -6,6 +6,7 @@ const queueRefusals = new Map([
   ["ORDER_NOT_CONFIRMED", 409],
   ["PRINT_ALREADY_QUEUED", 409],
   ["PRINTER_DISABLED", 409],
+  ["PRINTER_DEVICE_REQUIRED", 409],
 ]);
 export const receiptUnconfirmed = "The print request could not be confirmed. Check the printer before retrying.";
 export const receiptRefused = error => queueRefusals.has(error?.code) && queueRefusals.get(error.code) === error.status;

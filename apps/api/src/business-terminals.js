@@ -5,9 +5,9 @@ import { withTransaction } from "./db/index.js";
 import {requireRestaurantMembership,requireRestaurantOwner} from './auth/authorization.js';
 import { businessAccountState, hasCurrentBusinessOwner, requireBusinessAccountOwner } from "./unified-business.js";
 import { buildTerminalInstaller } from "../../terminal-auth/windows/build-installer.mjs";
-import { businessProductState, currentCalaiApproverProof, ownerCalaiTabletBindingMatches, terminalHasCalaiAuthority } from "./business-product-policy.js";
+import { businessProductPermission, businessProductState, currentCalaiApproverProof, ownerCalaiTabletBindingMatches, terminalHasCalaiAuthority } from "./business-product-policy.js";
 import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,assertFleetPairingAllowed,canOfferOwnerCalaiSetup,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
-import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
+import {tabletApplicationProducts,tabletPrinterProductPermitted,tabletProductPermitted,tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 import {assertTabletSelectionActivation} from './tablet-assignment-safety.js';
 import {readTabletDirectory} from './tablet-directory.js';
 
@@ -169,6 +169,28 @@ export function assertBusinessTerminalSessionLive({ db, config, session, restaur
 }
 export function requireOperationalPrinterUser(db,config,session,restaurantId){assertBusinessTerminalSessionLive({db,config,session,restaurantId});return requireRestaurantMembership(db,session,restaurantId);}
 
+export function requireReceiptReprintUser(db,config,session,restaurantId){
+  if(isTerminal(session))return requireOperationalPrinterUser(db,config,session,restaurantId);
+  if(!session)throw failure('AUTH_REQUIRED','Sign in to your restaurant’s business website.',401);
+  if(session.native||session.nativeAudience||session.platformFederated||session.user?.role!=='restaurant'||!session.sessionId){
+    throw failure('RECEIPT_OWNER_REQUIRED','Only a restaurant owner signed into the business website can request this receipt.');
+  }
+  const currentOwner=db.prepare(`SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id
+    WHERE s.id=? AND u.id=? AND s.revoked_at IS NULL AND s.expires_at>?
+      AND u.principal_kind='human' AND u.account_enabled=1 AND u.role='restaurant'`).get(session.sessionId,session.user.id,now(config));
+  if(!currentOwner)throw failure('RECEIPT_OWNER_REQUIRED','Sign in again as the restaurant owner.');
+  const user=requireRestaurantOwner(db,session,restaurantId);
+  const location=db.prepare(`SELECT p.business_id FROM business_product_links p
+    JOIN business_accounts b ON b.id=p.business_id AND b.archived_at IS NULL
+    JOIN restaurants r ON r.id=p.restaurant_id AND r.archived_at IS NULL AND r.status='approved' AND r.suspended=0
+    WHERE p.product='cal-eats' AND p.status='active' AND p.restaurant_id=?`).get(restaurantId);
+  if(!location||!businessProductPermission(db,location.business_id,'cal-eats')||!tabletPrinterProductPermitted(db,restaurantId)){
+    throw failure('PRODUCT_INACTIVE','Cal-Eats printing is currently unavailable for this restaurant.');
+  }
+  requireBusinessAccountOwner(db,session,location.business_id);
+  return user;
+}
+
 function requireEats(session) {
   if (!session.restaurantId || session.products?.["cal-eats"]?.linked !== true) throw failure("PRODUCT_INACTIVE", "The Cal-Eats account is not connected to this tablet.");
   return session.restaurantId;
@@ -182,7 +204,7 @@ function ownOrder(db, session, id) {
 }
 
 export function enforceBusinessTerminalCapabilities({ req, url, db, session,config }) {
-  const operational=(req.method==='PATCH'&&/^\/api\/restaurant\/orders\/[^/]+\/(?:status|preparation)$/.test(url.pathname))||(req.method==='POST'&&/^\/api\/restaurant\/restaurants\/[^/]+\/printers\/[^/]+\/(?:test-receipt|reprints|jobs\/[^/]+\/check)$/.test(url.pathname))||(['POST','PATCH'].includes(req.method)&&/^\/api\/(?:print-jobs\/[^/]+\/(?:retry|status)|orders\/[^/]+\/print)$/.test(url.pathname));
+  const operational=(req.method==='PATCH'&&/^\/api\/restaurant\/orders\/[^/]+\/(?:status|preparation)$/.test(url.pathname))||(req.method==='POST'&&/^\/api\/restaurant\/restaurants\/[^/]+\/printers\/[^/]+\/(?:test-receipt|jobs\/[^/]+\/check)$/.test(url.pathname))||(['POST','PATCH'].includes(req.method)&&/^\/api\/(?:print-jobs\/[^/]+\/(?:retry|status)|orders\/[^/]+\/print)$/.test(url.pathname));
   if(operational)assertBusinessTerminalSessionLive({db,config,session});
   if (!isTerminal(session)) return;
   const method = req.method, path = url.pathname;
