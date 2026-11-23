@@ -12,9 +12,18 @@
   flex-wrap: wrap;
   gap: .45rem;
 }
-.business-order-row-actions button { min-height: 44px; }
+.business-order-row-actions button {
+  min-height: 44px;
+  white-space: nowrap;
+}
 .business-order-print-dialog form { display: grid; gap: 1rem; }
 .business-order-print-dialog form p { margin: 0; }
+@media (min-width: 601px) {
+  .business-order-row-actions { flex-wrap: nowrap; }
+}
+@media (min-width: 601px) and (max-width: 1100px) {
+  .business-orders-table td:first-child { min-width: 200px; }
+}
 @media (max-width: 600px) {
   .business-orders-table td:first-child { min-width: 0; }
 }
