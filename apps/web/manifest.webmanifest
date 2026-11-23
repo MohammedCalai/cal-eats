@@ -1,7 +1,7 @@
 {
   "name": "Cal-Eats",
   "short_name": "Cal-Eats",
-  "description": "Cal-Eats browser preview for Luton.",
+  "description": "Cal-Eats local food marketplace.",
   "start_url": "/order/",
   "scope": "/",
   "display": "standalone",
