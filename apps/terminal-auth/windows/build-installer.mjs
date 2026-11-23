@@ -3,7 +3,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {gzipSync} from "node:zlib";
 import {createHash} from "node:crypto";
-import {API_ORIGIN,UUID,managedJobId} from "../src/protocol.js";
+import {API_ORIGIN,UUID,managedJobId,validManagedDeliveryRevision} from "../src/protocol.js";
 const root=path.resolve(fileURLToPath(new URL("../",import.meta.url)));
 const names=["package.json","src/protocol.js","src/windows-key.js","src/device.js","src/broker.js","src/index.js","windows/terminal-key.ps1"];
 const enrolmentKeys=['schemaVersion','product','apiBaseUrl','businessId','terminalId','code','challenge','expiresAt'];
@@ -38,13 +38,16 @@ export function buildTerminalInstaller({targetSerial='',enrolment=null,deviceNam
 export function buildManagedTerminalInstaller(options){
  if(!options||Object.getPrototypeOf(options)!==Object.prototype)throw new TypeError("Invalid managed tablet setup.");
  const keys=["targetSerial","entraDeviceId","jobId"],properties=Object.getOwnPropertyDescriptors(options);
- if(Reflect.ownKeys(properties).length!==keys.length||!keys.every(key=>Object.hasOwn(properties[key]??{},"value"))){
+ if(!keys.every(key=>Object.hasOwn(properties[key]??{},"value"))||
+    Reflect.ownKeys(properties).some(key=>!keys.includes(key)&&key!=="deliveryRevision")||
+    (properties.deliveryRevision&&!Object.hasOwn(properties.deliveryRevision,"value"))){
   throw new TypeError("Invalid managed tablet setup.");
  }
  const {targetSerial,entraDeviceId,jobId}=options;
+ const deliveryRevision=properties.deliveryRevision?properties.deliveryRevision.value:1;
  if(typeof targetSerial!=="string"||!targetSerial||targetSerial!==targetSerial.trim()||
-    !managedJobId(entraDeviceId)||!managedJobId(jobId))throw new TypeError("Invalid managed tablet setup.");
- return renderInstaller({targetSerial,managed:{jobId,entraDeviceId}});
+    !managedJobId(entraDeviceId)||!managedJobId(jobId)||!validManagedDeliveryRevision(deliveryRevision))throw new TypeError("Invalid managed tablet setup.");
+ return renderInstaller({targetSerial,managed:{jobId,entraDeviceId,...(deliveryRevision>1?{deliveryRevision}:{})}});
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const destination=process.argv[2];if(!destination)throw Error("An output path is required.");

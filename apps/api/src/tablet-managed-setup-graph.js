@@ -54,16 +54,20 @@ export function loadTabletManagedSetupSettings(input = {}, env = process.env) {
   return { enabled, tenantId, clientId, certificateThumbprint, privateKeyFile, privateKey, targets };
 }
 
+function encodeScript(content) {
+  if (typeof content !== 'string' || Buffer.byteLength(content) >= 200000 ||
+      !/^[\x09\x0a\x0d\x20-\x7e]+$/.test(content)) throw fail('MANAGED_SETUP_GRAPH_SCRIPT_INVALID');
+  return Buffer.from(content, 'utf8').toString('base64');
+}
+
 function jobEnvelope(settings, input) {
   if (!settings?.enabled) throw fail('MANAGED_SETUP_GRAPH_NOT_CONFIGURED');
   const jobId = id(input?.jobId), managedDeviceId = id(input?.managedDeviceId), target = settings.targets.get(managedDeviceId);
   if (!jobId || !target || target.entraDeviceId !== id(input.entraDeviceId) || target.serialNumber !== serial(input.serialNumber)) {
     throw fail('MANAGED_SETUP_GRAPH_TARGET_MISMATCH');
   }
-  if (typeof input.scriptContent !== 'string' || Buffer.byteLength(input.scriptContent) >= 200000 ||
-      !/^[\x09\x0a\x0d\x20-\x7e]+$/.test(input.scriptContent)) throw fail('MANAGED_SETUP_GRAPH_SCRIPT_INVALID');
   return { jobId, managedDeviceId, target, displayName: `Cal-Eats managed tablet ${jobId}`,
-    scriptContent: Buffer.from(input.scriptContent, 'utf8').toString('base64') };
+    scriptContent: encodeScript(input.scriptContent) };
 }
 
 async function bounded(work, timeoutMs) {
@@ -223,12 +227,13 @@ export function createTabletManagedSetupGraph(settings, {
     throw fail('MANAGED_SETUP_GRAPH_PAGING_INVALID');
   }
 
-  async function verifyScript(job, scriptId, token, signal) {
+  async function verifyScript(job, scriptId, token, signal, previous = null) {
     const script = await get(token, signal, `${scripts}/${scriptId}`, {
       '$select': 'id,displayName,description,fileName,scriptContent,runAsAccount,runAs32Bit,enforceSignatureCheck,lastModifiedDateTime'
     }, { notFoundRetry: true });
     if (id(script.id) !== scriptId || script.displayName !== job.displayName || script.description !== description ||
-        script.fileName !== fileName || script.scriptContent !== job.scriptContent || script.runAsAccount !== 'system' ||
+        script.fileName !== fileName || (script.scriptContent !== job.scriptContent && (!previous || script.scriptContent !== previous)) ||
+        script.runAsAccount !== 'system' ||
         script.runAs32Bit !== false || script.enforceSignatureCheck !== false) throw fail('MANAGED_SETUP_GRAPH_SCRIPT_MISMATCH');
     return script;
   }
@@ -294,10 +299,51 @@ export function createTabletManagedSetupGraph(settings, {
     }
   }
 
+  async function redeliver(input) {
+    const job = jobEnvelope(settings, input), scriptId = id(input.scriptId);
+    const previous = encodeScript(input.previousScriptContent);
+    if (!scriptId || previous === job.scriptContent || input.allowUpdate !== undefined && typeof input.allowUpdate !== 'boolean') {
+      throw fail('MANAGED_SETUP_GRAPH_SCRIPT_INVALID');
+    }
+    let updateStarted = false, providerConfirmed = false;
+    try {
+      return await bounded(async signal => {
+        const token = await tokenFor(signal);
+        await verifyTarget(job, token, signal);
+        const found = await findScript(job, token, signal);
+        if (!found) throw fail('MANAGED_SETUP_GRAPH_NOT_FOUND', true);
+        if (found !== scriptId) throw fail('MANAGED_SETUP_GRAPH_SCRIPT_MISMATCH');
+        const current = await verifyScript(job, scriptId, token, signal, previous);
+        if (!await assignmentPresent(job, scriptId, token, signal)) throw fail('MANAGED_SETUP_GRAPH_ASSIGNMENT_UNCONFIRMED', true);
+        if (current.scriptContent === job.scriptContent) return { scriptId };
+        if (input.allowUpdate !== true) throw fail('MANAGED_SETUP_GRAPH_UPDATE_UNCONFIRMED', true);
+        await verifyTarget(job, token, signal);
+        await permit(input.beginUpdate, 'MANAGED_SETUP_GRAPH_UPDATE_BLOCKED', signal);
+        updateStarted = true;
+        await request('PATCH', key(`${scripts}/${scriptId}`), token, signal, { body: { scriptContent: job.scriptContent } });
+        const updated = await verifyScript(job, scriptId, token, signal, previous);
+        if (updated.scriptContent !== job.scriptContent) throw fail('MANAGED_SETUP_GRAPH_UPDATE_UNCONFIRMED', true);
+        providerConfirmed = true;
+        await verifyTarget(job, token, signal);
+        if (!await assignmentPresent(job, scriptId, token, signal)) throw fail('MANAGED_SETUP_GRAPH_ASSIGNMENT_UNCONFIRMED', true);
+        return { scriptId };
+      }, timeoutMs);
+    } catch (error) {
+      if (updateStarted && !providerConfirmed && error.code !== 'MANAGED_SETUP_GRAPH_PERMISSION_REQUIRED' &&
+          error.code !== 'MANAGED_SETUP_GRAPH_SCRIPT_MISMATCH') {
+        error.ambiguousUpdate = true;
+        error.retry = true;
+      }
+      throw error;
+    }
+  }
+
   async function observe(input) {
     const job = jobEnvelope(settings, input), scriptId = id(input.scriptId);
+    const { deliveryRevision = 1 } = input;
     const requestedAt = typeof input.requestedAt === 'string' ? Date.parse(input.requestedAt) : NaN;
-    if (!scriptId || !Number.isFinite(requestedAt) || requestedAt > now()) throw fail('MANAGED_SETUP_GRAPH_EVIDENCE_INVALID');
+    if (!scriptId || !Number.isSafeInteger(deliveryRevision) || deliveryRevision < 1 ||
+        !Number.isFinite(requestedAt) || requestedAt > now()) throw fail('MANAGED_SETUP_GRAPH_EVIDENCE_INVALID');
     return bounded(async signal => {
       const token = await tokenFor(signal);
       await verifyTarget(job, token, signal);
@@ -310,8 +356,9 @@ export function createTabletManagedSetupGraph(settings, {
           run.id.length > 200 || /[\x00-\x1f\x7f]/.test(run.id)) throw fail('MANAGED_SETUP_GRAPH_RUN_SCOPE_MISMATCH');
       const observed = typeof run.lastStateUpdateDateTime === 'string' ? Date.parse(run.lastStateUpdateDateTime) : NaN;
       const modified = typeof script.lastModifiedDateTime === 'string' ? Date.parse(script.lastModifiedDateTime) : NaN;
-      if (['fail', 'scriptError', 'notApplicable'].includes(run.runState) && Number.isFinite(observed) &&
-          Number.isFinite(modified) && observed >= Math.max(requestedAt, modified) && observed <= now() + 60000) {
+      const since = Math.max(requestedAt, modified);
+      const fresh = (deliveryRevision === 1 ? observed >= since : observed > since) && observed <= now() + 60000;
+      if (['fail', 'scriptError', 'notApplicable'].includes(run.runState) && fresh) {
         throw fail('MANAGED_SETUP_GRAPH_EXECUTION_FAILED');
       }
       if (run.runState !== 'success') return null;
@@ -319,10 +366,10 @@ export function createTabletManagedSetupGraph(settings, {
           typeof run.resultMessage !== 'string' || Buffer.byteLength(run.resultMessage) > 8192 || !run.resultMessage.trim()) {
         throw fail('MANAGED_SETUP_GRAPH_EVIDENCE_INVALID');
       }
-      if (observed < Math.max(requestedAt, modified)) return null;
+      if (!fresh) return null;
       return { resultMessage: run.resultMessage, observedAt: new Date(observed).toISOString() };
     }, timeoutMs);
   }
 
-  return { dispatch, observe };
+  return { dispatch, redeliver, observe };
 }

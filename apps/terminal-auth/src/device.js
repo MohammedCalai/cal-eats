@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {API_ORIGIN,UUID,exactObject,failure,pairingCanonical,requestCanonical,requestAllowed,managedJobId,managedPublicKey,managedEvidenceCanonical,managedActivationCanonical} from "./protocol.js";
+import {API_ORIGIN,UUID,exactObject,failure,pairingCanonical,requestCanonical,requestAllowed,managedJobId,managedPublicKey,managedEvidenceCanonical,managedActivationCanonical,validManagedDeliveryRevision} from "./protocol.js";
 import {WindowsDeviceKey} from "./windows-key.js";
 export class TerminalDevice{
   constructor({identityPath,managedPath=null,apiBaseUrl=API_ORIGIN,fetchImpl=globalThis.fetch,keyFactory=id=>new WindowsDeviceKey(id),clock=Date.now,randomBytes=crypto.randomBytes,timeoutMs=10000}){
@@ -50,8 +50,8 @@ export class TerminalDevice{
     const data=Object.hasOwn(value,"data")?value.data:value;
     return includeStatus?{status:response.status,data}:data;
   }
-  async prepareManagedSetup(jobId,setupPath){
-    if(!managedJobId(jobId))throw failure("TABLET_MANAGED_SETUP_INVALID");
+  async prepareManagedSetup(jobId,setupPath,deliveryRevision=1){
+    if(!managedJobId(jobId)||!validManagedDeliveryRevision(deliveryRevision))throw failure("TABLET_MANAGED_SETUP_INVALID");
     if(this.identity&&(!this.identity.paired||this.identity.terminalId!==jobId))throw failure("TABLET_LOCAL_REPLACEMENT_REQUIRED",409);
     const pending=await readManagedSetup(setupPath);
     if(pending&&pending.jobId!==jobId&&pending.state!=="closed")throw failure("TABLET_MANAGED_SETUP_CONFLICT",409);
@@ -60,12 +60,12 @@ export class TerminalDevice{
     const {publicKeySpki}=await key.publicKey({create:!this.identity&&pending?.jobId!==jobId});
     if(!managedPublicKey(publicKeySpki)||(this.identity&&this.identity.publicKeySpki!==publicKeySpki)||
         (pending?.jobId===jobId&&pending.publicKeySpki!==publicKeySpki))throw failure("TABLET_MANAGED_KEY_CHANGED",409);
-    const signature=await key.sign(managedEvidenceCanonical({jobId,publicKeySpki}));
+    const signature=await key.sign(managedEvidenceCanonical({jobId,publicKeySpki,deliveryRevision}));
     if(!/^[A-Za-z0-9_-]{86}$/.test(signature))throw failure("TABLET_SIGNATURE_INVALID",503);
     if(!this.identity?.paired&&pending?.jobId!==jobId){
       await this.saveProtectedJson(setupPath,{schemaVersion:1,jobId,publicKeySpki,state:"pending"});
     }
-    return {jobId,publicKeySpki,signature};
+    return {jobId,...(deliveryRevision>1?{deliveryRevision}:{}),publicKeySpki,signature};
   }
   async activateManagedSetup({jobId,publicKeySpki}){
     if(!managedJobId(jobId)||!managedPublicKey(publicKeySpki))throw failure("TABLET_MANAGED_SETUP_INVALID");

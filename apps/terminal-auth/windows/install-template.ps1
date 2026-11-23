@@ -79,7 +79,28 @@ function Read-TerminalDeviceJoin {
   return $Output.GetAwaiter().GetResult()
  } finally { $Process.Dispose() }
 }
+function Get-TerminalManagedSetupRevision($Setup) {
+ if ($Setup -isnot [pscustomobject]) { throw 'Managed tablet setup data is invalid.' }
+ $Fields=@($Setup.PSObject.Properties | ForEach-Object { $_.Name })
+ $HasRevision=$Fields -ccontains 'deliveryRevision'
+ $ExpectedCount=if ($HasRevision) { 3 } else { 2 }
+ if ($Fields.Count -ne $ExpectedCount -or $Fields -cnotcontains 'jobId' -or $Fields -cnotcontains 'entraDeviceId') {
+  throw 'Managed tablet setup data is invalid.'
+ }
+ foreach ($Name in @('jobId','entraDeviceId')) {
+  if ($Setup.$Name -isnot [string] -or $Setup.$Name -cnotmatch $ManagedUuid -or $Setup.$Name -ceq [guid]::Empty.ToString()) {
+   throw 'Managed tablet setup data is invalid.'
+  }
+ }
+ if (-not $HasRevision) { return 1 }
+ $Revision=$Setup.deliveryRevision
+ if (($Revision -isnot [int] -and $Revision -isnot [long]) -or $Revision -lt 2 -or $Revision -gt 9007199254740991) {
+  throw 'Managed tablet delivery revision is invalid.'
+ }
+ return $Revision
+}
 $TerminalManagedSetup=$null
+$ManagedUuid='\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'
 if ($TerminalManagedSetupBase64) {
  if ($TerminalIdentity.User.Value -cne 'S-1-5-18') { throw 'Run this managed tablet setup as LOCAL SYSTEM.' }
  if (-not $TerminalBoundSerial -or $NodePath -or $TargetSerial -or $EnrolmentPath -or $ForgetRegistration -or
@@ -87,13 +108,7 @@ if ($TerminalManagedSetupBase64) {
   throw 'Managed tablet setup cannot be combined with another installation or registration override.'
  }
  $TerminalManagedSetup=ConvertFrom-TerminalSetupData $TerminalManagedSetupBase64
- $ManagedUuid='\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'
- $SetupFields=@($TerminalManagedSetup.PSObject.Properties | ForEach-Object { $_.Name })
- if ($TerminalManagedSetup -isnot [pscustomobject] -or $SetupFields.Count -ne 2 -or $SetupFields -cnotcontains 'jobId' -or
-     $SetupFields -cnotcontains 'entraDeviceId' -or $TerminalManagedSetup.jobId -isnot [string] -or
-     $TerminalManagedSetup.jobId -cnotmatch $ManagedUuid -or $TerminalManagedSetup.jobId -ceq [guid]::Empty.ToString() -or
-     $TerminalManagedSetup.entraDeviceId -isnot [string] -or $TerminalManagedSetup.entraDeviceId -cnotmatch $ManagedUuid -or
-     $TerminalManagedSetup.entraDeviceId -ceq [guid]::Empty.ToString()) { throw 'Managed tablet setup data is invalid.' }
+ $TerminalManagedDeliveryRevision=Get-TerminalManagedSetupRevision $TerminalManagedSetup
  if (-not (Test-TerminalManagedJoin (Read-TerminalDeviceJoin) $TerminalManagedSetup.entraDeviceId)) { throw 'This tablet does not match the selected Entra device.' }
 }
 $TerminalHasEmbeddedEnrolment=-not [string]::IsNullOrEmpty($TerminalEmbeddedEnrolmentBase64)
@@ -406,7 +421,11 @@ try {
  }
  if ($TerminalManagedSetup) {
   Assert-TerminalManagedState $IdentityPath $ManagedPath $ManualPath $TerminalManagedSetup.jobId | Out-Null
-  $Evidence=@(& $TerminalNode $TerminalEntry '--config' $TerminalConfig '--prepare-managed' $TerminalManagedSetup.jobId)
+  $EvidenceArguments=@('--config',$TerminalConfig,'--prepare-managed',$TerminalManagedSetup.jobId)
+  if ($TerminalManagedDeliveryRevision -gt 1) {
+   $EvidenceArguments+=$TerminalManagedDeliveryRevision.ToString([Globalization.CultureInfo]::InvariantCulture)
+  }
+  $Evidence=@(& $TerminalNode $TerminalEntry @EvidenceArguments)
   if ($LASTEXITCODE -ne 0 -or $Evidence.Count -ne 1 -or $Evidence[0] -cnotmatch '\ACAL_EATS_MANAGED_SETUP_V1:[A-Za-z0-9_-]{1,1000}\z') { throw 'The protected tablet key could not prepare managed setup evidence.' }
  }
  if (-not $ReuseManagedRelease -or $RestartManagedBroker -or $ExistingTask.State -ne 'Running') { Start-ScheduledTask -TaskName $TerminalTaskName -TaskPath '\' | Out-Null }

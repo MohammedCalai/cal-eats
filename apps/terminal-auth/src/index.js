@@ -3,7 +3,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {TerminalDevice,readManagedSetup} from "./device.js";
 import {startBroker} from "./broker.js";
-import {API_ORIGIN,BROKER_PORT,exactObject,encodeManagedEvidence} from "./protocol.js";
+import {API_ORIGIN,BROKER_PORT,exactObject,encodeManagedEvidence,validManagedDeliveryRevision} from "./protocol.js";
 
 async function installedConfig(configPath){
   const config=JSON.parse(await fs.readFile(configPath,"utf8"));
@@ -53,11 +53,14 @@ export function managedSetupPoller({device,managedPath,clock=Date.now}){
     try{return await working;}finally{working=null;}
   };
 }
-async function managedEvidence(configPath,jobId){
+async function managedEvidence(configPath,jobId,revisionArgument){
+  const deliveryRevision=revisionArgument===undefined?1:Number(revisionArgument);
+  if(!validManagedDeliveryRevision(deliveryRevision)||
+    (revisionArgument!==undefined&&(deliveryRevision<2||String(deliveryRevision)!==revisionArgument)))throw Error("Invalid managed tablet delivery revision");
   const {config,identityPath,setupPath,managedPath}=await installedConfig(configPath);
   if(!await missing(setupPath))throw Error("Another tablet setup is in progress");
   const device=await new TerminalDevice({identityPath,managedPath,apiBaseUrl:config.apiBaseUrl}).load();
-  const evidence=await device.prepareManagedSetup(jobId,managedPath);
+  const evidence=await device.prepareManagedSetup(jobId,managedPath,deliveryRevision);
   return encodeManagedEvidence(evidence);
 }
 export async function startInstalledBroker({configPath,signal,logger=record=>process.stdout.write(JSON.stringify(record)+"\n")}){
@@ -96,7 +99,8 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
     const managedIndex=process.argv.indexOf("--prepare-managed");
     const operation=managedIndex===-1
       ? startInstalledBroker({configPath:path.resolve(configPath),signal:controller.signal})
-      : managedEvidence(path.resolve(configPath),process.argv[managedIndex+1]).then(line=>process.stdout.write(line+"\n"));
+      : managedEvidence(path.resolve(configPath),process.argv[managedIndex+1],process.argv[managedIndex+2])
+          .then(line=>process.stdout.write(line+"\n"));
     operation.catch(()=>{process.stderr.write("The protected restaurant tablet service could not start.\n");process.exitCode=1;});
   }
 }
