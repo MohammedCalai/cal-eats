@@ -6,9 +6,9 @@ import { createReceiptPrintRequests } from "../src/order-receipt-print.js";
 const scope = () => ({ businessId: randomUUID(), restaurantId: randomUUID(), orderId: randomUUID() });
 const queued = () => ({ id: randomUUID(), manualReprint: true, status: "queued" });
 const one = id => () => [{ id, name: "Receipt printer" }];
-function tab() {
+function tab(clock) {
   const records = new Map();
-  const options = { storage: () => ({
+  const options = { clock, storage: () => ({
     getItem: key => records.get(key),
     setItem: (key, value) => records.set(key, value),
     removeItem: key => records.delete(key),
@@ -112,4 +112,24 @@ test("multiple printers require a destination, and choosing one queues only that
     return queued();
   }, printers[1].id);
   assert.equal(result.printerName, printers[1].name);
+});
+
+test("a second tap immediately after a completed response does not create another copy", async () => {
+  let now = 0;
+  const order = scope(), printer = randomUUID(), requestIds = [];
+  const requests = tab(() => now).reload();
+  const first = await requests.submit(order, one(printer), (_, id) => {
+    requestIds.push(id);
+    return { ...queued(), status: "printed" };
+  });
+  now += 200;
+  const repeated = await requests.submit(order, () => assert.fail("Unexpected second lookup"), () => assert.fail("Duplicate receipt"));
+  assert.equal(repeated.id, first.id);
+  now += 1300;
+  const later = await requests.submit(order, one(printer), (_, id) => {
+    requestIds.push(id);
+    return queued();
+  });
+  assert.notEqual(later.id, first.id);
+  assert.notEqual(requestIds[0], requestIds[1]);
 });
