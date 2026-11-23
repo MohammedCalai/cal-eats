@@ -109,6 +109,9 @@ test("printer connection and queue summaries stay scoped and never expose device
     assert.equal((await tabletJson(f, owner, `/api/restaurant/orders/${order.id}/status`, { method: "PATCH", body: { status: "accepted" } })).status, 200);
     assert.equal((await state()).jobs.queued, 1);
     const claim = (await f.json("/api/devices/jobs/claim", { method: "POST", headers, body: {} })).body.data.job;
+    assert.equal(claim.manualReprint, false);
+    assert.equal(claim.receipt.paymentStatus, "Cash due");
+    assert.equal(JSON.parse(f.db.prepare("SELECT receipt FROM device_print_jobs WHERE id=?").get(claim.id).receipt).paymentStatus, "cash_due");
     assert.equal((await state()).jobs.claimed, 1);
     await f.json(`/api/devices/jobs/${claim.id}/ack`, { method: "POST", headers, body: { claimToken: claim.claimToken, outcome: "uncertain" } });
     const summary = await state(); assert.equal(summary.jobs.uncertain, 1); assert.equal(summary.jobs.claimed, 0);

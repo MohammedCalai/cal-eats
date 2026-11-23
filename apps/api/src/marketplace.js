@@ -5,6 +5,7 @@ import {restoreRefundedSettlementAdjustments,adjustedRefundRecoveryMinor} from "
 import { isIP } from "node:net";
 import {pairPrinterDevice,downloadAutomaticPrinterSetup} from "./printer-connection.js";
 import {latestPrinterTestReceipt,createPrinterTestReceipt,claimNextPrinterJob,acknowledgePrinterJob} from "./printer-test-receipts.js";
+import { thermalPaymentLabel } from "./thermal-receipt.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { calculateCommissionAtRate, DEFAULT_COMMISSION_BASE, VALIDATION } from "../../../packages/contracts/src/index.js";
 import { requireRestaurantMembership, requireRestaurantOwner, requireRestaurantCapability, requireRole, requireUser } from "./auth/authorization.js";
@@ -455,10 +456,19 @@ async function claimJob({req,res,db,config}){
     if(!db.prepare('SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL').get(d.restaurant_id))return null;
     if(!tabletPrinterProductPermitted(db,d.restaurant_id))return null;
     if(d.printer_reachable===0&&d.printer_checked_at&&Date.parse(d.printer_checked_at)>=Date.parse(now)-60000)return null;
-    return claimNextPrinterJob(db,d,{now,lease,tokenHash});
+    const claim=claimNextPrinterJob(db,d,{now,lease,tokenHash});
+    if(!claim)return null;
+    const receipt=json(claim.job.receipt,{})??{};
+    if(claim.source.testReceipt)return {...claim,receipt};
+    const paymentStatus=receipt.paymentStatus;
+    const providerMode=typeof paymentStatus==="string"&&paymentStatus.startsWith("stripe_")
+      ? db.prepare("SELECT provider_mode FROM stripe_order_payments WHERE order_id=?").get(claim.job.order_id)?.provider_mode
+      : undefined;
+    // The existing bridge prints paymentStatus as text. Preserve the saved order and job snapshot.
+    return {...claim,receipt:{...receipt,paymentStatus:thermalPaymentLabel(paymentStatus,providerMode)}};
   });
   if(!result)return sendJson(res,200,{data:{job:null}});
-  const j=result.job;return sendJson(res,200,{data:{job:{id:j.id,claimToken:token,leaseExpiresAt:j.lease_expires_at,attempt:j.attempt,receipt:json(j.receipt,{}),manualReprint:Boolean(j.manual_reprint),testReceipt:result.source.testReceipt}}});
+  const j=result.job;return sendJson(res,200,{data:{job:{id:j.id,claimToken:token,leaseExpiresAt:j.lease_expires_at,attempt:j.attempt,receipt:result.receipt,manualReprint:Boolean(j.manual_reprint),testReceipt:result.source.testReceipt}}});
 }
 async function ackJob({req,res,db,config,id}){
   const d=deviceAuth(req,db),body=await readJson(req,config.bodyLimit);exactObject(body,['claimToken','outcome','detail']);

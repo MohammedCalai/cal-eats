@@ -8,6 +8,7 @@ import { journeyFixture } from "./helpers.js";
 import {enrolRegisteredTablet} from "./registered-tablet-fixture.js";
 import { parseSessionCookie, readSession } from "../src/auth/sessions.js";
 import { routeMarketplace } from "../src/marketplace.js";
+import { thermalPaymentLabel } from "../src/thermal-receipt.js";
 
 async function kitchen(f) {
   const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
@@ -119,7 +120,9 @@ test("a current website owner can queue a confirmed copy without pairing a table
     [`/api/business/accounts/${nativeBusiness.business_id}/surface/heartbeat`, "POST", { sequence: 1, state: "active" }]
   ]) assert.equal((await f.json(url, { method, cookie: owner, body: data })).status, 403, url);
 
-  f.db.prepare("UPDATE orders SET status='completed',confirmed_at=? WHERE id=?").run(now, orderId);
+  f.db.prepare("UPDATE orders SET status='completed',confirmed_at=?,payment_method='card',payment_status='stripe_captured' WHERE id=?").run(now, orderId);
+  f.db.prepare("INSERT INTO stripe_order_payments(order_id,provider_mode,status,created_at,updated_at) VALUES(?,'stripe_live','captured',?,?)")
+    .run(orderId, now, now);
   assert.equal((await print({ cookie: other })).status, 404);
   f.db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,permission,created_at,can_view_devices) VALUES(?,?,'staff',?,1)")
     .run(restaurant.id, staff.user.id, now);
@@ -145,7 +148,7 @@ test("a current website owner can queue a confirmed copy without pairing a table
   const id = copies[0].body.data.id;
   assert.equal(copies[1].body.data.id, id);
   assert.equal((await print(undefined, { ...body, requestId: randomUUID() })).body.error.code, "PRINT_ALREADY_QUEUED");
-  const job = f.db.prepare("SELECT status,manual_reprint FROM device_print_jobs WHERE id=?").get(id);
+  const job = f.db.prepare("SELECT status,manual_reprint,receipt FROM device_print_jobs WHERE id=?").get(id);
   assert.equal(job.status, "queued");
   assert.equal(job.manual_reprint, 1);
   const audit = f.db.prepare("SELECT actor_user_id,details FROM audit_events WHERE action='deliberate_labelled_reprint' AND entity_id=?").get(id);
@@ -153,6 +156,17 @@ test("a current website owner can queue a confirmed copy without pairing a table
   assert.equal(JSON.parse(audit.details).terminalId, null);
   assert.equal(JSON.parse(audit.details).requestedFrom, "business_website");
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM business_terminals").get().n, 0);
+
+  // An already-queued legacy job still carries the raw value in storage.
+  assert.equal(JSON.parse(job.receipt).paymentStatus, "stripe_captured");
+  const claim = await f.json("/api/devices/jobs/claim", { method: "POST", headers: { authorization: `Bearer ${paired.body.data.token}` }, body: {} });
+  assert.equal(claim.status, 200, claim.text);
+  const claimed = claim.body.data.job;
+  assert.equal(claimed.id, id);
+  assert.equal(claimed.receipt.paymentStatus, "Paid by card");
+  assert.match(formatReceipt(claimed.receipt, { manualReprint: claimed.manualReprint }).text, /Payment: Paid by card/);
+  assert.equal(f.db.prepare("SELECT receipt FROM device_print_jobs WHERE id=?").get(id).receipt, job.receipt);
+  assert.equal(f.db.prepare("SELECT payment_status FROM orders WHERE id=?").get(orderId).payment_status, "stripe_captured");
 
   const tablet = await enrolRegisteredTablet(f, { ownerCookie: owner, businessId: nativeBusiness.business_id });
   f.db.prepare("UPDATE admin_tablets SET application_products='calai' WHERE terminal_id=?").run(tablet.terminalId);
@@ -166,6 +180,21 @@ test("a current website owner can queue a confirmed copy without pairing a table
   await assert.rejects(routeMarketplace({ req, res: {}, url: new URL(path, f.config.origin), db: f.db, config: f.config, session }),
     error => error.code === "RECEIPT_OWNER_REQUIRED");
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM device_print_jobs").get().n, 1);
+});
+
+test("thermal labels distinguish payment states and keep sandbox charges clearly marked", () => {
+  assert.equal(thermalPaymentLabel("stripe_captured", "stripe_live"), "Paid by card");
+  assert.equal(thermalPaymentLabel("stripe_captured", "stripe_test"), "Test card payment - no money charged");
+  assert.equal(thermalPaymentLabel("stripe_captured"), "Status unavailable");
+  assert.equal(thermalPaymentLabel("stripe_authorized", "stripe_live"), "Card authorised - payment pending");
+  assert.equal(thermalPaymentLabel("stripe_pending", "stripe_live"), "Card payment pending");
+  assert.equal(thermalPaymentLabel("stripe_partially_refunded", "stripe_live"), "Card payment partially refunded");
+  assert.equal(thermalPaymentLabel("stripe_refunded", "stripe_live"), "Card payment refunded");
+  assert.equal(thermalPaymentLabel("cash_due"), "Cash due");
+  assert.equal(thermalPaymentLabel("cash_paid"), "Paid in cash");
+  assert.equal(thermalPaymentLabel("voucher_redeemed"), "Paid with a Cal-Eats voucher");
+  assert.equal(thermalPaymentLabel("mock_captured"), "Test card payment - no money charged");
+  assert.equal(thermalPaymentLabel("unrecognised_value"), "Status unavailable");
 });
 
 test("sample receipts are registered-tablet-only, idempotent and separate from real orders, customer data and money", async () => {
@@ -188,6 +217,7 @@ test("sample receipts are registered-tablet-only, idempotent and separate from r
     const claimed = await k.claim(); assert.equal(claimed.status, 200, claimed.text);
     const job = claimed.body.data.job; assert.equal(job.testReceipt, true); assert.equal(job.id, queued.body.data.id); assert.equal(job.receipt.testReceipt, true);
     const paper = formatReceipt(job.receipt).text;
+    assert.match(paper, /Payment: TEST - no payment/);
     assert.match(paper, /PRINTER TEST - SAMPLE ONLY/); assert.match(paper, /DO NOT PREPARE OR DELIVER/); assert.match(paper, /PRINTER TEST - NO ORDER OR PAYMENT/);
     assert.match(paper, /Sample Customer/); assert.match(paper, /10 Sample Street/); assert.match(paper, /TE57 1NG/); assert.match(paper, /Chicken Tikka Masala/); assert.match(paper, /TOTAL\s+£27\.50/);
     assert.equal((await k.ack(job, "printed")).status, 200); assert.equal((await k.ack(job, "printed")).status, 200); assert.equal((await k.ack(job, "uncertain")).status, 409);
