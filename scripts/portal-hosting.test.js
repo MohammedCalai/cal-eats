@@ -22,15 +22,21 @@ test('portal hosting refuses traversal, source files and unknown route fallbacks
 test('landing promotes app downloads and ordering remains a distinct entry with assets and HEAD', async () => {
   const home = await serve('/');
   assert.equal(home.status, 200);
-  assert.match(home.body.toString(), /href="\/download\/"/);
-  assert.match(home.body.toString(), /data-store="ios"/);
-  assert.match(home.body.toString(), /data-store="android"/);
-  assert.doesNotMatch(home.body.toString(), /<form[^>]*action="\/order\/"/);
-  assert.match(home.body.toString(), /href="\/business\/login"/);
+  const html = home.body.toString();
+  const main = html.match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0];
+  const downloadPath = main?.match(/<a\b[^>]*\bhref="([^"]+)"[^>]*>Get the (?:Cal-Eats )?app<\/a>/)?.[1];
+  assert.equal(downloadPath, '/download/');
+  assert.doesNotMatch(html, /<form[^>]*action="\/order\/"/);
+  assert.match(html, /href="\/business\/login"/);
+  const download = await serve(downloadPath);
+  assert.equal(download.status, 200);
+  assert.match(download.body.toString(), /data-auto-download="true"/);
+  assert.match(download.body.toString(), /<button\b[^>]*\bdata-store="ios"/);
+  assert.match(download.body.toString(), /<button\b[^>]*\bdata-store="android"/);
   const order = await serve('/order/');
   assert.equal(order.status, 200);
   assert.match(order.body.toString(), /id="customer-bottom"/);
-  for (const pathname of ['/landing.css', '/landing.js', '/order/']) {
+  for (const pathname of ['/landing.css', '/landing.js', downloadPath, '/order/']) {
     const head = await serve(pathname, 'HEAD');
     assert.equal(head.status, 200);
     assert.equal(head.body, undefined);
