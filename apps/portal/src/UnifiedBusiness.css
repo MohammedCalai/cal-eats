@@ -3,3 +3,70 @@
 .staff-capability-controls{grid-column:1/-1;width:100%;display:grid;gap:12px;padding-top:14px;border-top:1px solid #34435b}.staff-capability-controls fieldset{border:0;padding:0;margin:0}.staff-capability-controls legend{font-size:.85rem;font-weight:600;margin-bottom:12px}.staff-capability-controls fieldset>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.staff-capability-controls label{display:flex;align-items:center;gap:9px}.staff-capability-controls input[type=checkbox]{width:18px;height:18px;margin:0;flex:0 0 auto}.staff-capability-controls button{justify-self:start}@media(max-width:600px){.staff-capability-controls fieldset>div{grid-template-columns:1fr}}
 
 .admin-rest-members article:has(.staff-capability-controls){flex-wrap:wrap}.admin-rest-members .staff-capability-controls{flex-basis:100%}
+
+/* Supporting account pages use the established business theme. */
+.business-account-page{max-width:1120px;margin:0 auto;width:100%;min-width:0}
+.business-account-heading{margin-bottom:26px}
+.business-account-heading h1{font-size:clamp(1.6rem,2.5vw,2.1rem);letter-spacing:-.025em;margin:6px 0 10px}
+.business-account-heading>p:last-child{color:var(--muted,#a7b3c6);line-height:1.6;max-width:680px}
+.business-owner-products{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));align-items:start}
+.business-account-card,.business-statement-card{padding:24px;border:1px solid #303743;border-radius:16px;min-width:0}
+.business-account-card>header,.business-statement-card>header,.connection-journey>header{display:flex;align-items:center;gap:14px;min-width:0;margin-bottom:18px}
+.business-account-card>header>div,.business-statement-card>header>div{flex:1;min-width:0}
+.business-account-card h2,.business-statement-card h2{font-size:1.2rem;margin:0 0 5px;letter-spacing:-.015em}
+.business-account-card>header p{margin:0;color:var(--muted,#a7b3c6);font-size:.9rem;overflow-wrap:anywhere}
+.business-account-mark{display:grid;place-items:center;width:46px;height:46px;border-radius:13px;background:#172c46;border:1px solid #2b4969;color:#7ac2ff;flex:0 0 auto}
+.business-account-mark.product-calai{background:#15313c;border-color:#29515f;color:#80d7ed}
+.business-account-mark svg{width:25px;height:25px}
+.business-account-status{padding:7px 10px;border-radius:99px;font-size:.76rem;font-weight:600;background:#252b35;color:#c4ccda;white-space:nowrap;line-height:1.3}
+.business-account-status.is-connected{background:#183c34;color:#a0dfc5}
+.business-account-description,.business-statement-card>p{font-size:.94rem;color:#b5c0d0;line-height:1.65;margin:0 0 20px}
+.business-account-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:20px}
+.business-account-actions .button-link,.business-statement-card>.button-link,.connection-journey button{min-height:44px;justify-content:center;display:inline-flex;align-items:center;line-height:1.35;text-align:center}
+.business-account-actions .button-link.primary,.business-statement-card>.button-link.primary,.business-native-intro .button-link.primary{background:#2563eb;border-color:#3678ee;color:#fff}
+.business-account-next{padding:14px 16px;background:#1b2230;border:1px solid #333d4e;border-radius:11px;margin:18px 0}
+.business-account-next h3{font-size:.85rem;margin:0 0 8px;color:#d9e7fb}
+.business-account-next ul{margin:0;padding-left:18px;color:#b9c6d9;font-size:.89rem;line-height:1.7}
+.business-account-reference{margin-top:20px;padding-top:6px;border-top:1px solid #303743;color:var(--muted,#a7b3c6);font-size:.85rem}
+.business-account-reference summary{cursor:pointer;padding:12px 0;min-height:44px;box-sizing:border-box}
+.business-account-reference dl{display:grid;gap:13px;margin:4px 0 10px}
+.business-account-reference dt{color:#8e9db3;font-size:.78rem;margin-bottom:4px}
+.business-account-reference dd,.business-account-reference>p{margin:0;overflow-wrap:anywhere;color:#c1ccdc;font-size:.82rem;line-height:1.6}
+.business-account-footnote{color:var(--muted,#99a9c0);font-size:.83rem;line-height:1.6;margin:20px 0 0}
+.business-account-back{display:inline-flex;align-items:center;min-height:44px;color:#a7cefa;text-decoration:none;font-size:.9rem;margin:-7px 0 12px}
+.business-account-page .connection-journey{max-width:760px;margin:0;padding:26px;border-radius:16px}
+.connection-journey>header h2{margin:4px 0 0;font-size:1.25rem;letter-spacing:-.02em}
+.connection-journey>header .eyebrow{margin:0}
+.connection-journey form{max-width:520px;gap:18px}
+.connection-journey form>p{margin:0 0 3px;color:#b6c2d3;font-size:.92rem;line-height:1.65}
+.connection-journey form input,.connection-journey form select{min-height:48px}
+.connection-journey form>button{justify-self:start;padding-left:24px;padding-right:24px}
+.connection-account-confirmation{padding:20px;background:#172332;border:1px solid #304962;border-radius:12px;margin:20px 0}
+.connection-account-confirmation>span{color:#9cacc2;font-size:.8rem}
+.connection-account-confirmation h3{font-size:1.2rem;line-height:1.4;margin:8px 0;overflow-wrap:anywhere}
+.connection-account-confirmation p{color:#bac8da;margin:0 0 12px}
+.connection-account-confirmation small{color:#9cacc2}
+.connection-confirm-check{display:flex;align-items:flex-start;gap:12px;padding:18px 0;line-height:1.6;color:#cfdaea}
+.connection-confirm-check input{width:20px;height:20px;flex:0 0 auto;margin:3px 0 0}
+.business-account-page .business-view-only-note{font-size:.9rem;line-height:1.6}
+.business-statement-cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
+.business-statement-card>header .eyebrow{margin:0 0 6px}
+.business-statement-card h2{font-size:1.12rem;margin:0}
+.business-statement-note{padding:14px 16px;background:#202733;border-radius:10px;color:#b5c3d6;font-size:.88rem;line-height:1.65}
+.business-statements-page .dashboard-weekly-statements{margin-top:24px}
+.business-native-intro{display:flex;align-items:flex-start;gap:18px;padding:26px;max-width:820px}
+.business-native-intro h2{margin:0 0 10px;font-size:1.2rem}
+.business-native-intro p{color:#b5c0d0;line-height:1.6;margin:0 0 18px}
+.business-account-empty{padding:14px 4px}
+.business-account-empty h2{font-size:1.15rem;margin:0 0 10px}
+.business-account-empty p{color:var(--muted,#a7b3c6);margin:0;line-height:1.6}
+.business-account-page :is(a,button,input,select,summary):focus-visible{outline:3px solid #8cc8ff;outline-offset:3px}
+@media(max-width:760px){
+  .business-account-page .business-product-cards{grid-template-columns:1fr}
+  .business-account-card,.business-statement-card,.business-account-page .connection-journey{padding:20px}
+  .business-account-card>header{flex-wrap:wrap;gap:12px}
+  .business-account-status{margin-left:auto}
+  .business-account-actions .button-link{flex:1 1 auto}
+  .business-native-intro{padding:20px;gap:14px}
+  .business-account-heading{margin-bottom:20px}
+}

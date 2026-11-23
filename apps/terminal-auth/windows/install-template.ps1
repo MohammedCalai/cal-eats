@@ -11,7 +11,62 @@ $TerminalBoundSerial='__TARGET_SERIAL__'
 if ($TerminalBoundSerial -and $TargetSerial -and $TargetSerial -ne $TerminalBoundSerial) { throw 'The target serial cannot override this tablet-specific installer.' }
 $TerminalExpectedSerial=if ($TerminalBoundSerial) { $TerminalBoundSerial } else { $TargetSerial }
 if ($TerminalExpectedSerial -and ([string](Get-CimInstance Win32_BIOS).SerialNumber).Trim() -ne $TerminalExpectedSerial) { throw 'This installer does not match this tablet serial. Download the installer for this tablet.' }
+$TerminalEmbeddedEnrolmentBase64='__ENROLMENT_BASE64__'
+$TerminalEmbeddedDeviceNameBase64='__DEVICE_NAME_BASE64__'
+function ConvertFrom-TerminalSetupData([string]$Encoded) {
+ if ([string]::IsNullOrEmpty($Encoded) -or $Encoded.Length -gt 16384 -or $Encoded -notmatch '\A(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\z') { throw 'Embedded tablet setup data is invalid.' }
+ try {
+  $Bytes=[Convert]::FromBase64String($Encoded)
+  $Json=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes)
+  $JsonStart=$Json.TrimStart()
+  if (-not $JsonStart.StartsWith('{',[StringComparison]::Ordinal) -and -not $JsonStart.StartsWith('"',[StringComparison]::Ordinal)) { throw 'Unexpected embedded JSON shape.' }
+  $Value=$Json | ConvertFrom-Json -ErrorAction Stop
+ } catch { throw 'Embedded tablet setup data is invalid.' }
+ return ,$Value
+}
+function Assert-TerminalEnrolmentData {
+ param($Setup,[switch]$Embedded,[DateTimeOffset]$Now=[DateTimeOffset]::UtcNow)
+ if ($Setup -isnot [pscustomobject]) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ $Allowed=@('schemaVersion','product','apiBaseUrl','businessId','terminalId','code','challenge','expiresAt')
+ $Required=@('apiBaseUrl','businessId','terminalId','code','challenge','expiresAt')
+ if ($Embedded) { $Required=$Allowed }
+ $Names=@($Setup.PSObject.Properties | ForEach-Object { $_.Name })
+ if (@($Names | Where-Object { $Allowed -cnotcontains $_ }).Count -gt 0 -or @($Required | Where-Object { $Names -cnotcontains $_ }).Count -gt 0) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ if (($Names -ccontains 'schemaVersion') -and (($Setup.schemaVersion -isnot [int] -and $Setup.schemaVersion -isnot [long]) -or $Setup.schemaVersion -ne 1)) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ if (($Names -ccontains 'product') -and ($Setup.product -isnot [string] -or $Setup.product -cne 'calai-business-terminal')) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ $Uuid='\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'
+ foreach ($Field in @('businessId','terminalId')) { if ($Setup.$Field -isnot [string] -or $Setup.$Field -cnotmatch $Uuid -or $Setup.$Field -ceq '00000000-0000-0000-0000-000000000000') { throw 'Owner-approved tablet enrolment is invalid or expired.' } }
+ if ($Setup.apiBaseUrl -isnot [string] -or $Setup.apiBaseUrl -cne 'https://eats.calai.info' -or $Setup.code -isnot [string] -or $Setup.challenge -isnot [string] -or $Setup.expiresAt -isnot [string]) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ $CodePattern='\A[A-Za-z0-9_-]{8,200}\z';$ChallengePattern='\A[A-Za-z0-9_-]{20,300}\z'
+ if ($Embedded) { $CodePattern='\A[A-Za-z0-9_-]{32}\z';$ChallengePattern='\A[A-Za-z0-9_-]{43}\z' }
+ if ($Setup.code -cnotmatch $CodePattern -or $Setup.challenge -cnotmatch $ChallengePattern) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ $Expires=[DateTimeOffset]::MinValue
+ if (-not [DateTimeOffset]::TryParse($Setup.expiresAt,[ref]$Expires) -or $Expires -le $Now) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ if ($Embedded -and ($Expires -gt $Now.AddMinutes(11) -or $Expires.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ss.fffZ',[Globalization.CultureInfo]::InvariantCulture) -cne $Setup.expiresAt)) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+}
+function Assert-TerminalSetupIdentity {
+ param($Setup,$SavedIdentity,[switch]$Embedded,[switch]$ForgetRegistration)
+ if ($Embedded -and $ForgetRegistration) { throw 'Embedded setup cannot retire an existing tablet identity. Use the separate authorised replacement process.' }
+ if ($null -eq $SavedIdentity) { return }
+ $Uuid='\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'
+ if ($SavedIdentity -isnot [pscustomobject] -or ($SavedIdentity.schemaVersion -isnot [int] -and $SavedIdentity.schemaVersion -isnot [long]) -or $SavedIdentity.schemaVersion -ne 1 -or $SavedIdentity.product -cne 'calai-business-terminal' -or $SavedIdentity.terminalId -isnot [string] -or $SavedIdentity.terminalId -cnotmatch $Uuid -or $SavedIdentity.terminalId -ceq '00000000-0000-0000-0000-000000000000' -or $SavedIdentity.paired -isnot [bool] -or ($SavedIdentity.paired -and ($SavedIdentity.businessId -isnot [string] -or $SavedIdentity.businessId -cnotmatch $Uuid -or $SavedIdentity.businessId -ceq '00000000-0000-0000-0000-000000000000'))) { throw 'The existing tablet identity is invalid. Use the supported maintenance process.' }
+ if ($Setup -and ($SavedIdentity.terminalId -cne $Setup.terminalId -or ($SavedIdentity.paired -and $SavedIdentity.businessId -cne $Setup.businessId)) -and ($Embedded -or -not $ForgetRegistration)) { throw 'This tablet has a different registration. Use explicit owner replacement.' }
+}
+$TerminalHasEmbeddedEnrolment=-not [string]::IsNullOrEmpty($TerminalEmbeddedEnrolmentBase64)
+if ($TerminalHasEmbeddedEnrolment -and (-not $TerminalBoundSerial -or $EnrolmentPath -or $ForgetRegistration)) { throw 'Embedded setup requires its exact tablet serial and cannot be combined with an enrolment file or registration reset.' }
+if ($TerminalEmbeddedDeviceNameBase64) {
+ $EmbeddedDeviceName=ConvertFrom-TerminalSetupData $TerminalEmbeddedDeviceNameBase64
+ if ($EmbeddedDeviceName -isnot [string] -or $EmbeddedDeviceName.Trim().Length -lt 2 -or $EmbeddedDeviceName.Length -gt 80 -or $EmbeddedDeviceName -match '[\r\n\0]') { throw 'Invalid tablet name.' }
+ if ($PSBoundParameters.ContainsKey('DeviceName') -and $DeviceName -cne $EmbeddedDeviceName) { throw 'The tablet name cannot override this prepared setup.' }
+ $DeviceName=$EmbeddedDeviceName
+}
 if ($DeviceName.Length -lt 2 -or $DeviceName.Length -gt 80 -or $DeviceName -match '[\r\n\0]') { throw 'Invalid tablet name.' }
+$TerminalSetup=$null
+if ($TerminalHasEmbeddedEnrolment) { $TerminalSetup=ConvertFrom-TerminalSetupData $TerminalEmbeddedEnrolmentBase64;Assert-TerminalEnrolmentData -Setup $TerminalSetup -Embedded }
+elseif ($EnrolmentPath) {
+ try { $TerminalSetup=Get-Content -LiteralPath $EnrolmentPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { throw 'Owner-approved tablet enrolment is invalid or expired.' }
+ Assert-TerminalEnrolmentData -Setup $TerminalSetup
+}
 $TerminalRoot=[IO.Path]::GetFullPath((Join-Path $env:ProgramData 'CalEatsTerminalAuth'))
 $TerminalParent=Split-Path -Parent $TerminalRoot
 $TerminalTaskName='CalEats - Terminal Auth Broker'
@@ -53,6 +108,11 @@ function Test-TerminalNode([string]$Path) {
 }
 Assert-TerminalPath $TerminalRoot | Out-Null
 if (-not (Test-Path -LiteralPath $TerminalParent -PathType Container) -or ((Get-Item -LiteralPath $TerminalParent -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'The Windows application-data directory is unavailable or redirected.' }
+$IdentityPath=Assert-TerminalPath (Join-Path $TerminalVar 'terminal-identity.json')
+if ($TerminalSetup -and (Test-Path -LiteralPath $IdentityPath)) {
+ $SavedIdentity=Get-Content -LiteralPath $IdentityPath -Raw | ConvertFrom-Json -ErrorAction Stop
+ Assert-TerminalSetupIdentity -Setup $TerminalSetup -SavedIdentity $SavedIdentity -Embedded:$TerminalHasEmbeddedEnrolment -ForgetRegistration:$ForgetRegistration
+}
 # This standalone Cal-Eats installation does not require or modify a Calai
 # management folder. ProgramData permits ordinary users to create directories;
 # only the new product-owned child is given a restrictive ACL below.
@@ -126,17 +186,17 @@ if (-not (Test-TerminalNode $TerminalNode)) {
 if (-not (Test-TerminalNode $TerminalNode)) { throw 'The protected runtime failed verification.' }
 if (Test-Path -LiteralPath $TerminalConfig) { $Saved=Get-Content -LiteralPath $TerminalConfig -Raw | ConvertFrom-Json;if ($Saved.product -ne 'calai-business-terminal' -or $Saved.apiBaseUrl -ne 'https://eats.calai.info') { throw 'Another product owns this installation.' } }
 $IdentityPath=Assert-TerminalPath (Join-Path $TerminalVar 'terminal-identity.json')
+if ($TerminalSetup) {
+ Assert-TerminalEnrolmentData -Setup $TerminalSetup -Embedded:$TerminalHasEmbeddedEnrolment
+ if (Test-Path -LiteralPath $IdentityPath) { $SavedIdentity=Get-Content -LiteralPath $IdentityPath -Raw | ConvertFrom-Json -ErrorAction Stop;Assert-TerminalSetupIdentity -Setup $TerminalSetup -SavedIdentity $SavedIdentity -Embedded:$TerminalHasEmbeddedEnrolment -ForgetRegistration:$ForgetRegistration }
+}
 if ($ForgetRegistration -and (Test-Path -LiteralPath $IdentityPath)) {
  # Explicit administrator reset retains recoverable public metadata.
  # A new owner-approved server pairing is still required.
  Move-Item -LiteralPath $IdentityPath -Destination ($IdentityPath+'.retired-'+[guid]::NewGuid().ToString('N')) -Force
 }
-if ($EnrolmentPath) {
- $Setup=Get-Content -LiteralPath $EnrolmentPath -Raw | ConvertFrom-Json
- $Uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
- if ($Setup.terminalId -notmatch $Uuid -or $Setup.businessId -notmatch $Uuid -or $Setup.code -notmatch '^[A-Za-z0-9_-]{8,200}$' -or $Setup.challenge -notmatch '^[A-Za-z0-9_-]{20,300}$' -or $Setup.apiBaseUrl -ne 'https://eats.calai.info' -or [DateTimeOffset]::Parse($Setup.expiresAt) -le [DateTimeOffset]::UtcNow) { throw 'Owner-approved tablet enrolment is invalid or expired.' }
- if (Test-Path -LiteralPath $IdentityPath) { $SavedIdentity=Get-Content -LiteralPath $IdentityPath -Raw | ConvertFrom-Json;if ($SavedIdentity.terminalId -ne $Setup.terminalId -or ($SavedIdentity.paired -and $SavedIdentity.businessId -ne $Setup.businessId)) { throw 'This tablet has a different registration. Use explicit owner replacement.' } }
- $SetupOutput=@{terminalId=[string]$Setup.terminalId;businessId=[string]$Setup.businessId;code=[string]$Setup.code;challenge=[string]$Setup.challenge;apiBaseUrl='https://eats.calai.info';expiresAt=[string]$Setup.expiresAt}
+if ($TerminalSetup) {
+ $SetupOutput=@{terminalId=[string]$TerminalSetup.terminalId;businessId=[string]$TerminalSetup.businessId;code=[string]$TerminalSetup.code;challenge=[string]$TerminalSetup.challenge;apiBaseUrl='https://eats.calai.info';expiresAt=[string]$TerminalSetup.expiresAt}
  [IO.File]::WriteAllText((Assert-TerminalPath (Join-Path $TerminalRoot 'enrolment.json')),($SetupOutput | ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
 }
 $Configuration=@{schemaVersion=1;product='calai-business-terminal';apiBaseUrl='https://eats.calai.info';port=17864;deviceName=$DeviceName}

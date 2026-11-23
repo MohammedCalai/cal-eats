@@ -1,0 +1,65 @@
+/* Dashboard-only presentation: operational data and actions remain unchanged. */
+.admin-dashboard .admin-page-heading{margin-bottom:22px}
+.admin-dashboard .admin-page-heading h1{font-size:30px}
+.admin-dashboard .admin-order-watch{background:#15253a!important;color:#e8f1ff;border-color:#375675!important;padding:22px!important;box-shadow:none}
+.admin-dashboard .admin-order-watch.has-waiting{box-shadow:inset 3px 0 #7ab5ff}
+.admin-dashboard .admin-watch-heading{align-items:center;gap:20px}
+.admin-dashboard .admin-watch-heading h2{font-size:22px;line-height:1.35;margin:5px 0 7px;color:#edf5ff}
+.admin-dashboard .admin-watch-heading p{color:#b2c7de;font-size:14px;line-height:1.55}
+.admin-dashboard .admin-watch-heading .eyebrow{color:#92bff3}
+.admin-dashboard .admin-watch-count{min-width:128px;padding:14px 16px;background:#233d5d;color:#d7eaff;font-size:31px;border:1px solid #43678e;border-radius:12px}
+.admin-dashboard .admin-watch-count small{font-size:11px;line-height:1.4;font-weight:500;color:#b5cde8;max-width:110px}
+.admin-dashboard .admin-watch-count.overdue{background:#473625;border-color:#99734a;color:#ffe0b3}
+.admin-dashboard .admin-watch-count.overdue small{color:#e9c49b}
+.admin-dashboard .admin-watch-note{margin:15px 0;color:#9bb6d3;font-size:12px}
+.admin-dashboard .admin-filter-tabs{margin:8px 0 4px;gap:7px}
+.admin-dashboard .admin-order-watch .admin-filter-tabs button{min-height:42px;background:#1d3048;border-color:#3a526f;color:#c5d8ef;font-size:12px;padding:9px 12px}
+.admin-dashboard .admin-order-watch .admin-filter-tabs button.selected{background:#2967b6;border-color:#6d9ddf;color:#fff}
+.admin-dashboard .admin-order-watch input{background:#101d2d!important;color:#edf5ff!important;border-color:#476584!important}
+.admin-dashboard .admin-order-watch input::placeholder{color:#91a9c4}
+.admin-dashboard .admin-inline-search{margin:10px 0 18px}
+.admin-dashboard .admin-inline-search label{max-width:none;color:#bdd0e5}
+.admin-dashboard .admin-order-watch .quiet{background:#1c314c;color:#d2e5fc;border-color:#466385}
+.admin-dashboard .admin-waiting-list{gap:8px}
+.admin-dashboard .admin-waiting-row{grid-template-columns:minmax(220px,1.5fr) minmax(180px,1fr) 142px;gap:18px;padding:16px 18px;background:#1b2b40;border:1px solid #3a516b;border-left:3px solid #70a7e6;border-radius:10px}
+.admin-dashboard .admin-waiting-row:nth-child(even){background:#203148;border-color:#3a516b;border-left-color:#70a7e6}
+.admin-dashboard .admin-waiting-row.late{background:#322c27;border-color:#7b6249;border-left-color:#e9ae67}
+.admin-dashboard .admin-waiting-row.payment{background:#202c3b;border-left-color:#8399b1}
+.admin-dashboard .admin-waiting-row h3{font-size:17px;line-height:1.4;margin:7px 0 4px;color:#f0f6ff;overflow-wrap:anywhere}
+.admin-dashboard .admin-waiting-row p{color:#c3d4e6;font-size:13px}
+.admin-dashboard .admin-waiting-row small{font-size:11px;line-height:1.6;color:#a6bcd2;overflow-wrap:anywhere}
+.admin-dashboard .admin-state-chip{background:#284c77;color:#d5eaff;font-size:11px;padding:4px 8px;letter-spacing:0}
+.admin-dashboard .admin-state-chip.late{background:#60472b;color:#ffe0b3}
+.admin-dashboard .admin-waiting-contact{gap:7px}
+.admin-dashboard .admin-waiting-contact strong{font-size:20px;color:#edf5ff;font-variant-numeric:tabular-nums}
+.admin-dashboard .admin-waiting-contact a{color:#a9d0ff;font-size:13px}
+.admin-dashboard .admin-row-actions a{font-size:12px;min-height:40px}
+.admin-dashboard .admin-order-watch .button-link:not(.primary){background:#233a57;border-color:#496a90;color:#d1e6ff}
+.admin-dashboard .admin-order-watch .empty{background:#102135;color:#b7cbe2;border-color:#3c5b7e;padding:24px;line-height:1.6}
+.admin-dashboard .admin-order-watch .admin-pager{color:#afc6df;border-color:#36516f}
+.admin-dashboard .admin-overview-grid{gap:12px;margin:20px 0}
+.admin-dashboard .admin-overview-card{background:#1c2a3c;border-radius:12px;padding:18px 20px;gap:8px;transition:border-color .15s}
+.admin-dashboard .admin-overview-card:hover{transform:none;background:#20334d}
+.admin-dashboard .admin-overview-card span{font-size:14px;color:#c0d2e6}
+.admin-dashboard .admin-overview-card strong{font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums}
+.admin-dashboard .admin-overview-card small{font-size:12px;color:#a7bed8}
+.admin-dashboard .admin-dashboard-report .workspace-toolbar{margin-bottom:14px}
+.admin-dashboard .admin-dashboard-report h2{margin:4px 0;font-size:20px}
+.admin-dashboard .admin-activity-stats{padding:16px 0 20px}
+.admin-dashboard .admin-activity-stats span{font-size:13px}
+.admin-dashboard .admin-activity-stats strong{font-size:26px;font-variant-numeric:tabular-nums}
+.admin-dashboard .admin-dashboard-report>.fine{line-height:1.6;margin:0 0 18px;max-width:70ch}
+.admin-dashboard .admin-support-overview .workspace-toolbar{gap:14px;align-items:center}
+.admin-dashboard .admin-support-overview h2{margin:4px 0;font-size:20px}
+.admin-dashboard .admin-support-overview .support-overview-count{font-size:13px;color:#acc1db;line-height:1.6;margin:12px 0 18px}
+.admin-dashboard .admin-support-overview .support-overview-count strong{color:#edf5ff;font-size:18px;margin-right:5px}
+.admin-dashboard .support-overview-list{list-style:none;margin:0;padding:0;border:1px solid #35495f;border-radius:10px;overflow:hidden}
+.admin-dashboard .support-overview-list li+li{border-top:1px solid #35495f}
+.admin-dashboard .support-overview-list a{display:grid;grid-template-columns:minmax(0,1fr) auto 16px;align-items:center;gap:18px;padding:15px 17px;color:#e6f1ff;text-decoration:none;background:#19283b}
+.admin-dashboard .support-overview-list a:hover{background:#213b5a}
+.admin-dashboard .support-overview-list strong{font-size:14px;line-height:1.45;display:block;overflow-wrap:anywhere}
+.admin-dashboard .support-overview-list small{font-size:11px;line-height:1.6;display:block;color:#a3b9d2;margin-top:4px;overflow-wrap:anywhere}
+.admin-dashboard .support-overview-list time{font-size:11px;line-height:1.6;color:#a7bdd5;white-space:nowrap}
+.admin-dashboard .support-overview-list a>span:last-child{color:#8eb9eb;font-size:18px}
+@media(max-width:1100px){.admin-dashboard .admin-waiting-row{grid-template-columns:minmax(190px,1.3fr) minmax(160px,1fr);gap:14px}.admin-dashboard .admin-row-actions{grid-column:1/-1;display:flex;justify-content:flex-end}.admin-dashboard .admin-row-actions a{min-width:130px}.admin-dashboard .admin-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.admin-dashboard .admin-page-heading h1{font-size:26px}.admin-dashboard .admin-order-watch{padding:17px!important}.admin-dashboard .admin-watch-heading{align-items:flex-start;gap:12px}.admin-dashboard .admin-watch-heading h2{font-size:19px}.admin-dashboard .admin-watch-heading p{font-size:12px}.admin-dashboard .admin-watch-count{min-width:88px;padding:12px 8px;font-size:27px}.admin-dashboard .admin-watch-count small{max-width:80px;font-size:10px}.admin-dashboard .admin-waiting-row{grid-template-columns:1fr;padding:15px;gap:12px}.admin-dashboard .admin-waiting-contact{grid-template-columns:auto 1fr}.admin-dashboard .admin-waiting-contact a{text-align:right}.admin-dashboard .admin-waiting-contact small{grid-column:1/-1}.admin-dashboard .admin-row-actions{grid-column:auto;justify-content:stretch}.admin-dashboard .admin-row-actions a{flex:1;min-width:0}.admin-dashboard .admin-overview-card{padding:16px;gap:8px}.admin-dashboard .admin-overview-card strong{font-size:25px}.admin-dashboard .admin-overview-card span{font-size:12px}.admin-dashboard .admin-overview-card small{font-size:11px;line-height:1.5}.admin-dashboard .admin-activity-stats strong{font-size:21px}.admin-dashboard .admin-activity-stats span{font-size:11px}.admin-dashboard .support-overview-list a{grid-template-columns:minmax(0,1fr) 16px;gap:10px;padding:14px}.admin-dashboard .support-overview-list time{grid-column:1;grid-row:2;white-space:normal}.admin-dashboard .support-overview-list a>span:last-child{grid-column:2;grid-row:1/3}}

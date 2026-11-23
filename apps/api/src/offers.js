@@ -1,4 +1,4 @@
-import {surfaceNotificationSql} from "./surface-notification-policy.js";
+import {surfaceNotificationSql,surfaceNotificationDeliveryAllowed,surfaceNotificationDeliverySql} from "./surface-notification-policy.js";
 import { restaurantContactBlocked, assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import {releasePlatformVoucher} from "./platform-vouchers.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -91,7 +91,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 100, before = url.searchParams.get("before"), beforeId = url.searchParams.get("beforeId");
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (before && Number.isNaN(Date.parse(before))) || (beforeId && (!before || beforeId.length > 100))) throw new HttpError(400,"VALIDATION_ERROR","Notification pagination is invalid");
     const params = { uid: user.id, role: user.role, permitsOffers: Number(permitsOffers) };
-    const allowed = `user_id=$uid AND ${surfaceNotificationSql()} AND (type<>'offer' OR $permitsOffers=1)
+    const allowed = `user_id=$uid AND ${surfaceNotificationSql()} AND ${surfaceNotificationDeliverySql(session)} AND (type<>'offer' OR $permitsOffers=1)
       AND (restaurant_id IS NULL OR ($role NOT IN ('restaurant','admin') AND type<>'offer') OR EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=user_notifications.restaurant_id AND ar.archived_at IS NULL))
       AND ($role<>'restaurant' OR restaurant_id IS NULL OR EXISTS(SELECT 1 FROM restaurant_memberships mm WHERE mm.restaurant_id=user_notifications.restaurant_id AND mm.user_id=$uid))
       AND (type<>'customer_message' OR EXISTS(SELECT 1 FROM restaurant_customer_threads t WHERE t.id=user_notifications.conversation_id AND (t.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships cm WHERE cm.restaurant_id=t.restaurant_id AND cm.user_id=$uid AND cm.permission='owner'))))
@@ -112,7 +112,7 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     const user = requireUser(session); const body = await readJson(req, config.bodyLimit); exactObject(body, ["read"]);
     if (body.read !== true) throw new HttpError(400, "VALIDATION_ERROR", "read must be true");
     const row = db.prepare("SELECT * FROM user_notifications WHERE id=? AND user_id=?").get(match[1], user.id); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    if (!notificationRecipientAllowed(db, row)) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+    if (!notificationRecipientAllowed(db, row)||!surfaceNotificationDeliveryAllowed(row,session)) throw new HttpError(404, "NOT_FOUND", "Resource not found");
     db.prepare("UPDATE user_notifications SET read_at=COALESCE(read_at,?) WHERE id=?").run(config.now().toISOString(), row.id);
     return sendJson(res, 200, { data: notificationDto(db.prepare("SELECT * FROM user_notifications WHERE id=?").get(row.id)) });
   }

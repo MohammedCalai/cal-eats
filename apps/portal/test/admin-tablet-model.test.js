@@ -4,9 +4,23 @@ import { readFile } from "node:fs/promises";
 import { adminNavigation, ownerNavigation } from "../src/model.js";
 import { calaiNavigation } from "../src/calai-platform-model.js";
 import { tabletQuery, tabletRecordPath, tabletMetadataDraft, tabletMetadataPayload, tabletReassignmentPayload, tabletDisablePayload, tabletRegistrationPayload, tabletCurrentTerminalId, tabletEnrolmentPayload, tabletManagementRefreshPayload, tabletManagementPresentation, tabletEvidence, tabletHistory } from "../src/admin-tablet-model.js";
+import {tabletApplicationPayload,tabletDirectoryAssignmentPath,tabletApplicationModeLabel} from '../src/admin-tablet-model.js';
 
 const first="11111111-1111-4111-8111-111111111111",second="22222222-2222-4222-8222-222222222222",terminal="33333333-3333-4333-8333-333333333333";
 const draft={displayName:"Calai-0001",serialNumber:"0F02-ABC/01",requestedStartupProduct:"cal-eats",intuneManagedDeviceId:first,entraDeviceId:"",startupGroupId:second,startupProfileId:""};
+
+test('tablet app selection sends one versioned device command without granting roles or claiming Windows setup',()=>{
+ for(const applicationProducts of['calai','cal-eats','both']){
+  const value=tabletApplicationPayload({displayName:'  Kitchen tablet  ',businessId:first,applicationProducts,terminalId:terminal,paired:true,role:'owner',startupApplied:true},{expectedRevision:4});
+  assert.deepEqual(value,{displayName:'Kitchen tablet',businessId:first,applicationProducts,expectedRevision:4});
+ }
+ assert.deepEqual(tabletApplicationPayload({displayName:'New Surface',businessId:first,applicationProducts:'cal-eats'},{creating:true}),{displayName:'New Surface',businessId:first,applicationProducts:'cal-eats'});
+ assert.throws(()=>tabletApplicationPayload({displayName:'Kitchen tablet',businessId:first,applicationProducts:'all'},{expectedRevision:4}),/Choose Calai/);
+ assert.throws(()=>tabletApplicationPayload({displayName:'Kitchen tablet',businessId:'Luton',applicationProducts:'cal-eats'},{expectedRevision:4}),/identifier/);
+ assert.throws(()=>tabletApplicationPayload({displayName:'Kitchen tablet',businessId:first,applicationProducts:'both'},{expectedRevision:0}),/Refresh/);
+ assert.equal(tabletDirectoryAssignmentPath(first),`/api/admin/tablets/directory/${first}`);assert.throws(()=>tabletDirectoryAssignmentPath('../../devices'),/identifier/);
+ assert.equal(tabletRecordPath(first,'configuration'),`/api/admin/tablets/${first}/configuration`);assert.equal(tabletApplicationModeLabel(null),'Existing business access');
+});
 test("the central fleet has an administrator route and does not become an owner menu",async()=>{
  assert.ok(adminNavigation.some(([name,path])=>name==="Tablets"&&path==="/admin/tablets"));
  assert.ok(calaiNavigation.some(([name,path])=>name==="Tablets"&&path==="/admin/tablets"),"The same central fleet is reachable from either system product menu");

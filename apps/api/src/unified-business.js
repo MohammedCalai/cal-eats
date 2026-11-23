@@ -4,6 +4,7 @@ import {HttpError,exactObject,readJson,sendJson} from './http.js';
 import {createSession,cookieFor} from './auth/sessions.js';
 import {verifyPassword} from './auth/passwords.js';
 import {businessProductState,businessProductPermission,ensureBusinessProductPermissions,terminalHasCalaiAuthority} from './business-product-policy.js';
+import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration} from './tablet-product-policy.js';
 import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
 import {CALAI_BUSINESS_ORIGIN,authenticateCalaiBusiness,calaiBusinessAdapter,calaiBusinessReadPath,calaiTokenMetadata,assertCalaiBusinessIdentity,encryptCalaiBusinessCredentials,decryptCalaiBusinessCredentials,redactCalaiBusinessData,isSourceId} from './unified-business-calai.js';
@@ -51,7 +52,7 @@ function access(db,session,id,{owner=false,calai=false}={}){
   const member=membership(db,user.id,canonical);
   if(user.role!=='admin'&&!member)throw unavailable();
   if(owner&&(terminal(session)||user.principal_kind==='terminal'||(user.role!=='admin'&&member?.permission!=='owner')))throw fail(403,'OWNER_REQUIRED','An owner must sign in for this action.');
-  if(calai&&terminal(session)&&!terminalHasCalaiAuthority(db,session.terminalId,canonical))throw fail(403,'CALAI_AUTHORITY_REQUIRED','The registered tablet has not been authorised for this native Calai account.');
+  if(calai&&terminal(session)&&(!tabletProductPermitted(db,session.terminalId,canonical,'calai')||!terminalHasCalaiAuthority(db,session.terminalId,canonical)))throw fail(403,'CALAI_AUTHORITY_REQUIRED','The registered tablet has not been authorised for this native Calai account.');
   if(calai&&!terminal(session)){const proof=db.prepare("SELECT 1 FROM business_product_authorities a JOIN business_product_links p ON p.business_id=a.business_id AND p.product=a.product AND p.source_account_id=a.source_account_id AND p.upstream_user_id=a.source_user_id WHERE a.business_id=? AND a.product='calai' AND a.user_id=?").get(canonical,user.id);if(!proof)throw fail(403,'CALAI_AUTHORITY_REQUIRED','Verify your authority over this native Calai account. Cal-Eats roles do not grant Calai access.');}
   return{user,businessId:canonical,member,canManageProducts:!terminal(session)&&(user.role==='admin'||member?.permission==='owner')};
 }
@@ -88,10 +89,11 @@ export function businessAccountForSession(db,session,config){
 }
 function selectedContext(db,session,config){
  const selected=businessAccountForSession(db,session,config),state=businessAccountState(db,selected.id,{config}),rights=access(db,session,state.id),proof=db.prepare("SELECT source_user_id,source_account_id FROM business_product_authorities WHERE business_id=? AND product='calai' AND user_id=?").get(state.id,rights.user.id),calaiAllowed=Boolean(proof&&proof.source_user_id===state.products.calai.verifiedSourceUserId&&proof.source_account_id===state.products.calai.sourceAccountId),eatsMembership=state.eatsRestaurantId&&db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(state.eatsRestaurantId,rights.user.id),admin=rights.user.role==='admin',canViewEats=Boolean(eatsMembership||admin),capabilities=state.eatsRestaurantId?restaurantCapabilities(db,session,state.eatsRestaurantId):{};
+ if(terminal(session))state.products=tabletApplicationProducts(db,session.terminalId,state.id,state.products);
  state.products.calai.financialAccess=!terminal(session)&&calaiAllowed;
  state.products['cal-eats'].financialAccess=!terminal(session)&&Boolean(admin||capabilities.viewFinance);
  state.products['cal-eats'].capabilities={viewOrders:canViewEats,viewPayouts:state.products['cal-eats'].financialAccess,manageMenu:!terminal(session)&&Boolean(admin||capabilities.manageMenu),viewDevices:!terminal(session)&&Boolean(admin||capabilities.viewDevices),manageTerminal:!terminal(session)&&Boolean(admin||capabilities.manageTerminal)};
- return{...state,canManageProducts:admin,canConnectProducts:rights.canManageProducts,canViewEats,canViewCalai:terminal(session)?terminalHasCalaiAuthority(db,session.terminalId,state.id):calaiAllowed,principalKind:terminal(session)?'terminal':'human'};
+ return{...state,...(terminal(session)?{tabletConfiguration:tabletApplicationConfiguration(db,session.terminalId,state.id)}:{}),canManageProducts:admin,canConnectProducts:rights.canManageProducts,canViewEats:canViewEats&&(!terminal(session)||state.products['cal-eats'].allowedOnTablet),canViewCalai:terminal(session)?state.products.calai.allowedOnTablet&&terminalHasCalaiAuthority(db,session.terminalId,state.id):calaiAllowed,principalKind:terminal(session)?'terminal':'human'};
 }
 function selectAccount(db,userId,id,now){db.prepare('INSERT INTO business_account_preferences(user_id,business_id,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET business_id=excluded.business_id,updated_at=excluded.updated_at').run(userId,id,now);}
 function revokeSourceTerminals(db,businessId,now){

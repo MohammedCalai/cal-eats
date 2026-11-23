@@ -1,4 +1,4 @@
-import {surfaceNotificationAllowed} from "./surface-notification-policy.js";
+import {surfaceNotificationAllowed,surfaceNotificationDeliveryAllowed} from "./surface-notification-policy.js";
 import { blockedRestaurantNotification } from "./customer-safety-policy.js";
 const hubs = new WeakMap();
 
@@ -61,7 +61,7 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
     const rows = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE user_id=? AND rowid>? AND rowid<=? ORDER BY rowid LIMIT 100").all(client.userId, client.deliveredThrough, through);
     for (const row of rows) {
       if (client.closed) break;
-      if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row));
+      if (notificationRecipientAllowed(db, row)&&surfaceNotificationDeliveryAllowed(row,client)) write(client, encodeEvent(row));
       client.deliveredThrough = row.stream_rowid;
     }
     if (rows.length < 100 || client.deliveredThrough >= through) {
@@ -74,7 +74,7 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
       for (const client of [...clients]) if (!validClient(db,client,now().toISOString())) close(client);
       for (const client of clients) if (client.catchingUp) catchUp(client, globalRowId);
       const rows = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE rowid>? ORDER BY rowid LIMIT 500").all(globalRowId);
-      for (const row of rows) { globalRowId = row.stream_rowid; for (const client of clients) if (!client.catchingUp && client.userId === row.user_id && row.stream_rowid > client.deliveredThrough) { if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; } }
+      for (const row of rows) { globalRowId = row.stream_rowid; for (const client of clients) if (!client.catchingUp && client.userId === row.user_id && row.stream_rowid > client.deliveredThrough) { if (notificationRecipientAllowed(db, row)&&surfaceNotificationDeliveryAllowed(row,client)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; } }
     } catch { for (const client of [...clients]) close(client); stop(); }
   };
   const start = () => {
@@ -96,7 +96,7 @@ export function notificationStreamHub(db, { pollMs = 1000, heartbeatMs = 20_000,
       if (client.catchingUp) catchUp(client, globalRowId);
       else {
         const recent = db.prepare("SELECT rowid AS stream_rowid,* FROM user_notifications WHERE user_id=? ORDER BY rowid DESC LIMIT 100").all(userId).reverse();
-        for (const row of recent) { if (client.closed) break; if (notificationRecipientAllowed(db, row)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; }
+        for (const row of recent) { if (client.closed) break; if (notificationRecipientAllowed(db, row)&&surfaceNotificationDeliveryAllowed(row,client)) write(client, encodeEvent(row)); client.deliveredThrough = row.stream_rowid; }
       }
       if (client.closed) return true;
       clients.add(client); client.done = () => close(client); req.once?.("close", client.done); res.once?.("close", client.done); start();

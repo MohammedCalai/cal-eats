@@ -17,7 +17,18 @@ export function tabletQuery({ q = "", status = "all", page = 1, businessId } = {
   if (businessId) query.set("businessId", uuid(businessId, "Location"));
   return query.toString();
 }
-export function tabletRecordPath(id, action = "") { if (!["", "disable", "reassign", "registration", "enrolment", "installer", "management/refresh"].includes(action)) throw new Error("Unsupported tablet action."); return `/api/admin/tablets/${uuid(id, "Tablet")}${action ? `/${action}` : ""}`; }
+export function tabletRecordPath(id, action = "") { if (!["", "disable", "reassign", "registration", "enrolment", "installer", "setup-package", "management/refresh", "configuration"].includes(action)) throw new Error("Unsupported tablet action."); return `/api/admin/tablets/${uuid(id, "Tablet")}${action ? `/${action}` : ""}`; }
+export const TABLET_APPLICATION_MODES = ['calai','cal-eats','both'];
+export const tabletApplicationModeLabel = value => ({calai:'Calai','cal-eats':'Cal-Eats',both:'Calai + Cal-Eats'})[value] || 'Existing business access';
+export function tabletApplicationPayload(draft, {expectedRevision, creating = false} = {}) {
+  const displayName = String(draft.displayName || '').trim();
+  if(displayName.length < 2 || displayName.length > 100 || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(displayName)) throw new Error('Tablet name must contain 2–100 characters.');
+  if(!TABLET_APPLICATION_MODES.includes(draft.applicationProducts)) throw new Error('Choose Calai, Cal-Eats or both.');
+  const result = {displayName,businessId:uuid(draft.businessId,'Restaurant / location'),applicationProducts:draft.applicationProducts};
+  if(!creating)result.expectedRevision=revision(expectedRevision);
+  return result;
+}
+export function tabletDirectoryAssignmentPath(id) { return `/api/admin/tablets/directory/${uuid(id,'Microsoft tablet')}`; }
 export function tabletMetadataDraft(row = {}) {
   return { displayName: row.displayName || "", serialNumber: row.serialNumber || "", requestedStartupProduct: row.requestedStartupProduct || "", ...Object.fromEntries(MAPPING_FIELDS.map(([key]) => [key, row.mapping?.[key] || ""])) };
 }
@@ -76,9 +87,9 @@ export function tabletEvidence(row) {
     { key: "physical", label: "Physically verified", value: state.physicallyVerifiedAt ? "Physical check recorded" : "Not verified", at: state.physicallyVerifiedAt || null }
   ];
 }
-const auditLabels={tablet_inventory_created:"Tablet record created",tablet_metadata_updated:"Requested settings updated"};
+const auditLabels={tablet_inventory_created:"Tablet record created",tablet_metadata_updated:"Requested settings updated",tablet_directory_assigned:"Microsoft tablet assigned",tablet_application_access_updated:"Tablet application access updated"};
 export function tabletHistory(entry){
- const details=entry?.details&&typeof entry.details==='object'?entry.details:{},previous=details.previous||{},current=details.current||{},fields=[["displayName","Display name"],["businessId","Current location reference"],["requestedBusinessId","Requested location reference"],["requestedStartupProduct","Requested starting platform"],["lifecycleState","Administrative state"],["terminalId","Cal-Eats terminal reference"]];
+ const details=entry?.details&&typeof entry.details==='object'?entry.details:{},previous=details.previous||{},current=details.current||{},fields=[["displayName","Display name"],["businessId","Current location reference"],["requestedBusinessId","Requested location reference"],["applicationProducts","Application access"],["requestedStartupProduct","Requested starting platform"],["lifecycleState","Administrative state"],["terminalId","Cal-Eats terminal reference"]];
  const linked=Boolean(previous.terminalId||current.terminalId),label=entry?.action==='tablet_reassignment_quarantined'?(linked?'Reassignment requested; linked Cal-Eats authority quarantined':'Reassignment requested; physical handoff required'):entry?.action==='tablet_access_disabled'?(linked?'Fleet record disabled; linked Cal-Eats authority revoked':'Fleet record disabled; no application registration linked'):auditLabels[entry?.action]||String(entry?.action||"Administrative change").replaceAll("_"," ");
  return {label,actor:entry?.actorUserId||"Not returned",at:entry?.createdAt||null,reason:typeof details.reason==='string'?details.reason:null,changes:fields.filter(([key])=>previous[key]!==current[key]).map(([key,label])=>({label,before:previous[key]??null,after:current[key]??null}))};
 }

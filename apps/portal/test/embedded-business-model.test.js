@@ -17,3 +17,14 @@ test("signed-out embedded state removes all previous account IDs, counts and cap
   const state=embeddedState({id:"old",name:"Previous",products:{"cal-eats":{adminAllowed:true,linked:true,capabilities:{viewOrders:true}}}},{counts:{"cal-eats":{today:7,available:true}}},{state:"online"},false);
   assert.equal(state.business,null);assert.equal(state.surface,null);assert.equal(state.products.calai.sourceAccountId,null);assert.equal(state.capabilities.viewOrders,false);assert.deepEqual(state.counters["cal-eats"],{today:null,available:false});
 });
+test("a tablet set to Calai only does not advertise Cal-Eats tools to the existing Calai shell", () => {
+  const business = { id: "workspace", name: "Restaurant", products: {
+    calai: { adminAllowed: true, linked: true, readiness: { ready: true } },
+    "cal-eats": { adminAllowed: true, linked: true, allowedOnTablet: false, capabilities: { viewOrders: true } },
+  } };
+  const state = embeddedState(business, { counts: { "cal-eats": { today: 7, available: true } } }, null, true);
+  assert.equal(state.products.calai.linked, true);
+  assert.equal(state.products["cal-eats"].linked, false);
+  assert.equal(state.capabilities.viewOrders, false);
+  assert.deepEqual(state.counters["cal-eats"], { today: null, available: false });
+});

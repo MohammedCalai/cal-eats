@@ -64,9 +64,11 @@ function allowedPath(target, method, context) {
   const businessMatch = /^\/api\/business\/businesses\/([^/]+)(?:\/|$)/.exec(pathname);
   if (businessMatch && businessMatch[1] !== context.businessId) return false;
   if (pathname.startsWith("/api/business/")) {
-    if (/\/calai(?:\/|$)/.test(pathname) && context.products.calai?.active !== true) return false;
+    // Product permission is rechecked by the server for each signed request.
+    // A cached bootstrap snapshot must not prevent an administrator's later
+    // activation from taking effect during this still-valid device session.
   } else if (pathname === "/api/restaurant/restaurants" || pathname.startsWith("/api/restaurant/") || /^\/api\/(?:orders|print-jobs)\//.test(pathname)) {
-    if (!context.restaurantId || context.products["cal-eats"]?.linked !== true) return false;
+    if (!context.restaurantId) return false;
     const match = /^\/api\/restaurant\/restaurants\/([^/]+)(?:\/|$)/.exec(pathname);
     if (match && match[1] !== context.restaurantId) return false;
   } else if (!/^\/api\/notifications(?:\/|$)/.test(pathname)) return false;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {adminProduct,calaiNavigation,calaiReady,calaiMoney,calaiPage,platformReturnPath,platformLoginMode,platformLoginRequest,tenantEditPayload,telephonyPayload,calaiRequestPresentation,calaiRequestStatusPath} from "../src/calai-platform-model.js";
+import {adminProduct,calaiNavigation,calaiReady,calaiMoney,calaiPage,nativeCalaiAdminUrl,platformReturnPath,platformLoginMode,platformLoginRequest,tenantEditPayload,telephonyPayload,calaiRequestPresentation,calaiRequestStatusPath} from "../src/calai-platform-model.js";
 
 test("administrator credentials wait for an initial choice, then retain their chosen destination across late settings",()=>{
  assert.equal(platformLoginMode(null,{loading:true}),null);
@@ -30,6 +30,17 @@ test("platform navigation keeps native Calai tenant tools separate while sharing
  for(const path of ["/admin/restaurants","/admin/finance","/admin/orders","/admin/customers"])assert.equal(adminProduct(path),"cal-eats");
  assert.equal(platformReturnPath("/admin/calai/tenants?id=1"),"/admin/calai/tenants?id=1");
  for(const path of ["//evil.invalid/admin/x","https://evil.invalid/admin/x","/owner/dashboard","/admin/login","/admin/\\evil.invalid","/admin/calai/../login","/admin/calai/../../owner/dashboard"])assert.equal(platformReturnPath(path),"/admin/calai/dashboard");
+});
+test("Calai handoff stays on the original system admin and uses safe native tenant routes",()=>{
+ const id="a1111111-1111-4111-8111-111111111111";
+ assert.equal(nativeCalaiAdminUrl("tenants"),"https://calai.info/admin/tenant-management");
+ assert.equal(nativeCalaiAdminUrl("tenant",id),`https://calai.info/admin/tenant-management/view/${id}`);
+ for(const unsafe of [undefined,"../settings","%2e%2e%2Fsettings","//other.invalid",`${id}?session=unsafe`,`${id}#other`]){
+   assert.equal(nativeCalaiAdminUrl("tenant",unsafe),nativeCalaiAdminUrl("tenants"));
+ }
+ for(const unsafe of ["constructor","__proto__","https://other.invalid/admin/settings"]){
+   assert.equal(nativeCalaiAdminUrl(unsafe),"https://calai.info/admin/dashboard");
+ }
 });
 test("lost-response recovery uses a read-only own-key lookup and prefers an existing exact request reference",()=>{
  const id="a1111111-1111-4111-8111-111111111111";

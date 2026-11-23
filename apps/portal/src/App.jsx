@@ -37,7 +37,7 @@ import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, use
 import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
-import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, CombinedDashboardSummary, NativeCalaiView, ProductStatements, SurfaceStatusPanel, AdminBusinessAccounts, AdminSurfaceMonitoring, EmbeddedSessionBridge, OrderingTabletSetup, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
+import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
 import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
@@ -76,7 +76,7 @@ function Brand() {
 
 function TabletConnectionAccess() {
   const { user, embedded, connectTablet, recheckTablet, automaticSignInSuspended } = React.useContext(SessionContext);
-  return <TabletConnectionControls enabled={canDiscoverTablet(user)} suspended={automaticSignInSuspended} embedded={embedded} onConnect={connectTablet} onRecheck={recheckTablet}/>;
+  return <TabletConnectionControls enabled={Boolean(user) && canDiscoverTablet(user)} suspended={automaticSignInSuspended} embedded={embedded} onConnect={connectTablet} onRecheck={recheckTablet}/>;
 }
 
 function App() {
@@ -119,7 +119,7 @@ function App() {
           <Route path="dashboard" element={<OwnerDashboard />} />
           <Route path="connections" element={<BusinessConnections/>}/>
           <Route path="statements" element={<ProductStatements/>}/>
-          <Route path="devices" element={<OwnerDevices/>}/>
+          <Route path="devices" element={<Navigate to="/owner/printers" replace/>}/>
           <Route path="calai/orders" element={<NativeCalaiView section="orders"/>}/>
           <Route path="calai/calls" element={<NativeCalaiView section="calls"/>}/>
           <Route path="calai/settings" element={<NativeCalaiView section="settings"/>}/>
@@ -153,7 +153,7 @@ function App() {
           <Route path="restaurants" element={<AdminRestaurants />} />
           <Route path="business-accounts" element={<AdminBusinessAccounts/>}/>
           <Route path="tablets" element={<AdminTablets/>}/>
-          <Route path="surface-monitoring" element={<AdminSurfaceMonitoring/>}/>
+          <Route path="surface-monitoring" element={<Navigate to="/admin/tablets" replace/>}/>
           <Route path="customers" element={<AdminCustomers />} />
           <Route path="orders" element={<AdminOrdersWorkspace />} />
           <Route path="finance" element={<AdminFinanceWorkspace />} />
@@ -176,7 +176,7 @@ function RequireRole({ role }) { const { user } = React.useContext(SessionContex
 function useRestaurantTools(){const context=React.useContext(RestaurantContext),workspace=useBusinessWorkspace();return businessToolPermissions({permission:context?.permission,capabilities:context?.restaurant?.capabilities,principalKind:workspace?.business?.principalKind});}
 function FinanceOnly({children}){const tools=useRestaurantTools();return tools.viewFinance?children:<Denied message="Financial viewing permission is required for this restaurant."/>;}
 function OwnerOnly({ children }) { const { permission, restaurant } = React.useContext(RestaurantContext); return restaurant && permission === "owner" ? children : <Denied message="A Cal-Eats account with owner permission is required." />; }
-function RequireEatsAccount(){const context=React.useContext(RestaurantContext);return context?.restaurant?<Outlet/>:<section className="panel"><h1>Cal-Eats account required</h1><p>Connect an authorised Cal-Eats restaurant account to open this section.</p><NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink></section>;}
+function RequireEatsAccount(){const context=React.useContext(RestaurantContext),workspace=useBusinessWorkspace();if(workspace?.business?.products?.["cal-eats"]?.allowedOnTablet===false)return <Navigate to="/owner/dashboard" replace/>;return context?.restaurant?<Outlet/>:<section className="panel"><h1>Cal-Eats account required</h1><p>Connect an authorised Cal-Eats restaurant account to open this section.</p><NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink></section>;}
 
 function Login() {
   const { user, refresh, embedded } = React.useContext(SessionContext), navigate=useNavigate(),location=useLocation();
@@ -190,7 +190,7 @@ function Login() {
     catch(caught){setError(caught.message);}
     finally{const password=form.elements.namedItem("password");if(password)password.value="";inFlight.current=false;setBusy(false);}
   }
-  return <main className="auth"><section className="auth-card"><Brand/><p className="eyebrow">{mode==="calai"?"Calai business connection":"Cal-Eats Business"}</p><h1>{mode==="calai"?"Verify your Calai business account":"Sign in to the business platform"}</h1><p>{mode==="calai"?"Use your existing Calai owner sign-in to open its authorised business connection. Calai and Cal-Eats keep separate native accounts and permissions.":"Restaurant teams and Cal-Eats administrators use this platform. Your account determines the tools you can access."}</p>{error&&<Alert>{error}</Alert>}<TabletConnectionAccess/><form ref={formRef} onSubmit={submit}><Field label={mode==="calai"?"Calai owner email":"Email"} name="email" type="email" required disabled={busy} autoComplete="username"/><Field label={mode==="calai"?"Calai password":"Password"} name="password" type="password" required disabled={busy} autoComplete="current-password"/><button className="primary" disabled={busy}>{busy?"Signing in…":mode==="calai"?"Verify Calai account":"Sign in"}</button></form><p><button className="quiet" type="button" disabled={busy} onClick={()=>choose(mode==="calai"?"cal-eats":"calai")}>{mode==="calai"?"Use a Cal-Eats account instead":"Use your existing Calai business account"}</button></p><p>New to Cal-Eats? <a href="/order/?view=register-restaurant">List your restaurant</a></p><p className="fine">Payment availability, bank payouts and printer connections are shown in your workspace.</p></section></main>;
+  return <main className="auth"><section className="auth-card"><Brand/><p className="eyebrow">{mode==="calai"?"Calai business connection":"Cal-Eats Business"}</p><h1>{mode==="calai"?"Verify your Calai business account":"Sign in to the business platform"}</h1><p>{mode==="calai"?"Use your existing Calai owner sign-in to open its authorised business connection. Calai and Cal-Eats keep separate native accounts and permissions.":"Restaurant teams and Cal-Eats administrators use this platform. Your account determines the tools you can access."}</p>{error&&<Alert>{error}</Alert>}<form ref={formRef} onSubmit={submit}><Field label={mode==="calai"?"Calai owner email":"Email"} name="email" type="email" required disabled={busy} autoComplete="username"/><Field label={mode==="calai"?"Calai password":"Password"} name="password" type="password" required disabled={busy} autoComplete="current-password"/><button className="primary" disabled={busy}>{busy?"Signing in…":mode==="calai"?"Verify Calai account":"Sign in"}</button></form><p><button className="quiet" type="button" disabled={busy} onClick={()=>choose(mode==="calai"?"cal-eats":"calai")}>{mode==="calai"?"Use a Cal-Eats account instead":"Use your existing Calai business account"}</button></p><p>New to Cal-Eats? <a href="/order/?view=register-restaurant">List your restaurant</a></p><p className="fine">Payment availability, bank payouts and printer connections are shown in your workspace.</p></section></main>;
 }
 
 function OwnerBootstrap() {
@@ -208,7 +208,7 @@ function OwnerRestaurantWorkspace({ user }) {
   });
   const fallback = restaurants.find(item => (item.approvalStatus || item.status) === "approved" && !item.suspended && !item.paused && !item.profile?.paused) || restaurants[0];
   const scopedRestaurant = workspace?.business?.eatsRestaurantId;
-  const restaurant = scopedRestaurant ? restaurants.find(item => item.id === scopedRestaurant) : null;
+  const restaurant = scopedRestaurant && workspace?.business?.products?.["cal-eats"]?.allowedOnTablet !== false ? restaurants.find(item => item.id === scopedRestaurant) : null;
   useEffect(() => {
     if (result.loading || result.error) return;
     if (restaurant && selected !== restaurant.id) setSelectedId(restaurant.id);
@@ -224,7 +224,7 @@ function OwnerRestaurantWorkspace({ user }) {
     try { window.localStorage.setItem(storageKey, authorized.id); } catch { /* Keep the current in-memory selection. */ }
   }, [restaurants, storageKey]);
   if (!["restaurant", "owner", "staff"].includes(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
-  if (result.loading) return <PageState text="Loading restaurant workspace…"/>;
+  if (result.loading) return <PageState text="Loading your business…"/>;
   if (result.error) return <PageState error={result.error} retry={result.reload}/>;
   const permission = restaurant?.permission || restaurant?.membershipPermission || "staff";
   return <RestaurantContext.Provider key={selectedBusinessId} value={{ restaurant, restaurants, setSelected, permission, refreshRestaurants:result.reload }}><Outlet /></RestaurantContext.Provider>;
@@ -239,25 +239,24 @@ function NavIcon({label}) {
 function Shell({ kind }) {
   const { user, refresh, suspendAutomaticSignIn } = React.useContext(SessionContext), owner = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
   const { desktop, collapsed, toggleDesktop } = useSidebarLayout(), [open, setOpen] = useState(false), [messageCount,setMessageCount]=useState(0), location=useLocation();
-  const business=workspace?.business, hasEats=Boolean(owner?.restaurant), canOperate=operationalTabletFor(business?.id,owner?.restaurant?.id,terminalStatus());
+  const business=workspace?.business, hasEats=Boolean(owner?.restaurant), canOperate=operationalTabletFor(business?.id,owner?.restaurant?.id,workspace?.terminal);
   const tools=businessToolPermissions({permission:owner?.permission,capabilities:owner?.restaurant?.capabilities,principalKind:business?.principalKind});
   const groups=businessNavigation(business,hasEats?ownerNavigation(owner.permission,tools):[]), nav=groups.flatMap(group=>group.items);
-  const mobileNav=hasEats?ownerMobileNavigation(owner.permission,tools):[["Home","/owner/dashboard"],["Accounts","/owner/connections"],["Devices","/owner/devices"]];
+  const mobileNav=hasEats?ownerMobileNavigation(owner.permission,tools):[["Home","/owner/dashboard"],["Accounts","/owner/connections"]];
   useEffect(()=>{setOpen(false);window.scrollTo({top:0,left:0,behavior:"instant"});},[location.pathname]);
   useEffect(()=>{const close=event=>{if(event.key==="Escape")setOpen(false);},counts=event=>setMessageCount(event.detail?.messages||0);addEventListener("keydown",close);addEventListener("cal-eats-notification-counts",counts);return()=>{removeEventListener("keydown",close);removeEventListener("cal-eats-notification-counts",counts);};},[]);
   async function selectRestaurant(id){const account=workspace.accounts.find(row=>row.eatsRestaurantId===id);if(account)await workspace.selectAccount(account.id);}
   async function logout(){suspendAutomaticSignIn();await endOperationalPresence();await api("/api/auth/logout",{...json("POST",{}),humanSession:true}).catch(()=>{});disconnectLocalTerminal();await refresh();}
   const showHeaderShortcuts=location.pathname.replace(/\/+$/,"")!=="/owner/dashboard";
-  return <OrderAlertProvider operationalRestaurantId={owner?.restaurant?.id} enabled={hasEats&&canOperate} restaurants={owner?.restaurants} onSelectRestaurant={selectRestaurant} onRefreshRestaurants={owner?.refreshRestaurants} userId={user.id}><BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id}><div className={`portal calai-theme${collapsed?" sidebar-collapsed":""}`}><a className="skip" href="#portal-main">Skip to content</a>{open&&!desktop&&<button className="sidebar-shade" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}<aside id="business-navigation" inert={!desktop&&!open?true:undefined} className={open?"sidebar open":"sidebar"}><div className="sidebar-top"><Brand/><button className="icon-button mobile-only" onClick={()=>setOpen(false)} aria-label="Close menu"><NavIcon label="Close"/></button></div><BusinessAccountSwitcher/><nav aria-label="Business workspace">{groups.map(group=><section className="business-nav-section" key={group.title}><h2>{group.title}</h2>{group.items.map(([label,path])=><NavLink key={path} to={path} title={label} aria-label={path==="/owner/inbox"&&messageCount>0?`${label}, ${messageCount} unread messages`:label}><span className="sidebar-nav-icon"><NavIcon label={label}/></span><span className="sidebar-nav-label">{label}</span>{path==="/owner/inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</NavLink>)}</section>)}</nav><div className="sidebar-note"><strong>{hasEats&&owner.permission==="staff"?"Restaurant staff":"Business account"}</strong><span>{user.name}</span><button className="quiet mobile-only" onClick={()=>void logout()}>Sign out</button></div></aside><div className="portal-body"><header className={`topbar business-header${showHeaderShortcuts?" business-header--with-shortcuts":""}`}><div className="business-header-identity"><button className="icon-button menu-button" onClick={()=>desktop?toggleDesktop():setOpen(value=>!value)} aria-label={desktop?(collapsed?"Expand side menu":"Collapse side menu"):(open?"Close menu":"Open menu")} aria-controls="business-navigation" aria-expanded={desktop?!collapsed:open}><NavIcon label="Toggle"/></button><div className="topbar-title"><span className="eyebrow">{business?.name||owner?.restaurant?.name||"Business platform"}</span><strong>{nav.find(([,path])=>location.pathname.startsWith(path))?.[0]||"Business platform"}</strong></div></div><nav className="business-header-navigation" aria-label="Business shortcuts" hidden={!showHeaderShortcuts}>{showHeaderShortcuts&&<BusinessHomeLink/>}<NotificationsPanel userId={user.id} restaurantId={owner?.restaurant?.id} enableSound={false} kind="owner" onSelectRestaurant={selectRestaurant} visible={showHeaderShortcuts} labelled/></nav><div className="top-actions"><button className="quiet topbar-signout" onClick={()=>void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0,1)||"C"}</span></div></header><main id="portal-main" className="content" tabIndex={-1}><TabletConnectionAccess/><Outlet/></main><nav className="mobile-bottom-nav" style={{gridTemplateColumns:`repeat(${mobileNav.length+1},minmax(0,1fr))`}} aria-label="Quick business tools">{mobileNav.map(([label,path])=><NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label==="Inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}<button type="button" aria-label="More business tools" onClick={()=>setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button></nav></div></div></BusinessMessageReminderProvider></OrderAlertProvider>;
+  return <OrderAlertProvider operationalRestaurantId={owner?.restaurant?.id} enabled={hasEats&&canOperate} restaurants={owner?.restaurants} onSelectRestaurant={selectRestaurant} onRefreshRestaurants={owner?.refreshRestaurants} userId={user.id}><BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id}><div className={`portal calai-theme${collapsed?" sidebar-collapsed":""}`}><a className="skip" href="#portal-main">Skip to content</a>{open&&!desktop&&<button className="sidebar-shade" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}<aside id="business-navigation" inert={!desktop&&!open?true:undefined} className={open?"sidebar open":"sidebar"}><div className="sidebar-top"><Brand/><button className="icon-button mobile-only" onClick={()=>setOpen(false)} aria-label="Close menu"><NavIcon label="Close"/></button></div><BusinessAccountSwitcher/><nav aria-label="Business navigation">{groups.map(group=><section className="business-nav-section" key={group.title}>{group.title&&<h2>{group.title}</h2>}{group.items.map(([label,path])=><NavLink key={path} to={path} title={label} aria-label={path==="/owner/inbox"&&messageCount>0?`${label}, ${messageCount} unread messages`:label}><span className="sidebar-nav-icon"><NavIcon label={label}/></span><span className="sidebar-nav-label">{label}</span>{path==="/owner/inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</NavLink>)}</section>)}</nav><div className="sidebar-note"><strong>{hasEats&&owner.permission==="staff"?"Restaurant staff":"Business account"}</strong><span>{user.name}</span><button className="quiet mobile-only" onClick={()=>void logout()}>Sign out</button></div></aside><div className="portal-body"><header className={`topbar business-header${showHeaderShortcuts?" business-header--with-shortcuts":""}`}><div className="business-header-identity"><button className="icon-button menu-button" onClick={()=>desktop?toggleDesktop():setOpen(value=>!value)} aria-label={desktop?(collapsed?"Expand side menu":"Collapse side menu"):(open?"Close menu":"Open menu")} aria-controls="business-navigation" aria-expanded={desktop?!collapsed:open}><NavIcon label="Toggle"/></button><div className="topbar-title"><span className="eyebrow">{business?.name||owner?.restaurant?.name||"Business platform"}</span><strong>{nav.find(([,path])=>location.pathname.startsWith(path))?.[0]||"Business platform"}</strong></div></div><nav className="business-header-navigation" aria-label="Business shortcuts" hidden={!showHeaderShortcuts}>{showHeaderShortcuts&&<BusinessHomeLink/>}<NotificationsPanel userId={user.id} restaurantId={owner?.restaurant?.id} enableSound={false} kind="owner" onSelectRestaurant={selectRestaurant} visible={showHeaderShortcuts} labelled/></nav><div className="top-actions"><button className="quiet topbar-signout" onClick={()=>void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0,1)||"C"}</span></div></header><main id="portal-main" className="content" tabIndex={-1}><Outlet/></main><nav className="mobile-bottom-nav" style={{gridTemplateColumns:`repeat(${mobileNav.length+1},minmax(0,1fr))`}} aria-label="Quick business tools">{mobileNav.map(([label,path])=><NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label==="Inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}<button type="button" aria-label="More business tools" onClick={()=>setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button></nav></div></div></BusinessMessageReminderProvider></OrderAlertProvider>;
 }
 
 function OwnerDashboard() {
   const {user}=React.useContext(SessionContext);
   const { restaurant, permission } = React.useContext(RestaurantContext);
-  const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant?.id,terminalStatus());
-  return <>{!restaurant&&<header className="page-heading"><h1>Dashboard</h1><p>{workspace?.business?.name}</p></header>}<CombinedDashboardSummary/>{restaurant?<><SurfaceStatusPanel restaurantId={restaurant.id}/><OwnerDashboardView key={`${restaurant.id}:${permission}`} restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate} surfaceMonitor/></>:<section className="panel"><h2>Calai business workspace</h2><p>Your native Calai account operates independently. Open Calai orders and calls above, or connect Cal-Eats when your administrator permits it.</p><NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink></section>}</>;
+  const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant?.id,workspace?.terminal);
+  return <>{!restaurant&&<header className="page-heading"><h1>Dashboard</h1><p>{workspace?.business?.name}</p></header>}{restaurant?<OwnerDashboardView key={`${restaurant.id}:${permission}`} restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate}/>:<section className="panel"><h2>Calai</h2><p>Open your orders, calls and settings from the Calai menu.</p><NavLink className="button-link" to="/owner/connections">Accounts & connections</NavLink></section>}</>;
 }
-function OwnerDevices(){const{restaurant}=React.useContext(RestaurantContext),workspace=useBusinessWorkspace();return <div className="unified-business"><header className="page-heading"><h1>Surface & printer</h1><p>Current application presence, observed printer status and durable incident history.</p></header><OrderingTabletSetup key={workspace?.business?.id} business={workspace?.business}/><SurfaceStatusPanel restaurantId={restaurant?.id} detailed/></div>;}
 
 function Orders() {
   const { restaurant, permission } = React.useContext(RestaurantContext), alerts = useOrderAlerts();
@@ -266,7 +265,7 @@ function Orders() {
   return <OrdersWorkspace key={restaurant.id} restaurant={restaurant} permission={permission} alerts={alerts}/>;
 }
 function OrdersWorkspace({ restaurant, permission, alerts }) {
-  const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant.id,terminalStatus());
+  const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant.id,workspace?.terminal);
   const tools=businessToolPermissions({permission,capabilities:restaurant.capabilities,principalKind:workspace?.business?.principalKind});
   const [page, setPage] = useState(1), [status, setStatus] = useState("all"), [datePreset,setDatePreset]=useState("all"),[dates,setDates]=useState({from:"",to:""});
   const query = new URLSearchParams({ page: String(page), pageSize: "25", status, ...(dates.from?{from:dates.from}:{}), ...(dates.to?{to:dates.to}:{}) });
@@ -351,7 +350,9 @@ function OwnerSupport(){const{restaurant}=React.useContext(RestaurantContext);re
 
 function Printers() {
   const { restaurant, permission } = React.useContext(RestaurantContext);
-  return <CalaiPrinters key={restaurant.id} restaurant={restaurant} permission={permission}/>;
+  const workspace = useBusinessWorkspace();
+  const canPrint = operationalTabletFor(workspace?.business?.id, restaurant.id, workspace?.terminal);
+  return <CalaiPrinters key={restaurant.id} restaurant={restaurant} permission={permission} canPrint={canPrint} tabletSetup={<TabletConnectionAccess/>}/>;
 }
 
 function PrinterWorkspace({ restaurant, permission }) {

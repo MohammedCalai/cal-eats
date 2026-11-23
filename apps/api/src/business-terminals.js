@@ -7,6 +7,7 @@ import { businessAccountState, hasCurrentBusinessOwner, requireBusinessAccountOw
 import { buildTerminalInstaller } from "../../terminal-auth/windows/build-installer.mjs";
 import { terminalHasCalaiAuthority } from "./business-product-policy.js";
 import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,assertFleetPairingAllowed,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
+import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -79,6 +80,7 @@ function issuerAllowed(db, userId, businessId) {
     requireBusinessAccountOwner(db, session, businessId);
     const native=db.prepare("SELECT restaurant_id FROM business_product_links WHERE business_id=? AND product='cal-eats'").get(businessId);
     if(native&&user.role!=='admin')requireRestaurantOwner(db,session,native.restaurant_id);
+    if(!native&&!hasNativeCalaiSetupAuthority(db,userId,businessId))return false;
     return true;
   } catch { return false; }
 }
@@ -91,6 +93,9 @@ function terminalContext(db, config, terminal) {
   if (!activeOwnerExists(db, terminal.business_id)) throw failure("TERMINAL_BUSINESS_UNAVAILABLE", "The restaurant tablet needs its owner's attention.");
   const business = businessAccountState(db, terminal.business_id,{config});
   if (!business || business.id !== terminal.business_id) throw failure("TERMINAL_BUSINESS_CHANGED", "Register this tablet with the current business account again.");
+  const products = tabletApplicationProducts(db, terminal.id, terminal.business_id, business.products);
+  // Keep native location identity stable across mode changes. A location is not
+  // authority: current scoped products are checked on every request below.
   const eats = business.products?.["cal-eats"]?.linked === true && business.eatsRestaurantId ? business.eatsRestaurantId : null;
   const actor = db.prepare("SELECT id,name,email,role,phone,principal_kind FROM users WHERE id=? AND account_enabled=1 AND principal_kind='terminal'").get(terminal.operator_user_id);
   if (!actor) throw failure("TERMINAL_REVOKED", "This restaurant tablet is no longer authorised.");
@@ -103,7 +108,7 @@ function terminalContext(db, config, terminal) {
       db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at,permission) VALUES(?,?,?,'staff') ON CONFLICT(restaurant_id,user_id) DO UPDATE SET permission='staff'").run(eats, actor.id, now(config));
     }
   });
-  return { user: publicUser(actor), principalKind: "terminal", terminalId: terminal.id, businessId: terminal.business_id, restaurantId: eats, calaiReadAuthorized:terminalHasCalaiAuthority(db,terminal.id,terminal.business_id), products: business.products };
+  return { user: publicUser(actor), principalKind: "terminal", terminalId: terminal.id, businessId: terminal.business_id, restaurantId: eats, calaiReadAuthorized:products.calai.active && terminalHasCalaiAuthority(db,terminal.id,terminal.business_id), products, tabletConfiguration:tabletApplicationConfiguration(db,terminal.id,terminal.business_id) };
 }
 
 export async function verifyBusinessTerminalRequest({ req, db, config }) {
@@ -149,7 +154,7 @@ export async function readBusinessTerminalSession({ req, url, db, config }) {
   return { ...context, sessionId: "terminal:" + terminal.id, terminalGrantHash: hash(token) };
 }
 
-export function assertBusinessTerminalSessionLive({ db, config, session, restaurantId = null }) {
+export function assertBusinessTerminalSessionLive({ db, config, session, restaurantId = null, product = 'cal-eats' }) {
   if (!isTerminal(session)) throw failure('REGISTERED_TABLET_REQUIRED','Use the registered restaurant tablet to process or print orders.');
   const terminal = activeTerminal(db, session.terminalId);
   const grant = session.terminalGrantHash && db.prepare("SELECT 1 FROM business_terminal_grants WHERE token_hash=? AND terminal_id=? AND operator_user_id=? AND revoked_at IS NULL AND expires_at>?").get(session.terminalGrantHash, session.terminalId, session.user.id, now(config));
@@ -157,6 +162,7 @@ export function assertBusinessTerminalSessionLive({ db, config, session, restaur
   if (!activeOwnerExists(db, terminal.business_id)) throw failure("TERMINAL_BUSINESS_UNAVAILABLE", "The restaurant tablet needs its owner's attention.");
   const business = businessAccountState(db, terminal.business_id,{config});
   if (!business || business.id !== terminal.business_id) throw failure("TERMINAL_BUSINESS_CHANGED", "The business account changed.");
+  if (product && !tabletProductPermitted(db, terminal.id, terminal.business_id, product)) throw failure('PRODUCT_INACTIVE', 'This service is not enabled on the registered tablet.');
   if (restaurantId && (business.products?.["cal-eats"]?.linked !== true || business.eatsRestaurantId !== restaurantId)) throw failure("PRODUCT_INACTIVE", "The Cal-Eats account is not connected to this tablet.");
 }
 export function requireOperationalPrinterUser(db,config,session,restaurantId){assertBusinessTerminalSessionLive({db,config,session,restaurantId});return requireRestaurantMembership(db,session,restaurantId);}
@@ -219,6 +225,7 @@ function dto(row, config) {
 // secured administration share these one-use, current-registration invariants.
 export function issueBusinessTerminalSetup(db,config,session,businessId,{replace=false,deviceName,expectedTerminalId=undefined}={}){
  const user=owner(db,session,businessId,config);
+ const business=businessAccountState(db,businessId,{config});if(!business.eatsRestaurantId&&(!business.products.calai.active||!business.products.calai.readiness.ready||!hasNativeCalaiSetupAuthority(db,user.id,businessId)))throw failure('CALAI_AUTHORITY_REQUIRED','Verify the exact native Calai account as the current setup issuer before pairing this Calai-only tablet.');
  if(typeof replace!=='boolean')throw failure('VALIDATION_ERROR','Tablet replacement is invalid.',400);
  assertFleetNewEnrolmentAllowed(db,businessId);
  const current=db.prepare('SELECT * FROM business_terminals WHERE business_id=? AND revoked_at IS NULL').get(businessId);
@@ -276,7 +283,7 @@ export async function routeBusinessTerminals({ req, res, url, db, config, sessio
       const fresh = db.prepare("SELECT * FROM business_terminal_pairings WHERE terminal_id=? AND code_hash=?").get(body.terminalId, hash(body.code));
       if(!fresh)throw failure('TERMINAL_PAIRING_INVALID','Tablet setup is invalid or expired.',401);
       assertFleetNewEnrolmentAllowed(db,fresh.business_id);
-      assertFleetPairingAllowed(db,fresh);
+      assertFleetPairingAllowed(db,fresh,config);
       if (!issuerAllowed(db, fresh.issued_by, fresh.business_id) || !db.prepare("SELECT 1 FROM business_accounts WHERE id=? AND archived_at IS NULL").get(fresh.business_id)) throw failure("TERMINAL_PAIRING_INVALID", "Tablet setup is invalid or expired.", 401);
       const existing = activeTerminal(db, fresh.terminal_id);
       if (existing && fresh.consumed_at && existing.public_key_sha256 === publicKey.sha256 && existing.business_id === fresh.business_id) return existing;

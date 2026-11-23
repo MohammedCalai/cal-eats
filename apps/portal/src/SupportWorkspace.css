@@ -1,0 +1,52 @@
+/* Support-only directory treatment; other inboxes keep their existing layout. */
+.portal .support-workspace{min-width:0}
+.portal .support-workspace .page-heading{margin-bottom:20px}
+.portal .support-workspace .page-heading h1{font-size:30px;letter-spacing:-.6px;margin:5px 0 8px}
+.portal .support-workspace .page-heading>p:last-child{font-size:14px;line-height:1.6;max-width:65ch}
+.portal .support-workspace .support-triage{gap:10px;margin:22px 0}
+.portal .support-workspace .support-triage>button{min-height:108px;padding:16px 18px;background:#192a40;border:1px solid #3a4f69;border-radius:11px;gap:8px;grid-template-columns:1fr auto;align-content:start}
+.portal .support-workspace .support-triage>button:hover,.portal .support-workspace .support-triage>button.active{background:#213f64;border-color:#78aaf0;box-shadow:none}
+.portal .support-workspace .support-triage span{font-size:13px;line-height:1.45;align-self:center;max-width:150px;color:#d4e2f4}
+.portal .support-workspace .support-triage strong{font-size:27px;line-height:1.4;font-variant-numeric:tabular-nums;align-self:start;color:#edf5ff}
+.portal .support-workspace .support-triage small{grid-column:1/-1;font-size:11px;line-height:1.5;color:#a1bad8}
+.portal .support-workspace .workspace-toolbar{margin-bottom:16px;justify-content:space-between;gap:12px;color:#a9bed8}
+.portal .support-workspace .workspace-toolbar>span strong{font-size:17px;color:#e8f2ff;margin-right:4px}
+.portal .support-workspace .workspace-tabs{margin-bottom:20px}
+.portal .support-workspace .workspace-tabs>button{font-size:13px}
+.portal .support-workspace .support-directory{padding:20px;border-radius:14px;border-color:#34475e}
+.portal .support-workspace .directory-filters{display:grid;grid-template-columns:minmax(200px,1.7fr) minmax(140px,.8fr);gap:12px;margin-bottom:0;padding-bottom:18px;border-bottom:0}
+.portal .admin-support-workspace.support-workspace .directory-filters{grid-template-columns:minmax(210px,1.8fr) repeat(3,minmax(130px,1fr))}
+.portal .support-workspace .directory-filters label{font-size:12px;color:#b9cce2;min-width:0}
+.portal .support-workspace .directory-filters :is(input,select){font-size:13px;min-height:44px;border-color:#435a76;background:#101c2c;color:#e8f1ff;width:100%}
+.portal .support-workspace .directory-filters input::placeholder{color:#95abc6}
+.portal .support-workspace .support-filter-note{font-size:13px;line-height:1.6;margin:0 0 16px;flex-wrap:wrap;gap:10px}
+.portal .support-workspace .support-list-head,.portal .support-workspace .support-request-row{display:grid;grid-template-columns:minmax(220px,2fr) minmax(140px,1.15fr) minmax(148px,1.1fr) 112px 16px;gap:18px;align-items:center}
+.portal .support-workspace .support-list-head{font-size:11px;color:#a8bfd8;padding:11px 18px;background:#24354d;border:1px solid #3a4e68;border-bottom:0;border-radius:10px 10px 0 0;font-weight:650}
+.portal .support-workspace .support-request-list{border:1px solid #344a63;border-radius:0 0 10px 10px;overflow:hidden}
+.portal .support-workspace .support-request-list>div+div{border-top:1px solid #344a63}
+.portal .support-workspace .support-request-row{width:100%;text-align:left;border:0;border-radius:0;padding:17px 18px;background:#17263b;color:#e8f1ff;cursor:pointer;min-width:0;font:inherit;line-height:1.5}
+.portal .support-workspace .support-request-list>div:nth-child(even) .support-request-row{background:#1b2b41}
+.portal .support-workspace .support-request-row:hover{background:#234263!important}
+.portal .support-workspace .support-request-row.needs-reply{box-shadow:inset 3px 0 #77adf0}
+.portal .support-workspace .support-request-row>span{min-width:0}
+.portal .support-workspace .support-request-main,.portal .support-workspace .support-request-person,.portal .support-workspace .support-request-action{display:grid;gap:5px;align-content:center;min-width:0}
+.portal .support-workspace .support-request-main>strong{font-size:14px;line-height:1.45;color:#edf5ff;overflow-wrap:anywhere}
+.portal .support-workspace .support-request-row small{font-size:11px;line-height:1.55;color:#9eb7d4;overflow-wrap:anywhere}
+.portal .support-workspace .support-request-preview{font-size:12px;color:#aabfd8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.portal .support-workspace .support-request-person>strong{font-size:12px;font-weight:550;line-height:1.5;color:#d3e2f4;overflow-wrap:anywhere}
+.portal .support-workspace .support-request-action .pill{justify-self:start;font-size:11px;font-weight:650;line-height:1.45;padding:5px 8px;background:#283e58;color:#c9ddf6;white-space:normal}
+.portal .support-workspace .support-request-action .pill.reply-needed{background:#2a4e7a;color:#e0efff}
+.portal .support-workspace .support-request-action .pill.resolved{background:#25453d;color:#bee4d4}
+.portal .support-workspace .support-request-date{font-size:11px;line-height:1.65;color:#a8bfd9;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.portal .support-workspace .support-request-arrow{font-size:19px;color:#94bff2;text-align:right}
+.portal .support-workspace .pagination{border-top:0;padding-top:18px;margin-top:0;justify-content:space-between;align-items:center}
+.portal .support-workspace .pagination>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.portal .support-workspace .pagination button{min-height:42px;min-width:86px}
+.portal .support-workspace .empty{margin:0;padding:28px 22px;border-radius:10px;background:#17263a;border-color:#3c526c;line-height:1.6;color:#b0c4dc}
+.portal .support-workspace .empty h3{font-size:16px;color:#e4efff;margin:0 0 8px}
+.portal .support-workspace .empty p{margin:0;font-size:13px}
+.portal .support-workspace :is(button,input,select,a):focus-visible{outline:3px solid #8cbeff;outline-offset:3px}
+.portal .support-workspace .support-request-row:focus-visible{outline-offset:-3px}
+@media(max-width:1200px){.portal .support-workspace .support-list-head,.portal .support-workspace .support-request-row{grid-template-columns:minmax(200px,1.7fr) minmax(125px,1fr) minmax(140px,1fr) 105px 14px;gap:13px}.portal .admin-support-workspace.support-workspace .directory-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.portal .support-workspace .support-triage>button{padding:15px;gap:6px}.portal .support-workspace .support-triage span{font-size:12px}}
+@media(max-width:1000px){.portal .support-workspace .support-list-head{display:none}.portal .support-workspace .support-request-list{border-radius:10px}.portal .support-workspace .support-request-row{grid-template-columns:minmax(190px,1fr) minmax(145px,.8fr) 14px;gap:10px 18px;padding:16px}.portal .support-workspace .support-request-main{grid-row:1/3}.portal .support-workspace .support-request-person{grid-column:2;grid-row:1}.portal .support-workspace .support-request-action{grid-column:2;grid-row:2}.portal .support-workspace .support-request-date{grid-column:1;grid-row:3}.portal .support-workspace .support-request-arrow{grid-column:3;grid-row:1/4}.portal .support-workspace .support-request-preview{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.portal .support-workspace .support-triage{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.portal .support-workspace .page-heading h1{font-size:26px}.portal .support-workspace .page-heading>p:last-child{font-size:13px}.portal .support-workspace .support-directory{padding:15px}.portal .support-workspace .directory-filters,.portal .admin-support-workspace.support-workspace .directory-filters{grid-template-columns:1fr;gap:12px}.portal .support-workspace .support-triage{gap:9px;margin:18px 0}.portal .support-workspace .support-triage>button{min-height:110px;padding:13px;grid-template-columns:1fr auto}.portal .support-workspace .support-triage span{font-size:11px}.portal .support-workspace .support-triage strong{font-size:24px}.portal .support-workspace .support-triage small{font-size:10px}.portal .support-workspace .support-request-row{grid-template-columns:minmax(0,1fr) 14px;gap:10px;padding:15px}.portal .support-workspace .support-request-main{grid-row:1;grid-column:1}.portal .support-workspace .support-request-person{grid-column:1;grid-row:2}.portal .support-workspace .support-request-person>small{display:inline}.portal .support-workspace .support-request-action{grid-column:1;grid-row:3;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px}.portal .support-workspace .support-request-date{grid-column:1;grid-row:4}.portal .support-workspace .support-request-arrow{grid-column:2;grid-row:1/5}.portal .support-workspace .support-request-main>strong{font-size:14px}.portal .support-workspace .pagination{align-items:flex-start;gap:12px}.portal .support-workspace .pagination>div{width:100%;justify-content:space-between;gap:8px}.portal .support-workspace .pagination button{min-width:75px}.portal .support-workspace .workspace-toolbar>.primary{width:100%}}

@@ -28,7 +28,7 @@ export function ownerNavigation(permission = "owner",capabilities={}) {
 }
 export const ownerMobileNavigation = (permission,capabilities={}) => permission === "owner"||capabilities.manageMarketing===true ? [["Home","/owner/dashboard"],["Marketing","/owner/offers"],["Orders","/owner/orders"],["Menu","/owner/menu"]] : [["Home","/owner/dashboard"],["Orders","/owner/orders"],["Menu","/owner/menu"]];
 export const adminNavigation = [
-  ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Business accounts", "/admin/business-accounts"], ["Tablets", "/admin/tablets"], ["Surface monitoring", "/admin/surface-monitoring"], ["Customers", "/admin/customers"], ["Orders", "/admin/orders"],
+  ["Dashboard", "/admin/dashboard"], ["Restaurants", "/admin/restaurants"], ["Business accounts", "/admin/business-accounts"], ["Tablets", "/admin/tablets"], ["Customers", "/admin/customers"], ["Orders", "/admin/orders"],
   ["Finance", "/admin/finance"], ["Payment readiness", "/admin/stripe"], ["Resolution history", "/admin/refunds"], ["Support", "/admin/support"], ["Service areas", "/admin/service-areas"], ["Account access", "/admin/governance"], ["Operations", "/admin/operations"],
 ];
 

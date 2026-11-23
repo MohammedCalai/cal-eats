@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct } from "../src/unified-business-model.js";
+import { applyTabletProductAccess, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
 test("native owners can connect permitted products without administrator service controls; staff and tablets cannot",()=>{
@@ -35,6 +35,28 @@ test("an actual ready terminal matches both the native restaurant and associatio
  assert.equal(operationalTabletFor("location-a","restaurant-a",state),true);
  for(const [businessId,restaurantId,snapshot]of[["location-b","restaurant-a",state],["location-a","restaurant-b",state],["location-a","restaurant-a",{...state,status:"offline"}],["location-a","restaurant-a",{...state,context:{...state.context,principalKind:"human"}}]])assert.equal(operationalTabletFor(businessId,restaurantId,snapshot),false);
 });
+test("product selection on a paired tablet changes navigation without changing owner permissions", () => {
+  const owner = { id: "location-a", principalKind: "human", products: {
+    calai: product("native-a"), "cal-eats": product("restaurant-a", { financialAccess: true }),
+  } };
+  const signed = { id: "location-a", principalKind: "terminal", products: {
+    calai: { allowedOnTablet: true }, "cal-eats": { allowedOnTablet: false, financialAccess: false },
+  } };
+  const navigation = [["Orders", "/owner/orders"], ["Earnings", "/owner/earnings"]];
+  const current = applyTabletProductAccess(owner, signed);
+  assert.deepEqual(businessNavigation(current, navigation).map(row => row.title), ["", "Calai", "Account"]);
+  assert.equal(current.principalKind, "human");
+  assert.equal(current.products["cal-eats"].financialAccess, true);
+  assert.equal(owner.products["cal-eats"].allowedOnTablet, undefined);
+  assert.equal(applyTabletProductAccess(owner, { ...signed, id: "location-b" }), owner);
+  assert.equal(applyTabletProductAccess(owner, { ...signed, principalKind: "human" }), owner);
+  const eatsOnly = applyTabletProductAccess(owner, { ...signed, products: {
+    calai: { allowedOnTablet: false }, "cal-eats": { allowedOnTablet: true },
+  } });
+  assert.deepEqual(businessNavigation(eatsOnly, navigation)[0].items.map(([, path]) => path), [
+    "/owner/dashboard", "/owner/orders", "/owner/earnings",
+  ]);
+});
 test("permission, native connection and setup remain independent and neither absent account becomes ready",()=>{
   assert.equal(productPresentation({products:{}},"cal-eats").usable,false);
   for(const change of [{adminAllowed:false},{linked:false},{readiness:{ready:false}},{effectiveStatus:"unavailable"},{nativeAccountId:null}])assert.equal(productPresentation({products:{calai:product("native",change)}},"calai").usable,false);
@@ -44,10 +66,25 @@ test("permission, native connection and setup remain independent and neither abs
 test("colliding product account references stay labelled separately and Calai navigation precedes Cal-Eats",()=>{
   const business={products:{calai:product("same-id"),"cal-eats":product("same-id")}};
   const groups=businessNavigation(business,[["Dashboard","/owner/dashboard"],["Orders","/owner/orders"]]);
-  assert.deepEqual(groups.map(row=>row.title),["Workspace","Calai","Cal-Eats"]);
+  assert.deepEqual(groups.map(row=>row.title),["","Calai","Cal-Eats","Account"]);
   assert.equal(groups[2].items.filter(([,path])=>path==="/owner/dashboard").length,0);
   business.products.calai.adminAllowed=false;
-  assert.deepEqual(businessNavigation(business,[["Orders","/owner/orders"]]).map(row=>row.title),["Workspace","Cal-Eats"]);
+  assert.deepEqual(businessNavigation(business,[["Orders","/owner/orders"]]).map(row=>row.title),["","Account"]);
+});
+test("business tablet navigation retains ordinary tools without a monitoring workspace for any principal",()=>{
+  const nativeLinks=[["Dashboard","/owner/dashboard"],["Orders","/owner/orders"],["Printers","/owner/printers"],["Surface & printer","/owner/devices"]];
+  for(const principalKind of ["human","terminal"]){
+    for(const withCalai of [false,true]){
+      const business={principalKind,products:{...(withCalai?{calai:product("calai-account")}:{}),"cal-eats":product("eats-account",{capabilities:{viewDevices:true}})}};
+      const groups=businessNavigation(business,nativeLinks),paths=groups.flatMap(group=>group.items.map(([,path])=>path));
+      assert.equal(paths.filter(path=>path==="/owner/dashboard").length,1);
+      assert.ok(paths.includes("/owner/orders"));assert.ok(paths.includes("/owner/printers"),"Printer setup stays available");
+      assert.ok(paths.includes("/owner/connections"));assert.ok(paths.includes("/owner/statements"));
+      assert.ok(!paths.includes("/owner/devices"),"Device-health monitoring belongs to the manager phone app");
+      assert.ok(groups.every(group=>group.title!=="Workspace"));
+      if(withCalai)assert.ok(groups.findIndex(group=>group.title==="Calai")<groups.findIndex(group=>group.title==="Cal-Eats"));
+    }
+  }
 });
 test("an unavailable source is not displayed as zero and a genuine zero remains zero",()=>{
   assert.equal(counterPresentation({today:0,available:false},"calai").value,"Unavailable");
