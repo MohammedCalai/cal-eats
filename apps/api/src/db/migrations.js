@@ -8,7 +8,7 @@ import {businessProductPolicyMigration69} from "../business-product-policy-migra
 import {surfaceMonitoringMigration70} from "../surface-monitoring-migration.js";
 import {tabletFleetMigration71} from "../tablet-fleet-migration.js";
 import {tabletManagementMigration72} from "../tablet-management-migration.js";
-import {tabletProductMigration73, terminalCalaiApprovalMigration74} from "../tablet-product-migration.js";
+import {tabletProductMigration73, terminalCalaiApprovalMigration74, terminalCalaiFirstSetupMigration75} from "../tablet-product-migration.js";
 import {accountAccessEmailMigration43} from "../account-access-email.js";
 import {customerPushMigration44} from "../customer-push-migration.js";
 import {orderLiveActivityMigration45} from "../order-live-activity-migration.js";
@@ -358,5 +358,6 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   tabletFleetMigration71,
   tabletManagementMigration72,
   tabletProductMigration73,
-  terminalCalaiApprovalMigration74
+  terminalCalaiApprovalMigration74,
+  terminalCalaiFirstSetupMigration75
 ];

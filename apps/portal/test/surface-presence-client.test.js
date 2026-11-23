@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {createSurfacePresenceClient} from "../src/surface-presence-client.js";
 const flush=async()=>{for(let n=0;n<5;n++)await new Promise(resolve=>setImmediate(resolve));};
 const active=()=>({status:"ready",paired:true,terminalId:"terminal-a",context:{principalKind:"terminal",businessId:"business-a",restaurantId:"restaurant-a",terminalId:"terminal-a"}});
+const disconnected=()=>({status:"connection_unavailable",paired:true,terminalId:"terminal-a",context:null,reconnectEligible:true});
 const selected={businessId:"business-a",restaurantId:"restaurant-a"};
 function fixture(override={}){
  let snapshot=active(),counter=0,handle=0;const calls=[],scheduled=new Map(),states=[];
@@ -49,13 +50,13 @@ test("session denial stops reporting without automatic retries and server timing
 });
 test("only a previously verified paired scope reconnects and failed operational requests are never replayed",async()=>{
  let snapshot=active(),failed=false,reconnections=0;const bodies=[],timers=new Map();let timerId=0;
- const client=createSurfacePresenceClient({status:()=>snapshot,schedule:(fn,delay)=>{timers.set(++timerId,{fn,delay});return timerId;},cancel:id=>timers.delete(id),reconnect:async()=>{reconnections++;snapshot=active();},request:async(path,options={})=>{if(!failed){failed=true;snapshot={status:"offline",paired:true,terminalId:"terminal-a",context:null};throw Object.assign(Error("network lost"),{status:0});}if(options.body)bodies.push(JSON.parse(options.body));return options.method?{heartbeatSeconds:30}:{items:[]};}});
+ const client=createSurfacePresenceClient({status:()=>snapshot,schedule:(fn,delay)=>{timers.set(++timerId,{fn,delay});return timerId;},cancel:id=>timers.delete(id),reconnect:async()=>{reconnections++;snapshot=active();},request:async(path,options={})=>{if(!failed){failed=true;snapshot=disconnected();throw Object.assign(Error("network lost"),{status:0});}if(options.body)bodies.push(JSON.parse(options.body));return options.method?{heartbeatSeconds:30}:{items:[]};}});
  client.start(selected);await flush();assert.equal([...timers.values()][0].delay,5000);const timer=[...timers.values()][0];timers.clear();timer.fn();await flush();assert.equal(reconnections,1);assert.deepEqual(bodies.map(row=>row.state),["active"]);client.stop();
- const noProof=fixture({status:()=>({status:"offline",paired:true,terminalId:"terminal-a",context:null}),reconnect:async()=>{throw Error("must not reconnect an unverified scope");}});noProof.client.start(selected);await flush();assert.equal(noProof.states.some(row=>row.code==="TERMINAL_RECONNECT_UNAVAILABLE"),false);noProof.client.stop();
+ const noProof=fixture({status:disconnected,reconnect:async()=>{throw Error("must not reconnect an unverified scope");}});noProof.client.start(selected);await flush();assert.equal(noProof.states.some(row=>row.code==="TERMINAL_RECONNECT_UNAVAILABLE"),false);noProof.client.stop();
 });
 test("reconnect backoff is bounded and explicit logout cannot be undone by a late effect restart",async()=>{
  let snapshot=active(),reads=0;const timers=new Map(),delays=[];let id=0,reconnects=0;
- const client=createSurfacePresenceClient({status:()=>snapshot,schedule:(fn,delay)=>{delays.push(delay);timers.set(++id,fn);return id;},cancel:key=>timers.delete(key),request:async()=>{reads++;snapshot={status:"offline",paired:true,terminalId:"terminal-a",context:null};throw Object.assign(Error("offline"),{status:0});},reconnect:async()=>{reconnects++;throw Error("still offline");}});
+ const client=createSurfacePresenceClient({status:()=>snapshot,schedule:(fn,delay)=>{delays.push(delay);timers.set(++id,fn);return id;},cancel:key=>timers.delete(key),request:async()=>{reads++;snapshot=disconnected();throw Object.assign(Error("offline"),{status:0});},reconnect:async()=>{reconnects++;throw Error("still offline");}});
  client.start(selected);await flush();for(let n=0;n<4;n++){const [key,fn]=timers.entries().next().value;timers.delete(key);fn();await flush();}
  assert.deepEqual(delays.slice(0,5),[5000,10000,30000,60000,60000]);assert.equal(reads,1);assert.equal(reconnects,4);await client.signedOut();client.start(selected);await client.tick();assert.equal(timers.size,0);assert.equal(reconnects,4);
 });

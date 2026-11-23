@@ -1,8 +1,14 @@
 import {HttpError} from './http.js';
 import {randomUUID} from 'node:crypto';
 import {assertTabletSelectionActivation} from './tablet-assignment-safety.js';
+import {ownerCalaiTabletAuthorityMatches} from './business-product-policy.js';
 const present=db=>Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='admin_tablets'").get());
 const denied=()=>new HttpError(403,'TABLET_QUARANTINED','Tablet access is quarantined pending authorised physical sign-out/profile cleanup. No device handoff has been verified.');
+export function canOfferOwnerCalaiSetup(tablet) {
+ return Boolean(tablet && tablet.lifecycle_state === 'assigned' && tablet.application_products === 'calai' &&
+   !tablet.terminal_id && !tablet.disabled_at && !tablet.archived_at && !tablet.authority_blocked_at &&
+   !tablet.handoff_requested_at && !tablet.requested_business_id && tablet.intune_managed_device_id && tablet.serial_number);
+}
 export function assertFleetNewEnrolmentAllowed(db,businessId){
  if(!present(db))return;
  const blocked=db.prepare(`WITH RECURSIVE family(id) AS (
@@ -28,9 +34,21 @@ export function recordEnrolledTabletInventory(db,terminal){
 export function assertFleetPairingAllowed(db,pairing,config){
  if(!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='tablet_fleet_pairing_requests'").get())return;
  const bound=db.prepare('SELECT * FROM tablet_fleet_pairing_requests WHERE terminal_id=?').get(pairing.terminal_id);if(!bound)return;
- if(!db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND principal_kind='human' AND account_enabled=1").get(bound.issued_by))throw new HttpError(403,'FLEET_ENROLMENT_ISSUER_REVOKED','The system administrator that issued this setup is no longer authorised.');
+ const ownerSetup=db.prepare('SELECT authority_binding FROM tablet_fleet_owner_calai_setups WHERE terminal_id=?').get(pairing.terminal_id);
+ if(!ownerSetup&&!db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND principal_kind='human' AND account_enabled=1").get(bound.issued_by))throw new HttpError(403,'FLEET_ENROLMENT_ISSUER_REVOKED','The system administrator that issued this setup is no longer authorised.');
  const row=db.prepare('SELECT * FROM admin_tablets WHERE id=?').get(bound.tablet_id);
  const alreadyPaired=Boolean(pairing.consumed_at&&row?.terminal_id===pairing.terminal_id);
  if(!row||!alreadyPaired&&row.revision!==bound.record_revision||row.business_id!==bound.business_id||pairing.business_id!==bound.business_id||row.archived_at||row.authority_blocked_at||row.handoff_requested_at||['disabled','pending_handoff'].includes(row.lifecycle_state))throw new HttpError(409,'FLEET_ENROLMENT_CHANGED','The fleet record changed. Request fresh setup from system administration.');
+ if (ownerSetup) {
+   if (pairing.issued_by !== bound.issued_by || pairing.expected_terminal_id !== null ||
+       (!alreadyPaired && (row.terminal_id || row.application_products !== 'calai' ||
+       db.prepare("SELECT 1 FROM business_product_links WHERE business_id=? AND product='cal-eats'").get(bound.business_id)))) {
+     throw new HttpError(409,'FLEET_ENROLMENT_CHANGED','The tablet or its Calai-only assignment changed. Request fresh setup.');
+   }
+   if (!ownerCalaiTabletAuthorityMatches(db,bound.business_id,bound.issued_by,row,JSON.parse(ownerSetup.authority_binding))) {
+     throw new HttpError(403,'FLEET_ENROLMENT_ISSUER_REVOKED','The exact tablet assignment or verified Calai owner changed. Request fresh setup.');
+   }
+ }
  if(!alreadyPaired)assertTabletSelectionActivation(db,config,row.business_id,row.application_products);
+ return ownerSetup?.authority_binding;
 }

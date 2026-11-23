@@ -8,6 +8,7 @@ import {businessAccountMembership as membership} from './business-account-member
 import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration} from './tablet-product-policy.js';
 import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
+import {PAYABLE_ORDER_SQL} from './order-confirmation.js';
 import {CALAI_BUSINESS_ORIGIN,authenticateCalaiBusiness,calaiBusinessAdapter,calaiBusinessReadPath,calaiTokenMetadata,assertCalaiBusinessIdentity,encryptCalaiBusinessCredentials,decryptCalaiBusinessCredentials,redactCalaiBusinessData,isSourceId} from './unified-business-calai.js';
 export {authenticateCalaiBusiness} from './unified-business-calai.js';
 
@@ -158,30 +159,60 @@ export async function readCalaiBusinessResource(db,config,businessId,section,{id
     return redactCalaiBusinessData(data);
   }catch(error){const code=['CALAI_UNAVAILABLE','CALAI_BUSINESS_NOT_CONFIGURED'].includes(error.code)?error.code:'CALAI_RECONNECT_REQUIRED';db.prepare('UPDATE business_product_links SET last_error_code=? WHERE id=? AND encrypted_credentials=?').run(code,row.id,row.encrypted_credentials);throw error;}
 }
-const dateKey=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+const londonOrderDay = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'});
+const dateKey=value=>londonOrderDay.format(new Date(value));
 function minor(value){if(value===null||value===undefined||value==='')return null;const number=Number(value);return Number.isFinite(number)&&number>=0&&number<=1e9?Math.round(number*100):null;}
 function sourceOrder(row){const confirmation=row.confirmationStatus,status=confirmation===true||confirmation==='confirmed'?'confirmed':confirmation===false||confirmation==='unconfirmed'?'unconfirmed':'received';return{id:'calai:'+row.id,sourceOrderId:row.id,source:'calai',sourceLabel:'Calai telephone',createdAt:row.createdAt,customerName:String(row.customerName??'Customer').slice(0,160),status,fulfilment:['delivery','collection','takeaway'].includes(row.orderType)?row.orderType:'unknown',totalMinor:minor(row.totalPrice),currency:'GBP',requiresAcceptance:false,canProcess:false};}
+const waitingEatsOrder = `(o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL})`;
+const visibleEatsOrder = `(${waitingEatsOrder} OR o.status IN ('accepted','preparing','ready','out_for_delivery','completed')
+  OR (o.status='rejected' AND o.merchant_visible_at IS NOT NULL))`;
+const newestOrder = (a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt) || a.id.localeCompare(b.id);
+
+function dailyCalaiOrders(data, today) {
+  if (!Array.isArray(data) || data.some(row => !isSourceId(row?.id) || !Number.isFinite(Date.parse(row.createdAt)))) {
+    throw fail(502, 'CALAI_RESPONSE_INVALID', 'Calai order data could not be read.');
+  }
+  const unique = new Map();
+  for (const row of data) {
+    if (dateKey(row.createdAt) !== today) continue;
+    const id = row.id.toLowerCase(), previous = unique.get(id);
+    if (!previous || Date.parse(row.createdAt) > Date.parse(previous.createdAt)) unique.set(id, row);
+  }
+  return [...unique.values()].sort(newestOrder);
+}
+
 export async function unifiedBusinessDashboard(db,session,config){
   const business=selectedContext(db,session,config),today=dateKey(config.now()),orders=[],connections={},counts={calai:{today:0,available:!business.products.calai.active},'cal-eats':{today:0,available:!business.products['cal-eats'].active}};
-  if(business.products['cal-eats'].linked&&business.eatsRestaurantId&&business.canViewEats){
-    const range=parseLondonDateRange(new URL(`http://local.invalid/?from=${today}&to=${today}`));
-    const current=db.prepare('SELECT o.id,o.created_at,o.status,o.fulfillment,o.total_minor,o.currency,u.name customer_name FROM orders o LEFT JOIN users u ON u.id=o.customer_id WHERE o.restaurant_id=? AND o.created_at>=? AND o.created_at<? ORDER BY o.created_at DESC,o.id DESC LIMIT 100').all(business.eatsRestaurantId,range.from,range.toExclusive);
-    const count=db.prepare('SELECT COUNT(*) n FROM orders WHERE restaurant_id=? AND created_at>=? AND created_at<?').get(business.eatsRestaurantId,range.from,range.toExclusive).n;counts['cal-eats']={today:count,available:true};
-    orders.push(...current.slice(0,100).map(row=>({id:'cal-eats:'+row.id,sourceOrderId:row.id,source:'cal-eats',sourceLabel:'Cal Eats online',createdAt:row.created_at,customerName:row.customer_name??'Customer',status:row.status,fulfilment:row.fulfillment,totalMinor:business.products['cal-eats'].financialAccess?row.total_minor:null,currency:row.currency,requiresAcceptance:row.status==='placed',canProcess:terminal(session)})));connections['cal-eats']={status:'connected',checkedAt:stamp(config)};
-  }
-  else if(business.products['cal-eats'].active){counts['cal-eats']={today:null,available:false};connections['cal-eats']={status:'permission_required',message:'Sign in to the authorised Cal-Eats account.'};}
   if(business.products.calai.active){
     if(!business.canViewCalai){counts.calai={today:null,available:false};connections.calai={status:'owner_required',message:'An owner must authorise Calai access.'};}
-    else try{const data=await readCalaiBusinessResource(db,config,business.id,'orders');if(!Array.isArray(data)||data.some(row=>!isSourceId(row?.id)||!Number.isFinite(Date.parse(row.createdAt))))throw fail(502,'CALAI_RESPONSE_INVALID','Calai order data could not be read.');const current=data.filter(row=>dateKey(row.createdAt)===today);counts.calai={today:current.length,available:true};orders.push(...current.slice(0,100).map(sourceOrder));connections.calai={status:'connected',checkedAt:stamp(config)};}
+    else try{const current=dailyCalaiOrders(await readCalaiBusinessResource(db,config,business.id,'orders'),today);counts.calai={today:current.length,available:true};orders.push(...current.slice(0,100).map(sourceOrder));connections.calai={status:'connected',checkedAt:stamp(config)};}
     catch(error){counts.calai={today:null,available:false};connections.calai={status:error.status===503?'unavailable':'reconnect_required',code:error.code??'CALAI_UNAVAILABLE',message:error.status===503?'Calai is temporarily unavailable.':'An owner must reconnect Calai.'};}
   }
-  orders.sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)||a.id.localeCompare(b.id));
   if(terminal(session)){if(!db.prepare('SELECT 1 FROM business_terminals t JOIN business_terminal_grants g ON g.terminal_id=t.id WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL AND g.token_hash=? AND g.revoked_at IS NULL AND g.expires_at>?').get(session.terminalId,session.businessId,session.terminalGrantHash,stamp(config)))throw fail(401,'TERMINAL_SESSION_EXPIRED','Reconnect the registered restaurant tablet.');}else currentHumanSession(db,session,config);
   const fresh=selectedContext(db,session,config);if(fresh.id!==business.id)throw fail(409,'BUSINESS_CONTEXT_CHANGED','The selected account changed. Refresh its dashboard.');
-  let visible=orders;if(!fresh.canViewEats){visible=visible.filter(row=>row.source!=='cal-eats');counts['cal-eats']={today:null,available:false};connections['cal-eats']={status:'permission_required'};}if(!fresh.canViewCalai||!fresh.products.calai.active){visible=visible.filter(row=>row.source!=='calai');counts.calai={today:null,available:false};connections.calai={status:fresh.products.calai.adminAllowed?'permission_required':'disabled_by_admin'};}
-  if(!fresh.products['cal-eats'].financialAccess)visible=visible.map(row=>row.source==='cal-eats'?{...row,totalMinor:null}:row);
+  const canShowCalai=fresh.canViewCalai&&fresh.products.calai.active&&fresh.products.calai.sourceAccountId===business.products.calai.sourceAccountId&&fresh.products.calai.verifiedSourceUserId===business.products.calai.verifiedSourceUserId;
+  if(!canShowCalai){counts.calai={today:null,available:false};connections.calai={status:fresh.products.calai.adminAllowed?'permission_required':'disabled_by_admin'};}
+
+  if(fresh.products['cal-eats'].linked&&fresh.eatsRestaurantId&&fresh.canViewEats){
+    const range=parseLondonDateRange(new URL(`http://local.invalid/?from=${today}&to=${today}`));
+    const where=`o.restaurant_id=? AND o.created_at>=? AND o.created_at<? AND ${visibleEatsOrder}`;
+    const parameters=[fresh.eatsRestaurantId,range.from,range.toExclusive];
+    const current=db.prepare(`SELECT o.id,o.created_at,o.status,o.fulfillment,o.total_minor,o.currency,u.name customer_name
+      FROM orders o LEFT JOIN users u ON u.id=o.customer_id WHERE ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT 100`).all(...parameters);
+    const count=db.prepare(`SELECT COUNT(*) n FROM orders o WHERE ${where}`).get(...parameters).n;
+    counts['cal-eats']={today:count,available:true};
+    orders.push(...current.map(row=>({id:'cal-eats:'+row.id,sourceOrderId:row.id,source:'cal-eats',sourceLabel:'Cal Eats online',
+      createdAt:row.created_at,customerName:row.customer_name??'Customer',status:row.status,fulfilment:row.fulfillment,
+      totalMinor:row.total_minor,currency:row.currency,requiresAcceptance:row.status==='placed',canProcess:false})));
+    connections['cal-eats']={status:'connected',checkedAt:stamp(config)};
+  }else if(!fresh.canViewEats||fresh.products['cal-eats'].active){
+    counts['cal-eats']={today:null,available:false};connections['cal-eats']={status:'permission_required'};
+  }
+
+  const visible=orders.filter(row=>row.source!=='calai'||canShowCalai).sort(newestOrder).slice(0,150)
+    .map(row=>fresh.products[row.source].financialAccess?row:{...row,totalMinor:null});
   const complete=Object.entries(fresh.products).every(([product,state])=>!state.active||counts[product].available);
-  return{business:fresh,counts:{...counts,total:{today:complete?Object.values(counts).reduce((sum,row)=>sum+(row.today??0),0):null,complete}},orders:visible.slice(0,150),connections,generatedAt:stamp(config),timeZone:'Europe/London',counterPeriod:'today',counterDefinition:'Orders received today in Europe/London; product-scoped records, never a combined financial balance.'};
+  return{business:fresh,counts:{...counts,total:{today:complete?Object.values(counts).reduce((sum,row)=>sum+(row.today??0),0):null,complete}},orders:visible,connections,generatedAt:stamp(config),timeZone:'Europe/London',counterPeriod:'today',counterDefinition:'Orders received today in London. Cal-Eats counts orders released to the restaurant, including completed and closed orders.'};
 }
 function requireConnectionAllowed(db,businessId,product){if(!businessProductPermission(db,businessId,product))throw fail(403,'ADMIN_CONNECTION_PERMISSION_REQUIRED','The platform administrator must allow this product connection first.');}
 function currentHumanSession(db,session,config){const user=human(db,session);if(session.sessionId){const table=session.nativeAudience==='platform-admin'?'native_platform_sessions':session.nativeAudience==='business'?'native_business_sessions':'sessions';if(!db.prepare(`SELECT 1 FROM ${table} WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?`).get(session.sessionId,user.id,stamp(config)))throw fail(401,'AUTH_REQUIRED','Sign in again to confirm this account connection.');}return user;}

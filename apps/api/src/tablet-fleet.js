@@ -8,7 +8,7 @@ import {getSurfaceStatus} from './surface-monitoring.js';
 import {retireBusinessTerminal,issueBusinessTerminalSetup} from './business-terminals.js';
 import {buildTerminalInstaller} from '../../terminal-auth/windows/build-installer.mjs';
 import {tabletManagementState,queueTabletManagementRefresh} from './tablet-management.js';
-import {assertFleetNewEnrolmentAllowed} from './tablet-fleet-policy.js';
+import {assertFleetNewEnrolmentAllowed,canOfferOwnerCalaiSetup} from './tablet-fleet-policy.js';
 import {readTabletDirectory} from './tablet-directory.js';
 import {tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 import {assertTabletSelectionReady,assertTabletSelectionDoesNotStrandWork,assertTabletSelectionActivation} from './tablet-assignment-safety.js';
@@ -84,7 +84,8 @@ function setupCapability(db,row,business,actorId=null){
  else if(business.id!==row.business_id)reason='Reconcile the inventory with its canonical native business before issuing setup.';
  if(!reason){try{assertFleetNewEnrolmentAllowed(db,row.business_id);}catch(error){if(error.code!=='TABLET_QUARANTINED')throw error;reason='A tablet for this location is quarantined pending complete physical session and printer-tenant cleanup.';}}
  const combinedReason=reason||(!row.serial_number?'The tablet’s exact serial is required for its single-file setup.':current?.id||row.terminal_id?'Use the reviewed replacement flow for an existing application registration.':null);
- return{canIssueSetup:!reason,setupBlockReason:reason,currentTerminalId:current?.id??null,canDownloadPairedSetup:!combinedReason,pairedSetupBlockReason:combinedReason};
+ const ownerFirstSetup=Boolean(!current&&business&&business.id===row.business_id&&!business.archived&&!business.eatsRestaurantId&&canOfferOwnerCalaiSetup(row));
+ return{canIssueSetup:!reason,setupBlockReason:reason,currentTerminalId:current?.id??null,canDownloadPairedSetup:!combinedReason,pairedSetupBlockReason:combinedReason,ownerFirstSetup};
 }
 function latestEnrolment(db,config,row){
  const record=db.prepare('SELECT f.*,p.consumed_at,t.revoked_at,t.id AS paired_id FROM tablet_fleet_pairing_requests f JOIN business_terminal_pairings p ON p.terminal_id=f.terminal_id LEFT JOIN business_terminals t ON t.id=f.terminal_id WHERE f.tablet_id=? ORDER BY f.issued_at DESC,f.rowid DESC LIMIT 1').get(row.id);if(!record)return null;

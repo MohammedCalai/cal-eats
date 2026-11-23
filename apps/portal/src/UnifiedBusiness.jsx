@@ -2,7 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Link, NavLink, Navigate, Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath } from "./unified-business-model.js";
+import { BUSINESS_PRODUCTS, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
+import { requestCalaiFirstTabletSetup, saveCalaiFirstTabletSetup } from "./calai-first-tablet-download.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
@@ -36,6 +37,11 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, children }
   const accounts = useBusinessResource("/api/business/accounts");
   const [terminal, setTerminal] = useState(terminalStatus);
   useEffect(() => subscribeTerminalStatus(setTerminal), []);
+  useEffect(() => {
+    const reload = () => void context.reload();
+    window.addEventListener("cal-eats-terminal-session-restored", reload);
+    return () => window.removeEventListener("cal-eats-terminal-session-restored", reload);
+  }, [context.reload]);
   const pairedWithBusiness = terminal.status === "ready" && terminal.context?.businessId === context.value?.id;
   const tabletScope = pairedWithBusiness && context.value?.principalKind === "human" ? terminal.context.terminalId : null;
   const tabletContext = useBusinessResource(tabletScope ? "/api/business/context" : null, { poll: 15000, request: terminalApi, scope: tabletScope });
@@ -68,9 +74,22 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, children }
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={business}/>{embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
+  return <BusinessContext.Provider value={{ ...context, business, terminal, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={business} terminal={terminal}/>{embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
 }
-function OperationalSurfacePresence({business}){const terminalId=terminalStatus().context?.terminalId,allowed=business?.products?.["cal-eats"]?.allowedOnTablet!==false;useEffect(()=>{if(allowed)startOperationalPresence({businessId:business?.id,restaurantId:business?.eatsRestaurantId});return()=>stopOperationalPresence();},[business?.id,business?.eatsRestaurantId,terminalId,allowed]);return null;}
+function OperationalSurfacePresence({ business, terminal }) {
+  const lastScope = useRef(null);
+  const terminalId = terminal.terminalId;
+  const allowed = business?.products?.["cal-eats"]?.allowedOnTablet !== false;
+  const scope = business && allowed ? { businessId: business.id, restaurantId: business.eatsRestaurantId, terminalId }
+    : !business && terminal.reconnectEligible && lastScope.current?.terminalId === terminalId ? lastScope.current : null;
+  const businessId = scope?.businessId, restaurantId = scope?.restaurantId;
+  useEffect(() => {
+    lastScope.current = businessId && restaurantId && terminalId ? { businessId, restaurantId, terminalId } : null;
+    if (businessId && restaurantId) startOperationalPresence({ businessId, restaurantId });
+    return () => stopOperationalPresence();
+  }, [businessId, restaurantId, terminalId]);
+  return null;
+}
 export function EmbeddedSessionBridge({ enabled, user }) {
   const navigate = useNavigate();
   useEffect(() => { if (!enabled) return; const receive = event => { const path = embeddedCommand(event, window.parent); if (path && user?.role === "restaurant") navigate(path); }; window.addEventListener("message", receive); return () => window.removeEventListener("message", receive); }, [enabled, navigate, user?.id, user?.role]);
@@ -91,6 +110,99 @@ function ProductMark({ product }) {
   return <span className={`business-account-mark product-${product}`} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{product === "calai" ? <><path d="M5 3h4l2 5-3 2a14 14 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2A18 18 0 0 1 3 5a2 2 0 0 1 2-2Z"/><path d="M15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2"/></> : <><path d="M4 7h16l-1 14H5L4 7ZM8 7V5a4 4 0 0 1 8 0v2"/><path d="M9 12h6M9 16h4"/></>}</svg></span>;
 }
 const ownerApi = (path, options) => api(path, { ...options, humanSession: true });
+function CalaiFirstTabletSetup({ business, path }) {
+  const { value, error: checkError, loading, reload } = useBusinessResource(path, { request: ownerApi });
+  const tablets = calaiFirstSetupTablets(value);
+  const [selectedId, setSelectedId] = useState("");
+  const [confirmation, setConfirmation] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({});
+  const request = useRef(null);
+  useEffect(() => () => {
+    request.current?.abort();
+    request.current = null;
+  }, []);
+  const selected = tablets.length === 1 ? tablets[0] : tablets.find(row => row.tabletId === selectedId);
+  const currentPayload = calaiFirstSetupPayload(confirmation, selected);
+
+  async function download() {
+    if (request.current || !path || checkError || !currentPayload) return;
+    const controller = new AbortController();
+    request.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setSaving(true);
+    setFeedback({});
+    try {
+      const file = await requestCalaiFirstTabletSetup(path, currentPayload, { signal: controller.signal });
+      if (request.current !== controller || controller.signal.aborted) return;
+      saveCalaiFirstTabletSetup(file);
+      setFeedback({ notice: `Private setup file downloaded for ${confirmation.tabletName}. Pairing completes when the tablet connects.` });
+    } catch (error) {
+      if (request.current !== controller) return;
+      setFeedback({ error: error.name === "AbortError"
+        ? "The request timed out. Check the current assignment before requesting a new file."
+        : error.message });
+    } finally {
+      clearTimeout(timeout);
+      if (request.current === controller) {
+        setConfirmation(null);
+        await reload();
+        if (request.current === controller) {
+          request.current = null;
+          setSaving(false);
+        }
+      }
+    }
+  }
+
+  if (value?.eligible !== true && !checkError && !feedback.error && !feedback.notice) return null;
+  return <div className="business-tablet-authorization">
+    <h3>First tablet setup</h3>
+    <Feedback {...feedback}/>
+    {checkError ? <p role="alert">Could not check assigned tablets.</p>
+      : value?.eligible === true && (tablets.length ? <>
+        {tablets.length > 1 && <label>Assigned tablet
+          <select value={selectedId} disabled={saving} onChange={event => {
+            setSelectedId(event.target.value);
+            setConfirmation(null);
+            setFeedback({});
+          }}>
+            <option value="">Choose a tablet</option>
+            {tablets.map(row => <option key={row.tabletId} value={row.tabletId}>{row.tabletName} · {row.serialNumber}</option>)}
+          </select>
+        </label>}
+        {selected && <p><strong>{selected.tabletName}</strong> · Serial {selected.serialNumber}</p>}
+      </> : <p>Ask your administrator to assign a Windows tablet to this location.</p>)}
+    <div className="button-row">
+      {!checkError && tablets.length > 0 && <button type="button" className="quiet" disabled={!selected || saving} onClick={() => {
+        setFeedback({});
+        setConfirmation(selected);
+      }}>Download tablet setup</button>}
+      <button type="button" className="quiet" disabled={loading || saving} onClick={() => { setConfirmation(null); void reload(); }}>Check assignment</button>
+    </div>
+    {confirmation && currentPayload && !checkError &&
+      <WorkspaceDialog title="Download private tablet setup?" onClose={() => { if (!request.current) setConfirmation(null); }}>
+        <p><strong>{confirmation.tabletName}</strong> · Serial {confirmation.serialNumber} · <strong>{business.name}</strong></p>
+        <p>Keep this one-use file private. Run it on the named Windows tablet as an administrator within ten minutes.</p>
+        <div className="button-row">
+          <button type="button" className="quiet" disabled={saving} onClick={() => setConfirmation(null)}>Cancel</button>
+          <button type="button" className="primary" disabled={saving} onClick={() => void download()}>{saving ? "Preparing setup…" : "Confirm and download"}</button>
+        </div>
+      </WorkspaceDialog>}
+  </div>;
+}
+
+function CalaiOwnerTabletControls({ business, tabletConnection }) {
+  const firstSetupPath = calaiTabletFirstSetupPath(business);
+  return <>
+    <CalaiTabletAuthorization business={business}/>
+    {firstSetupPath && <>
+      <CalaiFirstTabletSetup key={firstSetupPath} business={business} path={firstSetupPath}/>
+      {tabletConnection}
+    </>}
+  </>;
+}
+
 function CalaiTabletAuthorization({ business }) {
   const path = calaiTabletAuthorizationPath(business);
   const { value, error: checkError, reload } = useBusinessResource(path, { request: ownerApi });
@@ -164,7 +276,7 @@ function CalaiTabletAuthorization({ business }) {
       </WorkspaceDialog>}
   </div>;
 }
-function OwnerProductCard({ business, product }) {
+function OwnerProductCard({ business, product, tabletConnection }) {
   const state = productPresentation(business, product), settings = safeNativeLink(state.nativeLinks?.settings), finance = safeNativeLink(state.nativeLinks?.statements || state.nativeLinks?.billing);
   const reconnect = state.connectionStatus === "reconnect_required", status = state.usable ? "Connected" : !state.allowed ? "Not enabled" : state.status === "unavailable" ? "Temporarily unavailable" : reconnect ? "Sign in required" : state.linked ? "Setup needed" : "Not connected";
   return <section className={`panel business-account-card product-${product}`} aria-label={`${state.name} account`}>
@@ -180,11 +292,11 @@ function OwnerProductCard({ business, product }) {
       {product === "calai" && !state.nativeAccountId && safeNativeLink(state.nativeLinks?.onboarding) && <a className="button-link" target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register with Calai</a>}
       {canConnectBusinessProduct(business, product) && !state.linked && product === "cal-eats" && <a className="button-link" target="_top" href="/order/?view=register-restaurant">List your restaurant</a>}
     </div>
-    {product === "calai" && <CalaiTabletAuthorization key={business.id} business={business}/>}
+    {product === "calai" && <CalaiOwnerTabletControls key={business.id} business={business} tabletConnection={tabletConnection}/>}
     {state.nativeAccountId && <details className="business-account-reference"><summary>Account details</summary><dl><div><dt>Business</dt><dd>{business.name}</dd></div><div><dt>Account reference</dt><dd>{state.nativeAccountId}</dd></div></dl></details>}
   </section>;
 }
-export function ProductCards({ business, admin = false, onSaved }) {
+export function ProductCards({ business, admin = false, onSaved, tabletConnection }) {
   const [pending, setPending] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const current = useRef(business.id); current.current = business.id;
   async function changePermission() {
@@ -195,7 +307,7 @@ export function ProductCards({ business, admin = false, onSaved }) {
   }
   if (!admin) {
     const products = BUSINESS_PRODUCTS.filter(product => { const state = productPresentation(business, product); return state.linked || state.allowed || Boolean(state.nativeAccountId); });
-    return products.length ? <div className="business-product-cards business-owner-products">{products.map(product => <OwnerProductCard key={product} business={business} product={product}/>)}</div> : <section className="panel"><h2>No accounts available</h2><p>Contact Cal-Eats support to check the accounts available to your business.</p></section>;
+    return products.length ? <div className="business-product-cards business-owner-products">{products.map(product => <OwnerProductCard key={product} business={business} product={product} tabletConnection={tabletConnection}/>)}</div> : <section className="panel"><h2>No accounts available</h2><p>Contact Cal-Eats support to check the accounts available to your business.</p></section>;
   }
   return <><Feedback error={error} notice={notice}/><div className="business-product-cards">{BUSINESS_PRODUCTS.map(product => {
     const state = productPresentation(business, product), settings = safeNativeLink(state.nativeLinks?.settings), finance = safeNativeLink(state.nativeLinks?.statements || state.nativeLinks?.billing);
@@ -208,7 +320,7 @@ export function ProductCards({ business, admin = false, onSaved }) {
     </section>;
   })}</div>{pending && <WorkspaceDialog title={`${pending.allowed?"Allow":"Disable"} ${productName(pending.product)}?`} onClose={()=>{if(!busy)setPending(null);}}><div className="business-confirmation"><p><strong>{business.name}</strong></p><p>{pending.product === "calai" ? "Only this combined-workspace connection changes. Native Calai operation continues normally." : pending.allowed ? "This allows Cal-Eats setup or restores service when the verified account is ready. It does not bypass launch or setup requirements." : "New Cal-Eats orders will be blocked. Accepted orders, support, history and financial records remain available to authorised users."}</p><div className="button-row"><button className="quiet" type="button" disabled={busy} onClick={() => setPending(null)}>Cancel</button><button className="primary" type="button" disabled={busy} onClick={() => void changePermission()}>{busy ? "Saving…" : "Confirm administrator change"}</button></div></div></WorkspaceDialog>}</>;
 }
-export function BusinessConnections() {
+export function BusinessConnections({ tabletConnection }) {
   const workspace = useBusinessWorkspace(), business = workspace?.business, [params] = useSearchParams();
   const requested = params.get("connect"), product = BUSINESS_PRODUCTS.includes(requested) ? requested : null;
   const [proof, setProof] = useState(null), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState(""), [sourceAccounts,setSourceAccounts] = useState([]), [selectedSource,setSelectedSource] = useState("");
@@ -232,7 +344,7 @@ export function BusinessConnections() {
   }
   return <div className="unified-business business-account-page">
     <header className="page-heading business-account-heading"><p className="eyebrow">{business.name}</p><h1>Accounts & connections</h1><p>Manage the Calai and Cal-Eats accounts for your business.</p></header>
-    {!product ? <><ProductCards business={business}/><p className="business-account-footnote">Each service keeps its own orders, settings and statements.</p></> : <>
+    {!product ? <><ProductCards business={business} tabletConnection={tabletConnection}/><p className="business-account-footnote">Each service keeps its own orders, settings and statements.</p></> : <>
       <Link className="business-account-back" to="/owner/connections">← All connections</Link>
       <section className="panel connection-journey" aria-labelledby="connection-journey-title">
         <header><ProductMark product={product}/><div><p className="eyebrow">{state.name}</p><h2 id="connection-journey-title">{proof ? "Confirm your business" : `Connect ${state.name}`}</h2></div></header>
@@ -251,7 +363,7 @@ export function BusinessConnections() {
           <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify account"}</button>
           {state.nativeLinks?.onboarding && safeNativeLink(state.nativeLinks.onboarding) && <p className="fine"><a target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register a Calai account</a></p>}
         </form>}
-        {product === "calai" && !proof && !busy && <CalaiTabletAuthorization key={business.id} business={business}/>}
+        {product === "calai" && !proof && !busy && <CalaiOwnerTabletControls key={business.id} business={business} tabletConnection={tabletConnection}/>}
       </section>
     </>}
   </div>;

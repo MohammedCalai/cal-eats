@@ -2,7 +2,40 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyTabletProductAccess, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
+import { dashboardOrderActivity, dashboardOrderProducts } from "../src/unified-business-model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
+test("dashboard order sources respect each product and signed tablet selection", () => {
+  const business = {
+    id: "branch", eatsRestaurantId: "eats", canViewEats: true, canViewCalai: true,
+    products: { calai: product("native"), "cal-eats": product("eats") },
+  };
+  assert.deepEqual(dashboardOrderProducts(business), ["calai", "cal-eats"]);
+  assert.deepEqual(dashboardOrderProducts({ ...business, eatsRestaurantId: null }), ["calai"]);
+  assert.deepEqual(dashboardOrderProducts({ ...business, canViewCalai: false }), ["cal-eats"]);
+  assert.deepEqual(dashboardOrderProducts({ ...business, products: {
+    ...business.products, calai: product("native", { allowedOnTablet: false }),
+  } }), ["cal-eats"]);
+  assert.deepEqual(dashboardOrderProducts({ ...business, products: {
+    ...business.products, calai: product("native", { effectiveStatus: "unavailable", readiness: { ready: false } }),
+  } }), ["calai", "cal-eats"]);
+});
+test("dashboard keeps a known count and rows when the other source is unavailable", () => {
+  const products = ["calai", "cal-eats"];
+  const calai = { source: "calai", id: "calai:same" };
+  const eats = { source: "cal-eats", id: "cal-eats:same" };
+  const value = {
+    business: { id: "branch" }, counterPeriod: "today",
+    counts: { calai: { today: 1, available: true }, "cal-eats": { today: 1, available: true } },
+    orders: [calai, eats],
+  };
+  assert.equal(dashboardOrderActivity(value, "branch", products).total, 2);
+  assert.deepEqual(dashboardOrderActivity(value, "branch", ["calai"]).rows, [calai]);
+  assert.deepEqual(dashboardOrderActivity(value, "other-branch", products).rows, []);
+  value.counts.calai = { today: 0, available: false };
+  assert.deepEqual(dashboardOrderActivity(value, "branch", products), {
+    counters: [{ product: "calai", count: null }, { product: "cal-eats", count: 1 }], total: null, rows: [eats],
+  });
+});
 test("Calai-only mode does not depend on the denied Cal-Eats restaurants request", () => {
   const business = { eatsRestaurantId: "restaurant-a", canViewEats: true, products: {
     "cal-eats": { allowedOnTablet: true },

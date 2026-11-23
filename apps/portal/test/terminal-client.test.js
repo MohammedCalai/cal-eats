@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAutomaticTerminalClient } from "../src/terminal-client.js";
+import { createBusinessBootstrap } from "../src/business-bootstrap.js";
+import { createSurfacePresenceClient } from "../src/surface-presence-client.js";
 
 const TERMINAL = "a1111111-1111-4111-8111-111111111111", BUSINESS = "b2222222-2222-4222-8222-222222222222", RESTAURANT = "c3333333-3333-4333-8333-333333333333", ACTOR = "d4444444-4444-4444-8444-444444444444", SCREEN = "e5555555-5555-4555-8555-555555555555", OTHER = "f6666666-6666-4666-8666-666666666666";
 const CSRF = "c".repeat(43), WINDOW = "w".repeat(43), NEXT_WINDOW = "n".repeat(43);
@@ -16,6 +18,192 @@ function fixture(overrides = {}) {
   const ready = async (value = session()) => { queue.push(response(bootstrap()), response(value)); return client.connectAutomaticTerminal(); };
   return { client, calls, queue, timers, ready, setTime: value => { now = value; }, setPermission: value => { permission = value; }, setHint: value => { remembered = value; }, hint: () => remembered };
 }
+
+const refused = () => Promise.reject(new TypeError("Broker is not listening yet"));
+function pollClock() {
+  let id = 0;
+  const timers = new Map();
+  const schedule = (run, delay) => { timers.set(++id, { run, delay }); return id; };
+  const next = () => { const entry = timers.entries().next().value; assert.ok(entry); timers.delete(entry[0]); return entry[1]; };
+  return { timers, schedule, next, cancel: handle => timers.delete(handle) };
+}
+function bootstrapFixture(client) {
+  const clock = pollClock(), sessions = [], restored = [];
+  const controller = createBusinessBootstrap({
+    readHuman: async () => { throw Object.assign(Error("Signed out"), { status: 401 }); },
+    connectTerminal: client.connectAutomaticTerminal, terminalStatus: client.terminalStatus,
+    readTerminal: options => client.terminalApi("/api/auth/me", options), canDiscover: () => true,
+    schedule: clock.schedule, cancel: clock.cancel, onSession: value => sessions.push(value), onSignOut: client.clearDiscoveryHint,
+    onTerminal: value => restored.push(value)
+  });
+  return { ...clock, sessions, restored, controller };
+}
+
+test("actual cold bootstrap retries a known granted tablet whose local broker is still starting", async () => {
+  const f = fixture(); f.setHint(true);
+  const coordinator = bootstrapFixture(f.client);
+  f.queue.push(refused);
+  await coordinator.controller.refresh();
+  assert.equal(f.client.terminalStatus().paired, null);
+  assert.equal(f.client.terminalStatus().startupRetryEligible, true);
+  assert.equal(coordinator.sessions.at(-1).user, null);
+  assert.equal(f.hint(), true);
+  const retry = coordinator.next(); assert.equal(retry.delay, 5000);
+  f.queue.push(response(bootstrap()), response(session()), response(session()));
+  retry.run();
+  await until(() => coordinator.sessions.at(-1)?.principalKind === "terminal");
+  assert.equal(coordinator.sessions.at(-1).user.id, ACTOR);
+  assert.equal(coordinator.timers.size, 0);
+  assert.deepEqual(f.calls.map(call => new URL(call.url).pathname), ["/v1/bootstrap", "/v1/bootstrap", "/v1/automatic-session", "/v1/request"]);
+  coordinator.controller.stop();
+});
+
+test("actual cold bootstrap bounds retries and cancels them when signed out or browser permission changes", async () => {
+  const f = fixture(); f.setHint(true);
+  const coordinator = bootstrapFixture(f.client);
+  f.queue.push(...Array(5).fill(refused));
+  await coordinator.controller.refresh();
+  for (const delay of [5000, 10000, 30000, 60000]) {
+    const count = coordinator.sessions.length, retry = coordinator.next();
+    assert.equal(retry.delay, delay); retry.run();
+    await until(() => coordinator.sessions.length > count);
+  }
+  assert.equal(f.calls.length, 5);
+  assert.equal(coordinator.timers.size, 0);
+  assert.ok(coordinator.sessions.every(value => value.user === null));
+  coordinator.controller.stop();
+
+  for (const condition of ["signed-out", "denied"]) {
+    const permission = Object.assign(new EventTarget(), { state: "granted" });
+    const known = fixture({ permissionQuery: () => permission }); known.setHint(true);
+    const boot = bootstrapFixture(known.client); known.queue.push(refused);
+    await boot.controller.refresh();
+    const waiting = boot.next();
+    if (condition === "signed-out") boot.controller.signOut();
+    else { permission.state = "denied"; permission.dispatchEvent(new Event("change")); }
+    waiting.run();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(known.calls.length, 1);
+    assert.equal(known.hint(), false);
+    boot.controller.stop();
+  }
+});
+
+test("cold bootstrap never retries ordinary, unknown, prompt or denied browser discovery", async () => {
+  for (const [permission, hint, calls] of [["granted", false, 1], ["unknown", true, 1], ["prompt", true, 0], ["denied", true, 0]]) {
+    const f = fixture(); f.setPermission({ state: permission }); f.setHint(hint); f.queue.push(refused);
+    const boot = bootstrapFixture(f.client);
+    await boot.controller.refresh();
+    assert.equal(f.calls.length, calls, permission);
+    assert.equal(boot.timers.size, 0, permission);
+    assert.equal(f.client.terminalStatus().startupRetryEligible, false, permission);
+    boot.controller.stop();
+  }
+});
+
+test("actual Calai-only terminal automatically recovers signed reads without changing principal or issuing operations", async () => {
+  for (const condition of ["recover", "other-business", "other-signed-user", "eats-scope", "signed-out"]) {
+    const f = fixture(), boot = bootstrapFixture(f.client);
+    const unsubscribe = f.client.subscribe(boot.controller.observeTerminal);
+    const pure = session({ restaurantId: null, products: { calai: { active: true }, "cal-eats": { active: false } } });
+    const initial = condition === "eats-scope" ? session() : pure;
+    f.queue.push(response(bootstrap()), response(initial), response(initial));
+    await boot.controller.refresh();
+    assert.equal(boot.sessions.at(-1)?.principalKind, "terminal");
+    f.queue.push(refused);
+    await assert.rejects(f.client.terminalApi("/api/business/context"), error => error.code === "TERMINAL_LOCAL_UNAVAILABLE");
+    if (condition === "eats-scope") assert.equal(boot.timers.size, 0);
+    else {
+      const retry = boot.next(); assert.equal(retry.delay, 5000);
+      if (condition === "signed-out") boot.controller.signOut();
+      const recovered = condition === "other-business" ? { ...pure, businessId: OTHER } : pure;
+      const signed = condition === "other-signed-user" ? { ...pure, user: { ...pure.user, id: OTHER } } : pure;
+      f.queue.push(response(bootstrap()), response(recovered), response(signed));
+      retry.run();
+      if (condition === "recover") {
+        await until(() => boot.restored.length === 1);
+        assert.equal(boot.restored[0].restored, true);
+        assert.equal(boot.restored[0].terminalContext.restaurantId, null);
+        assert.equal(boot.sessions.length, 1);
+        const signedRead = JSON.parse(f.calls.at(-1).options.body);
+        assert.equal(signedRead.method, "GET");
+        assert.equal(signedRead.path, "/api/auth/me");
+      } else {
+        if (condition === "other-business") {
+          await until(() => f.client.terminalStatus().errorCode === "TERMINAL_LOCAL_INVALID");
+          assert.equal(f.client.terminalStatus().context, null);
+          assert.equal(f.calls.length, 6);
+        } else if (condition === "other-signed-user") await until(() => f.calls.length === 7);
+        else assert.equal(f.calls.length, 4);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(boot.restored.length, 0);
+      }
+    }
+    assert.equal(boot.timers.size, 0);
+    unsubscribe(); boot.controller.stop();
+  }
+});
+
+test("actual operational presence reconnects the same tablet through fresh broker proof without replaying a failed heartbeat", async () => {
+  for (const failure of [refused, response({ code: "TABLET_LOCAL_CSRF_REQUIRED" }, 403), response({ code: "TABLET_WINDOW_PROOF_REQUIRED" }, 403)]) {
+    const f = fixture(); await f.ready();
+    const clock = pollClock(), states = [];
+    const client = createSurfacePresenceClient({ status: f.client.terminalStatus, request: f.client.terminalApi,
+      reconnect: f.client.connectAutomaticTerminal, schedule: clock.schedule, cancel: clock.cancel, onState: state => states.push(state) });
+    const pendingOrders = () => response({ items: [] });
+    const heartbeat = () => response({ heartbeatSeconds: 30 });
+    f.queue.push(pendingOrders(), heartbeat());
+    client.start({ businessId: BUSINESS, restaurantId: RESTAURANT });
+    await until(() => states.at(-1)?.state === "reporting");
+    f.queue.push(pendingOrders(), failure);
+    clock.next().run();
+    await until(() => states.at(-1)?.code);
+    assert.equal(f.hint(), true, "A verified, granted connection keeps its discovery hint across a transient failure");
+    const recovery = clock.next(); assert.equal(recovery.delay, 5000);
+    const nextCsrf = "z".repeat(43);
+    f.queue.push(response({ ...bootstrap(), csrfToken: nextCsrf }), response(session({ windowProof: NEXT_WINDOW })), pendingOrders(), heartbeat());
+    recovery.run();
+    await until(() => states.filter(value => value.state === "reporting").length === 2);
+    assert.equal(states.filter(value => value.state === "terminal_restored").length, 1);
+    assert.deepEqual(f.calls.slice(6).map(call => new URL(call.url).pathname), ["/v1/bootstrap", "/v1/automatic-session", "/v1/request", "/v1/request"]);
+    assert.equal(f.calls[7].options.headers["X-Calai-Terminal-CSRF"], nextCsrf);
+    const fresh = f.calls.slice(8).map(call => JSON.parse(call.options.body));
+    assert.equal(f.calls[9].options.headers["X-Calai-Terminal-Window"], NEXT_WINDOW);
+    assert.match(fresh[0].path, /\/orders\/pending-confirmation/);
+    const failedHeartbeat = JSON.parse(f.calls[5].options.body).body;
+    assert.equal(fresh[1].body.sequence, failedHeartbeat.sequence + 1);
+    client.stop();
+  }
+});
+
+test("cloud denial detected by another signed read or during reconnect stops actual presence", async () => {
+  for (const condition of ["expired", "wrong-status", "during-reconnect"]) {
+    const f = fixture(); await f.ready();
+    const clock = pollClock(), states = [];
+    const client = createSurfacePresenceClient({ status: f.client.terminalStatus, request: f.client.terminalApi,
+      reconnect: f.client.connectAutomaticTerminal, schedule: clock.schedule, cancel: clock.cancel, onState: state => states.push(state) });
+    f.queue.push(response({ items: [] }), response({ heartbeatSeconds: 30 }));
+    client.start({ businessId: BUSINESS, restaurantId: RESTAURANT });
+    await until(() => states.at(-1)?.state === "reporting");
+    if (condition === "during-reconnect") {
+      f.queue.push(refused); clock.next().run();
+      await until(() => states.at(-1)?.code === "TERMINAL_LOCAL_UNAVAILABLE");
+      f.queue.push(response(bootstrap()), response({ code: "TERMINAL_BUSINESS_UNAVAILABLE" }, 403));
+      clock.next().run();
+      await until(() => states.at(-1)?.code === "TERMINAL_BUSINESS_UNAVAILABLE");
+      assert.equal(f.calls.length, 7);
+    } else {
+      const code = condition === "expired" ? "TERMINAL_SESSION_EXPIRED" : "TABLET_LOCAL_CSRF_REQUIRED";
+      f.queue.push(response({ code }, 401));
+      await assert.rejects(f.client.terminalApi("/api/auth/me"), error => error.status === 401);
+      clock.next().run();
+      assert.equal(f.calls.length, 5);
+    }
+    assert.equal(clock.timers.size, 0);
+    assert.equal(states.some(item => item.state === "terminal_restored"), false);
+    client.stop();
+  }
+});
 
 test("automatic sign-in returns a scoped safe identity and keeps all transport secrets in its closure", async () => {
   const f = fixture();

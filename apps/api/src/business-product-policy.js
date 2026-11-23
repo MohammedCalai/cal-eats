@@ -29,11 +29,34 @@ export function currentCalaiApproverProof(db, businessId, userId) {
   return proof;
 }
 
+export function ownerCalaiTabletBindingMatches(tablet, businessId, binding) {
+  return Boolean(binding && tablet && tablet.id === binding.tabletId && tablet.business_id === businessId &&
+    tablet.lifecycle_state === 'assigned' && !tablet.archived_at && !tablet.authority_blocked_at &&
+    !tablet.handoff_requested_at && !tablet.disabled_at && !tablet.requested_business_id &&
+    tablet.intune_managed_device_id === binding.intuneManagedDeviceId && tablet.entra_device_id === binding.entraDeviceId &&
+    tablet.serial_number === binding.serialNumber);
+}
+
+export function ownerCalaiTabletAuthorityMatches(db, businessId, userId, tablet, binding) {
+  if (!ownerCalaiTabletBindingMatches(tablet, businessId, binding)) return false;
+  const proof = currentCalaiApproverProof(db, businessId, userId);
+  return Boolean(proof && proof.link_id === binding.linkId &&
+    proof.source_account_id === binding.sourceAccountId && proof.source_user_id === binding.sourceUserId);
+}
+
 // The paired identity may read this native account only through the original
 // issuer proof or an explicit approval from the verified business owner.
 export function terminalHasCalaiAuthority(db,terminalId,businessId){
  if(!terminalId||!businessId)return false;
- if(db.prepare("SELECT 1 FROM business_terminals t JOIN users u ON u.id=t.registered_by AND u.account_enabled=1 AND u.principal_kind='human' JOIN business_product_authorities a ON a.business_id=t.business_id AND a.product='calai' AND a.user_id=u.id JOIN business_product_links p ON p.business_id=a.business_id AND p.product=a.product AND p.source_account_id=a.source_account_id AND p.upstream_user_id=a.source_user_id WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL").get(terminalId,businessId))return true;
+ const terminal = db.prepare('SELECT * FROM business_terminals WHERE id=? AND business_id=? AND revoked_at IS NULL').get(terminalId,businessId);
+ if (!terminal) return false;
+ const ownerEnrolled = terminal.calai_owner_authority_binding != null;
+ const binding = ownerEnrolled ? JSON.parse(terminal.calai_owner_authority_binding) : null;
+ if (ownerEnrolled) {
+   const tablet = db.prepare('SELECT * FROM admin_tablets WHERE terminal_id=?').get(terminalId);
+   if (!ownerCalaiTabletBindingMatches(tablet,businessId,binding)) return false;
+   if (ownerCalaiTabletAuthorityMatches(db,businessId,terminal.registered_by,tablet,binding)) return true;
+ } else if(db.prepare("SELECT 1 FROM business_terminals t JOIN users u ON u.id=t.registered_by AND u.account_enabled=1 AND u.principal_kind='human' JOIN business_product_authorities a ON a.business_id=t.business_id AND a.product='calai' AND a.user_id=u.id JOIN business_product_links p ON p.business_id=a.business_id AND p.product=a.product AND p.source_account_id=a.source_account_id AND p.upstream_user_id=a.source_user_id WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL").get(terminalId,businessId))return true;
  const approved=db.prepare(`
    SELECT consent.* FROM business_terminal_calai_approvals consent
      JOIN business_terminals terminal ON terminal.id=consent.terminal_id
@@ -43,7 +66,7 @@ export function terminalHasCalaiAuthority(db,terminalId,businessId){
        AND tablet.archived_at IS NULL AND tablet.authority_blocked_at IS NULL AND tablet.handoff_requested_at IS NULL
     WHERE consent.terminal_id=? AND consent.business_id=?
  `).get(terminalId,businessId);
- if (!approved) return false;
+ if (!approved || (binding && approved.source_account_id !== binding.sourceAccountId)) return false;
  const proof=currentCalaiApproverProof(db,businessId,approved.approved_by);
  return Boolean(proof && proof.link_id===approved.native_link_id &&
    proof.source_account_id===approved.source_account_id && proof.source_user_id===approved.source_user_id);
