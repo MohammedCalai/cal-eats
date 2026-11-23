@@ -144,9 +144,11 @@ test('explicit Retry redelivers the existing Intune job once and waits for proof
   assert.equal((await f.save()).status, 200);
   await f.run();
   const first = f.get();
-  const reportFailure = () => Object.assign(new Error('Intune execution failed'), { code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED', retry: false });
   f.advance(61_000);
-  await f.run({ async observe() { throw reportFailure(); } });
+  const observedAt = new Date(f.config.now().getTime() + 1000).toISOString();
+  await f.run({ async observe() { throw Object.assign(new Error('Intune execution failed'), {
+    code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED', retry: false, observedAt
+  }); } });
   const failed = await f.state();
   assert.equal(failed.managedSetup.state, 'attention');
   assert.equal((await f.post({ jobId: first.id, publicKeySpki: keys.publicKeySpki })).status, 202);
@@ -188,6 +190,7 @@ test('explicit Retry redelivers the existing Intune job once and waits for proof
   await f.run({ async observe(input) {
     assert.equal(input.deliveryRevision, 2);
     assert.equal(input.requestedAt, f.get().delivery_started_at);
+    assert.equal(input.priorFailureAt, observedAt);
     return evidence(first, keys, f.config.now().toISOString());
   } });
   assert.equal(f.get().state, 'assigned');

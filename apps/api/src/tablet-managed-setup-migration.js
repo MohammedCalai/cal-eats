@@ -40,6 +40,7 @@ export const tabletManagedSetupRetryMigration77 = {
   name: 'intune_managed_tablet_delivery_retries',
   sql: `ALTER TABLE tablet_managed_setups ADD COLUMN delivery_revision INTEGER NOT NULL DEFAULT 1 CHECK(delivery_revision BETWEEN 1 AND 10000);
   ALTER TABLE tablet_managed_setups ADD COLUMN delivery_started_at TEXT;
+  ALTER TABLE tablet_managed_setups ADD COLUMN failed_run_at TEXT;
   ALTER TABLE tablet_managed_setups ADD COLUMN retry_script_content TEXT;
   ALTER TABLE tablet_managed_setups ADD COLUMN retry_update_started_at TEXT;`
 };

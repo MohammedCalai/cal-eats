@@ -342,8 +342,10 @@ export function createTabletManagedSetupGraph(settings, {
     const job = jobEnvelope(settings, input), scriptId = id(input.scriptId);
     const { deliveryRevision = 1 } = input;
     const requestedAt = typeof input.requestedAt === 'string' ? Date.parse(input.requestedAt) : NaN;
+    const priorFailureAt = input.priorFailureAt == null ? -Infinity : Date.parse(input.priorFailureAt);
     if (!scriptId || !Number.isSafeInteger(deliveryRevision) || deliveryRevision < 1 ||
-        !Number.isFinite(requestedAt) || requestedAt > now()) throw fail('MANAGED_SETUP_GRAPH_EVIDENCE_INVALID');
+        !Number.isFinite(requestedAt) || requestedAt > now() || Number.isNaN(priorFailureAt) ||
+        priorFailureAt > now() + 60000) throw fail('MANAGED_SETUP_GRAPH_EVIDENCE_INVALID');
     return bounded(async signal => {
       const token = await tokenFor(signal);
       await verifyTarget(job, token, signal);
@@ -356,10 +358,10 @@ export function createTabletManagedSetupGraph(settings, {
           run.id.length > 200 || /[\x00-\x1f\x7f]/.test(run.id)) throw fail('MANAGED_SETUP_GRAPH_RUN_SCOPE_MISMATCH');
       const observed = typeof run.lastStateUpdateDateTime === 'string' ? Date.parse(run.lastStateUpdateDateTime) : NaN;
       const modified = typeof script.lastModifiedDateTime === 'string' ? Date.parse(script.lastModifiedDateTime) : NaN;
-      const since = Math.max(requestedAt, modified);
+      const since = Math.max(requestedAt, modified, priorFailureAt);
       const fresh = (deliveryRevision === 1 ? observed >= since : observed > since) && observed <= now() + 60000;
       if (['fail', 'scriptError', 'notApplicable'].includes(run.runState) && fresh) {
-        throw fail('MANAGED_SETUP_GRAPH_EXECUTION_FAILED');
+        throw Object.assign(fail('MANAGED_SETUP_GRAPH_EXECUTION_FAILED'), { observedAt: new Date(observed).toISOString() });
       }
       if (run.runState !== 'success') return null;
       if (!Number.isFinite(observed) || !Number.isFinite(modified) || observed > now() + 60000 || modified > now() + 60000 ||

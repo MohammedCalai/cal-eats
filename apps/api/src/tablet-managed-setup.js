@@ -206,7 +206,7 @@ function validSignature(key, input, signature) {
 function verifiedRunKey(job, result, now) {
   const reportTime = Date.parse(result.observedAt), startedAt = Date.parse(job.delivery_started_at ?? job.create_started_at);
   if (!Number.isFinite(reportTime) || !Number.isFinite(startedAt) || reportTime > now + 60_000) return null;
-  if (reportTime < startedAt || job.delivery_revision > 1 && reportTime === startedAt) return { stale: true };
+  if (reportTime < startedAt || job.delivery_revision > 1 && (reportTime === startedAt || reportTime <= Date.parse(job.failed_run_at))) return { stale: true };
   const match = /^CAL_EATS_MANAGED_SETUP_V1:([A-Za-z0-9_-]{1,1024})$/.exec(result.resultMessage);
   if (!match) return null;
   try {
@@ -225,9 +225,9 @@ function verifiedRunKey(job, result, now) {
   } catch { return null; }
 }
 
-function closeJob(db, jobId, code) {
+function closeJob(db, jobId, code, failedRunAt = null) {
   db.prepare(`UPDATE tablet_managed_setups SET state='attention',failure_code=?,lease_id=NULL,lease_until=NULL,
-    challenge=NULL,challenge_until=NULL WHERE id=? AND state IN('pending','assigned','verified')`).run(code, jobId);
+    failed_run_at=COALESCE(?,failed_run_at),challenge=NULL,challenge_until=NULL WHERE id=? AND state IN('pending','assigned','verified')`).run(code, failedRunAt, jobId);
 }
 
 function revokeVerification(db, jobId, lease) {
@@ -290,7 +290,7 @@ export async function runTabletManagedSetup(db, config, { graph, limit = 2 } = {
       } else {
         const active = getJob(db, job.id);
         const result = await adapter.observe({ ...request, scriptId: active.script_id, deliveryRevision: active.delivery_revision,
-          requestedAt: active.delivery_started_at ?? active.create_started_at });
+          requestedAt: active.delivery_started_at ?? active.create_started_at, priorFailureAt: active.failed_run_at });
         assertLease();
         if (result) {
           const evidence = verifiedRunKey(active, result, config.now().getTime());
@@ -306,7 +306,8 @@ export async function runTabletManagedSetup(db, config, { graph, limit = 2 } = {
       // A later worker may own the lease. An old network response never closes it.
       if (getJob(db, job.id)?.lease_id === lease && (error instanceof HttpError || error?.retry === false)) {
         const code = /^MANAGED_SETUP_GRAPH_[A-Z_]{1,55}$/.test(error.code) ? error.code : 'connection_check_failed';
-        closeJob(db, job.id, code);
+        const observed = code === 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED' ? Date.parse(error.observedAt) : NaN;
+        closeJob(db, job.id, code, Number.isFinite(observed) && observed <= config.now().getTime() + 60_000 ? new Date(observed).toISOString() : null);
       }
     } finally {
       db.prepare('UPDATE tablet_managed_setups SET lease_id=NULL,lease_until=NULL,next_check_at=? WHERE id=? AND lease_id=?').run(at(config, checkMs), job.id, lease);

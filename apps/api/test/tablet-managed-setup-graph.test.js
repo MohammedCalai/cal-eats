@@ -279,7 +279,8 @@ test('retry observation refuses runs at the script modification or request time 
   run.runState = 'scriptError';
   assert.equal(await retry(), null);
   run.lastStateUpdateDateTime = new Date(Date.parse(stamp) + 1).toISOString();
-  await assert.rejects(retry(), { code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED' });
+  await assert.rejects(retry(), { code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED', observedAt: run.lastStateUpdateDateTime });
+  assert.equal(await retry({ priorFailureAt: run.lastStateUpdateDateTime }), null);
   run.runState = 'success';
   assert.equal(await retry({ requestedAt: run.lastStateUpdateDateTime }), null);
   assert.deepEqual(await retry(), { resultMessage, observedAt: run.lastStateUpdateDateTime });
