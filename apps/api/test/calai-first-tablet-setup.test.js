@@ -116,6 +116,48 @@ test('Calai owner first setup lists only exact managed assignments and rechecks 
   assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM business_terminal_pairings').get().count, 0);
 });
 
+test('a verified Calai-only owner can approve the exact Intune target once without issuing a private setup file', async t => {
+  const f = await fixture(t), device = f.tablet.device;
+  const groupId = randomUUID(), directoryObjectId = randomUUID();
+  f.config.tabletManagedSetup = { enabled: true, targets: new Map([[device.intuneManagedDeviceId, {
+    groupId, directoryObjectId, entraDeviceId: device.entraDeviceId, serialNumber: device.serialNumber.toUpperCase()
+  }]]) };
+
+  const before = await f.setup();
+  assert.equal(before.status, 200);
+  assert.deepEqual(JSON.parse(before.payload).data.tablets[0].managedSetup, {
+    available: true, state: null, requestedAt: null, requiresOwnerApproval: true
+  });
+  assert.equal((await f.setup({ body: f.setupBody, session: f.adminSession })).status, 403);
+  assert.equal((await f.setup({ body: f.setupBody, directoryReader: async () => ({ items: [{ ...device, entraDeviceId: randomUUID() }] }) })).status, 409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM tablet_managed_setups').get().count, 0);
+
+  const results = await Promise.all([f.setup({ body: f.setupBody }), f.setup({ body: f.setupBody })]);
+  for (const result of results) {
+    assert.equal(result.status, 202, result.code);
+    assert.equal(result.headers['Cache-Control'], 'private, no-store');
+    assert.equal(Object.hasOwn(result.headers, 'Content-Disposition'), false);
+    assert.deepEqual(JSON.parse(result.payload), { data: { managed: true } });
+  }
+  const jobs = f.db.prepare('SELECT * FROM tablet_managed_setups').all();
+  assert.equal(jobs.length, 1);
+  const [job] = jobs;
+  assert.equal(job.group_id, groupId);
+  assert.equal(job.directory_object_id, directoryObjectId);
+  assert.equal(job.requested_by, f.owner.user.id);
+  assert.equal(job.state, 'pending');
+  const bound = JSON.parse(job.calai_owner_binding);
+  assert.equal(bound.tabletId, f.tablet.tabletId);
+  assert.equal(bound.sourceUserId, f.state.id);
+  assert.equal(bound.sourceAccountId, f.state.businessId);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM business_terminal_pairings').get().count, 0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM business_terminals').get().count, 0);
+  const after = await f.setup();
+  assert.equal(JSON.parse(after.payload).data.tablets[0].managedSetup.state, 'waiting');
+  f.demoteOwner();
+  assert.equal((await f.setup({ body: f.setupBody })).status, 403);
+});
+
 test('signed native-only setup expires, honours loss of owner and exact fleet revision, and keeps the bound proof on the registered terminal', async t => {
   const f = await fixture(t);
   const download = async body => packageProof(await f.setup({ body }), f.tablet);

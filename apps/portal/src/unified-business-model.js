@@ -61,13 +61,18 @@ export function calaiFirstSetupTablets(result) {
         typeof row.serialNumber !== "string" || !row.serialNumber.trim() ||
         !Number.isSafeInteger(row.revision) || row.revision < 1 || ids.has(row.tabletId)) return [];
     ids.add(row.tabletId);
-    tablets.push({ tabletId: row.tabletId, tabletName: row.tabletName, serialNumber: row.serialNumber, revision: row.revision });
+    const { managedSetup } = row;
+    if (managedSetup !== undefined && (typeof managedSetup?.available !== "boolean" ||
+        ![null, "waiting", "in_progress", "attention", "registered"].includes(managedSetup.state))) return [];
+    tablets.push({ tabletId: row.tabletId, tabletName: row.tabletName, serialNumber: row.serialNumber, revision: row.revision,
+      ...(managedSetup ? { managedSetup: { available: managedSetup.available, state: managedSetup.state } } : {}) });
   }
   return tablets;
 }
 export function calaiFirstSetupPayload(confirmed, current) {
   if (!confirmed || !current || confirmed.tabletId !== current.tabletId || confirmed.revision !== current.revision ||
-      confirmed.tabletName !== current.tabletName || confirmed.serialNumber !== current.serialNumber) return null;
+      confirmed.tabletName !== current.tabletName || confirmed.serialNumber !== current.serialNumber ||
+      Boolean(confirmed.managedSetup?.available) !== Boolean(current.managedSetup?.available)) return null;
   return { tabletId: current.tabletId, expectedRevision: current.revision };
 }
 export function canLoadEatsRestaurantWorkspace(business) {

@@ -3,7 +3,7 @@ import {Link,useSearchParams} from 'react-router-dom';
 import {api,json} from './api.js';
 import {listItems,shortDate} from './model.js';
 import {useBusinessResource} from './UnifiedBusiness.jsx';
-import {TABLET_APPLICATION_MODES,tabletApplicationModeLabel,tabletApplicationPayload,tabletDirectoryAssignmentPath,tabletQuery,tabletRecordPath,tabletStateLabel,tabletDisablePayload,tabletReassignmentPayload,tabletRegistrationPayload,tabletHistory} from './admin-tablet-model.js';
+import {TABLET_APPLICATION_MODES,tabletApplicationModeLabel,tabletApplicationPayload,tabletDirectoryAssignmentPath,tabletQuery,tabletRecordPath,tabletStateLabel,tabletDisablePayload,tabletReassignmentPayload,tabletRegistrationPayload,tabletHistory,tabletSetupPresentation} from './admin-tablet-model.js';
 import AdminTabletConnections from './AdminTabletConnections.jsx';
 import './AdminTablets.css';
 
@@ -33,8 +33,30 @@ function ModePicker({value,business,disabled,onChange}){
 function ApplicationForm({row,device,onSaved,onCancel}){
   const [displayName,setDisplayName]=useState(row?.displayName||device?.displayName||''),[businessId,setBusinessId]=useState(row?.businessId||null),[business,setBusiness]=useState(row?.business||null),[products,setProducts]=useState(row?.applicationProducts||''),action=useMutation();
   const available=!row?.authority_blocked_at&&!['disabled','pending_handoff'].includes(row?.lifecycleState);
-  function save(event){event.preventDefault();void action.run(()=>{const payload=tabletApplicationPayload({displayName,businessId,applicationProducts:products},{creating:!row,expectedRevision:row?.revision});return api(row?tabletRecordPath(row.id,'configuration'):tabletDirectoryAssignmentPath(device.intuneManagedDeviceId),json('POST',payload));},saved=>onSaved(saved,saved.applicationAccess?.paired?'Saved. Waiting for the restaurant tablet to receive this application selection.':'Saved. Pair this tablet before it can process orders.'));}
-  return <form onSubmit={save}><Notice error={action.error}/><label>Tablet name<input required minLength={2} maxLength={100} value={displayName} disabled={action.busy||!available} onChange={event=>setDisplayName(event.target.value)}/><small>Name shown in Cal-Eats administration. The Windows device name stays unchanged.</small></label><LocationPicker value={businessId} selected={business} disabled={action.busy||!available} onChange={(id,item)=>{setBusinessId(id);setBusiness(item);setProducts('');}}/><ModePicker value={products} business={business} disabled={action.busy||!available} onChange={setProducts}/>{row?.applicationProducts&&<p className="tablet-receipt-status" role="status">{!row.applicationAccess?.paired?'Pairing required':row.applicationAccess?.configuration?.status==='received'?`Received by tablet · ${date(row.applicationAccess.configuration.receivedAt)}`:'Waiting for tablet'}</p>}{business&&<Link className="tablet-text-link" to={`/admin/business-accounts?business=${encodeURIComponent(business.id)}`}>View this business’s product connections →</Link>}<div className="button-row"><button className="primary" disabled={action.busy||!available||!products||!businessId}>{action.busy?'Saving…':row?'Save tablet access':'Assign tablet'}</button>{onCancel&&<button className="quiet" type="button" disabled={action.busy} onClick={onCancel}>Cancel</button>}</div></form>;
+  const startsManagedSetup=!row&&device?.managedSetupAvailable===true&&business?.products?.['cal-eats']?.linked===true;
+  const setupState=row?.managedSetup?.state;
+  const changed=row&&(displayName.trim()!==row.displayName||businessId!==row.businessId||products!==(row.applicationProducts||''));
+  const waitingOnSameRequest=!changed&&['waiting','in_progress'].includes(setupState);
+  const retrySetup=setupState==='attention'&&row.managedSetup.available;
+  const canSave=available&&Boolean(products&&businessId)&&!waitingOnSameRequest;
+  function save(event){
+    event.preventDefault();
+    if(!canSave)return;
+    void action.run(()=>{
+      const payload=tabletApplicationPayload({displayName,businessId,applicationProducts:products},{creating:!row,expectedRevision:row?.revision});
+      const path=row?tabletRecordPath(row.id,'configuration'):tabletDirectoryAssignmentPath(device.intuneManagedDeviceId);
+      return api(path,json('POST',payload));
+    },saved=>onSaved(saved,retrySetup?'Tablet connection retry requested.':'Tablet settings saved.'));
+  }
+  return <form onSubmit={save}>
+    <Notice error={action.error}/>
+    <label>Tablet name<input required minLength={2} maxLength={100} value={displayName} disabled={action.busy||!available} onChange={event=>setDisplayName(event.target.value)}/><small>Name shown in Cal-Eats administration. The Windows device name stays unchanged.</small></label>
+    <LocationPicker value={businessId} selected={business} disabled={action.busy||!available} onChange={(id,item)=>{setBusinessId(id);setBusiness(item);setProducts('');}}/>
+    <ModePicker value={products} business={business} disabled={action.busy||!available} onChange={setProducts}/>
+    {startsManagedSetup&&<p className="fine">Saving starts the tablet connection.</p>}
+    {business&&<Link className="tablet-text-link" to={`/admin/business-accounts?business=${encodeURIComponent(business.id)}`}>View this business’s product connections →</Link>}
+    <div className="button-row"><button className="primary" disabled={action.busy||!canSave}>{action.busy?'Saving…':retrySetup?'Retry tablet connection':row||startsManagedSetup?'Save tablet access':'Assign tablet'}</button>{onCancel&&<button className="quiet" type="button" disabled={action.busy} onClick={onCancel}>Cancel</button>}</div>
+  </form>;
 }
 function AccessActions({row,onSaved}){
   const [mode,setMode]=useState(''),[targetId,setTargetId]=useState(null),[target,setTarget]=useState(null),[reason,setReason]=useState(''),[confirmed,setConfirmed]=useState(false),action=useMutation();
@@ -48,7 +70,23 @@ function ExistingRegistration({row,onSaved}){
 }
 function TabletDetail({row,onChanged,onReload,onBack}){
   const restricted=['disabled','pending_handoff'].includes(row.lifecycleState);
-  return <><div className="tablet-detail-heading"><button className="quiet" onClick={onBack}>← All tablets</button><span className={`pill tablet-state-${row.lifecycleState}`}>{tabletStateLabel(row.lifecycleState)}</span></div><section className="panel tablet-editor"><header className="tablet-editor-heading"><span className="tablet-device-mark" aria-hidden="true">▯</span><div><p className="eyebrow">Restaurant tablet</p><h2>{row.displayName}</h2><p>{row.serialNumber?`Serial ${row.serialNumber}`:'Serial not available'} · {row.business?.name||'Unassigned'}</p></div></header>{restricted&&<p className="alert">{row.lifecycleState==='pending_handoff'?'This tablet is quarantined. A supported physical handoff is required before it can receive access to another business.':'This tablet’s Cal-Eats application access is disabled.'}</p>}<ApplicationForm row={row} onSaved={onChanged}/></section><section className="panel"><AdminTabletConnections compact row={row} onChanged={onChanged} onReload={onReload}/><ExistingRegistration row={row} onSaved={onChanged}/><AccessActions row={row} onSaved={onChanged}/></section><section className="panel tablet-record-details"><details><summary>Device references and change history</summary><dl className="tablet-facts"><div><dt>Registered application</dt><dd>{row.registration?.registered?'Paired':row.registration?'Revoked':'Not paired'}</dd></div><div><dt>Last saved</dt><dd>{date(row.updatedAt)}</dd></div><div><dt>Microsoft device reference</dt><dd>{row.mapping?.intuneManagedDeviceId||'Not linked to the Microsoft directory'}</dd></div><div><dt>Application registration reference</dt><dd>{row.registration?.terminalId||'Not paired'}</dd></div></dl><ol className="tablet-history">{listItems(row.history).map((entry,index)=>{const item=tabletHistory(entry);return <li key={entry.id||index}><strong>{item.label}</strong><span>{date(item.at)}</span>{item.reason&&<p>{item.reason}</p>}</li>;})}</ol></details></section></>;
+  const {label,requestedAt,receivedAt,manualSetup}=tabletSetupPresentation(row);
+  return <>
+    <div className="tablet-detail-heading"><button className="quiet" onClick={onBack}>← All tablets</button><span className={`pill tablet-state-${row.lifecycleState}`}>{tabletStateLabel(row.lifecycleState)}</span></div>
+    <section className="panel tablet-editor">
+      <header className="tablet-editor-heading"><span className="tablet-device-mark" aria-hidden="true">▯</span><div><p className="eyebrow">Restaurant tablet</p><h2>{row.displayName}</h2><p>{row.serialNumber?`Serial ${row.serialNumber}`:'Serial not available'} · {row.business?.name||'Unassigned'}</p></div></header>
+      {restricted?<p className="alert">{row.lifecycleState==='pending_handoff'?'This tablet is quarantined. A supported physical handoff is required before it can receive access to another business.':'This tablet’s Cal-Eats application access is disabled.'}</p>:<div className="tablet-detail-heading">
+        <p className="tablet-receipt-status" role="status">{label}{receivedAt?` · ${date(receivedAt)}`:requestedAt?` · Requested ${date(requestedAt)}`:''}</p>
+        <button type="button" className="quiet" onClick={()=>void onReload()}>Refresh status</button>
+      </div>}
+      <ApplicationForm key={row.revision} row={row} onSaved={onChanged}/>
+    </section>
+    <section className="panel" key={row.revision}>
+      {manualSetup&&<details><summary>Advanced tablet setup</summary><AdminTabletConnections compact row={row} onChanged={onChanged} onReload={onReload}/><ExistingRegistration row={row} onSaved={onChanged}/></details>}
+      <AccessActions row={row} onSaved={onChanged}/>
+    </section>
+    <section className="panel tablet-record-details"><details><summary>Device references and change history</summary><dl className="tablet-facts"><div><dt>Registered application</dt><dd>{row.registration?.registered?'Paired':row.registration?'Revoked':'Not paired'}</dd></div><div><dt>Last saved</dt><dd>{date(row.updatedAt)}</dd></div><div><dt>Microsoft device reference</dt><dd>{row.mapping?.intuneManagedDeviceId||'Not linked to the Microsoft directory'}</dd></div><div><dt>Application registration reference</dt><dd>{row.registration?.terminalId||'Not paired'}</dd></div></dl><ol className="tablet-history">{listItems(row.history).map((entry,index)=>{const item=tabletHistory(entry);return <li key={entry.id||index}><strong>{item.label}</strong><span>{date(item.at)}</span>{item.reason&&<p>{item.reason}</p>}</li>;})}</ol></details></section>
+  </>;
 }
 
 export default function AdminTablets(){
@@ -57,8 +95,39 @@ export default function AdminTablets(){
   useEffect(()=>{setSearch(q);},[q]);
   const directory=useBusinessResource(view==='directory'&&!selected?`/api/admin/tablets/directory?${tabletQuery({q,page})}`:null),saved=useBusinessResource(view==='saved'&&!selected?`/api/admin/tablets?${tabletQuery({q,page})}`:null);
   let detailPath=null,invalid='';try{if(selected)detailPath=tabletRecordPath(selected);}catch(error){invalid=error.message;}
-  const detail=useBusinessResource(detailPath,{poll:selected?15000:0}),resource=view==='directory'?directory:saved,items=listItems(resource.value);
+  const detail=useBusinessResource(detailPath,{poll:detailPath?15000:0}),resource=view==='directory'?directory:saved,items=listItems(resource.value);
   function update(values){const next=new URLSearchParams(params);for(const [key,value]of Object.entries(values))value===null||value===''?next.delete(key):next.set(key,String(value));setNewDevice(null);setFeedback('');setParams(next);}
   async function changed(row,message){setFeedback(message||'Tablet saved.');setNewDevice(null);if(!selected)setParams(new URLSearchParams({view:'saved',tablet:row.id}));else await detail.reload();}
-  return <div className="admin-tablets"><header className="page-heading"><div><p className="eyebrow">System administration</p><h1>Tablets</h1><p>Choose a restaurant tablet, assign its business and select its application access.</p></div>{!selected&&!newDevice&&<button className="quiet" onClick={()=>void resource.reload()} disabled={resource.loading}>Refresh tablets</button>}</header><Notice>{feedback}</Notice>{selected?<>{invalid?<Notice error={invalid}/>:<ResourceState resource={detail}>{detail.value&&<TabletDetail key={`${detail.value.id}:${detail.value.revision}`} row={detail.value} onChanged={changed} onReload={detail.reload} onBack={()=>update({tablet:null})}/>}</ResourceState>}</>:newDevice?<section className="panel tablet-editor"><header><p className="eyebrow">Microsoft Windows tablet</p><h2>{newDevice.displayName}</h2><p>{[newDevice.manufacturer,newDevice.model,newDevice.serialNumber&&`Serial ${newDevice.serialNumber}`].filter(Boolean).join(' · ')}</p></header><p className="tablet-inline-note">This device comes from your existing read-only Microsoft connection. Assigning it does not sign it in or enrol it for orders.</p><ApplicationForm device={newDevice} onSaved={changed} onCancel={()=>setNewDevice(null)}/></section>:<><nav className="tablet-view-tabs" aria-label="Tablet lists"><button className={view==='directory'?'active':''} onClick={()=>update({view:'directory',page:1})}>Microsoft tablets</button><button className={view==='saved'?'active':''} onClick={()=>update({view:'saved',page:1})}>Assigned & registered</button></nav><section className="panel"><form className="tablet-directory-search" onSubmit={event=>{event.preventDefault();update({q:search.trim(),page:1});}}><label>Find a tablet<input type="search" maxLength={100} value={search} placeholder="Tablet name, serial or business" onChange={event=>setSearch(event.target.value)}/></label><button className="quiet">Search</button></form>{view==='directory'&&<p className="fine">Windows devices from Microsoft Intune · Last read {date(directory.value?.collectedAt)}. This is device management contact, not proof the ordering app is open.</p>}<ResourceState resource={resource}>{items.length?<div className="tablet-table-scroll"><table className="tablet-table"><thead><tr><th>Tablet</th><th>Business</th><th>Application access</th><th>Setup</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{items.map(item=>{const row=view==='directory'?item.fleetRecord:item;return <tr key={view==='directory'?item.intuneManagedDeviceId:item.id}><td data-label="Tablet"><strong>{row?.displayName||item.displayName||'Windows tablet'}</strong><small>{(item.serialNumber||row?.serialNumber)?`Serial ${item.serialNumber||row.serialNumber}`:'Serial not available'}{view==='directory'&&item.model?` · ${item.model}`:''}</small></td><td data-label="Business">{view==='directory'?row?.businessName||'Not assigned':item.business?.name||'Not assigned'}</td><td data-label="Application access"><span className="tablet-product-tag">{tabletApplicationModeLabel(row?.applicationProducts)}</span></td><td data-label="Setup">{row?['disabled','pending_handoff'].includes(row.lifecycleState)?tabletStateLabel(row.lifecycleState):(view==='directory'?row.applicationRegistered:row.registration?.registered)?(row.configuration||row.applicationAccess?.configuration)?.status==='received'?'Received':row.applicationProducts?'Waiting for tablet':'Application registered':'Pairing required':'Ready to assign'}</td><td data-label="Actions">{row?<button className="button-link" onClick={()=>update({tablet:row.id})}>Manage tablet</button>:<button className="button-link" onClick={()=>setNewDevice(item)}>Assign tablet</button>}</td></tr>;})}</tbody></table></div>:<p className="empty">{view==='directory'?'No matching Windows tablets were returned by Microsoft.':'No matching assignments or application registrations.'}</p>}</ResourceState><Pages pagination={resource.value?.pagination} busy={resource.loading} onPage={value=>update({page:value})}/>{view==='directory'&&directory.value?.truncated&&<p className="alert" role="status">This is a bounded directory result. More devices exist beyond this read; they have not been listed. Existing saved assignments remain available under Assigned & registered.</p>}</section></>}</div>;
+  return <div className="admin-tablets">
+    <header className="page-heading"><div><p className="eyebrow">System administration</p><h1>Tablets</h1><p>Choose a restaurant tablet, assign its business and select its application access.</p></div>{!selected&&!newDevice&&<button className="quiet" onClick={()=>void resource.reload()} disabled={resource.loading}>Refresh tablets</button>}</header>
+    <Notice>{feedback}</Notice>
+    {selected?(invalid?<Notice error={invalid}/>:<ResourceState resource={detail}>
+      {detail.value&&<TabletDetail key={detail.value.id} row={detail.value} onChanged={changed} onReload={detail.reload} onBack={()=>update({tablet:null})}/>}
+    </ResourceState>):newDevice?<section className="panel tablet-editor">
+      <header><p className="eyebrow">Microsoft Windows tablet</p><h2>{newDevice.displayName}</h2><p>{[newDevice.manufacturer,newDevice.model,newDevice.serialNumber&&`Serial ${newDevice.serialNumber}`].filter(Boolean).join(' · ')}</p></header>
+      <ApplicationForm device={newDevice} onSaved={changed} onCancel={()=>setNewDevice(null)}/>
+    </section>:<>
+      <nav className="tablet-view-tabs" aria-label="Tablet lists"><button className={view==='directory'?'active':''} onClick={()=>update({view:'directory',page:1})}>Microsoft tablets</button><button className={view==='saved'?'active':''} onClick={()=>update({view:'saved',page:1})}>Assigned & registered</button></nav>
+      <section className="panel">
+        <form className="tablet-directory-search" onSubmit={event=>{event.preventDefault();update({q:search.trim(),page:1});}}><label>Find a tablet<input type="search" maxLength={100} value={search} placeholder="Tablet name, serial or business" onChange={event=>setSearch(event.target.value)}/></label><button className="quiet">Search</button></form>
+        {view==='directory'&&<p className="fine">Windows devices from Microsoft Intune · Last read {date(directory.value?.collectedAt)}.</p>}
+        <ResourceState resource={resource}>{items.length?<div className="tablet-table-scroll"><table className="tablet-table">
+          <thead><tr><th>Tablet</th><th>Business</th><th>Application access</th><th>Setup</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>{items.map(item=>{
+            const row=view==='directory'?item.fleetRecord:item;
+            const serial=item.serialNumber||row?.serialNumber;
+            return <tr key={view==='directory'?item.intuneManagedDeviceId:item.id}>
+              <td data-label="Tablet"><strong>{row?.displayName||item.displayName||'Windows tablet'}</strong><small>{serial?`Serial ${serial}`:'Serial not available'}{view==='directory'&&item.model?` · ${item.model}`:''}</small></td>
+              <td data-label="Business">{view==='directory'?row?.businessName||'Not assigned':item.business?.name||'Not assigned'}</td>
+              <td data-label="Application access"><span className="tablet-product-tag">{tabletApplicationModeLabel(row?.applicationProducts)}</span></td>
+              <td data-label="Setup">{row?tabletSetupPresentation(row).label:'Ready to assign'}</td>
+              <td data-label="Actions">{row?<button className="button-link" onClick={()=>update({tablet:row.id})}>Manage tablet</button>:<button className="button-link" onClick={()=>setNewDevice(item)}>Assign tablet</button>}</td>
+            </tr>;
+          })}</tbody>
+        </table></div>:<p className="empty">{view==='directory'?'No matching Windows tablets were returned by Microsoft.':'No matching assignments or application registrations.'}</p>}</ResourceState>
+        <Pages pagination={resource.value?.pagination} busy={resource.loading} onPage={value=>update({page:value})}/>
+        {view==='directory'&&directory.value?.truncated&&<p className="alert" role="status">This is a bounded directory result. More devices exist beyond this read; they have not been listed. Existing saved assignments remain available under Assigned & registered.</p>}
+      </section>
+    </>}
+  </div>;
 }

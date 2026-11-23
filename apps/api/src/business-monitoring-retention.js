@@ -14,7 +14,9 @@ export function sanitizeBusinessMonitoringBackup(db,at=new Date().toISOString())
  let changed=false;
  // Central one-use request mappings reference the pairing parent. Remove the
  // child first, even when a setup file has not yet reached the physical tablet.
- const ephemeral=['business_monitoring_push_outbox','business_incident_push_outbox','business_push_devices','platform_business_push_devices','surface_application_presence','surface_monitoring_snapshots','tablet_fleet_pairing_requests','business_terminal_pairings','business_terminal_nonces','business_terminal_grants','business_connection_proofs','native_business_sessions','native_platform_sessions'];
+ // Managed setup jobs carry permission to deliver or activate an installation.
+ // Their fleet assignment and audit history remain evidence after restore.
+ const ephemeral=['business_monitoring_push_outbox','business_incident_push_outbox','business_push_devices','platform_business_push_devices','surface_application_presence','surface_monitoring_snapshots','tablet_managed_setups','tablet_fleet_pairing_requests','business_terminal_pairings','business_terminal_nonces','business_terminal_grants','business_connection_proofs','native_business_sessions','native_platform_sessions'];
  for(const name of ephemeral)if(exists(db,name)){db.exec('DELETE FROM '+name);changed=true;}
  if(exists(db,'tablet_management_refresh_jobs')){
   // Keep dated evidence and its completed parent history, but a restored copy

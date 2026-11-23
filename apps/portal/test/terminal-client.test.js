@@ -58,6 +58,50 @@ test("actual cold bootstrap retries a known granted tablet whose local broker is
   coordinator.controller.stop();
 });
 
+test("an already allowed managed tablet waits for its verified registration without acquiring any early permissions", async () => {
+  const f = fixture(), coordinator = bootstrapFixture(f.client);
+  f.queue.push(response({ ...bootstrap(false), managedSetupPending: true }));
+  await coordinator.controller.refresh();
+  assert.equal(f.client.terminalStatus().status, 'managed_setup');
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(coordinator.sessions.at(-1).user, null);
+  const retry = coordinator.next();
+  assert.equal(retry.delay, 5000);
+  f.queue.push(response(bootstrap()), response(session()), response(session()));
+  retry.run();
+  await until(() => coordinator.sessions.at(-1)?.principalKind === 'terminal');
+  assert.equal(coordinator.sessions.at(-1).user.id, ACTOR);
+  assert.equal(coordinator.timers.size, 0);
+  coordinator.controller.stop();
+});
+
+test("an open owner workspace reconnects after delayed managed setup only for its own business and granted permission", async () => {
+  const f = fixture(), owner = { id: 'human-owner', role: 'restaurant' }, connected = [];
+  const controller = createBusinessBootstrap({
+    readHuman: async () => ({ user: owner }), connectTerminal: f.client.connectAutomaticTerminal,
+    readTerminal: options => f.client.terminalApi('/api/auth/me', options), terminalStatus: f.client.terminalStatus,
+    canDiscover: () => true, onTerminal: result => connected.push(result)
+  });
+  f.queue.push(response(bootstrap(false)));
+  await controller.refresh();
+  assert.equal(f.client.terminalStatus().status, 'unpaired');
+  f.setPermission({ state: 'prompt' });
+  await controller.observeManagedSetup(BUSINESS);
+  assert.equal(f.calls.length, 1, 'a background setup poll cannot prompt a browser');
+  f.setPermission({ state: 'granted' });
+  f.queue.push(response(bootstrap()), response(session({ businessId: OTHER })));
+  await controller.observeManagedSetup(BUSINESS);
+  assert.equal(f.client.terminalStatus().context, null);
+  assert.equal(connected.length, 0);
+  f.queue.push(response(bootstrap()), response(session()), response(session()));
+  await controller.observeManagedSetup(BUSINESS);
+  assert.equal(connected.length, 1);
+  assert.equal(connected[0].terminalContext.businessId, BUSINESS);
+  controller.signOut();
+  await controller.observeManagedSetup(BUSINESS);
+  assert.equal(connected.length, 1, 'workspace polling must respect explicit logout');
+});
+
 test("actual cold bootstrap bounds retries and cancels them when signed out or browser permission changes", async () => {
   const f = fixture(); f.setHint(true);
   const coordinator = bootstrapFixture(f.client);

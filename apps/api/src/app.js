@@ -124,7 +124,7 @@ export function createApp({ db, config, logger = console }) {
       enforceCustomerOrderHistory({ url, db, config, session });
       const publicNativeAuth = ["/api/native/auth/register","/api/native/auth/login","/api/native/business/auth/login","/api/native/platform-admin/auth/login","/api/native/business/auth/apply","/api/native/auth/forgot-password","/api/native/auth/reset-password","/api/native/auth/email-verification/confirm"].includes(url.pathname);
       const deviceBearerRoute = bearerProvided && /^\/api\/devices\/(heartbeat|jobs(?:\/|$))/.test(url.pathname);
-      const pairingRoute = url.pathname === "/api/devices/pair" || url.pathname === "/api/terminal-devices/pair";
+      const pairingRoute = ["/api/devices/pair", "/api/terminal-devices/pair", "/api/terminal-devices/managed-enrolment"].includes(url.pathname);
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute || terminalAuthority;
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((req.headers.origin && req.headers.origin !== config.origin) || (config.runMode === "hosted-preview" && !originExempt && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       await enforcePlatformAdminAuthority({req,res,url,db,config,session});

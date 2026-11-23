@@ -10,6 +10,7 @@ import {buildTerminalInstaller} from '../../terminal-auth/windows/build-installe
 import {tabletManagementState,queueTabletManagementRefresh} from './tablet-management.js';
 import {assertFleetNewEnrolmentAllowed,canOfferOwnerCalaiSetup} from './tablet-fleet-policy.js';
 import {readTabletDirectory} from './tablet-directory.js';
+import {queueTabletManagedSetup, tabletManagedSetupState, tabletManagedTarget} from './tablet-managed-setup.js';
 import {tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 import {assertTabletSelectionReady,assertTabletSelectionDoesNotStrandWork,assertTabletSelectionActivation} from './tablet-assignment-safety.js';
 
@@ -101,7 +102,7 @@ function dto(db,config,row,{history=false,actorId=null}={}){
  const request=db.prepare('SELECT * FROM tablet_configuration_requests WHERE tablet_id=? ORDER BY record_revision DESC LIMIT 1').get(row.id);
  const management=tabletManagementState(db,config,row),actions={...setupCapability(db,row,business,actorId),canRefreshManagement:management.refreshReady&&!row.archived_at,managementBlockReason:row.archived_at?'This inventory record was superseded.':management.refreshBlockReason};
  const result={...snapshot(row),business,requestedBusiness,mapping:{...mapping(row),source:'administrator_metadata',provesHardwareIdentity:false},management:{state:'unavailable',lastContactAt:null,source:null},registration:terminal?{terminalId:terminal.id,name:terminal.name,businessId:terminal.business_id,registered:!terminal.revoked_at,registeredAt:terminal.registered_at,revokedAt:terminal.revoked_at,lastContactAt:terminal.last_contact_at}:null,application,startup:{state:request?.state??'not_requested',requestedAt:request?.requested_at??null,assignedAt:request?.assigned_at??null,offeredAt:request?.offered_at??null,receivedAt:request?.received_at??null,appliedAt:request?.applied_at??null,physicallyVerifiedAt:request?.physically_verified_at??null,appliedProduct:null,deliveryLimitation},handoff:{state:row.handoff_requested_at?'pending_physical_cleanup':'not_requested',requestedAt:row.handoff_requested_at,completionSupported:false,limitation:row.handoff_requested_at?((terminal?.revoked_at?'The linked Cal-Eats application terminal authority was revoked. ':'No linked Cal-Eats application identity can be revoked from this metadata record. ')+handoffLimitation):null},createdAt:row.created_at,updatedAt:row.updated_at};
- result.management=management;result.actions=actions;result.latestEnrolment=latestEnrolment(db,config,row);result.applicationAccess=applicationAccess(db,row,business);
+ result.management=management;result.actions=actions;result.latestEnrolment=latestEnrolment(db,config,row);result.applicationAccess=applicationAccess(db,row,business);result.managedSetup=tabletManagedSetupState(db,config,row);
  if(history)result.history=db.prepare("SELECT id,actor_user_id AS actorUserId,action,details,created_at AS createdAt FROM audit_events WHERE entity_type='tablet_fleet' AND entity_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50").all(row.id).map(event=>({...event,details:JSON.parse(event.details)}));
  return result;
 }
@@ -115,7 +116,7 @@ export async function routeTabletFleet(context){
  if(req.method==='GET'&&url.pathname===base+'/directory'){
   const paging=page(url),q=search(url).toLocaleLowerCase('en-GB'),directory=await(context.directoryReader??readTabletDirectory)(config);currentAdmin(db,config,session);
   const inventory=db.prepare('SELECT t.*,a.name business_name FROM admin_tablets t LEFT JOIN business_accounts a ON a.id=t.business_id WHERE t.archived_at IS NULL AND t.intune_managed_device_id IS NOT NULL').all(),byId=new Map(inventory.map(row=>[row.intune_managed_device_id,row]));
-  const matches=directory.items.map(device=>{const row=byId.get(device.intuneManagedDeviceId);return{...device,fleetRecord:row?{...snapshot(row),businessName:row.business_name??null,applicationRegistered:Boolean(row.terminal_id&&db.prepare('SELECT 1 FROM business_terminals WHERE id=? AND revoked_at IS NULL').get(row.terminal_id)),configuration:tabletApplicationConfiguration(db,row.terminal_id,row.business_id)}:null};}).filter(device=>!q||[device.displayName,device.serialNumber,device.model,device.fleetRecord?.displayName,device.fleetRecord?.businessName].some(value=>typeof value==='string'&&value.toLocaleLowerCase('en-GB').includes(q)));
+  const matches=directory.items.map(device=>{const row=byId.get(device.intuneManagedDeviceId);return{...device,managedSetupAvailable:Boolean(tabletManagedTarget(config,device)),fleetRecord:row?{...snapshot(row),businessName:row.business_name??null,applicationRegistered:Boolean(row.terminal_id&&db.prepare('SELECT 1 FROM business_terminals WHERE id=? AND revoked_at IS NULL').get(row.terminal_id)),configuration:tabletApplicationConfiguration(db,row.terminal_id,row.business_id),managedSetup:tabletManagedSetupState(db,config,row)}:null};}).filter(device=>!q||[device.displayName,device.serialNumber,device.model,device.fleetRecord?.displayName,device.fleetRecord?.businessName].some(value=>typeof value==='string'&&value.toLocaleLowerCase('en-GB').includes(q)));
   return sendJson(res,200,{data:{items:matches.slice((paging.page-1)*paging.pageSize,paging.page*paging.pageSize),pagination:{...paging,total:matches.length,totalPages:Math.max(1,Math.ceil(matches.length/paging.pageSize))},complete:directory.complete,truncated:directory.truncated,collectedAt:directory.collectedAt,source:'microsoft_graph'}},noStore);
  }
  const directorySelection=/^\/api\/admin\/tablets\/directory\/([0-9a-f-]{36})$/.exec(url.pathname);
@@ -127,7 +128,8 @@ export async function routeTabletFleet(context){
    const at=config.now().toISOString(),businessId=location(db,body.businessId),mode=applicationMode(body.applicationProducts);if(!businessId)throw fail(400,'BUSINESS_REQUIRED','Choose the tablet’s restaurant or location.');validateApplicationMode(db,config,businessId,mode);
    if(db.prepare('SELECT 1 FROM admin_tablets WHERE intune_managed_device_id=?').get(managedId))throw fail(409,'TABLET_METADATA_CONFLICT','This Microsoft tablet already has a saved record. Open it to change its assignment.');
    const id=randomUUID();db.prepare("INSERT INTO admin_tablets(id,display_name,serial_number,business_id,intune_managed_device_id,entra_device_id,lifecycle_state,created_by,created_at,updated_at,application_products) VALUES(?,?,?,?,?,?,'assigned',?,?,?,?)").run(id,name(body.displayName??device.displayName,'Tablet name'),serial(device.serialNumber),businessId,managedId,optionalId(device.entraDeviceId,'Microsoft device'),actor.id,at,at,mode);
-   const after=rowFor(db,id);audit(db,actor.id,id,'tablet_directory_assigned',null,after,at,'Assigned from the read-only Microsoft directory. Device pairing and Windows startup are unchanged.');return after;
+   const after=rowFor(db,id),managed=queueTabletManagedSetup(db,config,after,actor.id);
+   audit(db,actor.id,id,'tablet_directory_assigned',null,after,at,managed?'Managed first connection requested.':'Assigned from the Microsoft directory. Device pairing and Windows startup are unchanged.');return after;
   });}catch(error){ensureUnique(error);}
   return sendJson(res,201,{data:dto(db,config,outcome,{history:true,actorId:admin.id})},noStore);
  }
@@ -143,7 +145,8 @@ export async function routeTabletFleet(context){
    validateApplicationMode(db,config,businessId,mode);if(mode!==before.application_products)ensureNoStrandedOrders(db,businessId,mode);
    const changed=db.prepare("UPDATE admin_tablets SET display_name=?,business_id=?,application_products=?,lifecycle_state='assigned',revision=revision+1,updated_at=? WHERE id=? AND revision=?").run(name(body.displayName,'Tablet name'),businessId,mode,at,before.id,before.revision);if(changed.changes!==1)throw fail(409,'TABLET_REVISION_CHANGED','This tablet changed. Reload its record.');
    if(mode!==before.application_products)invalidateTabletPresence(db,before);
-   const after=rowFor(db,before.id);audit(db,actor.id,before.id,'tablet_application_access_updated',before,after,at,'Device-scoped application access; current native rights and protected pairing still apply. Windows startup and native Calai are unchanged.');return after;
+   const after=rowFor(db,before.id);queueTabletManagedSetup(db,config,after,actor.id);
+   audit(db,actor.id,before.id,'tablet_application_access_updated',before,after,at,'Device-scoped application access; current native rights and protected pairing still apply. Windows startup and native Calai are unchanged.');return after;
   });
   return sendJson(res,200,{data:dto(db,config,outcome,{history:true,actorId:admin.id})},noStore);
  }

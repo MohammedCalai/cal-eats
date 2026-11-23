@@ -71,3 +71,21 @@ test("private setup uses a same-origin human session and accepts only a nonempty
     error: { code: "TABLET_REVISION_CHANGED", message: "Review the current tablet." },
   }, { status: 409 }) }), error => error.code === "TABLET_REVISION_CHANGED" && error.status === 409);
 });
+
+test("managed tablet approval accepts only the queued receipt and preserves the exact device confirmation", async () => {
+  const row = calaiFirstSetupTablets({ eligible: true, tablets: [{ ...tablet, managedSetup: {
+    available: true, state: "waiting", scriptContent: "ignore this field"
+  } }] })[0];
+  assert.deepEqual(row.managedSetup, { available: true, state: "waiting" });
+  assert.equal(calaiFirstSetupPayload(tablet, row), null);
+  const payload = calaiFirstSetupPayload(row, row);
+  assert.deepEqual(payload, { tabletId: tablet.tabletId, expectedRevision: tablet.revision });
+  const path = calaiTabletFirstSetupPath(owner);
+  const result = await requestCalaiFirstTabletSetup(path, payload, { request: async () => Response.json({ data: { managed: true } }, { status: 202 }) });
+  assert.deepEqual(result, { managed: true });
+  for (const invalid of [
+    Response.json({ data: { managed: false } }, { status: 202 }),
+    Response.json({ data: { managed: true, script: "ignored" } }, { status: 202 }),
+    Response.json({ data: { managed: true } }, { status: 200 })
+  ]) await assert.rejects(requestCalaiFirstTabletSetup(path, payload, { request: async () => invalid }), /tablet (approval|setup file)/);
+});
