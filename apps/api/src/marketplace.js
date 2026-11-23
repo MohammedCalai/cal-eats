@@ -1,5 +1,5 @@
 import {customerPayableMinor,platformVoucherMinor,redeemPlatformVoucher} from "./platform-vouchers.js";
-import {requireOperationalPrinterUser} from './business-terminals.js';
+import {requireReceiptReprintUser} from './business-terminals.js';
 import {tabletPrinterProductPermitted} from './tablet-product-policy.js';
 import {restoreRefundedSettlementAdjustments,adjustedRefundRecoveryMinor} from "./business-payment-adjustments.js";
 import { isIP } from "node:net";
@@ -143,7 +143,7 @@ export async function routeMarketplace({req,res,url,db,config,session}){
   if(m&&req.method==="GET"){
     const restaurantId=m[1];
     if(url.searchParams.get("scope")==="reprint"){
-      requireOperationalPrinterUser(db,config,session,restaurantId);
+      requireReceiptReprintUser(db,config,session,restaurantId);
       const items=db.prepare(`SELECT p.id,p.name FROM restaurant_printers p
         WHERE p.restaurant_id=? AND p.enabled=1 AND p.revoked_at IS NULL
           AND EXISTS(SELECT 1 FROM printer_devices d WHERE d.printer_id=p.id AND d.restaurant_id=p.restaurant_id AND d.revoked_at IS NULL)
@@ -469,18 +469,24 @@ async function ackJob({req,res,db,config,id}){
   return sendJson(res,200,{data:{id:job.id,status:job.status,detail:job.detail,testReceipt:source.testReceipt}});
 }
 async function reprint({req,res,db,config,session,restaurantId,id}) {
-  const actor=requireOperationalPrinterUser(db,config,session,restaurantId),body=await readJson(req,config.bodyLimit);exactObject(body,['orderId','requestId','checkedOriginal']);
+  requireReceiptReprintUser(db,config,session,restaurantId);
+  const body=await readJson(req,config.bodyLimit);exactObject(body,['orderId','requestId','checkedOriginal']);
   if(typeof body.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId)||body.checkedOriginal!==true)throw new HttpError(400,'REPRINT_CHECK_REQUIRED','Check the original receipt and confirm this deliberate labelled copy.');
+  const orderId=text(body.orderId,1,100,'Order ID');
   const outcome=withTransaction(db,()=>{
-    requireOperationalPrinterUser(db,config,session,restaurantId);
-    const printer=db.prepare('SELECT * FROM restaurant_printers WHERE id=? AND restaurant_id=? AND revoked_at IS NULL').get(id,restaurantId),order=db.prepare('SELECT * FROM orders WHERE id=? AND restaurant_id=?').get(body.orderId,restaurantId);
+    const actor=requireReceiptReprintUser(db,config,session,restaurantId);
+    const printer=db.prepare('SELECT * FROM restaurant_printers WHERE id=? AND restaurant_id=? AND revoked_at IS NULL').get(id,restaurantId),order=db.prepare('SELECT * FROM orders WHERE id=? AND restaurant_id=?').get(orderId,restaurantId);
     if(!printer||!order)throw new HttpError(404,'NOT_FOUND','Resource not found');
     if(!printer.enabled)throw new HttpError(409,'PRINTER_DISABLED','Enable this printer before requesting a reprint');
+    if(!db.prepare('SELECT 1 FROM printer_devices WHERE printer_id=? AND restaurant_id=? AND revoked_at IS NULL').get(id,restaurantId)){
+      throw new HttpError(409,'PRINTER_DEVICE_REQUIRED','Connect a device to this printer before requesting a reprint.');
+    }
     const operationKey='order:'+order.id+':printer:'+id+':reprint:'+body.requestId.toLowerCase(),previous=db.prepare('SELECT id,status FROM device_print_jobs WHERE operation_key=?').get(operationKey);if(previous)return{...previous,replay:true};
     if(!['accepted','preparing','ready','out_for_delivery','completed'].includes(order.status))throw new HttpError(409,'ORDER_NOT_CONFIRMED','Only confirmed orders can be reprinted');
     if(db.prepare("SELECT 1 FROM device_print_jobs WHERE printer_id=? AND order_id=? AND status IN('queued','claimed','dispatched','submitted')").get(id,order.id))throw new HttpError(409,'PRINT_ALREADY_QUEUED','A receipt job is already outstanding. Check it before requesting another copy.');
     const at=nowIso(config),jobId=randomUUID();db.prepare("INSERT INTO device_print_jobs(id,printer_id,order_id,operation_key,receipt,status,manual_reprint,attempt,created_at,updated_at) VALUES(?,?,?,?,?,'queued',1,0,?,?)").run(jobId,id,order.id,operationKey,JSON.stringify(receiptV1(db,order)),at,at);
-    db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor.id,'print_job',jobId,'deliberate_labelled_reprint',JSON.stringify({restaurantId,printerId:id,orderId:order.id,terminalId:session.terminalId,checkedOriginal:true}),at);return{id:jobId,status:'queued',replay:false};
+    const terminalId=session.terminalId??null;
+    db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor.id,'print_job',jobId,'deliberate_labelled_reprint',JSON.stringify({restaurantId,printerId:id,orderId:order.id,terminalId,checkedOriginal:true,requestedFrom:terminalId?'ordering_tablet':'business_website'}),at);return{id:jobId,status:'queued',replay:false};
   });return sendJson(res,outcome.replay?200:201,{data:{...outcome,manualReprint:true}});
 }
 async function preparation({req,res,db,config,session,id}){

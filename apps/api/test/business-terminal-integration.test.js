@@ -103,7 +103,6 @@ test("real router denies browser and native phone operational requests while pre
     [orderPath(order.id), "PATCH", { status: "preparing" }],
     [`/api/restaurant/orders/${order.id}/preparation`, "PATCH", { estimatedReadyAt: decision.estimatedReadyAt }],
     [`${printerPath}/test-receipt`, "POST", { requestId: crypto.randomUUID() }],
-    [`${printerPath}/reprints`, "POST", { orderId: order.id }],
     [`/api/orders/${order.id}/print`, "POST", {}],
     [`/api/print-jobs/${crypto.randomUUID()}/retry`, "POST", {}],
     [`/api/print-jobs/${crypto.randomUUID()}/status`, "PATCH", { status: "queued" }]

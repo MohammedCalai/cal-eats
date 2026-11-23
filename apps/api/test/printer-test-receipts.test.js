@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
 import test from "node:test";
 import { formatReceipt } from "../../print-bridge/src/receipt.js";
 import { requestAllowed } from "../../terminal-auth/src/protocol.js";
 import { journeyFixture } from "./helpers.js";
 import {enrolRegisteredTablet} from "./registered-tablet-fixture.js";
+import { parseSessionCookie, readSession } from "../src/auth/sessions.js";
+import { routeMarketplace } from "../src/marketplace.js";
 
 async function kitchen(f) {
   const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
@@ -32,7 +35,7 @@ async function kitchen(f) {
   return { owner, other, customer, restaurant, root, printer, printerPath, first, pair, heartbeat, claim, ack, diagnostic, tablet };
 }
 
-test("the reprint printer list is signed-tablet-only and exposes only eligible same-location names and IDs", async t => {
+test("the reprint printer list exposes only eligible same-location names and IDs to the owner or signed tablet", async t => {
   const f = await journeyFixture();
   t.after(() => f.close());
   const k = await kitchen(f), restaurantId = k.restaurant.id, at = f.config.now().toISOString();
@@ -55,13 +58,14 @@ test("the reprint printer list is signed-tablet-only and exposes only eligible s
   const list = `${k.root}/printers?scope=reprint`;
   assert.equal(requestAllowed("GET", list, restaurantId, k.tablet.businessId), true);
   const owner = await f.json(list, { cookie: k.owner });
-  assert.equal(owner.status, 403);
-  assert.equal(owner.body.error.code, "REGISTERED_TABLET_REQUIRED");
+  assert.equal(owner.status, 200, owner.text);
+  assert.equal((await f.json(list, { cookie: k.other })).status, 404);
   assert.equal((await k.tablet.json(`/api/restaurant/restaurants/${foreign.id}/printers?scope=reprint`)).status, 404);
   const result = await k.tablet.json(list);
   assert.equal(result.status, 200, result.text);
   assert.equal(result.headers.get("cache-control"), "private, no-store");
   assert.deepEqual(result.body.data, { items: [{ id: k.printer.id, name: k.printer.name }] });
+  assert.deepEqual(owner.body.data, result.body.data);
 
   const ownerDetails = await f.json(`${k.root}/printers`, { cookie: k.owner });
   assert.equal(ownerDetails.status, 200, ownerDetails.text);
@@ -69,6 +73,99 @@ test("the reprint printer list is signed-tablet-only and exposes only eligible s
   assert.equal((await k.tablet.json(`${k.root}/printers`)).status, 403);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM device_print_jobs").get().n, 0);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM printer_test_jobs").get().n, 0);
+});
+
+test("a current website owner can queue a confirmed copy without pairing a tablet, with no wider power", async t => {
+  const f = await journeyFixture();
+  t.after(() => f.close());
+  const owner = await f.login("restaurant@calai.local", "LocalRestaurant!4310"), admin = await f.login("admin@calai.local", "LocalAdmin!4310");
+  const other = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310"), customer = await f.login("customer@calai.local", "LocalCustomer!4310");
+  const auth = await f.json("/api/native/business/auth/login", { method: "POST", body: { email: "restaurant@calai.local", password: "LocalRestaurant!4310" } });
+  assert.equal(auth.status, 200, auth.text);
+  const native = { headers: { authorization: `Bearer ${auth.body.data.token}` } };
+  const session = readSession(f.db, parseSessionCookie(owner), f.config), staff = readSession(f.db, parseSessionCookie(other), f.config);
+  const restaurant = (await f.json("/api/restaurant/restaurants", { cookie: owner })).body.data[0];
+  const root = `/api/restaurant/restaurants/${restaurant.id}`, now = f.config.now().toISOString();
+  const nativeBusiness = f.db.prepare("SELECT business_id FROM business_product_links WHERE product='cal-eats' AND restaurant_id=?").get(restaurant.id);
+  const createPrinter = async name => {
+    const response = await f.json(`${root}/printers`, { method: "POST", cookie: owner, body: { name, enabled: true } });
+    assert.equal(response.status, 201, response.text);
+    return response.body.data.id;
+  };
+  const printer = await createPrinter("Kitchen receipt"), unpairedPrinter = await createPrinter("Unpaired device");
+  const printerPath = `${root}/printers/${printer}`, list = `${root}/printers?scope=reprint`;
+  const code = await f.json(`${printerPath}/pairing-code`, { method: "POST", cookie: owner, body: {} });
+  const paired = await f.json("/api/devices/pair", { method: "POST", body: { code: code.body.data.code, name: "Synthetic printer connection" } });
+  assert.equal(paired.status, 201, paired.text);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM business_terminals").get().n, 0);
+  const available = await f.json(list, { cookie: owner });
+  assert.equal(available.status, 200, available.text);
+  assert.equal(available.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(available.body.data, { items: [{ id: printer, name: "Kitchen receipt" }] });
+
+  const menuItem = (await f.json(`/api/restaurants/${restaurant.id}/menu`)).body.data.items[0];
+  const placed = await f.json("/api/orders", { method: "POST", cookie: customer, headers: { "Idempotency-Key": "remote-copy-fixture" },
+    body: { restaurantId: restaurant.id, items: [{ menuItemId: menuItem.id, quantity: 1 }], paymentMethod: "cash", fulfillment: "collection" } });
+  assert.equal(placed.status, 201, placed.text);
+  const orderId = placed.body.data.id, path = `${printerPath}/reprints`;
+  const body = { orderId, requestId: randomUUID(), checkedOriginal: true };
+  const print = (credentials = { cookie: owner }, payload = body, target = path) => f.json(target, { method: "POST", body: payload, ...credentials });
+  assert.equal((await print()).body.error.code, "ORDER_NOT_CONFIRMED");
+  for (const [url, method, data] of [
+    [`${printerPath}/test-receipt`, "POST", { requestId: randomUUID() }],
+    [`${printerPath}/jobs/${randomUUID()}/check`, "POST", {}],
+    [`/api/restaurant/orders/${orderId}/status`, "PATCH", { status: "accepted" }],
+    [`/api/restaurant/orders/${orderId}/preparation`, "PATCH", { estimatedReadyAt: now }],
+    [`/api/business/accounts/${nativeBusiness.business_id}/surface/heartbeat`, "POST", { sequence: 1, state: "active" }]
+  ]) assert.equal((await f.json(url, { method, cookie: owner, body: data })).status, 403, url);
+
+  f.db.prepare("UPDATE orders SET status='completed',confirmed_at=? WHERE id=?").run(now, orderId);
+  assert.equal((await print({ cookie: other })).status, 404);
+  f.db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,permission,created_at,can_view_devices) VALUES(?,?,'staff',?,1)")
+    .run(restaurant.id, staff.user.id, now);
+  for (const credentials of [native, { cookie: admin }, { cookie: customer }, { cookie: other }]) {
+    assert.equal((await f.json(list, credentials)).status, 403);
+    assert.equal((await print(credentials)).status, 403);
+  }
+  assert.equal((await print(undefined, { ...body, checkedOriginal: false })).body.error.code, "REPRINT_CHECK_REQUIRED");
+  assert.equal((await print(undefined, { ...body, orderId: null })).status, 400);
+  assert.equal((await print(undefined, body, `${root}/printers/${unpairedPrinter}/reprints`)).body.error.code, "PRINTER_DEVICE_REQUIRED");
+  assert.equal((await print(undefined, { ...body, orderId: randomUUID() })).status, 404);
+  const link = f.db.prepare("SELECT * FROM business_account_memberships WHERE business_id=? AND user_id=?").get(nativeBusiness.business_id, session.user.id);
+  f.db.prepare("UPDATE business_account_memberships SET permission='staff',membership_source='master' WHERE business_id=? AND user_id=?").run(nativeBusiness.business_id, session.user.id);
+  assert.equal((await print()).status, 403, "Current business owner permission is required as well as native membership");
+  f.db.prepare("UPDATE business_account_memberships SET permission=?,membership_source=? WHERE business_id=? AND user_id=?").run(link.permission, link.membership_source, nativeBusiness.business_id, session.user.id);
+  f.db.prepare("UPDATE business_product_permissions SET allowed=0 WHERE business_id=? AND product='cal-eats'").run(nativeBusiness.business_id);
+  assert.equal((await f.json(list, { cookie: owner })).status, 403);
+  assert.equal((await print()).status, 403);
+  f.db.prepare("UPDATE business_product_permissions SET allowed=1 WHERE business_id=? AND product='cal-eats'").run(nativeBusiness.business_id);
+
+  const copies = await Promise.all([print(), print()]);
+  assert.deepEqual(copies.map(copy => copy.status).sort(), [200, 201]);
+  const id = copies[0].body.data.id;
+  assert.equal(copies[1].body.data.id, id);
+  assert.equal((await print(undefined, { ...body, requestId: randomUUID() })).body.error.code, "PRINT_ALREADY_QUEUED");
+  const job = f.db.prepare("SELECT status,manual_reprint FROM device_print_jobs WHERE id=?").get(id);
+  assert.equal(job.status, "queued");
+  assert.equal(job.manual_reprint, 1);
+  const audit = f.db.prepare("SELECT actor_user_id,details FROM audit_events WHERE action='deliberate_labelled_reprint' AND entity_id=?").get(id);
+  assert.equal(audit.actor_user_id, session.user.id);
+  assert.equal(JSON.parse(audit.details).terminalId, null);
+  assert.equal(JSON.parse(audit.details).requestedFrom, "business_website");
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM business_terminals").get().n, 0);
+
+  const tablet = await enrolRegisteredTablet(f, { ownerCookie: owner, businessId: nativeBusiness.business_id });
+  f.db.prepare("UPDATE admin_tablets SET application_products='calai' WHERE terminal_id=?").run(tablet.terminalId);
+  assert.equal((await print()).body.error.code, "PRODUCT_INACTIVE");
+  f.db.prepare("UPDATE admin_tablets SET application_products=NULL WHERE terminal_id=?").run(tablet.terminalId);
+  const req = Readable.from((async function* () {
+    f.db.prepare("UPDATE sessions SET revoked_at=? WHERE id=?").run(now, session.sessionId);
+    yield Buffer.from(JSON.stringify({ ...body, requestId: randomUUID() }));
+  })());
+  Object.assign(req, { method: "POST", url: path, headers: { "content-type": "application/json" } });
+  await assert.rejects(routeMarketplace({ req, res: {}, url: new URL(path, f.config.origin), db: f.db, config: f.config, session }),
+    error => error.code === "RECEIPT_OWNER_REQUIRED");
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM device_print_jobs").get().n, 1);
 });
 
 test("sample receipts are registered-tablet-only, idempotent and separate from real orders, customer data and money", async () => {

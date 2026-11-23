@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { json } from "./api.js";
+import { api, json } from "./api.js";
 import { WorkspaceDialog } from "./CustomerWorkspace.jsx";
 import { listItems } from "./model.js";
 import { orderReprintLabel } from "./order-presentation.js";
@@ -7,11 +7,15 @@ import { receiptPrintRequests, receiptRefused, receiptUnconfirmed } from "./orde
 import { terminalApi } from "./terminal-client.js";
 import { useBusinessResource } from "./UnifiedBusiness.jsx";
 
-export default function OrderReceiptPrintDialog({ order, businessId, restaurantId, allowed, onClose }) {
+const ownerApi = (path, options) => api(path, { ...options, humanSession: true });
+
+export default function OrderReceiptPrintDialog({ order, businessId, restaurantId, principal, onClose }) {
   const root = `/api/restaurant/restaurants/${encodeURIComponent(restaurantId)}/printers`;
   const scope = { businessId, restaurantId, orderId: order.id };
+  const request = principal === "owner" ? ownerApi : terminalApi;
+  const allowed = Boolean(principal);
   const printers = useBusinessResource(allowed ? `${root}?scope=reprint` : null, {
-    request: terminalApi, scope: restaurantId,
+    request, scope: `${restaurantId}:${principal}`,
   });
   const prior = receiptPrintRequests.read(scope);
   const [selection, setSelection] = useState(prior?.printerId || "");
@@ -32,7 +36,7 @@ export default function OrderReceiptPrintDialog({ order, businessId, restaurantI
     setError("");
     try {
       const result = await receiptPrintRequests.submit(scope, printerId, requestId =>
-        terminalApi(`${root}/${encodeURIComponent(printerId)}/reprints`, json("POST", {
+        request(`${root}/${encodeURIComponent(printerId)}/reprints`, json("POST", {
           orderId: order.id, requestId, checkedOriginal: true,
         })));
       setNotice(result.status === "queued" ? "Receipt queued." :
@@ -57,7 +61,7 @@ export default function OrderReceiptPrintDialog({ order, businessId, restaurantI
       <p className="alert success" role="status">{notice}</p>
       <button className="primary" onClick={close}>Done</button>
     </> : <form onSubmit={print} aria-busy={busy}>
-      {!allowed ? <p role="status">Printing is available on the registered restaurant tablet.</p>
+      {!allowed ? <p role="status">Print from a restaurant owner account or the registered tablet.</p>
         : printers.loading ? <p role="status">Loading receipt printers…</p>
         : printers.error ? <p className="alert" role="alert">{printers.error} <button type="button" className="quiet" onClick={() => void printers.reload()}>Try again</button></p>
         : prior && !printer ? <p role="status">The selected printer is unavailable. Check the original receipt before requesting another copy.</p>

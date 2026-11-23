@@ -36,7 +36,7 @@ In the Cal-Eats business workspace, Dashboard → Orders shows today's Calai pho
 
 ## Operational authority and staff
 
-Ordinary website and manager-phone sign-in can monitor authorised locations but cannot accept/reject, change preparation/fulfilment, test print, retry or reprint. Operational actions require current server-verified device registration, native location and grant plus fresh signed request proof. IDs, browser flags, Windows user-agent and local storage are not authority.
+The manager phone app can monitor authorised locations. Accepting, rejecting, changing preparation or fulfilment, test printing and retrying an existing print job require the registered tablet with a current signed grant. A signed-in restaurant owner can use **Orders → Print** in the browser to request a labelled copy of a confirmed Cal-Eats receipt through that restaurant's existing paired printer.
 
 Owners and scoped administrators can assign independent native Cal-Eats staff finance, devices, menu and marketing permissions. The server rechecks those exact current grants. Banking changes, legal acceptance, tablet registration and stronger owner-management functions do not become ordinary manager permissions. A Cal-Eats role never grants native Calai access.
 
