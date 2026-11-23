@@ -26,15 +26,16 @@ function LocationPicker({value,selected,onChange,disabled=false,label='Restauran
   const query=new URLSearchParams({page:String(page),pageSize:'25',...(search?{q:search}:{})}),resource=useBusinessResource(`/api/admin/tablets/locations?${query}`),items=listItems(resource.value),current=value&&!items.some(row=>row.id===value)?selected:null;
   return <fieldset className="tablet-location-picker" disabled={disabled}><legend>{label}</legend><label>Find business<input type="search" value={q} maxLength={100} placeholder="Search business name" onChange={event=>setQ(event.target.value)}/></label><Notice error={resource.error}/><label>Select business<select required value={value||''} onChange={event=>{const row=items.find(item=>item.id===event.target.value)||current;onChange(event.target.value||null,event.target.value?row:null);}}><option value="">Choose a business</option>{current&&<option value={current.id}>{current.name}</option>}{items.map(row=><option key={row.id} value={row.id}>{row.name}{row.locationLabel?` · ${row.locationLabel}`:''}</option>)}</select></label>{resource.loading&&!resource.value&&<p role="status">Loading businesses…</p>}<Pages label="Business lookup pages" pagination={resource.value?.pagination} busy={resource.loading} onPage={setPage}/></fieldset>;
 }
-function ModePicker({value,business,disabled,onChange}){
+function ModePicker({value,business,disabled,startsConnection,onChange}){
   const ready=mode=>Boolean(business&&(mode==='both'?['calai','cal-eats']:[mode]).every(product=>business.products?.[product]?.active&&business.products?.[product]?.readiness?.ready));
-  return <fieldset className="tablet-mode-picker" disabled={disabled}><legend>Apps on this tablet</legend><div className="tablet-mode-options">{TABLET_APPLICATION_MODES.map(mode=><label className={value===mode?'selected':''} key={mode}><input type="radio" name="tablet-apps" value={mode} checked={value===mode} disabled={!ready(mode)} onChange={()=>onChange(mode)}/><strong>{tabletApplicationModeLabel(mode)}</strong><small>{ready(mode)?mode==='both'?'Both linked services':'This service only':'Complete this business’s connection first'}</small></label>)}</div><p className="fine">Controls the paired Cal-Eats business application. Existing business permissions still apply. Windows startup, installation and the original Calai website remain managed separately.</p></fieldset>;
+  return <fieldset className="tablet-mode-picker" disabled={disabled}><legend>Apps on this tablet</legend><div className="tablet-mode-options">{TABLET_APPLICATION_MODES.map(mode=><label className={value===mode?'selected':''} key={mode}><input type="radio" name="tablet-apps" value={mode} checked={value===mode} disabled={!ready(mode)} onChange={()=>onChange(mode)}/><strong>{tabletApplicationModeLabel(mode)}</strong><small>{ready(mode)?mode==='both'?'Both linked services':'This service only':'Complete this business’s connection first'}</small></label>)}</div><p className="fine">Choose the apps available in this tablet’s business workspace.{startsConnection&&' Saving starts the Intune connection. Keep the tablet online while it connects.'}</p></fieldset>;
 }
 function ApplicationForm({row,device,onSaved,onCancel}){
   const [displayName,setDisplayName]=useState(row?.displayName||device?.displayName||''),[businessId,setBusinessId]=useState(row?.businessId||null),[business,setBusiness]=useState(row?.business||null),[products,setProducts]=useState(row?.applicationProducts||''),action=useMutation();
   const available=!row?.authority_blocked_at&&!['disabled','pending_handoff'].includes(row?.lifecycleState);
   const startsManagedSetup=!row&&device?.managedSetupAvailable===true&&business?.products?.['cal-eats']?.linked===true;
   const setupState=row?.managedSetup?.state;
+  const startsConnection=startsManagedSetup||Boolean(row?.managedSetup?.available&&!row.managedSetup.requiresOwnerApproval&&!row.applicationAccess?.paired&&!setupState);
   const changed=row&&(displayName.trim()!==row.displayName||businessId!==row.businessId||products!==(row.applicationProducts||''));
   const waitingOnSameRequest=!changed&&['waiting','in_progress'].includes(setupState);
   const retrySetup=setupState==='attention'&&row.managedSetup.available;
@@ -52,8 +53,7 @@ function ApplicationForm({row,device,onSaved,onCancel}){
     <Notice error={action.error}/>
     <label>Tablet name<input required minLength={2} maxLength={100} value={displayName} disabled={action.busy||!available} onChange={event=>setDisplayName(event.target.value)}/><small>Name shown in Cal-Eats administration. The Windows device name stays unchanged.</small></label>
     <LocationPicker value={businessId} selected={business} disabled={action.busy||!available} onChange={(id,item)=>{setBusinessId(id);setBusiness(item);setProducts('');}}/>
-    <ModePicker value={products} business={business} disabled={action.busy||!available} onChange={setProducts}/>
-    {startsManagedSetup&&<p className="fine">Saving starts the tablet connection.</p>}
+    <ModePicker value={products} business={business} disabled={action.busy||!available} startsConnection={startsConnection} onChange={setProducts}/>
     {business&&<Link className="tablet-text-link" to={`/admin/business-accounts?business=${encodeURIComponent(business.id)}`}>View this business’s product connections →</Link>}
     <div className="button-row"><button className="primary" disabled={action.busy||!canSave}>{action.busy?'Saving…':retrySetup?'Retry tablet connection':row||startsManagedSetup?'Save tablet access':'Assign tablet'}</button>{onCancel&&<button className="quiet" type="button" disabled={action.busy} onClick={onCancel}>Cancel</button>}</div>
   </form>;

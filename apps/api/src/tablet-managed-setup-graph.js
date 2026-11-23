@@ -159,7 +159,7 @@ export function createTabletManagedSetupGraph(settings, {
     }
   }
 
-  async function request(method, url, token, signal, { body, expected = 200, notFoundRetry = false } = {}) {
+  async function request(method, url, token, signal, { body, expected = 200, notFoundRetry = false, confirmByReadback = false } = {}) {
     const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]);
     let response;
     try {
@@ -172,9 +172,15 @@ export function createTabletManagedSetupGraph(settings, {
     } catch { throw fail('MANAGED_SETUP_GRAPH_NETWORK', true); }
     if (response.status === 401 || response.status === 403) throw fail('MANAGED_SETUP_GRAPH_PERMISSION_REQUIRED');
     if (response.status === 404) throw fail('MANAGED_SETUP_GRAPH_NOT_FOUND', notFoundRetry);
-    if (response.status === 429 || response.status >= 500) throw fail('MANAGED_SETUP_GRAPH_PROVIDER_RETRY', true);
+    if (response.status === 429 || response.status >= 500 || confirmByReadback && response.status === 408) {
+      throw fail('MANAGED_SETUP_GRAPH_PROVIDER_RETRY', true);
+    }
+    if (confirmByReadback && response.status >= 200 && response.status < 300) {
+      void response.body?.cancel().catch(() => {});
+      return null;
+    }
     if (response.status !== expected) throw fail('MANAGED_SETUP_GRAPH_RESPONSE_INVALID');
-    return expected === 204 ? null : readJson(response, requestSignal);
+    return readJson(response, requestSignal);
   }
 
   const key = (route, query) => { const url = new URL(origin + route); if (query) url.search = new URLSearchParams(query); return url; };
@@ -280,11 +286,16 @@ export function createTabletManagedSetupGraph(settings, {
         if (!await assignmentPresent(job, scriptId, token, signal)) {
           await verifyTarget(job, token, signal);
           if (input.beforeAssign !== undefined) await permit(input.beforeAssign, 'MANAGED_SETUP_GRAPH_ASSIGNMENT_BLOCKED', signal);
-          await request('POST', key(`${scripts}/${scriptId}/assign`), token, signal, { expected: 204, body: {
-            deviceManagementScriptGroupAssignments: [],
-            deviceManagementScriptAssignments: [{ '@odata.type': '#microsoft.graph.deviceManagementScriptAssignment',
-              target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: job.target.groupId } }]
-          } });
+          try {
+            await request('POST', key(`${scripts}/${scriptId}/assign`), token, signal, { confirmByReadback: true, body: {
+              deviceManagementScriptGroupAssignments: [],
+              deviceManagementScriptAssignments: [{ '@odata.type': '#microsoft.graph.deviceManagementScriptAssignment',
+                target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: job.target.groupId } }]
+            } });
+          } catch (error) {
+            // Intune may commit an assignment before this request receives its response.
+            if (error.retry !== true) throw error;
+          }
           if (!await assignmentPresent(job, scriptId, token, signal)) throw fail('MANAGED_SETUP_GRAPH_ASSIGNMENT_UNCONFIRMED', true);
         }
         return { scriptId };
