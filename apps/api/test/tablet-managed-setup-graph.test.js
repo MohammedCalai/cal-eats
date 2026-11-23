@@ -61,7 +61,8 @@ function fixture(options = {}) {
         target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: binding.groupId }
       }] });
       state.modern = command.deviceManagementScriptAssignments;
-      return new Response(null, { status: 204 });
+      if (state.missingAssignmentResponse) throw new Error('This provider error cannot escape the adapter.');
+      return state.assignmentStatus ? new Response('Provider acknowledgement is optional.', { status: state.assignmentStatus }) : new Response(null, { status: 204 });
     }
     if (!action && method === 'PATCH') {
       state.log.push('update');
@@ -129,6 +130,62 @@ test('a potentially accepted create is reconciled by exact name/bytes without a 
   f.state.scripts.push({ ...f.state.scripts[0], id: randomUUID() });
   await assert.rejects(f.dispatch(), { code: 'MANAGED_SETUP_GRAPH_SCRIPT_AMBIGUOUS' });
   assert.equal(f.state.calls.filter(call => call.method === 'POST').length, 2);
+});
+
+test('assignment with a different successful status still requires exact readback and does not repeat', async () => {
+  for (const status of [200, 201, 202]) {
+    const f = fixture();
+    f.state.assignmentStatus = status;
+    const sent = await f.dispatch({ allowCreate: true });
+    assert.equal(sent.scriptId, f.state.scripts[0].id);
+    assert.deepEqual(await f.dispatch({ beforeAssign: () => { assert.fail('Already assigned'); } }), sent);
+    assert.deepEqual(f.state.log, ['begin', 'create', 'assign']);
+  }
+});
+
+test('lost assignment response and provider timeouts reconcile the existing exact assignment', async () => {
+  const dropped = fixture();
+  dropped.state.missingAssignmentResponse = true;
+  assert.equal((await dropped.dispatch({ allowCreate: true })).scriptId, dropped.state.scripts[0].id);
+  assert.deepEqual(dropped.state.log, ['begin', 'create', 'assign']);
+
+  for (const status of [408, 429, 503]) {
+    const f = fixture();
+    f.state.responseOverride = (route, method) => {
+      if (method !== 'POST' || !route.endsWith('/assign')) return null;
+      f.state.legacy = [{ targetGroupId: binding.groupId }];
+      return json({}, status);
+    };
+    assert.equal((await f.dispatch({ allowCreate: true })).scriptId, f.state.scripts[0].id);
+    assert.equal(f.state.calls.filter(call => call.method === 'POST' && call.url.endsWith('/assign')).length, 1);
+  }
+});
+
+test('an unseen assignment remains retryable and reconciliation does not duplicate a script or assignment', async () => {
+  const f = fixture();
+  f.state.responseOverride = (route, method) => method === 'POST' && route.endsWith('/assign') ? new Response(null, { status: 202 }) : null;
+  await assert.rejects(f.dispatch({ allowCreate: true }), error => error.code === 'MANAGED_SETUP_GRAPH_ASSIGNMENT_UNCONFIRMED' &&
+    error.retry === true && error.scriptId === f.state.scripts[0].id);
+  assert.equal(f.state.calls.filter(call => call.method === 'POST' && call.url.endsWith('/assign')).length, 1);
+  f.state.legacy = [{ targetGroupId: binding.groupId }];
+  assert.equal((await f.dispatch({ beforeAssign: () => { assert.fail('Already assigned'); } })).scriptId, f.state.scripts[0].id);
+  assert.equal(f.state.calls.filter(call => call.method === 'POST').length, 2);
+});
+
+test('assignment never hides definitive errors or accepts broader readback', async () => {
+  for (const [status, code] of [[400, 'RESPONSE_INVALID'], [401, 'PERMISSION_REQUIRED'], [403, 'PERMISSION_REQUIRED'], [404, 'NOT_FOUND']]) {
+    const f = fixture();
+    f.state.responseOverride = (route, method) => method === 'POST' && route.endsWith('/assign') ? json({}, status) : null;
+    await assert.rejects(f.dispatch({ allowCreate: true }), { code: `MANAGED_SETUP_GRAPH_${code}`, retry: false });
+    assert.ok(f.state.calls.at(-1).url.endsWith('/assign'));
+  }
+  const unsafe = fixture();
+  unsafe.state.responseOverride = (route, method) => {
+    if (method !== 'POST' || !route.endsWith('/assign')) return null;
+    unsafe.state.legacy = [{ targetGroupId: randomUUID() }];
+    return new Response(null, { status: 202 });
+  };
+  await assert.rejects(unsafe.dispatch({ allowCreate: true }), { code: 'MANAGED_SETUP_GRAPH_ASSIGNMENT_UNSAFE', retry: false });
 });
 
 test('redelivery verifies the exact assigned script, fences the write and patches only the package bytes', async () => {
