@@ -41,26 +41,39 @@ export function createReceiptPrintRequests({
     catch { /* Retaining the same request ID is safe if storage becomes unavailable. */ }
   }
 
-  function submit(scope, printerId, send) {
+  function submit(scope, loadPrinters, send, selectedPrinterId) {
     const key = requestKey(scope);
     if (pending.has(key)) return pending.get(key);
     const prior = read(scope);
-    if (prior && prior.printerId !== printerId) return Promise.reject(new Error(receiptUnconfirmed));
-    const intent = prior || { printerId, requestId: newId() };
-    const result = (async () => {
+    const result = Promise.resolve().then(async () => {
+      let printers;
+      try {
+        printers = (await loadPrinters()).filter(printer => uuid.test(printer?.id || "") && typeof printer.name === "string");
+      } catch {
+        if (prior) throw new Error(receiptUnconfirmed);
+        throw Object.assign(new Error("Could not load your receipt printer. Try again."), { code: "PRINT_PICKER_UNAVAILABLE" });
+      }
+      const targetId = prior?.printerId || selectedPrinterId;
+      if (!targetId && printers.length > 1) return { printerChoices: printers };
+      const printer = targetId ? printers.find(({ id }) => id === targetId) : printers[0];
+      if (!printer) {
+        if (prior) throw new Error(receiptUnconfirmed);
+        throw Object.assign(new Error("No paired receipt printer is available."), { code: "PRINT_PICKER_UNAVAILABLE" });
+      }
+      const intent = prior || { printerId: printer.id, requestId: newId() };
       save(key, intent);
       try {
-        const receipt = await send(intent.requestId);
+        const receipt = await send(printer.id, intent.requestId);
         if (typeof receipt?.id !== "string" || !uuid.test(receipt.id) ||
             receipt.manualReprint !== true || !jobStatuses.has(receipt.status)) throw new Error(receiptUnconfirmed);
         clear(key);
-        return receipt;
+        return { ...receipt, printerName: printer.name };
       } catch (error) {
         // A rejection on a later retry cannot tell us whether an earlier request queued.
         if (!prior && receiptRefused(error)) clear(key);
         throw error;
       }
-    })().finally(() => pending.delete(key));
+    }).finally(() => pending.delete(key));
     pending.set(key, result);
     return result;
   }

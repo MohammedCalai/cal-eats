@@ -480,8 +480,10 @@ async function ackJob({req,res,db,config,id}){
 }
 async function reprint({req,res,db,config,session,restaurantId,id}) {
   requireReceiptReprintUser(db,config,session,restaurantId);
-  const body=await readJson(req,config.bodyLimit);exactObject(body,['orderId','requestId','checkedOriginal']);
-  if(typeof body.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId)||body.checkedOriginal!==true)throw new HttpError(400,'REPRINT_CHECK_REQUIRED','Check the original receipt and confirm this deliberate labelled copy.');
+  const body=await readJson(req,config.bodyLimit);exactObject(body,['orderId','requestId','checkedOriginal','intent']);
+  const directCopy=body.intent==='labelled_copy'&&!Object.hasOwn(body,'checkedOriginal');
+  const checkedOriginal=body.checkedOriginal===true&&!Object.hasOwn(body,'intent');
+  if(typeof body.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId)||(!directCopy&&!checkedOriginal))throw new HttpError(400,'REPRINT_CHECK_REQUIRED','Request a labelled copy or confirm that you checked the original receipt.');
   const orderId=text(body.orderId,1,100,'Order ID');
   const outcome=withTransaction(db,()=>{
     const actor=requireReceiptReprintUser(db,config,session,restaurantId);
@@ -496,7 +498,8 @@ async function reprint({req,res,db,config,session,restaurantId,id}) {
     if(db.prepare("SELECT 1 FROM device_print_jobs WHERE printer_id=? AND order_id=? AND status IN('queued','claimed','dispatched','submitted')").get(id,order.id))throw new HttpError(409,'PRINT_ALREADY_QUEUED','A receipt job is already outstanding. Check it before requesting another copy.');
     const at=nowIso(config),jobId=randomUUID();db.prepare("INSERT INTO device_print_jobs(id,printer_id,order_id,operation_key,receipt,status,manual_reprint,attempt,created_at,updated_at) VALUES(?,?,?,?,?,'queued',1,0,?,?)").run(jobId,id,order.id,operationKey,JSON.stringify(receiptV1(db,order)),at,at);
     const terminalId=session.terminalId??null;
-    db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor.id,'print_job',jobId,'deliberate_labelled_reprint',JSON.stringify({restaurantId,printerId:id,orderId:order.id,terminalId,checkedOriginal:true,requestedFrom:terminalId?'ordering_tablet':'business_website'}),at);return{id:jobId,status:'queued',replay:false};
+    const requestedCopy=directCopy?{intent:body.intent}:{checkedOriginal:true};
+    db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor.id,'print_job',jobId,'deliberate_labelled_reprint',JSON.stringify({restaurantId,printerId:id,orderId:order.id,terminalId,...requestedCopy,requestedFrom:terminalId?'ordering_tablet':'business_website'}),at);return{id:jobId,status:'queued',replay:false};
   });return sendJson(res,outcome.replay?200:201,{data:{...outcome,manualReprint:true}});
 }
 async function preparation({req,res,db,config,session,id}){

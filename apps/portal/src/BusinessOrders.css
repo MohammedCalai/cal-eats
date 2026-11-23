@@ -16,8 +16,11 @@
   min-height: 44px;
   white-space: nowrap;
 }
-.business-order-print-dialog form { display: grid; gap: 1rem; }
-.business-order-print-dialog form p { margin: 0; }
+.business-order-action-cell { display: grid; gap: .4rem; }
+.business-order-action-cell select { min-width: 0; max-width: 100%; }
+.business-print-status { color: #b9e5d0; }
+.business-print-error { color: #ffc1ba; }
+.business-order-action-cell small { max-width: 14rem; white-space: normal; }
 @media (min-width: 601px) {
   .business-order-row-actions { flex-wrap: nowrap; }
 }

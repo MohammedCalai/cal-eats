@@ -109,7 +109,7 @@ test("a current website owner can queue a confirmed copy without pairing a table
     body: { restaurantId: restaurant.id, items: [{ menuItemId: menuItem.id, quantity: 1 }], paymentMethod: "cash", fulfillment: "collection" } });
   assert.equal(placed.status, 201, placed.text);
   const orderId = placed.body.data.id, path = `${printerPath}/reprints`;
-  const body = { orderId, requestId: randomUUID(), checkedOriginal: true };
+  const body = { orderId, requestId: randomUUID(), intent: "labelled_copy" };
   const print = (credentials = { cookie: owner }, payload = body, target = path) => f.json(target, { method: "POST", body: payload, ...credentials });
   assert.equal((await print()).body.error.code, "ORDER_NOT_CONFIRMED");
   for (const [url, method, data] of [
@@ -130,7 +130,14 @@ test("a current website owner can queue a confirmed copy without pairing a table
     assert.equal((await f.json(list, credentials)).status, 403);
     assert.equal((await print(credentials)).status, 403);
   }
-  assert.equal((await print(undefined, { ...body, checkedOriginal: false })).body.error.code, "REPRINT_CHECK_REQUIRED");
+  for (const malformed of [
+    { orderId, requestId: body.requestId, checkedOriginal: false },
+    { orderId, requestId: body.requestId },
+    { ...body, checkedOriginal: true },
+    { ...body, intent: "original" },
+    { ...body, requestId: "invalid" },
+    { ...body, force: true }
+  ]) assert.equal((await print(undefined, malformed)).status, 400);
   assert.equal((await print(undefined, { ...body, orderId: null })).status, 400);
   assert.equal((await print(undefined, body, `${root}/printers/${unpairedPrinter}/reprints`)).body.error.code, "PRINTER_DEVICE_REQUIRED");
   assert.equal((await print(undefined, { ...body, orderId: randomUUID() })).status, 404);
@@ -147,14 +154,20 @@ test("a current website owner can queue a confirmed copy without pairing a table
   assert.deepEqual(copies.map(copy => copy.status).sort(), [200, 201]);
   const id = copies[0].body.data.id;
   assert.equal(copies[1].body.data.id, id);
+  const legacyReplay = await print(undefined, { orderId, requestId: body.requestId, checkedOriginal: true });
+  assert.equal(legacyReplay.status, 200, legacyReplay.text);
+  assert.equal(legacyReplay.body.data.id, id);
   assert.equal((await print(undefined, { ...body, requestId: randomUUID() })).body.error.code, "PRINT_ALREADY_QUEUED");
   const job = f.db.prepare("SELECT status,manual_reprint,receipt FROM device_print_jobs WHERE id=?").get(id);
   assert.equal(job.status, "queued");
   assert.equal(job.manual_reprint, 1);
   const audit = f.db.prepare("SELECT actor_user_id,details FROM audit_events WHERE action='deliberate_labelled_reprint' AND entity_id=?").get(id);
   assert.equal(audit.actor_user_id, session.user.id);
-  assert.equal(JSON.parse(audit.details).terminalId, null);
-  assert.equal(JSON.parse(audit.details).requestedFrom, "business_website");
+  const details = JSON.parse(audit.details);
+  assert.equal(details.terminalId, null);
+  assert.equal(details.requestedFrom, "business_website");
+  assert.equal(details.intent, "labelled_copy");
+  assert.equal(Object.hasOwn(details, "checkedOriginal"), false);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM business_terminals").get().n, 0);
 
   // An already-queued legacy job still carries the raw value in storage.
