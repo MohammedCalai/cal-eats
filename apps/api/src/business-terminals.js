@@ -5,7 +5,7 @@ import { withTransaction } from "./db/index.js";
 import {requireRestaurantMembership,requireRestaurantOwner} from './auth/authorization.js';
 import { businessAccountState, hasCurrentBusinessOwner, requireBusinessAccountOwner } from "./unified-business.js";
 import { buildTerminalInstaller } from "../../terminal-auth/windows/build-installer.mjs";
-import { terminalHasCalaiAuthority } from "./business-product-policy.js";
+import { businessProductState, currentCalaiApproverProof, terminalHasCalaiAuthority } from "./business-product-policy.js";
 import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,assertFleetPairingAllowed,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
 import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 
@@ -221,6 +221,70 @@ function dto(row, config) {
   return { registered: !row.revoked_at, terminalId: row.id, name: row.name, registeredAt: row.registered_at, lastContactAt: row.last_contact_at, online: !row.revoked_at && Number.isFinite(stamp) && config.now().getTime() - stamp < 60_000 };
 }
 
+function calaiApprovalTarget(db, config, businessId, userId) {
+  const proof = currentCalaiApproverProof(db, businessId, userId);
+  if (!proof || !businessProductState(db, businessId, "calai", config).readiness.ready) return null;
+  const terminal = db.prepare(`
+    SELECT t.id, f.id AS tablet_id, f.display_name AS name
+      FROM business_terminals t
+      JOIN users u ON u.id=t.operator_user_id AND u.account_enabled=1 AND u.principal_kind='terminal'
+      JOIN admin_tablets f ON f.terminal_id=t.id AND f.business_id=t.business_id
+       AND f.lifecycle_state='assigned' AND f.archived_at IS NULL
+       AND f.authority_blocked_at IS NULL AND f.handoff_requested_at IS NULL
+     WHERE t.business_id=? AND t.revoked_at IS NULL
+  `).get(businessId);
+  return terminal ? { ...terminal, proof } : null;
+}
+
+function calaiApprovalStatus(db, target, businessId) {
+  return { eligible: Boolean(target), authorized: Boolean(target && terminalHasCalaiAuthority(db, target.id, businessId)),
+    terminalId: target?.id ?? null, tabletName: target?.name ?? null };
+}
+
+async function routeTerminalCalaiApproval({ req, res, db, config, session, checkRate, businessId }) {
+  const requireOwner = () => {
+    const user = owner(db, session, businessId, config);
+    if (user.role !== "restaurant" || session.nativeAudience) {
+      throw failure("CALAI_APPROVAL_OWNER_REQUIRED", "Use the verified business owner account to approve this tablet.");
+    }
+    return user;
+  };
+  const user = requireOwner();
+  const headers = { "Cache-Control": "private, no-store" };
+  if (req.method === "GET") {
+    const target = calaiApprovalTarget(db, config, businessId, user.id);
+    return sendJson(res, 200, { data: calaiApprovalStatus(db, target, businessId) }, headers);
+  }
+  const body = await readJson(req, config.bodyLimit);
+  exactObject(body, ["expectedTerminalId"]);
+  if (typeof body.expectedTerminalId !== "string" || !UUID.test(body.expectedTerminalId)) {
+    throw failure("VALIDATION_ERROR", "Choose the current registered tablet.", 400);
+  }
+  checkRate?.(req, "terminal-calai-approval:" + user.id);
+  const result = withTransaction(db, () => {
+    const current = requireOwner();
+    const target = calaiApprovalTarget(db, config, businessId, current.id);
+    if (!target || target.id !== body.expectedTerminalId) {
+      throw failure("CALAI_TABLET_APPROVAL_CHANGED", "The tablet or verified Calai account changed. Open the current connection and try again.", 409);
+    }
+    if (terminalHasCalaiAuthority(db, target.id, businessId)) return calaiApprovalStatus(db, target, businessId);
+    const stamp = now(config);
+    db.prepare(`
+      INSERT INTO business_terminal_calai_approvals
+        (terminal_id, tablet_id, business_id, native_link_id, source_account_id, source_user_id, approved_by, approved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(terminal_id) DO UPDATE SET tablet_id=excluded.tablet_id,
+        business_id=excluded.business_id, native_link_id=excluded.native_link_id,
+        source_account_id=excluded.source_account_id, source_user_id=excluded.source_user_id,
+        approved_by=excluded.approved_by, approved_at=excluded.approved_at
+    `).run(target.id, target.tablet_id, businessId, target.proof.link_id, target.proof.source_account_id,
+      target.proof.source_user_id, current.id, stamp);
+    audit(db, current.id, businessId, "terminal_calai_owner_approved", { terminalId: target.id, tabletId: target.tablet_id }, stamp);
+    return calaiApprovalStatus(db, target, businessId);
+  });
+  return sendJson(res, 200, { data: result }, headers);
+}
+
 // Called inside the caller's transaction. Both existing owner setup and central
 // secured administration share these one-use, current-registration invariants.
 export function issueBusinessTerminalSetup(db,config,session,businessId,{replace=false,deviceName,expectedTerminalId=undefined}={}){
@@ -239,6 +303,10 @@ export function issueBusinessTerminalSetup(db,config,session,businessId,{replace
 }
 
 export async function routeBusinessTerminals({ req, res, url, db, config, session, checkRate }) {
+  const approval = /^\/api\/business\/accounts\/([^/]+)\/terminals\/calai-authorization$/.exec(url.pathname);
+  if (approval && ["GET", "POST"].includes(req.method)) {
+    return routeTerminalCalaiApproval({ req, res, db, config, session, checkRate, businessId: approval[1] });
+  }
   let match = /^\/api\/business\/accounts\/([^/]+)\/terminals(?:\/(setup|revoke|installer))?$/.exec(url.pathname);
   if (match) {
     const user = owner(db, session, match[1], config);

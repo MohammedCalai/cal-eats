@@ -4,6 +4,7 @@ import {HttpError,exactObject,readJson,sendJson} from './http.js';
 import {createSession,cookieFor} from './auth/sessions.js';
 import {verifyPassword} from './auth/passwords.js';
 import {businessProductState,businessProductPermission,ensureBusinessProductPermissions,terminalHasCalaiAuthority} from './business-product-policy.js';
+import {businessAccountMembership as membership} from './business-account-membership.js';
 import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration} from './tablet-product-policy.js';
 import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
@@ -37,14 +38,6 @@ export function canonicalBusinessId(db,id){
 }
 function rawAccount(db,id){return db.prepare('SELECT * FROM business_accounts WHERE id=? AND archived_at IS NULL').get(id);}
 function links(db,id){return db.prepare('SELECT * FROM business_product_links WHERE business_id=? ORDER BY product').all(id);}
-function membership(db,userId,businessId){
-  const member=db.prepare('SELECT * FROM business_account_memberships WHERE business_id=? AND user_id=?').get(businessId,userId);
-  const eats=db.prepare("SELECT restaurant_id FROM business_product_links WHERE business_id=? AND product='cal-eats'").get(businessId);
-  const source=eats&&db.prepare('SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?').get(eats.restaurant_id,userId);
-  if(member?.membership_source==='cal-eats')return source?{...member,permission:source.permission}:null;
-  if(member)return member;
-  return source?{permission:source.permission,membership_source:'cal-eats',can_view_calai:0,productOnly:true}:null;
-}
 function access(db,session,id,{owner=false,calai=false}={}){
   const user=actor(db,session),canonical=canonicalBusinessId(db,id);
   if(terminal(session)&&(canonical!==id||session.businessId!==id))throw unavailable();

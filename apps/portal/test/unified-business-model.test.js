@@ -1,8 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyTabletProductAccess, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct } from "../src/unified-business-model.js";
+import { applyTabletProductAccess, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
+test("Calai-only mode does not depend on the denied Cal-Eats restaurants request", () => {
+  const business = { eatsRestaurantId: "restaurant-a", canViewEats: true, products: {
+    "cal-eats": { allowedOnTablet: true },
+  } };
+  assert.equal(canLoadEatsRestaurantWorkspace(business), true);
+  assert.equal(canLoadEatsRestaurantWorkspace({ ...business, canViewEats: false, principalKind: "terminal" }), false);
+  assert.equal(canLoadEatsRestaurantWorkspace({ ...business, products: {
+    "cal-eats": { allowedOnTablet: false },
+  } }), false, "The signed tablet projection can restrict a human owner session too");
+  assert.equal(canLoadEatsRestaurantWorkspace({ ...business, eatsRestaurantId: null }), false);
+});
 test("native owners can connect permitted products without administrator service controls; staff and tablets cannot",()=>{
   const owner={principalKind:"human",canManageProducts:false,canConnectProducts:true,products:{calai:product("calai-native",{linked:false,readiness:{ready:false,tasks:[]},effectiveStatus:"setup_required"}),"cal-eats":product("eats-native")}};
   assert.equal(canConnectBusinessProduct(owner,"calai"),true,"The actual native owner DTO has administrator controls disabled");
@@ -14,6 +25,17 @@ test("native owners can connect permitted products without administrator service
   assert.equal(canConnectBusinessProduct({...owner,products:{...owner.products,calai:product("native",{canConnect:false})}},"calai"),false);
   assert.equal(canConnectBusinessProduct(owner,"arbitrary-product"),false);
   assert.equal(owner.canManageProducts,false,"Connection visibility does not add service enable/disable controls");
+});
+test("only the verified business owner can start the tablet approval check, including in Cal-Eats-only mode", () => {
+  const owner = { id:"location-a", principalKind:"human", canConnectProducts:true, canViewCalai:true, canManageProducts:false,
+    products:{calai:product("native-a",{allowedOnTablet:false})} };
+  assert.equal(calaiTabletAuthorizationPath(owner), "/api/business/accounts/location-a/terminals/calai-authorization");
+  for (const change of [{principalKind:"terminal"}, {canConnectProducts:false}, {canViewCalai:false}, {canManageProducts:true}, {id:null}]) {
+    assert.equal(calaiTabletAuthorizationPath({...owner,...change}), null);
+  }
+  for (const change of [{linked:false}, {adminAllowed:false}, {readiness:{ready:false}}, {effectiveStatus:"unavailable"}]) {
+    assert.equal(calaiTabletAuthorizationPath({...owner, products:{calai:product("native-a",change)}}), null);
+  }
 });
 test("independent native staff tool permissions expose only permitted tools and keep banking, legal and settings with owners",()=>{
  const ordinary=businessToolPermissions({permission:"staff"});assert.ok(Object.values(ordinary).every(value=>value===false));
