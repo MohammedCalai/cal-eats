@@ -6,6 +6,11 @@ export function orderDeliveryAddress(order) {
 }
 export const orderDestination = order => order?.fulfillment === "delivery" ? orderDeliveryAddress(order) || "Delivery address unavailable" : orderCustomerName(order);
 export const orderReprintLabel = order => `${order?.fulfillment === "delivery" ? "Delivery" : "Collection"} · ${orderDestination(order)}${order?.fulfillment === "delivery" ? ` · ${orderCustomerName(order)}` : ""} · #${String(order?.id || "").slice(0,8).toUpperCase()}`;
+export function canPrintOrderReceipt(order, restaurantId) {
+  return Boolean(order?.id && restaurantId && order.restaurantId === restaurantId &&
+    (!order.source || order.source === "cal-eats") &&
+    ["accepted", "preparing", "ready", "out_for_delivery", "completed"].includes(order.status));
+}
 export const orderStatusText = order => ({placed:"Awaiting confirmation",accepted:"Confirmed",preparing:"Preparing",ready:order?.fulfillment === "delivery"?"Ready for dispatch":"Ready to collect",out_for_delivery:"Out for delivery",completed:order?.fulfillment === "delivery"?"Delivered":"Collected",rejected:"Rejected",cancelled:"Cancelled"})[order?.status] || String(order?.status || "Unavailable").replaceAll("_", " ");
 function shiftDate(value, days) { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate()+days); return date.toISOString().slice(0,10); }
 export function orderDatePreset(preset, now = new Date()) {
