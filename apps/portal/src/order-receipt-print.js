@@ -1,8 +1,14 @@
 const prefix = "cal-eats:receipt-intent:";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const jobStatuses = new Set(["queued", "claimed", "dispatched", "submitted", "printed", "failed", "uncertain"]);
+const queueRefusals = new Map([
+  ["REPRINT_CHECK_REQUIRED", 400],
+  ["ORDER_NOT_CONFIRMED", 409],
+  ["PRINT_ALREADY_QUEUED", 409],
+  ["PRINTER_DISABLED", 409],
+]);
 export const receiptUnconfirmed = "The print request could not be confirmed. Check the printer before retrying.";
-export const receiptRefused = error => [400, 401, 403, 404, 409].includes(error?.status);
+export const receiptRefused = error => queueRefusals.has(error?.code) && queueRefusals.get(error.code) === error.status;
 
 function requestKey({ businessId, restaurantId, orderId }) {
   return prefix + [businessId, restaurantId, orderId].join(":");
@@ -25,7 +31,7 @@ export function createReceiptPrintRequests({
   function save(key, value) {
     try { storage().setItem(key, JSON.stringify(value)); }
     catch {
-      throw Object.assign(new Error("This tab couldn't keep track of the receipt request. Check the printer before trying again."), { status: 400 });
+      throw Object.assign(new Error("This tab couldn't keep track of the receipt request. Check the printer before trying again."), { code: "PRINT_TRACKING_UNAVAILABLE" });
     }
   }
 

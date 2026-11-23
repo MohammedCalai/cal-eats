@@ -63,10 +63,26 @@ test("a refusal before sending any copy releases the request and unavailable tab
   const order = scope(), printer = randomUUID();
   const requests = tab().reload();
   await assert.rejects(requests.submit(order, printer, () => {
-    throw Object.assign(new Error("Order not confirmed"), { status: 409 });
+    throw Object.assign(new Error("Order not confirmed"), { status: 409, code: "ORDER_NOT_CONFIRMED" });
   }), /not confirmed/);
   assert.equal(requests.read(order), null);
 
   const unavailable = createReceiptPrintRequests({ storage: () => { throw new Error("blocked"); } });
   await assert.rejects(unavailable.submit(order, printer, () => assert.fail("A receipt was sent")), /keep track/);
+});
+
+test("a tablet proof or session rejection can follow a queued job and keeps the first request ID", async () => {
+  for (const [status, code] of [[403, "TABLET_WINDOW_PROOF_REQUIRED"], [409, "TABLET_SESSION_CHANGED"]]) {
+    const browser = tab(), order = scope(), printer = randomUUID(), jobs = new Map();
+    const first = browser.reload();
+    await assert.rejects(first.submit(order, printer, id => {
+      jobs.set(id, queued());
+      throw Object.assign(new Error("Local proof changed"), { status, code });
+    }), /Local proof changed/);
+    await browser.reload().submit(order, printer, id => {
+      assert.ok(jobs.has(id), "the existing job ID must be reused");
+      return { ...jobs.get(id), replay: true };
+    });
+    assert.equal(jobs.size, 1);
+  }
 });

@@ -39,7 +39,7 @@ export default function OrderReceiptPrintDialog({ order, businessId, restaurantI
         "This receipt was already requested. Check the printer before requesting another copy.");
     } catch (caught) {
       setError(caught.code === "PRINT_ALREADY_QUEUED" ? "A receipt for this order is already waiting at this printer."
-        : receiptRefused(caught) ? caught.message : receiptUnconfirmed);
+        : receiptRefused(caught) || caught.code === "PRINT_TRACKING_UNAVAILABLE" ? caught.message : receiptUnconfirmed);
       setChecked(false);
     } finally {
       pending.current = false;
