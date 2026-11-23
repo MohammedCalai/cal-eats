@@ -20,6 +20,7 @@ function adapter(mode,calls){
     retrievePlatformAccount:record("platform",{status:"confirmed",providerReference:mode==="stripe_live"?"acct_liveplatform":"acct_testplatform",mode}),
     createConnectedAccount:record("createAccount",{...ready(),status:"pending",chargesEnabled:false,payoutsEnabled:false}),
     configureWeeklyPayouts:record("schedule",{status:"confirmed"}),
+    configurePayoutStatementDescriptor:record("descriptor",{ok:true,status:"confirmed",providerReference:accountId,statementDescriptor:"CAL-EATS"}),
     createAccountLink:record("onboardingLink",{status:"confirmed",actionUrl:`https://connect.stripe.com/setup/s/${accountId}`}),
     refreshConnectedAccount:record("refresh",ready),
     createAccountLoginLink:record("dashboard",{status:"confirmed",actionUrl:`https://connect.stripe.com/express/${accountId}`}),
@@ -71,6 +72,7 @@ test("live bank onboarding is explicit, hosted, allowlisted and has no financial
   const scoped=loadLiveOnboardingConfig({...staged,liveOnboardingRestaurantIds:[scopeId],liveOnboardingPaymentProvider:provider},hosting);
   assert.deepEqual(scoped.restaurantIds,[scopeId]);assert.equal(scoped.connection.paymentProviderMode,"stripe_live");assert.equal(scoped.connection.livePaymentsEnabled,false);
   for(const name of ["createCheckoutSession","capturePayment","createTransfer"])assert.equal(scoped.connection.paymentProvider[name],undefined);
+  assert.equal(typeof scoped.connection.paymentProvider.configurePayoutStatementDescriptor,"function");
   assert.equal(calls.length,0,"Loading configuration never calls Stripe");
 });
 
@@ -178,6 +180,9 @@ test("selected owner prepares live banking while other restaurants, customer che
     for(const [suffix,method]of [["refresh","POST"],["dashboard","POST"],["banking","GET"],["payouts","GET"]]){const response=await s.call(`${s.root}/${suffix}`,{method});assert.equal(response.status,200,JSON.stringify(response));assert.equal(response.body.data.onboardingOnly,true);assert.equal(response.body.data.customerPaymentsLive,false);}
     const otherRoot=`/api/restaurant/restaurants/${s.other.id}/finance/stripe`,other=await s.call(otherRoot,{session:s.otherOwner});assert.equal(other.status,200);assert.equal(other.body.data.providerMode,"stripe_test");assert.equal(other.body.data.onboardingOnly,false);
     const otherLink=await s.call(`${otherRoot}/onboarding`,{session:s.otherOwner,method:"POST"});assert.equal(otherLink.status,200);assert.equal(otherLink.body.data.providerMode,"stripe_test");assert.equal(s.testCalls.filter(c=>c.name==="createAccount").length,1);
+    assert.deepEqual(s.liveCalls.filter(c=>c.name==="descriptor").map(c=>({mode:c.mode,...c.input})),[{mode:"stripe_live",accountId:"acct_liverestaurant",idempotencyKey:`connect-payout-descriptor-v1:stripe_live:${s.selected.id}`}]);
+    assert.deepEqual(s.testCalls.filter(c=>c.name==="descriptor").map(c=>({mode:c.mode,...c.input})),[{mode:"stripe_test",accountId:"acct_testrestaurant",idempotencyKey:`connect-payout-descriptor-v1:stripe_test:${s.other.id}`}]);
+    assert.deepEqual(s.liveCalls.filter(c=>["schedule","descriptor","onboardingLink"].includes(c.name)).map(c=>c.name),["schedule","descriptor","onboardingLink"]);
     const global=await s.call("/api/payments/config",{session:s.customer});assert.equal(global.body.data.providerMode,"stripe_test");assert.equal(s.config.paymentProvider.mode,"stripe_test");assert.equal(s.config.livePaymentsEnabled,false);
     const customerCookie=await s.f.login("customer@calai.local","LocalCustomer!4310"),item=s.f.db.prepare("SELECT id FROM menu_items WHERE restaurant_id=? LIMIT 1").get(s.selected.id);
     const blocked=await s.f.json("/api/orders",{method:"POST",cookie:customerCookie,headers:{"Idempotency-Key":"live-banking-not-customer-launch"},body:{restaurantId:s.selected.id,items:[{menuItemId:item.id,quantity:1}],paymentMethod:"card",fulfillment:"collection"}});assert.equal(blocked.status,409);assert.equal(blocked.body.error.code,"CAL_EATS_SETUP_REQUIRED");assert.equal(s.f.db.prepare("SELECT COUNT(*) n FROM stripe_order_payments").get().n,0);
@@ -204,6 +209,7 @@ test("live banking requires genuine owner access, verifies platform identity and
     s.f.db.prepare("DELETE FROM provider_accounts WHERE restaurant_id=?").run(s.selected.id);
     s.config.liveOnboarding=loadLiveOnboardingConfig({...staged,liveOnboardingRestaurantIds:[s.selected.id],liveOnboardingPaymentProvider:{...adapter("stripe_live",s.liveCalls),retrievePlatformAccount:async()=>({status:"confirmed",providerReference:"acct_wrongplatform",mode:"stripe_live"})}},hosting);
     const wrong=await s.call(`${s.root}/onboarding`,{method:"POST"});assert.equal(wrong.status,503);assert.equal(wrong.body.error.code,"STRIPE_ACCOUNT_MISMATCH");assert.equal(s.f.db.prepare("SELECT COUNT(*) n FROM provider_accounts WHERE restaurant_id=?").get(s.selected.id).n,0);
+    assert.equal(s.liveCalls.filter(c=>c.name==="descriptor").length,0,"Owner, tenant, provider mode and platform checks precede descriptor changes");
   }finally{await s.f.close();}
 });
 
@@ -215,6 +221,7 @@ test("a failed payout setup preserves the created account and retry resumes that
     s.config.liveOnboarding=loadLiveOnboardingConfig({...staged,liveOnboardingRestaurantIds:[s.selected.id],liveOnboardingPaymentProvider:liveProvider},hosting);
     const first=await s.call(`${s.root}/onboarding`,{method:"POST"});
     assert.equal(first.status,503);assert.equal(first.body.error.code,"STRIPE_PAYOUT_POLICY_PENDING");
+    assert.equal(s.liveCalls.some(call=>["descriptor","onboardingLink"].includes(call.name)),false,"Unconfirmed schedules cannot proceed to descriptor setup or onboarding links");
     const refreshed=await s.call(s.root);
     assert.equal(refreshed.status,200);assert.equal(refreshed.body.data.account.status,"pending");
     assert.equal(s.f.db.prepare("SELECT provider_reference FROM provider_accounts WHERE restaurant_id=?").get(s.selected.id).provider_reference,"acct_liverestaurant");
@@ -227,6 +234,35 @@ test("a failed payout setup preserves the created account and retry resumes that
     assert.equal(scheduleCalls.length,2);assert.equal(scheduleCalls[0].input.idempotencyKey,scheduleCalls[1].input.idempotencyKey);
     assert.equal(scheduleCalls[0].input.idempotencyKey,`connect-schedule-anchor-v1:stripe_live:${s.selected.id}`);
     assert.equal(s.f.db.prepare("SELECT COUNT(*) n FROM orders").get().n,0);
+  }finally{await s.f.close();}
+});
+
+test("unconfirmed payout descriptions prevent onboarding links and retry preserves the account and weekly policy",async()=>{
+  const s=await setup();try{
+    await credential(s);
+    let outcome;
+    const liveProvider={...adapter("stripe_live",s.liveCalls),configurePayoutStatementDescriptor:async input=>{s.liveCalls.push({name:"descriptor",input});return outcome;}};
+    s.config.liveOnboarding=loadLiveOnboardingConfig({...staged,liveOnboardingRestaurantIds:[s.selected.id],liveOnboardingPaymentProvider:liveProvider},hosting);
+    for(outcome of [
+      {ok:false,status:"failed",errorCode:"permission_error",message:"private provider detail"},
+      {ok:false,status:"unknown",errorCode:"STRIPE_TIMEOUT"},
+      undefined,
+      {ok:true,status:"confirmed",providerReference:"acct_other",statementDescriptor:"CAL-EATS"},
+      {ok:true,status:"confirmed",providerReference:"acct_liverestaurant",statementDescriptor:"OTHER"},
+    ]){
+      const refused=await s.call(`${s.root}/onboarding`,{method:"POST"});
+      assert.equal(refused.status,503);assert.equal(refused.body.error.code,"STRIPE_PAYOUT_DESCRIPTOR_PENDING");assert.doesNotMatch(JSON.stringify(refused),/private provider detail/);
+      assert.equal(s.liveCalls.filter(c=>c.name==="onboardingLink").length,0);
+      assert.equal(s.f.db.prepare("SELECT provider_reference FROM provider_accounts WHERE restaurant_id=?").get(s.selected.id).provider_reference,"acct_liverestaurant");
+    }
+    outcome={ok:true,status:"confirmed",providerReference:"acct_liverestaurant",statementDescriptor:"CAL-EATS"};
+    const retry=await s.call(`${s.root}/onboarding`,{method:"POST",headers:{"idempotency-key":"another-browser-retry"}});
+    assert.equal(retry.status,200);assert.equal(s.liveCalls.filter(c=>c.name==="createAccount").length,1);assert.equal(s.liveCalls.filter(c=>c.name==="onboardingLink").length,1);
+    const descriptors=s.liveCalls.filter(c=>c.name==="descriptor"),schedules=s.liveCalls.filter(c=>c.name==="schedule");
+    assert.equal(descriptors.length,6);assert.equal(schedules.length,6);
+    assert.ok(descriptors.every(c=>c.input.accountId==="acct_liverestaurant"&&c.input.idempotencyKey===`connect-payout-descriptor-v1:stripe_live:${s.selected.id}`));
+    assert.ok(schedules.every(c=>c.input.accountId==="acct_liverestaurant"&&c.input.weeklyAnchor==="monday"&&c.input.idempotencyKey===`connect-schedule-anchor-v1:stripe_live:${s.selected.id}`));
+    assert.equal(s.liveCalls.some(c=>["checkout","capture","transfer"].includes(c.name)),false);assert.equal(s.f.db.prepare("SELECT COUNT(*) n FROM orders").get().n,0);
   }finally{await s.f.close();}
 });
 

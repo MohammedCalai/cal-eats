@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const STRIPE_API_VERSION = "2025-06-30.basil";
+export const STRIPE_PAYOUT_STATEMENT_DESCRIPTOR = "CAL-EATS";
 const DEFAULT_BASE_URL = "https://api.stripe.com";
 const REFERENCE = /^(acct|pi|ch|tr|re|trr|po|seti|cus|pm|mandate|cs)_[A-Za-z0-9_]+$/;
 
@@ -66,6 +67,15 @@ export function createStripeAdapter(config = {}) {
       return accountResult(result);
     },
     async refreshConnectedAccount(input) { return accountResult(await request("GET", `/v1/accounts/${ref(input.accountId, "acct")}`, null, {requireTestObject:true,allowModeOmissionForObject:"account"})); },
+    async configurePayoutStatementDescriptor(input) {
+      const accountId=ref(input.accountId,"acct");
+      // Bank deposits use the connected account's payout descriptor, independently
+      // of customer charge descriptions and its existing automatic payout schedule.
+      const result=await request("POST",`/v1/accounts/${accountId}`,{"settings[payouts][statement_descriptor]":STRIPE_PAYOUT_STATEMENT_DESCRIPTOR},{idempotencyKey:input.idempotencyKey,providerReference:accountId,requireTestObject:true,allowModeOmissionForObject:"account"});
+      if(!result.ok)return result;
+      if(result.body?.object!=="account"||result.body.id!==accountId||result.body.settings?.payouts?.statement_descriptor!==STRIPE_PAYOUT_STATEMENT_DESCRIPTOR)return {ok:false,status:"failed",providerReference:accountId,errorCode:"STRIPE_PAYOUT_DESCRIPTOR_MISMATCH"};
+      return {ok:true,status:"confirmed",providerReference:accountId,statementDescriptor:STRIPE_PAYOUT_STATEMENT_DESCRIPTOR};
+    },
     async listExternalBankAccounts(input) {
       const accountId=ref(input.accountId,"acct"),result=await request("GET",`/v1/accounts/${accountId}/external_accounts`,{object:"bank_account",limit:100});
       return result.ok?{ok:true,status:"confirmed",providerReference:accountId,items:(result.body.data||[]).filter(item=>item.object==="bank_account").map(bankAccountResult),hasMore:Boolean(result.body.has_more)}:result;

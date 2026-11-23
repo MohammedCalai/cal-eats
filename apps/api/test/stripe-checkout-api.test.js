@@ -25,6 +25,7 @@ test("Stripe checkout, refresh, capture and owner onboarding remain authoritativ
     createConnectedAccount: async () => ({ status: "pending", providerReference: "acct_restaurant", chargesEnabled: false, payoutsEnabled: false, capabilities: [], requirements: ["details_submitted"] }),
     refreshConnectedAccount: async () => ({status:"confirmed",providerReference:"acct_restaurant",chargesEnabled:true,payoutsEnabled:true,capabilities:["card_payments","transfers"],requirements:[]}),
     configureWeeklyPayouts: async () => ({ status: "confirmed" }),
+    configurePayoutStatementDescriptor: async () => ({ok:true,status:"confirmed",providerReference:"acct_restaurant",statementDescriptor:"CAL-EATS"}),
     createAccountLink: async () => ({ status: "confirmed", actionUrl: "https://connect.stripe.com/setup/s/acct_restaurant", expiresAt: "2026-01-02T00:00:00.000Z" }),
     createAccountLoginLink: async () => ({ status: "confirmed", actionUrl: "https://connect.stripe.com/express/acct_restaurant" }),
   };

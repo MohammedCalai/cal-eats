@@ -234,6 +234,53 @@ test("weekly payout schedule refuses missing or mismatched saved settings",async
   }
 });
 
+test("bank payout descriptor changes only CAL-EATS on the exact connected account in either mode",async()=>{
+  for(const mode of ["test","live"]){
+    for(const modeField of [{},{livemode:mode==="live"}]){
+      const calls=[],body={id:"acct_restaurant",object:"account",...modeField,settings:{payouts:{statement_descriptor:"CAL-EATS",schedule:{interval:"weekly",weekly_anchor:"monday"}},payments:{statement_descriptor:"RESTAURANT CHARGES"}}};
+      const adapter=createStripeAdapter({secretKey:mode==="live"?"sk_live_fixture_only":KEY,mode,liveEnabled:mode==="live",fetchImpl:async(url,init)=>{calls.push({url:String(url),init});return jsonResponse(body);}});
+      const result=await adapter.configurePayoutStatementDescriptor({accountId:"acct_restaurant",idempotencyKey:`payout-descriptor-${mode}`,statementDescriptor:"UNTRUSTED OVERRIDE"});
+      assert.deepEqual(result,{ok:true,status:"confirmed",providerReference:"acct_restaurant",statementDescriptor:"CAL-EATS"});
+      assert.equal(calls.length,1);assert.equal(calls[0].url,"https://api.stripe.com/v1/accounts/acct_restaurant");assert.equal(calls[0].init.method,"POST");
+      assert.equal(calls[0].init.headers["Stripe-Version"],STRIPE_API_VERSION);assert.equal(calls[0].init.headers["Idempotency-Key"],`payout-descriptor-${mode}`);
+      assert.equal(calls[0].init.headers["Stripe-Account"],undefined,"Connected account is bound in the account update URL");
+      assert.deepEqual(Object.fromEntries(new URLSearchParams(calls[0].init.body)),{"settings[payouts][statement_descriptor]":"CAL-EATS"},"No schedule, charge descriptor, bank details or financial fields can be changed");
+    }
+  }
+});
+
+test("bank payout descriptor refuses a mismatched account, object or unconfirmed saved descriptor",async()=>{
+  for(const body of [
+    {id:"acct_other",object:"account",settings:{payouts:{statement_descriptor:"CAL-EATS"}}},
+    {id:"acct_restaurant",object:"balance_settings",livemode:false,settings:{payouts:{statement_descriptor:"CAL-EATS"}}},
+    {id:"acct_restaurant",object:"account"},
+    {id:"acct_restaurant",object:"account",settings:{payouts:{statement_descriptor:null}}},
+    {id:"acct_restaurant",object:"account",settings:{payouts:{statement_descriptor:"OTHER"}}},
+  ]){
+    const adapter=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>jsonResponse(body)});
+    assert.deepEqual(await adapter.configurePayoutStatementDescriptor({accountId:"acct_restaurant",idempotencyKey:"payout-descriptor-mismatch"}),{ok:false,status:"failed",providerReference:"acct_restaurant",errorCode:"STRIPE_PAYOUT_DESCRIPTOR_MISMATCH"});
+  }
+});
+
+test("bank payout descriptor fails closed on provider errors and opposite or unverified mode",async()=>{
+  const input={accountId:"acct_restaurant",idempotencyKey:"payout-descriptor-failure"};
+  const failed=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>jsonResponse({error:{type:"permission_error",message:"private provider detail"}},403)});
+  assert.deepEqual(await failed.configurePayoutStatementDescriptor(input),{ok:false,status:"failed",providerReference:"acct_restaurant",errorCode:"permission_error"});
+  const ambiguous=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>{throw new Error("private network detail");}});
+  assert.deepEqual(await ambiguous.configurePayoutStatementDescriptor(input),{ok:false,status:"unknown",providerReference:"acct_restaurant",errorCode:"STRIPE_NETWORK_AMBIGUOUS"});
+  for(const mode of ["test","live"]){
+    const adapter=createStripeAdapter({secretKey:mode==="live"?"sk_live_fixture_only":KEY,mode,liveEnabled:mode==="live",fetchImpl:async()=>jsonResponse({id:"acct_restaurant",object:"account",livemode:mode!=="live",settings:{payouts:{statement_descriptor:"CAL-EATS"}}})});
+    await assert.rejects(adapter.configurePayoutStatementDescriptor(input),StripeTestConfigurationError);
+  }
+  for(const body of [null,{}, {id:"acct_restaurant",object:"balance_settings"}]){
+    const adapter=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>jsonResponse(body)});
+    await assert.rejects(adapter.configurePayoutStatementDescriptor(input),StripeTestConfigurationError);
+  }
+  let calls=0;const invalid=createStripeTestAdapter({secretKey:KEY,fetchImpl:async()=>{calls++;return jsonResponse({});}});
+  await assert.rejects(invalid.configurePayoutStatementDescriptor({...input,accountId:"acct_restaurant/other"}),/Invalid acct reference/);
+  await assert.rejects(invalid.configurePayoutStatementDescriptor({...input,idempotencyKey:""}),/idempotencyKey/);assert.equal(calls,0);
+});
+
 test("webhook verification uses raw bytes, timestamp tolerance and rejects live events", () => {
   const secret = "whsec_test_only_secret";
   const timestamp = 1_700_000_000;
