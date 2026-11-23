@@ -270,7 +270,10 @@ export async function runTabletManagedSetup(db, config, { graph, limit = 2 } = {
       }
     } catch (error) {
       // A later worker may own the lease. An old network response never closes it.
-      if (getJob(db, job.id)?.lease_id === lease && (error instanceof HttpError || error?.retry === false)) closeJob(db, job.id, 'connection_check_failed');
+      if (getJob(db, job.id)?.lease_id === lease && (error instanceof HttpError || error?.retry === false)) {
+        const code = /^MANAGED_SETUP_GRAPH_[A-Z_]{1,55}$/.test(error.code) ? error.code : 'connection_check_failed';
+        closeJob(db, job.id, code);
+      }
     } finally {
       db.prepare('UPDATE tablet_managed_setups SET lease_id=NULL,lease_until=NULL,next_check_at=? WHERE id=? AND lease_id=?').run(at(config, checkMs), job.id, lease);
     }

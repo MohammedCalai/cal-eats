@@ -143,6 +143,68 @@ test("managed installation recovers only canonical expired legacy files with no 
   assert.equal(result.stdout.trim(),"offline-expired-validation-ok");
 });
 
+test("Windows directory setup rejects collisions and revalidates protection before changing ACLs",
+  {skip:process.platform!=="win32"},async t=>{
+  const directory=await temp(t);
+  await fs.writeFile(path.join(directory,"generated.ps1"),buildManagedTerminalInstaller({targetSerial,entraDeviceId,jobId}));
+  const script=[
+    "$ErrorActionPreference='Stop'",
+    "$parseErrors=$null",
+    "$tree=[Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) 'generated.ps1'),[ref]$null,[ref]$parseErrors)",
+    "if ($parseErrors.Count) { throw $parseErrors[0].Message }",
+    "$names=@('New-TerminalDirectoryAcl','New-TerminalExclusiveDirectory','Initialize-TerminalDirectory')",
+    "foreach ($name in $names) {",
+    " $fn=$tree.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)",
+    " if (-not $fn) { throw 'Missing protected directory helper' }",
+    " . ([scriptblock]::Create($fn.Extent.Text))",
+    "}",
+    "$knownExisting=(Get-Location).Path",
+    "$sections=[Security.AccessControl.AccessControlSections]::Access",
+    "$originalAcl=[IO.Directory]::GetAccessControl($knownExisting,$sections).GetSecurityDescriptorSddlForm($sections)",
+    "$collision=$false",
+    "try { New-TerminalExclusiveDirectory $knownExisting } catch { $collision=$_.Exception.Message -eq 'A tablet directory appeared during protected installation.' }",
+    "if (-not $collision -or [IO.Directory]::GetAccessControl($knownExisting,$sections).GetSecurityDescriptorSddlForm($sections) -cne $originalAcl) { throw 'Native exclusive creation reused an existing path.' }",
+    "function Assert-TerminalPath {",
+    " param([string]$Path)",
+    " $script:checks++",
+    " if ($script:mode -eq 'foreign' -or ($script:mode -eq 'redirected-late' -and $script:checks -eq 2)) { throw 'Unsafe path' }",
+    " return $Path",
+    "}",
+    "function Test-Path {",
+    " param([string]$LiteralPath,[string]$PathType)",
+    " if ($PathType -eq 'Container') { return $script:state -eq 'directory' }",
+    " return $script:state -ne 'absent'",
+    "}",
+    "function New-TerminalExclusiveDirectory {",
+    " param([string]$Path)",
+    " $script:created++",
+    " if ($script:mode -eq 'collision') { throw 'A directory appeared' }",
+    " $script:state='directory'",
+    "}",
+    "function Set-TerminalProtection {",
+    " param([string]$Path)",
+    " if ($script:checks -ne 2 -or $script:state -ne 'directory') { throw 'ACL update lacks renewed verification' }",
+    " $script:hardened++",
+    "}",
+    "foreach ($case in @(",
+    " @{mode='first';state='absent';create=1;harden=1;fail=$false},",
+    " @{mode='owned';state='directory';create=0;harden=1;fail=$false},",
+    " @{mode='foreign';state='directory';create=0;harden=0;fail=$true},",
+    " @{mode='file';state='file';create=0;harden=0;fail=$true},",
+    " @{mode='collision';state='absent';create=1;harden=0;fail=$true},",
+    " @{mode='redirected-late';state='absent';create=1;harden=0;fail=$true}",
+    ")) {",
+    " $script:mode=$case.mode;$script:state=$case.state;$script:checks=0;$script:created=0;$script:hardened=0;$failed=$false",
+    " try { Initialize-TerminalDirectory (Join-Path (Get-Location) 'mock-target') } catch { $failed=$true }",
+    " if ($failed -ne $case.fail -or $script:created -ne $case.create -or $script:hardened -ne $case.harden) { throw ('Unsafe directory setup: '+$case.mode) }",
+    "}",
+    "Write-Output 'offline-protected-directory-ok'",
+  ].join("\r\n");
+  const result=spawnSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",script],{cwd:directory,encoding:"utf8",timeout:15000,windowsHide:true});
+  assert.equal(result.status,0,result.stderr||result.stdout||String(result.error));
+  assert.equal(result.stdout.trim(),"offline-protected-directory-ok");
+});
+
 async function testDevice(t){
   const folder=await temp(t),identityPath=path.join(folder,"identity.json"),managedPath=path.join(folder,"managed.json");
   const keys=crypto.generateKeyPairSync("ec",{namedCurve:"prime256v1"});

@@ -168,6 +168,8 @@ test('observe returns only the fresh successful exact-device result after valida
   const run = { id: randomUUID(), managedDevice: { id: binding.managedDeviceId }, runState: 'success', lastStateUpdateDateTime: stamp, resultMessage };
   f.state.runs = [{ ...run, runState: 'pending' }];
   assert.equal(await f.observe(), null);
+  f.state.runs = [{ ...run, runState: 'scriptError' }];
+  await assert.rejects(f.observe(), { code: 'MANAGED_SETUP_GRAPH_EXECUTION_FAILED' });
   f.state.runs = [{ ...run, lastStateUpdateDateTime: new Date(start - 61000).toISOString() }];
   assert.equal(await f.observe(), null);
   f.state.runs = [run];

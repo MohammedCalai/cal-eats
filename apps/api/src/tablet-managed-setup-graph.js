@@ -308,9 +308,13 @@ export function createTabletManagedSetupGraph(settings, {
       if (!run) return null;
       if (id(run.managedDevice?.id) !== job.managedDeviceId || typeof run.id !== 'string' || !run.id ||
           run.id.length > 200 || /[\x00-\x1f\x7f]/.test(run.id)) throw fail('MANAGED_SETUP_GRAPH_RUN_SCOPE_MISMATCH');
-      if (run.runState !== 'success') return null;
       const observed = typeof run.lastStateUpdateDateTime === 'string' ? Date.parse(run.lastStateUpdateDateTime) : NaN;
       const modified = typeof script.lastModifiedDateTime === 'string' ? Date.parse(script.lastModifiedDateTime) : NaN;
+      if (['fail', 'scriptError', 'notApplicable'].includes(run.runState) && Number.isFinite(observed) &&
+          Number.isFinite(modified) && observed >= Math.max(requestedAt, modified) && observed <= now() + 60000) {
+        throw fail('MANAGED_SETUP_GRAPH_EXECUTION_FAILED');
+      }
+      if (run.runState !== 'success') return null;
       if (!Number.isFinite(observed) || !Number.isFinite(modified) || observed > now() + 60000 || modified > now() + 60000 ||
           typeof run.resultMessage !== 'string' || Buffer.byteLength(run.resultMessage) > 8192 || !run.resultMessage.trim()) {
         throw fail('MANAGED_SETUP_GRAPH_EVIDENCE_INVALID');
