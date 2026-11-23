@@ -1,37 +1,64 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Link, NavLink, Outlet, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, productPresentation, productControlLabel, productName, counterPresentation, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct } from "./unified-business-model.js";
+import { BUSINESS_PRODUCTS, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct } from "./unified-business-model.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
-import {terminalStatus} from "./terminal-client.js";
+import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
 import { EMBEDDED_PARENT_ORIGIN, embeddedCommand, embeddedState } from "./embedded-business-model.js";
 import "./UnifiedBusiness.css";
 
 const BusinessContext = createContext(null);
 export const useBusinessWorkspace = () => useContext(BusinessContext);
-export function useBusinessResource(path, { poll = 0 } = {}) {
-  const [state, setState] = useState({ path, value: null, loading: Boolean(path), error: "", updatedAt: null });
+export function useBusinessResource(path, { poll = 0, request = api, scope = null } = {}) {
+  const [state, setState] = useState({ path, scope, value: null, loading: Boolean(path), error: "", updatedAt: null });
   const run = useRef(0), pending = useRef(null), current = useRef(path); current.current = path;
   const reload = useCallback(async () => {
     if (!path) return;
     pending.current?.abort(); const controller = new AbortController(), serial = ++run.current; pending.current = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
-    setState(old => ({ ...old, path, loading: old.path !== path || old.value === null, error: "" }));
-    try { const value = await api(path, { signal: controller.signal }); if (current.current === path && serial === run.current) setState({ path, value, loading: false, error: "", updatedAt: new Date().toISOString() }); }
+    setState(old => old.path === path && old.scope === scope
+      ? { ...old, loading: old.value === null, error: "" }
+      : { path, scope, value: null, loading: true, error: "", updatedAt: null });
+    try { const value = await request(path, { signal: controller.signal }); if (current.current === path && serial === run.current) setState({ path, value, loading: false, error: "", updatedAt: new Date().toISOString(), scope }); }
     catch (error) { if (current.current === path && serial === run.current) setState(old => ({ ...old, path, loading: false, value: [401, 403, 404].includes(error.status) ? null : old.value, error: error.name === "AbortError" ? "The request took too long. Try again." : error.message })); }
     finally { clearTimeout(timeout); if (pending.current === controller) pending.current = null; }
-  }, [path]);
-  useEffect(() => { setState({ path, value: null, loading: Boolean(path), error: "", updatedAt: null }); void reload(); const timer = poll ? setInterval(() => { if (!document.hidden && !pending.current) void reload(); }, poll) : null; return () => { run.current++; pending.current?.abort(); pending.current = null; if (timer) clearInterval(timer); }; }, [reload, poll, path]);
-  return { ...(state.path === path ? state : { path, value: null, loading: Boolean(path), error: "", updatedAt: null }), reload };
+  }, [path, request, scope]);
+  useEffect(() => { setState({ path, scope, value: null, loading: Boolean(path), error: "", updatedAt: null }); void reload(); const timer = poll ? setInterval(() => { if (!document.hidden && !pending.current) void reload(); }, poll) : null; return () => { run.current++; pending.current?.abort(); pending.current = null; if (timer) clearInterval(timer); }; }, [reload, poll, path, scope]);
+  return { ...(state.path === path && state.scope === scope ? state : { path, scope, value: null, loading: Boolean(path), error: "", updatedAt: null }), reload };
 }
 function Feedback({ error, notice }) { return <>{error && <p className="alert" role="alert">{error}</p>}{notice && <p className="alert success" role="status">{notice}</p>}</>; }
 function Resource({ value, loading, error, reload, children }) { return <>{error && <p className="alert" role="alert">{error} <button type="button" className="quiet" onClick={() => void reload()}>Try again</button></p>}{loading && !value ? <p role="status">Loading account information…</p> : value ? children : !error && <p className="empty">No account information is available.</p>}</>; }
 export function BusinessWorkspaceProvider({ userId, embedded = false, children }) {
   const context = useBusinessResource("/api/business/context", { poll: 30000 });
   const accounts = useBusinessResource("/api/business/accounts");
+  const [terminal, setTerminal] = useState(terminalStatus);
+  useEffect(() => subscribeTerminalStatus(setTerminal), []);
+  const pairedWithBusiness = terminal.status === "ready" && terminal.context?.businessId === context.value?.id;
+  const tabletScope = pairedWithBusiness && context.value?.principalKind === "human" ? terminal.context.terminalId : null;
+  const tabletContext = useBusinessResource(tabletScope ? "/api/business/context" : null, { poll: 15000, request: terminalApi, scope: tabletScope });
+  const business = applyTabletProductAccess(context.value, tabletContext.value);
+  const signedConfiguration = pairedWithBusiness
+    ? (tabletScope ? tabletContext.value : context.value)?.tabletConfiguration
+    : null;
+  const configurationReadAt = tabletScope ? tabletContext.updatedAt : context.updatedAt;
+  const received = useRef(null), sending = useRef(null);
+  useEffect(() => {
+    const businessId = business?.id, terminalId = terminal.context?.terminalId;
+    const revision = signedConfiguration?.revision, tabletId = signedConfiguration?.tabletId;
+    if (!businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
+      signedConfiguration.receivedAt || signedConfiguration.status === "received") return;
+    const key = `${businessId}:${terminalId}:${tabletId}:${revision}`;
+    if (received.current === key || sending.current === key) return;
+    sending.current = key;
+    void terminalApi(`/api/business/accounts/${encodeURIComponent(businessId)}/surface/heartbeat`,
+      json("POST", { state: "configuration_received", configurationTabletId: tabletId, configurationRevision: revision }))
+      .then(() => { if (sending.current === key) received.current = key; })
+      .catch(() => { /* Try again when the signed context is refreshed. */ })
+      .finally(() => { if (sending.current === key) sending.current = null; });
+  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt]);
   const [selecting, setSelecting] = useState(false), [selectionError, setSelectionError] = useState("");
   const navigate = useNavigate(), working = useRef(false);
   async function selectAccount(id) {
@@ -41,9 +68,9 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, children }
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business: context.value, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={context.value}/>{embedded && <EmbeddedBusinessBridge key={context.value?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
+  return <BusinessContext.Provider value={{ ...context, business, terminal, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={business}/>{embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
 }
-function OperationalSurfacePresence({business}){const terminalId=terminalStatus().context?.terminalId,allowed=business?.products?.["cal-eats"]?.adminAllowed;useEffect(()=>{startOperationalPresence({businessId:business?.id,restaurantId:business?.eatsRestaurantId});return()=>stopOperationalPresence();},[business?.id,business?.eatsRestaurantId,terminalId,allowed]);return null;}
+function OperationalSurfacePresence({business}){const terminalId=terminalStatus().context?.terminalId,allowed=business?.products?.["cal-eats"]?.allowedOnTablet!==false;useEffect(()=>{if(allowed)startOperationalPresence({businessId:business?.id,restaurantId:business?.eatsRestaurantId});return()=>stopOperationalPresence();},[business?.id,business?.eatsRestaurantId,terminalId,allowed]);return null;}
 export function EmbeddedSessionBridge({ enabled, user }) {
   const navigate = useNavigate();
   useEffect(() => { if (!enabled) return; const receive = event => { const path = embeddedCommand(event, window.parent); if (path && user?.role === "restaurant") navigate(path); }; window.addEventListener("message", receive); return () => window.removeEventListener("message", receive); }, [enabled, navigate, user?.id, user?.role]);
@@ -53,13 +80,34 @@ export function EmbeddedSessionBridge({ enabled, user }) {
 function EmbeddedBusinessBridge() {
   const workspace = useBusinessWorkspace(), business = workspace?.business;
   const dashboard = useBusinessResource(business ? "/api/business/dashboard" : null, { poll: 30000 });
-  const surface = useBusinessResource(business?.eatsRestaurantId ? `/api/restaurant/restaurants/${encodeURIComponent(business.eatsRestaurantId)}/surface-status` : null, { poll: 30000 });
-  useEffect(() => { const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, surface.error ? null : surface.value, Boolean(business && !workspace.error)); const send=()=>window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN); send();const timer=setInterval(send,30000);return()=>clearInterval(timer); }, [business, workspace.error, dashboard.value, dashboard.error, surface.value, surface.error]);
+  useEffect(() => { const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, null, Boolean(business && !workspace.error)); const send=()=>window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN); send();const timer=setInterval(send,30000);return()=>clearInterval(timer); }, [business, workspace.error, dashboard.value, dashboard.error]);
   return null;
 }
 export function BusinessAccountSwitcher() {
   const workspace = useBusinessWorkspace(); if (!workspace || workspace.accounts.length < 2) return null;
   return <label className="restaurant-switch">Business/location<select value={workspace.business.id} disabled={workspace.selecting} onChange={event => void workspace.selectAccount(event.target.value)}>{workspace.accounts.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>;
+}
+function ProductMark({ product }) {
+  return <span className={`business-account-mark product-${product}`} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{product === "calai" ? <><path d="M5 3h4l2 5-3 2a14 14 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2A18 18 0 0 1 3 5a2 2 0 0 1 2-2Z"/><path d="M15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2"/></> : <><path d="M4 7h16l-1 14H5L4 7ZM8 7V5a4 4 0 0 1 8 0v2"/><path d="M9 12h6M9 16h4"/></>}</svg></span>;
+}
+function OwnerProductCard({ business, product }) {
+  const state = productPresentation(business, product), settings = safeNativeLink(state.nativeLinks?.settings), finance = safeNativeLink(state.nativeLinks?.statements || state.nativeLinks?.billing);
+  const reconnect = state.connectionStatus === "reconnect_required", status = state.usable ? "Connected" : !state.allowed ? "Not enabled" : state.status === "unavailable" ? "Temporarily unavailable" : reconnect ? "Sign in required" : state.linked ? "Setup needed" : "Not connected";
+  return <section className={`panel business-account-card product-${product}`} aria-label={`${state.name} account`}>
+    <header><ProductMark product={product}/><div><h2>{state.name}</h2><p>{business.name}</p></div><span className={`business-account-status${state.usable ? " is-connected" : ""}`}>{status}</span></header>
+    <p className="business-account-description">{state.linked ? product === "calai" ? "Your Calai orders, calls and business settings." : "Your restaurant’s orders, menu and earnings." : `Connect your existing ${state.name} account to use it here.`}</p>
+    {state.tasks.length > 0 && <div className="business-account-next"><h3>Next steps</h3><ul>{state.tasks.map((task, index) => <li key={task.code || index}>{task.label || String(task)}</li>)}</ul></div>}
+    {!state.allowed && !state.usable && <p className="fine">Contact Cal-Eats support if you would like to connect this service.</p>}
+    <div className="business-account-actions">
+      {canConnectBusinessProduct(business, product) && <Link className={state.linked && !reconnect ? "button-link" : "button-link primary"} to={`/owner/connections?connect=${product}`}>{state.linked ? reconnect ? `Reconnect ${state.name}` : "Verify connection" : `Connect ${state.name}`}</Link>}
+      {state.nativeAccountId && settings && <a className="button-link" target="_top" href={settings}>Calai settings</a>}
+      {state.nativeAccountId && state.financialAccess && finance && <a className="button-link" target="_top" href={finance}>Calai statements</a>}
+      {product === "cal-eats" && state.linked && <Link className="button-link" to="/owner/settings">Restaurant settings</Link>}
+      {product === "calai" && !state.nativeAccountId && safeNativeLink(state.nativeLinks?.onboarding) && <a className="button-link" target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register with Calai</a>}
+      {canConnectBusinessProduct(business, product) && !state.linked && product === "cal-eats" && <a className="button-link" target="_top" href="/order/?view=register-restaurant">List your restaurant</a>}
+    </div>
+    {state.nativeAccountId && <details className="business-account-reference"><summary>Account details</summary><dl><div><dt>Business</dt><dd>{business.name}</dd></div><div><dt>Account reference</dt><dd>{state.nativeAccountId}</dd></div></dl></details>}
+  </section>;
 }
 export function ProductCards({ business, admin = false, onSaved }) {
   const [pending, setPending] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
@@ -69,6 +117,10 @@ export function ProductCards({ business, admin = false, onSaved }) {
     try { await api(`/api/admin/business/accounts/${encodeURIComponent(requestedId)}/products/${action.product}`, json("PATCH", { allowed: action.allowed })); if (current.current !== requestedId) return; setPending(null); setNotice(`${productName(action.product)} permission updated. Connection and setup readiness are checked separately.`); await onSaved?.(); }
     catch (caught) { if (current.current === requestedId) setError(caught.message); }
     finally { if (current.current === requestedId) setBusy(false); }
+  }
+  if (!admin) {
+    const products = BUSINESS_PRODUCTS.filter(product => { const state = productPresentation(business, product); return state.linked || state.allowed || Boolean(state.nativeAccountId); });
+    return products.length ? <div className="business-product-cards business-owner-products">{products.map(product => <OwnerProductCard key={product} business={business} product={product}/>)}</div> : <section className="panel"><h2>No accounts available</h2><p>Contact Cal-Eats support to check the accounts available to your business.</p></section>;
   }
   return <><Feedback error={error} notice={notice}/><div className="business-product-cards">{BUSINESS_PRODUCTS.map(product => {
     const state = productPresentation(business, product), settings = safeNativeLink(state.nativeLinks?.settings), finance = safeNativeLink(state.nativeLinks?.statements || state.nativeLinks?.billing);
@@ -92,36 +144,74 @@ export function BusinessConnections() {
   async function verify(event) {
     event.preventDefault(); if (pending.current || !canConnect) return; const form = event.currentTarget, fields = new FormData(form), requestedScope = scope.current;
     pending.current = true; setBusy(true); setError(""); setNotice("");
-    try { const value = await api(`/api/business/accounts/${encodeURIComponent(business.id)}/${product}/prepare-link`, json("POST", { email: String(fields.get("email") || "").trim(), password: String(fields.get("password") || ""), ...(product==="cal-eats"&&selectedSource&&sourceAccounts.some(row=>row.id===selectedSource)?{restaurantId:selectedSource}:{}) })); if (requestedScope === scope.current) { if(value.selectionRequired){setSourceAccounts(Array.isArray(value.sourceAccounts)?value.sourceAccounts:[]);setNotice("Choose the correct native restaurant account, then verify its sign-in again.");}else{setProof(value);setConfirmed(false);} } }
+    try { const value = await api(`/api/business/accounts/${encodeURIComponent(business.id)}/${product}/prepare-link`, json("POST", { email: String(fields.get("email") || "").trim(), password: String(fields.get("password") || ""), ...(product==="cal-eats"&&selectedSource&&sourceAccounts.some(row=>row.id===selectedSource)?{restaurantId:selectedSource}:{}) })); if (requestedScope === scope.current) { if(value.selectionRequired){setSourceAccounts(Array.isArray(value.sourceAccounts)?value.sourceAccounts:[]);setNotice("Choose the correct restaurant account, then verify its sign-in again.");}else{setProof(value);setConfirmed(false);} } }
     catch (caught) { if (requestedScope === scope.current) setError(caught.message); }
     finally { form.reset(); pending.current = false; if (requestedScope === scope.current) setBusy(false); }
   }
   async function commit() {
     if (pending.current || !canConnect) return; const requestedScope = scope.current;
     pending.current = true; setBusy(true); setError("");
-    try { const result=await api(`/api/business/accounts/${encodeURIComponent(business.id)}/${product}/link`, json("POST", connectionConfirmation(product, proof, confirmed))); if (requestedScope !== scope.current) return; setProof(null); if(result?.sessionChanged){window.location.assign(workspace.embedded?"/business/embedded":"/business/owner/connections");return;}setNotice(`${state.name} account verified and connected. Each product keeps its own account and financial records.`); await workspace.reload(); await workspace.reloadAccounts(); }
+    try { const result=await api(`/api/business/accounts/${encodeURIComponent(business.id)}/${product}/link`, json("POST", connectionConfirmation(product, proof, confirmed))); if (requestedScope !== scope.current) return; setProof(null); if(result?.sessionChanged){window.location.assign(workspace.embedded?"/business/embedded":"/business/owner/connections");return;}setNotice(`${state.name} account connected successfully.`); await workspace.reload(); await workspace.reloadAccounts(); }
     catch (caught) { if (requestedScope === scope.current) { setError(caught.message); if ([401, 403, 409, 410].includes(caught.status)) setProof(null); } }
     finally { pending.current = false; if (requestedScope === scope.current) setBusy(false); }
   }
-  return <div className="unified-business"><header className="page-heading"><p className="eyebrow">{business.name}</p><h1>Accounts & connections</h1><p>Connect verified accounts for this restaurant and branch. Product accounts, settings and statements stay separate.</p></header><ProductCards business={business}/>{product && <section className="panel connection-journey"><h2>Connect {state.name}</h2><Feedback error={error} notice={notice}/>{!canConnect ? <p>Connection is not available for this account. The platform administrator must allow it and an authorised owner must sign in.</p> : proof ? <><p className="eyebrow">Verify restaurant and branch</p><h3>{proof.sourceAccount?.name || state.name}</h3><dl className="business-connection-details"><div><dt>{state.name} account</dt><dd className="account-reference">{proof.sourceAccount?.id}</dd></div><div><dt>Connect to</dt><dd>{business.name}</dd></div><div><dt>Confirmation expires</dt><dd>{shortDate(proof.expiresAt)}</dd></div></dl>{proof.mergeRequired&&<p className="business-view-only-note">This also associates the existing workspace <strong>{proof.mergeRequired.name||proof.mergeRequired.businessId}</strong> with <strong>{business.name}</strong>. Native product accounts and financial histories remain independent.</p>}<label className="check"><input type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)}/>I confirm these are the correct restaurant and branch{proof.mergeRequired?" and approve associating the existing product workspace":""}.</label><div className="button-row"><button className="quiet" disabled={busy} onClick={() => { setProof(null); setConfirmed(false); }}>Choose another account</button><button className="primary" disabled={busy || !confirmed} onClick={() => void commit()}>{busy ? "Connecting…" : `Confirm ${state.name} connection`}</button></div></> : <form onSubmit={verify}>{sourceAccounts.length>0&&<label>Native Cal-Eats restaurant account<select required value={selectedSource} disabled={busy} onChange={event=>setSelectedSource(event.target.value)}><option value="">Select the correct restaurant and branch</option>{sourceAccounts.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>}<p>Sign in with the existing {state.name} owner account. Your password is used for verification and is not saved.</p><label>{state.name} owner email<input name="email" type="email" required disabled={busy} autoComplete="username"/></label><label>{state.name} password<input name="password" type="password" required disabled={busy} autoComplete="off"/></label><button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify account"}</button>{state.nativeLinks?.onboarding && safeNativeLink(state.nativeLinks.onboarding) && <p><a href={safeNativeLink(state.nativeLinks.onboarding)}>Create a native Calai account using its existing onboarding</a></p>}</form>}</section>}</div>;
-}
-export function CombinedDashboardSummary() {
-  const workspace = useBusinessWorkspace(), resource = useBusinessResource("/api/business/dashboard", { poll: 30000 });
-  if (!workspace?.business) return null;
-  return <section className="panel unified-dashboard-summary" aria-label="Product order counters"><header><div><p className="eyebrow">Today · Europe/London</p><h2>Business overview</h2><p>Separate product activity for {workspace.business.name}</p></div><Link className="button-link" to="/owner/connections">Accounts & connections</Link></header>{resource.error && <p role="alert" className="alert">Product counters could not be refreshed. {resource.error}</p>}<div className="product-order-counters">{BUSINESS_PRODUCTS.filter(product => productPresentation(workspace.business, product).linked).map(product => { const counter = counterPresentation(resource.error ? null : resource.value?.counts?.[product], product); return <article key={product}><span>{counter.label} orders</span><strong>{resource.loading && !resource.value ? "Checking…" : counter.value}</strong><small>{counter.explanation}</small></article>; })}</div><p className="fine">{resource.value?.counterDefinition || "Each product counts its own orders created in today’s London calendar day. Cancelled or rejected records remain order history; payment totals and payouts are separate."}{resource.updatedAt && <> Last checked {shortDate(resource.updatedAt)}.</>}</p></section>;
+  return <div className="unified-business business-account-page">
+    <header className="page-heading business-account-heading"><p className="eyebrow">{business.name}</p><h1>Accounts & connections</h1><p>Manage the Calai and Cal-Eats accounts for your business.</p></header>
+    {!product ? <><ProductCards business={business}/><p className="business-account-footnote">Each service keeps its own orders, settings and statements.</p></> : <>
+      <Link className="business-account-back" to="/owner/connections">← All connections</Link>
+      <section className="panel connection-journey" aria-labelledby="connection-journey-title">
+        <header><ProductMark product={product}/><div><p className="eyebrow">{state.name}</p><h2 id="connection-journey-title">{proof ? "Confirm your business" : `Connect ${state.name}`}</h2></div></header>
+        <Feedback error={error} notice={notice}/>
+        {!canConnect ? <p>This connection is not available for your account. Ask your business owner or Cal-Eats support for help.</p> : proof ? <>
+          <div className="connection-account-confirmation"><span>Connect this account</span><h3>{proof.sourceAccount?.name || state.name}</h3><p>to <strong>{business.name}</strong></p><small>Confirm before {shortDate(proof.expiresAt)}</small></div>
+          <details className="business-account-reference"><summary>Account reference</summary><p>{proof.sourceAccount?.id}</p></details>
+          {proof.mergeRequired && <p className="business-view-only-note">This connects <strong>{proof.mergeRequired.name || "the existing business account"}</strong> with <strong>{business.name}</strong>. Existing orders and financial history stay with their original service.</p>}
+          <label className="check connection-confirm-check"><input type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)}/><span>I confirm these accounts are for the same restaurant and location{proof.mergeRequired ? ", and approve connecting them" : ""}.</span></label>
+          <div className="button-row"><button className="primary" disabled={busy || !confirmed} onClick={() => void commit()}>{busy ? "Connecting…" : `Confirm connection`}</button><button className="quiet" disabled={busy} onClick={() => { setProof(null); setConfirmed(false); }}>Use another account</button></div>
+        </> : <form onSubmit={verify}>
+          <p>Verify your existing {state.name} owner account. Your password is used for this check and is not saved.</p>
+          {sourceAccounts.length > 0 && <label>Restaurant account<select required value={selectedSource} disabled={busy} onChange={event => setSelectedSource(event.target.value)}><option value="">Select the correct restaurant and location</option>{sourceAccounts.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>}
+          <label>Owner email<input name="email" type="email" required disabled={busy} autoComplete="username" placeholder="Email used for this account"/></label>
+          <label>Password<input name="password" type="password" required disabled={busy} autoComplete="off"/></label>
+          <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify account"}</button>
+          {state.nativeLinks?.onboarding && safeNativeLink(state.nativeLinks.onboarding) && <p className="fine"><a target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register a Calai account</a></p>}
+        </form>}
+      </section>
+    </>}
+  </div>;
 }
 export function NativeCalaiView({ section = "orders" }) {
   const workspace = useBusinessWorkspace(), state = productPresentation(workspace?.business, "calai");
   // Native call-summary reads can update Calai's own records. Leave that
   // workflow in its existing app rather than polling it from this integration.
   const resource = useBusinessResource(section === "orders" && state.usable ? "/api/business/calai/orders" : null, { poll: section === "orders" ? 30000 : 0 });
+  if (state.allowedOnTablet === false) return <Navigate to="/owner/dashboard" replace/>;
   const settings = safeNativeLink(state.nativeLinks?.settings), rows = listItems(resource.value);
-  return <div className="unified-business"><header className="page-heading"><p className="eyebrow">Calai · {state.nativeAccountId || "No connected account"}</p><h1>Calai {section === "settings" ? "settings" : section === "calls" ? "calls" : "orders"}</h1><p>Native Calai records and settings stay in Calai.</p></header>{!state.usable ? <section className="panel"><h2>{state.label}</h2><p>Calai’s native service remains independent. Check the account connection to open authorised data here.</p><Link className="button-link" to="/owner/connections">Accounts & connections</Link></section> : section === "settings" ? <section className="panel"><h2>Existing Calai settings</h2><p>Use Calai’s existing settings screens to preserve saved values, validation and save behaviour.</p>{settings ? <a className="button-link" target="_top" href={settings}>Open native Calai settings</a> : <p className="fine">A supported native settings link has not been provided. Continue using the existing Calai business platform.</p>}</section> : section === "calls" ? <section className="panel"><h2>Calai call history</h2><p>Open Calai’s existing call history to view summaries, recordings and transcripts in their original workflow.</p><a className="button-link" target="_top" href="https://calai.info/owner/call-summary">Open native Calai calls</a></section> : <section className="panel"><Resource {...resource}>{rows.length ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || `Order ${index + 1}`}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span>{row.id && <small className="account-reference">Calai · {row.id}</small>}</article>)}</div> : <p className="empty">No Calai {section} returned for this account.</p>}</Resource></section>}</div>;
+  const title = section === "settings" ? "Calai settings" : section === "calls" ? "Calai calls" : "Calai orders";
+  return <div className="unified-business business-account-page business-native-page">
+    <header className="page-heading business-account-heading"><p className="eyebrow">{workspace?.business?.name || "Calai"}</p><h1>{title}</h1><p>{section === "settings" ? "Manage your Calai business preferences." : section === "calls" ? "Your business call history, summaries and recordings." : "Orders received through Calai."}</p></header>
+    {!state.usable ? <section className="panel business-native-intro"><ProductMark product="calai"/><div><h2>{state.connectionStatus === "reconnect_required" ? "Sign in to Calai again" : "Check your Calai connection"}</h2><p>Review the connected account to continue.</p><Link className="button-link" to="/owner/connections">Accounts & connections</Link></div></section>
+      : section === "settings" ? <section className="panel business-native-intro"><ProductMark product="calai"/><div><h2>Business settings</h2><p>Open your existing Calai settings to manage your business.</p>{settings ? <a className="button-link primary" target="_top" href={settings}>Open Calai settings</a> : <p className="fine">A settings link is not currently available. Use your usual Calai business sign-in.</p>}</div></section>
+      : section === "calls" ? <section className="panel business-native-intro"><ProductMark product="calai"/><div><h2>Call history</h2><p>View call summaries, recordings and transcripts in Calai.</p><a className="button-link primary" target="_top" href="https://calai.info/owner/call-summary">Open Calai calls</a></div></section>
+      : <section className="panel"><Resource {...resource}>{rows.length ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || `Order ${index + 1}`}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span></article>)}</div> : <div className="business-account-empty"><h2>No orders yet</h2><p>Calai orders for this business will appear here.</p></div>}</Resource></section>}
+  </div>;
 }
 export function ProductStatements() {
   const workspace = useBusinessWorkspace(), business = workspace?.business; if (!business) return null;
   const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats"), nativeStatement = safeNativeLink(calai.nativeLinks?.statements || calai.nativeLinks?.billing);
-  return <div className="unified-business"><header className="page-heading"><h1>Accounts & statements</h1><p>Independent product statements. Each account keeps its own periods, references, calculations and totals.</p></header><div className="business-product-cards"><section className="panel"><p className="eyebrow">Calai</p><h2>Usage, subscription & statements</h2><p className="account-reference">{calai.nativeAccountId || "No Calai account connected"}</p>{calai.financialAccess ? nativeStatement ? <a className="button-link" target="_top" href={nativeStatement}>Open native Calai statements</a> : <p>Calai statement generation is available through its existing native billing workflow. A supported export link is not available in this integration.</p> : <p>Calai financial permission is required for this account.</p>}</section><section className="panel"><p className="eyebrow">Cal-Eats</p><h2>Orders, commission & payouts</h2><p className="account-reference">{eats.nativeAccountId || "No Cal-Eats account connected"}</p>{eats.financialAccess && eats.linked ? <Link className="button-link" to="/owner/earnings">Open Cal-Eats earnings & statements</Link> : <p>Cal-Eats financial permission is required for this account.</p>}</section></div>{eats.financialAccess && eats.linked && eats.capabilities?.manageTerminal===true && business.eatsRestaurantId && <WeeklyStatements key={business.eatsRestaurantId} restaurantId={business.eatsRestaurantId}/>}<p className="fine">Exports remain separate product documents. Calai charges are never offset against Cal-Eats payouts.</p></div>;
+  const accounts = [calai, eats].filter(account => account.linked && account.allowedOnTablet !== false);
+  return <div className="unified-business business-account-page business-statements-page">
+    <header className="page-heading business-account-heading"><p className="eyebrow">{business.name}</p><h1>Statements</h1><p>View your statements and manage your weekly email summary.</p></header>
+    <div className="business-product-cards business-statement-cards">{accounts.map(account => <section className="panel business-statement-card" key={account.product}>
+      <header><ProductMark product={account.product}/><div><p className="eyebrow">{account.name}</p><h2>{account.product === "calai" ? "Usage & billing" : "Earnings & payouts"}</h2></div></header>
+      <p>{account.product === "calai" ? "Your Calai subscription, usage and billing history." : "Your Cal-Eats orders, commission and payment statements."}</p>
+      {account.financialAccess ? account.product === "calai" ? nativeStatement ? <a className="button-link primary" target="_top" href={nativeStatement}>View Calai statements</a> : <p className="business-statement-note">Use your usual Calai billing page to view statements. A direct statement link is not currently available.</p> : <Link className="button-link primary" to="/owner/earnings">View earnings & statements</Link> : <p className="business-statement-note">Statement access is managed by your business owner. Contact them if you need access.</p>}
+      <details className="business-account-reference"><summary>Account details</summary><p>{account.nativeAccountId}</p></details>
+    </section>)}</div>
+    {!accounts.length && <section className="panel"><h2>No connected accounts</h2><p>Connect your business account to view its statements here.</p><Link className="button-link" to="/owner/connections">Accounts & connections</Link></section>}
+    {accounts.includes(eats) && eats.financialAccess && eats.capabilities?.manageTerminal === true && business.eatsRestaurantId && <WeeklyStatements key={business.eatsRestaurantId} restaurantId={business.eatsRestaurantId}/>}
+    {accounts.length > 1 && <p className="business-account-footnote">Calai and Cal-Eats statements are kept separately.</p>}
+  </div>;
 }
 export function OrderingTabletSetup({business}){
   const allowed=business?.products?.["cal-eats"]?.linked===true&&business?.products?.["cal-eats"]?.capabilities?.manageTerminal===true;
@@ -157,14 +247,6 @@ export function StaffCapabilityControls({restaurantId,person,onSaved,requestRoot
   useEffect(()=>{setDraft(Object.fromEntries(fields.map(([key])=>[key,person.capabilities?.[key]===true])));},[person.id,person.capabilities]);
   async function save(event){event.preventDefault();if(busy)return;setBusy(true);setError("");setNotice("");try{const base=requestRoot||`/api/restaurant/restaurants/${encodeURIComponent(restaurantId)}/staff`;await api(`${base}/${encodeURIComponent(person.id)}/capabilities`,{...json("PATCH",draft),humanSession:true});setNotice("Staff permissions saved. Order processing remains restricted to the registered Surface.");await onSaved?.();}catch(caught){setError(caught.message);}finally{setBusy(false);}}
   return <form className="staff-capability-controls" onSubmit={save} aria-label={`Permissions for ${person.name}`}><fieldset disabled={busy}><legend>Additional staff permissions</legend><div>{fields.map(([key,label])=><label key={key}><input type="checkbox" checked={draft[key]} onChange={event=>setDraft(old=>({...old,[key]:event.target.checked}))}/>{label}</label>)}</div></fieldset><Feedback error={error} notice={notice}/><button className="quiet" disabled={busy}>{busy?"Saving permissions…":"Save staff permissions"}</button></form>;
-}
-export function SurfaceStatusPanel({ restaurantId, detailed = false }) {
-  const [incidentPage,setIncidentPage]=useState(1),[incidentError,setIncidentError]=useState("");
-  useEffect(()=>{setIncidentPage(1);setIncidentError("");},[restaurantId]);
-  const resource = useBusinessResource(restaurantId ? `/api/restaurant/restaurants/${encodeURIComponent(restaurantId)}/surface-status` : null, { poll: 30000 });
-  const incidents = useBusinessResource(detailed && restaurantId ? `/api/restaurant/restaurants/${encodeURIComponent(restaurantId)}/device-incidents?page=${incidentPage}&pageSize=25` : null, { poll: 30000 });
-  const state = resource.value, rows = listItems(incidents.value);
-  return <section className="panel surface-status-panel"><header><div><p className="eyebrow">Cal-Eats operations</p><h2>Surface & printer</h2></div>{!detailed && <Link className="button-link" to="/owner/devices">View devices & alerts</Link>}</header>{!restaurantId ? <p>Cal-Eats Surface monitoring starts when an enabled native restaurant account is configured.</p> : <><Feedback error={resource.error}/><div className="surface-status-grid"><article><span>Ordering Surface</span><strong>{resource.error ? "Monitoring unavailable" : resource.loading && !state ? "Checking…" : deviceStateLabel(state?.state)}</strong><small>{state?.observedReason || "Only authenticated contact from the registered ordering application proves availability."}</small><small>Last application contact: {shortDate(state?.lastApplicationContactAt)}</small></article><article><span>Receipt printer</span><strong>{state?.printer?.label || "Printer status unavailable"}</strong><small>{state?.printer?.physicalReadinessKnown ? "Reported by supported printer diagnostics" : "Physical readiness has not been established"}</small><small>{state?.printer?.source || "No current observation"} · {shortDate(state?.printer?.observedAt)}</small></article></div>{state?.notificationDelivery?.limitations?.length > 0 && <p className="fine">{state.notificationDelivery.limitations.join(" ")}</p>}{detailed && <><h3>Incident history</h3><Feedback error={incidentError||incidents.error}/>{rows.length ? <div className="business-native-records">{rows.map(row => <article key={row.id}><div><span className="pill">Cal-Eats · {row.type} · {row.state}</span><strong>{row.title}</strong><p>{row.message}</p><small>{shortDate(row.openedAt)}{row.resolvedAt && <> · Resolved {shortDate(row.resolvedAt)}</>}</small></div>{!row.readAt && <button className="quiet" onClick={async () => { setIncidentError("");try{await api(`/api/restaurant/restaurants/${encodeURIComponent(restaurantId)}/device-incidents/${encodeURIComponent(row.id)}/read`, json("PATCH", {}));await incidents.reload();}catch(caught){setIncidentError(caught.message);} }}>Mark read</button>}</article>)}</div> : <p className="empty">No device incidents recorded.</p>}<BusinessPages pagination={incidents.value?.pagination} onPage={setIncidentPage}/><p className="fine">Marking an incident read does not resolve a fault or mark a device healthy. Check uncertain receipts on the restaurant tablet before reprinting.</p></>}</>}</section>;
 }
 export function AdminBusinessAccounts() {
   const [params, setParams] = useSearchParams(), selected = params.get("business"), [q, setQ] = useState(""), [product, setProduct] = useState("all"), [page, setPage] = useState(1);

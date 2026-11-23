@@ -13,6 +13,17 @@ export function terminalSetupDocument(value,{businessId,apiOrigin,now=Date.now()
 export function operationalTabletFor(businessId, restaurantId, snapshot) {
   return Boolean(businessId && restaurantId && snapshot?.status === "ready" && snapshot.context?.principalKind === "terminal" && snapshot.context.businessId === businessId && snapshot.context.restaurantId === restaurantId);
 }
+export function applyTabletProductAccess(business, tabletContext) {
+  if (!business || tabletContext?.principalKind !== "terminal" || tabletContext.id !== business.id) return business;
+  const products = { ...business.products };
+  for (const product of BUSINESS_PRODUCTS) {
+    const allowedOnTablet = tabletContext.products?.[product]?.allowedOnTablet;
+    if (products[product] && typeof allowedOnTablet === "boolean") {
+      products[product] = { ...products[product], allowedOnTablet };
+    }
+  }
+  return { ...business, products };
+}
 export function productPresentation(business, product) {
   const value = business?.products?.[product] || {};
   const nativeAccountId = value.nativeAccountId || value.sourceAccountId || null;
@@ -21,7 +32,7 @@ export function productPresentation(business, product) {
   const ready = value.readiness?.ready === true;
   const status = value.effectiveStatus || (allowed ? "setup_required" : "admin_off");
   const labels = { admin_off: "Disabled by administrator", setup_required: "Setup required", ready: "Ready", unavailable: "Connection unavailable" };
-  return { ...value, product, name: productName(product), nativeAccountId, linked, allowed, ready, status, label: labels[status] || "Status unavailable", tasks: Array.isArray(value.readiness?.tasks) ? value.readiness.tasks : [], usable: allowed && linked && ready && status === "ready", canConnect: allowed && value.canConnect !== false, financialAccess: value.financialAccess === true };
+  return { ...value, product, name: productName(product), nativeAccountId, linked, allowed, ready, status, label: labels[status] || "Status unavailable", tasks: Array.isArray(value.readiness?.tasks) ? value.readiness.tasks : [], usable: allowed && linked && ready && status === "ready" && value.allowedOnTablet !== false, canConnect: allowed && value.canConnect !== false, financialAccess: value.financialAccess === true };
 }
 export function canConnectBusinessProduct(business, product) {
   if (!BUSINESS_PRODUCTS.includes(product) || business?.principalKind === "terminal" || business?.canConnectProducts !== true) return false;
@@ -29,10 +40,15 @@ export function canConnectBusinessProduct(business, product) {
 }
 export function businessNavigation(business, eatsNavigation = []) {
   const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats");
+  const dashboard = ["Dashboard", "/owner/dashboard"], showEats = eats.linked && eats.allowedOnTablet !== false;
+  const eatsItems = showEats ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices") : [];
   return [
-    { title: "Workspace", items: [["Dashboard", "/owner/dashboard"], ["Accounts & connections", "/owner/connections"], ["Statements", "/owner/statements"], ...(eats.linked&&(business?.principalKind==="terminal"||eats.capabilities?.viewDevices===true)?[["Surface & printer", "/owner/devices"]]:[])] },
-    ...(calai.usable ? [{ title: "Calai", items: [["Calai orders", "/owner/calai/orders"], ["Calai calls", "/owner/calai/calls"], ["Calai settings", "/owner/calai/settings"]] }] : []),
-    ...(eats.linked ? [{ title: "Cal-Eats", items: eatsNavigation.filter(([, path]) => path !== "/owner/dashboard") }] : []),
+    ...(calai.usable ? [
+      { title: "", items: [dashboard] },
+      { title: "Calai", items: [["Calai orders", "/owner/calai/orders"], ["Calai calls", "/owner/calai/calls"], ["Calai settings", "/owner/calai/settings"]] },
+      ...(showEats ? [{ title: "Cal-Eats", items: eatsItems }] : []),
+    ] : [{ title: "", items: [dashboard, ...eatsItems] }]),
+    { title: "Account", items: [["Accounts & connections", "/owner/connections"], ["Statements", "/owner/statements"]] },
   ];
 }
 export function counterPresentation(counter, product) {

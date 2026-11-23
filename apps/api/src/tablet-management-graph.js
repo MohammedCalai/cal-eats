@@ -28,6 +28,22 @@ export function createBoundedMicrosoftIdentityNetwork({fetchImpl=fetch,timeoutMs
  return{sendGetRequestAsync:(url,options)=>send('GET',url,options),sendPostRequestAsync:(url,options)=>send('POST',url,options)};
 }
 const date=(value,now)=>{const time=typeof value==='string'?Date.parse(value):NaN;if(!Number.isFinite(time)||time>now+60000)throw fail('GRAPH_EVIDENCE_TIME_INVALID');return new Date(time).toISOString();};
+const directoryPath='/v1.0/deviceManagement/managedDevices';
+const directorySelect='id,azureADDeviceId,serialNumber,deviceName,manufacturer,model,operatingSystem,lastSyncDateTime';
+const directoryFilter="operatingSystem eq 'Windows'";
+function directoryUrl(value){
+ if(typeof value!=='string'||/[\u0000-\u001f\u007f]/.test(value))throw fail('GRAPH_URL_REJECTED');
+ let target;try{target=new URL(value);}catch{throw fail('GRAPH_URL_REJECTED');}
+ const entries=[...target.searchParams],keys=entries.map(([key])=>key);
+ if(target.origin!=='https://graph.microsoft.com'||target.pathname!==directoryPath||target.username||target.password||target.hash||target.href.length>8192||new Set(keys).size!==keys.length||target.searchParams.get('$select')!==directorySelect||target.searchParams.get('$filter')!==directoryFilter||entries.some(([key,text])=>!['$select','$filter','$top','$skiptoken','$skip'].includes(key)||/[\u0000-\u001f\u007f]/.test(text)||key==='$top'&&!/^(?:[1-9]\d?|100)$/.test(text)||key==='$skip'&&!/^(?:0|[1-9]\d{0,7})$/.test(text)||key==='$skiptoken'&&(!text||text.length>4096)))throw fail('GRAPH_URL_REJECTED');
+ return target.href;
+}
+function directoryDevice(device,now){
+ if(!device||typeof device!=='object'||Array.isArray(device)||!uuid.test(device.id??'')||device.operatingSystem!=='Windows')throw fail('GRAPH_DIRECTORY_DEVICE_INVALID');
+ const text=(value,max)=>{if(value===undefined||value===null||value==='')return null;if(typeof value!=='string'||value.length>max||/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(value))throw fail('GRAPH_DIRECTORY_DEVICE_INVALID');return value.trim()||null;};
+ const entra=device.azureADDeviceId;if(entra!==undefined&&entra!==null&&entra!==''&&!uuid.test(entra))throw fail('GRAPH_DIRECTORY_DEVICE_INVALID');
+ return{intuneManagedDeviceId:device.id.toLowerCase(),entraDeviceId:entra?entra.toLowerCase():null,serialNumber:text(device.serialNumber,120),displayName:text(device.deviceName,100),manufacturer:text(device.manufacturer,100),model:text(device.model,100),lastContactAt:device.lastSyncDateTime?date(device.lastSyncDateTime,now):null};
+}
 export function loadTabletManagementConfig(input={},env=process.env){
  const enabled=input.enabled??env.CAL_EATS_INTUNE_READ_ENABLED==='true';
  let approvedScripts=input.approvedScripts??[];
@@ -74,10 +90,28 @@ export function createTabletManagementGraphAdapter(settings,{fetchImpl=fetch,cli
   if(response.status!==200)throw fail('GRAPH_RESPONSE_UNAVAILABLE');
   return readMicrosoftJson(response,requestSignal);
  }
- return{collect(row,{cachedRunStateId=null}={}){const controller=new AbortController();return deadline(async()=>{
-  const readiness=tabletManagementReadiness(settings,row);if(!readiness.ready)throw fail('GRAPH_NOT_CONFIGURED');
+ async function accessToken(){
   let token;try{const auth=await deadline(async()=>{client??=clientFactory(settings);return(await client).acquireTokenByClientCredential({scopes:['https://graph.microsoft.com/.default']});},authTimeoutMs,'GRAPH_AUTH_TIMEOUT');if(!auth?.accessToken)throw Error();token=auth.accessToken;}
   catch(error){client=undefined;if(error.retry||/network|timeout|temporarily_unavailable|server_error/i.test(error.errorCode??''))throw fail(error.code?.startsWith?.('GRAPH_')?error.code:'GRAPH_AUTH_NETWORK_ERROR',true);throw fail('GRAPH_IDENTITY_REQUIRED');}
+  return token;
+ }
+ return{listWindowsDevices(){const controller=new AbortController();return deadline(async()=>{
+  if(!settings?.enabled)throw fail('GRAPH_NOT_CONFIGURED');
+  const token=await accessToken(),items=[],ids=new Set(),visited=new Set();
+  const query=new URLSearchParams({'$filter':directoryFilter,'$select':directorySelect,'$top':'100'});
+  let url=directoryUrl(`https://graph.microsoft.com${directoryPath}?${query}`);
+  for(let page=0;url&&page<settings.maxPages;page++){
+   controller.signal.throwIfAborted();if(visited.has(url))throw fail('GRAPH_DIRECTORY_PAGE_REPEATED');visited.add(url);
+   const response=await get(url,token,controller.signal);
+   if(!response||typeof response!=='object'||!Array.isArray(response.value)||response.value.length>100)throw fail('GRAPH_RESPONSE_INVALID');
+   for(const raw of response.value){const device=directoryDevice(raw,now());if(ids.has(device.intuneManagedDeviceId))throw fail('GRAPH_DIRECTORY_DEVICE_REPEATED');ids.add(device.intuneManagedDeviceId);items.push(device);}
+   const next=response['@odata.nextLink'];if(next!==undefined&&next!==null&&(typeof next!=='string'||!next))throw fail('GRAPH_URL_REJECTED');
+   url=next?directoryUrl(next):null;
+  }
+  return{items,complete:!url,truncated:Boolean(url),collectedAt:new Date(now()).toISOString(),source:'microsoft_graph'};
+ },collectionTimeoutMs,'GRAPH_COLLECTION_TIMEOUT',controller);},collect(row,{cachedRunStateId=null}={}){const controller=new AbortController();return deadline(async()=>{
+  const readiness=tabletManagementReadiness(settings,row);if(!readiness.ready)throw fail('GRAPH_NOT_CONFIGURED');
+  const token=await accessToken();
   controller.signal.throwIfAborted();
   const id=row.intune_managed_device_id,device=await get(`https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/${id}?$select=id,azureADDeviceId,serialNumber,lastSyncDateTime`,token,controller.signal);
   if(device.id?.toLowerCase()!==id.toLowerCase()||device.azureADDeviceId?.toLowerCase()!==row.entra_device_id.toLowerCase()||typeof device.serialNumber!=='string'||device.serialNumber.trim().toLowerCase()!==row.serial_number.trim().toLowerCase())throw fail('GRAPH_DEVICE_IDENTITY_MISMATCH');

@@ -13,7 +13,6 @@ import { BusinessMessageSoundStatus } from "./BusinessMessageReminder.jsx";
 import BusinessReportEmail from "./BusinessReportEmail.jsx";
 import { businessOrderTransitions } from "./order-alert-model.js";
 import { beginDashboardRefresh, beginActiveOrderRefresh } from "./dashboard-refresh-state.js";
-import { DashboardPrinterWarning } from "./DashboardAttention.jsx";
 import { deliveryDeadlineAt, deliveryDispatchWarning } from "./delivery-deadline.js";
 import { DeliveryDeadlineBadge, useDeliveryDeadlineClock } from "./DeliveryDeadline.jsx";
 
@@ -134,7 +133,7 @@ function DashboardActiveOrder({ order, updating, unavailable, alerts, onUpdate, 
   </article>;
 }
 
-export default function OwnerDashboard({ restaurant, permission, userId, canOperate = false, surfaceMonitor = false }) {
+export default function OwnerDashboard({ restaurant, permission, userId, canOperate = false }) {
   const alerts = useOrderAlerts();
   const [period, setPeriod] = useState("today"), [page, setPage] = useState(1);
   const result = useDashboard(restaurant.id, period, page), active = useActiveOrders(restaurant.id), refresh = useRef(result.reload);
@@ -178,7 +177,6 @@ export default function OwnerDashboard({ restaurant, permission, userId, canOper
   return <div className="business-dashboard">
     <header className="page-heading dashboard-heading"><div><h1>Dashboard</h1><p>Your orders, conversations and live activity in one place.</p></div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
     <LiveOrders operations={data?.operations} unavailable={Boolean(result.error)} generatedAt={data?.generatedAt}/>
-    {!surfaceMonitor&&<DashboardPrinterWarning restaurantId={restaurant.id} canManage={isOwner}/>}
     {(needsMessageAction || needsOrderHelpAction) && <section className="dashboard-action-prompts" aria-label="Customer actions needed"><div><strong>Customer action needed</strong><small>Open a message to stop its sound reminders. Review customer help requests below.</small></div>{needsMessageAction && <NavLink className="dashboard-action-prompt" to="/owner/inbox"><DashboardIcon/>Reply to {operations.unreadMessages} unread message{operations.unreadMessages === 1 ? "" : "s"} <span aria-hidden="true">→</span></NavLink>}{needsOrderHelpAction && <NavLink className="dashboard-action-prompt order-help" to="/owner/support?scope=customer"><DashboardIcon kind="refresh"/>Review {operations.actionRequiredOrderHelp} order help request{operations.actionRequiredOrderHelp === 1 ? "" : "s"} <span aria-hidden="true">→</span></NavLink>}</section>}
     {isOwner && <NavLink className={`dashboard-message-shortcut${operations.unreadMessages ? " has-unread" : ""}`} to="/owner/inbox"><span className="message-shortcut-icon" aria-hidden="true"><DashboardIcon/></span><span><strong>Customer messages</strong><small>{operations.unreadMessages ? `${operations.unreadMessages} unread message${operations.unreadMessages === 1 ? "" : "s"} · needs your reply` : "Read and reply to your customers"}</small></span><b aria-label={`${operations.unreadMessages || 0} unread messages`}>{operations.unreadMessages || 0}</b><span aria-hidden="true"><DashboardIcon kind="arrow"/></span></NavLink>}
     <BusinessMessageSoundStatus/>

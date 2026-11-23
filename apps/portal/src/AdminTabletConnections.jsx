@@ -20,13 +20,13 @@ function useTabletTask(){
  }
  return{busy,error,run};
 }
-function privateSetupDownload(document){
- const url=URL.createObjectURL(new Blob([document],{type:"application/json"})),link=window.document.createElement("a");
- try{link.href=url;link.download="CalEats-Tablet-Enrolment.json";window.document.body.append(link);link.click();}
+function privateSetupDownload(document,filename="CalEats-Tablet-Enrolment.json"){
+ const url=URL.createObjectURL(new Blob([document],{type:filename.endsWith('.ps1')?'application/octet-stream':"application/json"})),link=window.document.createElement("a");
+ try{link.href=url;link.download=filename;window.document.body.append(link);link.click();}
  finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 }
 
-export default function AdminTabletConnections({row,onChanged,onReload}){
+export default function AdminTabletConnections({row,onChanged,onReload,compact=false}){
  const [confirmed,setConfirmed]=useState(false),enrol=useTabletTask(),refresh=useTabletTask();
  const management=tabletManagementPresentation(row),latest=row.latestEnrolment,registration=row.registration;
  const currentTerminalId=tabletCurrentTerminalId(row),replacing=Boolean(currentTerminalId),currentTerminalName=registration?.terminalId===currentTerminalId?registration.name:null,canSetup=row.actions?.canIssueSetup===true;
@@ -43,10 +43,19 @@ export default function AdminTabletConnections({row,onChanged,onReload}){
    await onChanged?.(row,`Private one-use setup file downloaded. It expires ${date(result.enrolment.expiresAt)}. Issuing this file does not pair a device or prove application readiness.${replacing?" The current registered tablet remains authorised until signed replacement pairing completes.":""}`);
   });
  }
+ async function prepareCombined(event){event.preventDefault();await enrol.run(async(signal,current)=>{
+  const payload=tabletEnrolmentPayload(row,{confirmed,confirmReplaceTerminalId:null});
+  const content=await api(tabletRecordPath(row.id,'setup-package'),{...json('POST',payload),signal});if(!current())return;
+  if(typeof content!=='string'||!content.length)throw new Error('The private tablet setup could not be downloaded.');
+  privateSetupDownload(content,'CalEats-Tablet-Setup.ps1');setConfirmed(false);
+  await onChanged?.(row,'Private device-specific setup downloaded. Run it as a Windows administrator on the intended tablet within ten minutes. Pairing is not complete until that tablet connects.');
+ });}
  async function collect(){await refresh.run(async(signal,current)=>{
   const result=await api(tabletRecordPath(row.id,"management/refresh"),{...json("POST",tabletManagementRefreshPayload(row)),signal});
   if(current())await onChanged?.(row,`${refreshLabels[result.job?.status]||"Management evidence refresh requested"}. This reads management records; it does not run a Windows script, change startup or verify physical operation.`);
  });}
+ if(compact&&row.actions?.canDownloadPairedSetup)return <section className="tablet-secure-setup" aria-labelledby="tablet-setup-heading"><h3 id="tablet-setup-heading">Connect this restaurant tablet</h3><p>Download one private setup file for {row.displayName}. Run it on that Windows tablet as an administrator within ten minutes.</p><p className="fine">The file is bound to serial {row.serialNumber}. It pairs the protected application connection and preserves the current Windows startup and printer setup.</p>{enrol.error&&<p className="alert" role="alert">{enrol.error}</p>}<form onSubmit={prepareCombined}><label className="tablet-check"><input type="checkbox" checked={confirmed} disabled={enrol.busy} onChange={event=>setConfirmed(event.target.checked)}/><span>This is the intended tablet for {row.business?.name||'this location'}.</span></label><button className="primary" disabled={enrol.busy||!confirmed}>{enrol.busy?'Preparing private setup…':'Download tablet setup'}</button></form>{latest&&<p className="fine" role="status">{enrolmentLabels[latest.status]||'Setup status unavailable'} · {date(latest.issuedAt)}</p>}<button type="button" className="quiet" onClick={()=>void onReload?.()}>Check connection</button></section>;
+ if(compact)return <section className="tablet-secure-setup" aria-labelledby="tablet-setup-heading"><h3 id="tablet-setup-heading">Restaurant tablet sign-in</h3><p>{registration?.registered?'This tablet has a protected application registration.':'Pair the intended Windows tablet before it can accept or print orders.'}</p>{!canSetup&&<p className="fine">{row.actions?.setupBlockReason||'Tablet setup is unavailable.'}</p>}{enrol.error&&<p className="alert" role="alert">{enrol.error}</p>}{canSetup&&<details><summary>{replacing?'Replace or reconnect the registered tablet':'Pair this tablet securely'}</summary><ol className="tablet-setup-steps"><li><p>On the intended Windows tablet, download the existing protected companion installer. Windows startup and the current printer setup stay managed separately.</p><a className="button-link" href={tabletRecordPath(row.id,'installer')}>Download tablet installer</a></li><li><form onSubmit={prepare}><label className="tablet-check"><input type="checkbox" checked={confirmed} disabled={enrol.busy} onChange={event=>setConfirmed(event.target.checked)}/><span>This is the intended tablet for {row.business?.name||'this location'}.{replacing?' Replace its current registration only after the new tablet completes pairing.':''}</span></label><button className="primary" disabled={enrol.busy||!confirmed}>{enrol.busy?'Preparing setup…':replacing?'Download replacement setup':'Download one-use setup'}</button></form><p className="fine">Private setup expires in ten minutes. Remove the downloaded setup file after pairing.</p></li><li><p>Run the installer as a Windows administrator with the downloaded setup file.</p><code className="tablet-setup-command">&amp; .\CalEats-Tablet-Setup.ps1 -EnrolmentPath '.\CalEats-Tablet-Enrolment.json'</code></li></ol></details>}{latest&&<p className="fine" role="status">{enrolmentLabels[latest.status]||'Setup status unavailable'} · {date(latest.issuedAt)}</p>}<button className="quiet" type="button" onClick={()=>void onReload?.()}>Check pairing</button></section>;
  return <>
   <section className="panel tablet-setup-wizard" aria-labelledby="tablet-setup-heading">
    <header><p className="eyebrow">Secure Windows enrolment</p><h2 id="tablet-setup-heading">Connect the restaurant tablet</h2><p>Prepare the existing protected Cal-Eats companion directly from system administration. The device must complete signed pairing itself.</p></header>

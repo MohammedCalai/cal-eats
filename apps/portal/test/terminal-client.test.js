@@ -48,13 +48,24 @@ test("terminal API unwraps JSON and forwards only a bounded JSON envelope and id
   assert.deepEqual(JSON.parse(f.calls[3].options.body), { method: "GET", path: "/api/auth/me", body: null, headers: {} });
 });
 
-test("client rejects unsafe paths, another business, inactive products, and human authentication targets", async () => {
+test("client rejects unsafe paths, another business, and human authentication targets", async () => {
   const f = fixture(); await f.ready(session({ products: { calai: { active: false }, "cal-eats": { active: true } } }));
-  const paths = ["https://example.test/api/auth/me", "//example.test/api/auth/me", "/api/admin/users", "/api/native/business/auth/login", "/api/auth/login", "/api/restaurant/../admin/users", "/api/restaurant/%2e%2e/admin/users", "/api/restaurant/%2fadmin", "/api/restaurant/orders#fragment", "/api/restaurant/orders\n", "/api/restaurant//orders", `/api/restaurant/restaurants/${OTHER}/orders`, `/api/restaurant/orders?restaurantId=${OTHER}`, `/api/business/businesses/${OTHER}/orders`, `/api/business/orders?businessId=${OTHER}`, "/api/business/calai/orders"];
+  const paths = ["https://example.test/api/auth/me", "//example.test/api/auth/me", "/api/admin/users", "/api/native/business/auth/login", "/api/auth/login", "/api/restaurant/../admin/users", "/api/restaurant/%2e%2e/admin/users", "/api/restaurant/%2fadmin", "/api/restaurant/orders#fragment", "/api/restaurant/orders\n", "/api/restaurant//orders", `/api/restaurant/restaurants/${OTHER}/orders`, `/api/restaurant/orders?restaurantId=${OTHER}`, `/api/business/businesses/${OTHER}/orders`, `/api/business/orders?businessId=${OTHER}`];
   for (const path of paths) await assert.rejects(f.client.terminalApi(path), error => error.code === "TERMINAL_OPERATION_DENIED", path);
   await assert.rejects(f.client.terminalApi("/api/auth/me", { method: "POST" }), error => error.code === "TERMINAL_OPERATION_DENIED");
   await assert.rejects(f.client.terminalApi("/api/restaurant/orders", { method: "TRACE" }), error => error.code === "TERMINAL_OPERATION_DENIED");
   assert.equal(f.calls.length, 2);
+});
+
+test('product activation after bootstrap uses current signed server authority without dropping location safeguards',async()=>{
+  const f=fixture();await f.ready(session({products:{calai:{active:false,linked:false},'cal-eats':{active:false,linked:false}}}));
+  f.queue.push(response({code:'PRODUCT_INACTIVE',message:'Not enabled on this tablet'},403));
+  await assert.rejects(f.client.terminalApi('/api/business/calai/orders'),error=>error.code==='PRODUCT_INACTIVE');assert.equal(f.client.terminalStatus().status,'ready');
+  f.queue.push(response({items:[]}));assert.deepEqual(await f.client.terminalApi(`/api/restaurant/restaurants/${RESTAURANT}/orders`),{items:[]},'A later server activation is usable with the same location-bound device session');
+  f.queue.push(response({items:[]}));assert.deepEqual(await f.client.terminalApi('/api/business/calai/orders'),{items:[]});
+  await assert.rejects(f.client.terminalApi(`/api/restaurant/restaurants/${OTHER}/orders`),error=>error.code==='TERMINAL_OPERATION_DENIED');
+  await assert.rejects(f.client.terminalApi('/api/business/orders',{method:'POST',body:{restaurantId:OTHER}}),error=>error.code==='TERMINAL_SCOPE_MISMATCH');
+  assert.equal(f.calls.length,5);
 });
 
 test("body/header validation rejects credential leaks, raw uploads, invalid JSON and oversized requests before sending", async () => {

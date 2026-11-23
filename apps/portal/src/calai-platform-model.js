@@ -3,6 +3,23 @@ export const calaiNavigation=[
   ["Telephony","/admin/calai/telephony"],["Subscriptions & Billing","/admin/calai/billing"],["Settings","/admin/calai/settings"],
   ["Tablets","/admin/tablets"],
 ];
+const nativeAdminOrigin="https://calai.info";
+const nativeAdminPaths={
+  dashboard:"/admin/dashboard",
+  tenants:"/admin/tenant-management",
+  training:"/admin/ai-training",
+  telephony:"/admin/telephony-integration",
+  billing:"/admin/subscriptions-billing",
+  settings:"/admin/settings",
+};
+export function nativeCalaiAdminUrl(section,tenantId){
+  if(section==="tenant"){
+    const validId=typeof tenantId==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId);
+    const path=nativeAdminPaths.tenants;
+    return `${nativeAdminOrigin}${validId?`${path}/view/${tenantId}`:path}`;
+  }
+  return `${nativeAdminOrigin}${Object.hasOwn(nativeAdminPaths,section)?nativeAdminPaths[section]:nativeAdminPaths.dashboard}`;
+}
 export function adminProduct(path){return path.startsWith("/admin/calai/")||path==="/admin/connection"?"calai":"cal-eats";}
 export function platformReturnPath(raw){
   if(typeof raw!=="string"||!raw.startsWith("/admin/")||raw.startsWith("//")||/[\\\r\n]/.test(raw))return "/admin/calai/dashboard";

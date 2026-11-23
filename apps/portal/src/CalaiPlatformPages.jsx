@@ -7,12 +7,17 @@ import {shortDate} from "./model.js";
 import {AdminTable} from "./AdminWorkspaceShared.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {CalaiConnectionGate,useCalaiResource,usePlatformConnection} from "./CalaiPlatform.jsx";
-import {calaiItems,calaiMoney,calaiPage,calaiText,calaiRequestPresentation,calaiRequestStatusPath,telephonyPayload,tenantEditPayload} from "./calai-platform-model.js";
+import {calaiItems,calaiMoney,calaiPage,calaiText,calaiRequestPresentation,calaiRequestStatusPath,nativeCalaiAdminUrl,telephonyPayload,tenantEditPayload} from "./calai-platform-model.js";
 
 const base="/api/admin/calai";
 const displayDate=value=>value&&Number.isFinite(Date.parse(value))?shortDate(value):"Not available";
 const amount=row=>calaiMoney(row.amount??row.totalPrice,row.currency||"");
-export function CalaiPlatformPage({section}){return <CalaiConnectionGate><div className="calai-workspace">{({dashboard:<CalaiDashboard/>,tenants:<CalaiTenants/>,tenant:<CalaiTenant/>,training:<CalaiTraining/>,billing:<CalaiBilling/>,telephony:<CalaiTelephony/>,settings:<CalaiSettings/>})[section]||<p>Choose an administration section.</p>}</div></CalaiConnectionGate>;}
+export function CalaiPlatformPage({section}){
+ const {tenantId}=useParams();
+ const nativeUrl=nativeCalaiAdminUrl(section,tenantId);
+ const nativeLabel=section==="tenants"?"Add tenant in Calai":"Open in Calai administration";
+ return <CalaiConnectionGate nativeUrl={nativeUrl} nativeLabel={nativeLabel}><div className="calai-workspace">{({dashboard:<CalaiDashboard/>,tenants:<CalaiTenants/>,tenant:<CalaiTenant/>,training:<CalaiTraining/>,billing:<CalaiBilling/>,telephony:<CalaiTelephony/>,settings:<CalaiSettings/>})[section]||<p>Choose an administration section.</p>}</div></CalaiConnectionGate>;
+}
 function Heading({title,intro,children}){return <header className="admin-page-heading"><div><p className="eyebrow">Calai system administration</p><h1>{title}</h1><p>{intro}</p></div>{children}</header>;}
 function Resource({value}){return <>{value.loading&&<p role="status">Loading Calai information…</p>}{value.error&&<p className="alert" role="alert">{value.error}{value.value&&" Previously loaded information may have changed."}<button className="quiet" onClick={()=>void value.reload()}>Refresh</button></p>}{value.updatedAt&&<p className="fine">Checked {displayDate(value.updatedAt)}</p>}</>;}
 function Metric({label,value,hint}){return <article className="calai-metric"><span>{label}</span><strong>{calaiText(value)}</strong>{hint&&<small>{hint}</small>}</article>;}

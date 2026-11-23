@@ -1,5 +1,6 @@
 import {customerPayableMinor,platformVoucherMinor,redeemPlatformVoucher} from "./platform-vouchers.js";
 import {requireOperationalPrinterUser} from './business-terminals.js';
+import {tabletPrinterProductPermitted} from './tablet-product-policy.js';
 import {restoreRefundedSettlementAdjustments,adjustedRefundRecoveryMinor} from "./business-payment-adjustments.js";
 import { isIP } from "node:net";
 import {pairPrinterDevice,downloadAutomaticPrinterSetup} from "./printer-connection.js";
@@ -438,6 +439,7 @@ async function claimJob({req,res,db,config}){
   const now=nowIso(config),lease=new Date(Date.parse(now)+30000).toISOString(),token=randomBytes(32).toString('base64url'),tokenHash=digest(token);
   const result=withTransaction(db,()=>{
     if(!db.prepare('SELECT 1 FROM restaurants WHERE id=? AND archived_at IS NULL').get(d.restaurant_id))return null;
+    if(!tabletPrinterProductPermitted(db,d.restaurant_id))return null;
     if(d.printer_reachable===0&&d.printer_checked_at&&Date.parse(d.printer_checked_at)>=Date.parse(now)-60000)return null;
     return claimNextPrinterJob(db,d,{now,lease,tokenHash});
   });

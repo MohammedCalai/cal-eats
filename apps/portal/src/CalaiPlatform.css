@@ -7,3 +7,6 @@
 .calai-upload-form{margin-top:20px}.calai-file-choice{padding:18px;border:1px dashed #4b6082;border-radius:12px;background:#101927;align-content:start}.calai-file-choice input[type=file]{min-width:0;max-width:100%;padding:10px;background:#182438}.calai-file-choice small{color:#a7b8d3;overflow-wrap:anywhere;line-height:1.6}.calai-upload-form>button{justify-self:start;min-width:180px}.calai-upload-form>p[role=status]{color:#b9d4ff;line-height:1.7}
 
 .calai-request-review{border:1px solid #48658a;background:#132236;padding:16px;border-radius:12px;color:#c4d7f0}.calai-request-review summary{cursor:pointer;font-weight:700;min-height:32px}.calai-request-review p{line-height:1.7;font-size:13px}.calai-request-review [role=group]{display:grid;gap:15px}.calai-request-review textarea{min-height:100px}
+
+.calai-native-handoff{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.calai-native-handoff p{margin:0}
