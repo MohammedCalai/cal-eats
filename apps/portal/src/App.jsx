@@ -36,7 +36,7 @@ import { connectLiveNotifications } from "../../web/live-notifications.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
-import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint } from "./terminal-client.js";
+import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint, subscribeTerminalStatus } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
 import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
 import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
@@ -96,7 +96,11 @@ function App() {
     setPrincipal: setBusinessApiPrincipal,
     onLoading: () => setSession(old => ({ ...old, loading: true })),
     onSession: result => setSession(old => ({ ...old, loading: false, user: result.user, generation: old.generation + 1 })),
-    onTerminal: ({afterSignIn}) => {if(afterSignIn)resumeOperationalPresenceAfterSignIn();setSession(old => ({ ...old, terminalRevision: (old.terminalRevision || 0) + 1 }));}
+    onTerminal: ({afterSignIn, restored}) => {
+      if (restored) { window.dispatchEvent(new Event("cal-eats-terminal-session-restored")); return; }
+      if (afterSignIn) resumeOperationalPresenceAfterSignIn();
+      setSession(old => ({ ...old, terminalRevision: (old.terminalRevision || 0) + 1 }));
+    }
   });
   const refresh = useCallback(options => bootstrap.current.refresh(options), []);
   const connectTablet = useCallback(() => bootstrap.current.connectFromInteraction(), []);
@@ -107,6 +111,7 @@ function App() {
   }, [refresh]);
   const suspendAutomaticSignIn = useCallback(() => bootstrap.current.signOut(), []);
   useEffect(() => { void refresh(); return () => bootstrap.current.stop(); }, [refresh]);
+  useEffect(() => subscribeTerminalStatus(bootstrap.current.observeTerminal), []);
   useEffect(()=>{const restored=()=>setSession(old=>({...old,terminalRevision:(old.terminalRevision||0)+1}));window.addEventListener("cal-eats-terminal-session-restored",restored);return()=>window.removeEventListener("cal-eats-terminal-session-restored",restored);},[]);
   if (session.loading) return <PageState text="Opening business platform…" />;
   return <SessionContext.Provider value={{ ...session, refresh, setSession, suspendAutomaticSignIn, connectTablet, recheckTablet, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>

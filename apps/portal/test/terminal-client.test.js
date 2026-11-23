@@ -28,14 +28,15 @@ function pollClock() {
   return { timers, schedule, next, cancel: handle => timers.delete(handle) };
 }
 function bootstrapFixture(client) {
-  const clock = pollClock(), sessions = [];
+  const clock = pollClock(), sessions = [], restored = [];
   const controller = createBusinessBootstrap({
     readHuman: async () => { throw Object.assign(Error("Signed out"), { status: 401 }); },
     connectTerminal: client.connectAutomaticTerminal, terminalStatus: client.terminalStatus,
     readTerminal: options => client.terminalApi("/api/auth/me", options), canDiscover: () => true,
-    schedule: clock.schedule, cancel: clock.cancel, onSession: value => sessions.push(value), onSignOut: client.clearDiscoveryHint
+    schedule: clock.schedule, cancel: clock.cancel, onSession: value => sessions.push(value), onSignOut: client.clearDiscoveryHint,
+    onTerminal: value => restored.push(value)
   });
-  return { ...clock, sessions, controller };
+  return { ...clock, sessions, restored, controller };
 }
 
 test("actual cold bootstrap retries a known granted tablet whose local broker is still starting", async () => {
@@ -97,6 +98,49 @@ test("cold bootstrap never retries ordinary, unknown, prompt or denied browser d
     assert.equal(boot.timers.size, 0, permission);
     assert.equal(f.client.terminalStatus().startupRetryEligible, false, permission);
     boot.controller.stop();
+  }
+});
+
+test("actual Calai-only terminal automatically recovers signed reads without changing principal or issuing operations", async () => {
+  for (const condition of ["recover", "other-business", "other-signed-user", "eats-scope", "signed-out"]) {
+    const f = fixture(), boot = bootstrapFixture(f.client);
+    const unsubscribe = f.client.subscribe(boot.controller.observeTerminal);
+    const pure = session({ restaurantId: null, products: { calai: { active: true }, "cal-eats": { active: false } } });
+    const initial = condition === "eats-scope" ? session() : pure;
+    f.queue.push(response(bootstrap()), response(initial), response(initial));
+    await boot.controller.refresh();
+    assert.equal(boot.sessions.at(-1)?.principalKind, "terminal");
+    f.queue.push(refused);
+    await assert.rejects(f.client.terminalApi("/api/business/context"), error => error.code === "TERMINAL_LOCAL_UNAVAILABLE");
+    if (condition === "eats-scope") assert.equal(boot.timers.size, 0);
+    else {
+      const retry = boot.next(); assert.equal(retry.delay, 5000);
+      if (condition === "signed-out") boot.controller.signOut();
+      const recovered = condition === "other-business" ? { ...pure, businessId: OTHER } : pure;
+      const signed = condition === "other-signed-user" ? { ...pure, user: { ...pure.user, id: OTHER } } : pure;
+      f.queue.push(response(bootstrap()), response(recovered), response(signed));
+      retry.run();
+      if (condition === "recover") {
+        await until(() => boot.restored.length === 1);
+        assert.equal(boot.restored[0].restored, true);
+        assert.equal(boot.restored[0].terminalContext.restaurantId, null);
+        assert.equal(boot.sessions.length, 1);
+        const signedRead = JSON.parse(f.calls.at(-1).options.body);
+        assert.equal(signedRead.method, "GET");
+        assert.equal(signedRead.path, "/api/auth/me");
+      } else {
+        if (condition === "other-business") {
+          await until(() => f.client.terminalStatus().errorCode === "TERMINAL_LOCAL_INVALID");
+          assert.equal(f.client.terminalStatus().context, null);
+          assert.equal(f.calls.length, 6);
+        } else if (condition === "other-signed-user") await until(() => f.calls.length === 7);
+        else assert.equal(f.calls.length, 4);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(boot.restored.length, 0);
+      }
+    }
+    assert.equal(boot.timers.size, 0);
+    unsubscribe(); boot.controller.stop();
   }
 });
 

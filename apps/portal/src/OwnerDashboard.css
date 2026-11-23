@@ -130,3 +130,9 @@
   background: #38325a;
   color: #e0d8ff;
 }
+@media (max-width: 600px) {
+  .dashboard-order-table .dashboard-source-caption {
+    display: block;
+    padding-left: 0;
+  }
+}

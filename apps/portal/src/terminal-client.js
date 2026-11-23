@@ -225,12 +225,25 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     try { return await Promise.race([work, abortPromise]); }
     finally { cancel(timer); requests.delete(controller); signal?.removeEventListener("abort", externalAbort); controller.signal.removeEventListener("abort", abortListener); }
   }
-  function connectAutomaticTerminal({ signal, screenId, userInitiated = false } = {}) {
+  function connectAutomaticTerminal({ signal, screenId, userInitiated = false, expectedTerminal = null } = {}) {
     const selectedScreen = screenId || currentScreenId || screenIdFactory();
+    const requireExpected = result => {
+      if (expectedTerminal && (result.terminalId !== expectedTerminal.terminalId || result.businessId !== expectedTerminal.businessId ||
+          result.restaurantId !== expectedTerminal.restaurantId || result.user?.id !== expectedTerminal.user?.id)) {
+        throw failure("The registered tablet identity changed.", 403, "TERMINAL_LOCAL_INVALID");
+      }
+      return result;
+    };
     if (!UUID.test(selectedScreen)) return Promise.reject(failure("The tablet screen identifier is invalid.", 400, "TERMINAL_SCREEN_INVALID"));
     if (signal?.aborted) return Promise.reject(aborted());
-    if (connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted && !(userInitiated && !connecting.userInitiated)) return connecting.signal === signal ? connecting.promise : waitForCaller(connecting.promise, signal);
-    if (windowProof && state.status === "ready" && currentScreenId === selectedScreen && Date.parse(context.expiresAt) > clock() + RENEW_BEFORE_MS) return Promise.resolve(clone(context));
+    if (connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted && !(userInitiated && !connecting.userInitiated)) {
+      const promise = connecting.signal === signal ? connecting.promise : waitForCaller(connecting.promise, signal);
+      return expectedTerminal ? promise.then(requireExpected) : promise;
+    }
+    if (windowProof && state.status === "ready" && currentScreenId === selectedScreen && Date.parse(context.expiresAt) > clock() + RENEW_BEFORE_MS) {
+      const promise = Promise.resolve(clone(context));
+      return expectedTerminal ? promise.then(requireExpected) : promise;
+    }
     invalidate("connecting"); currentScreenId = selectedScreen;
     const expected = generation, attempt = { screenId: selectedScreen, signal, userInitiated, promise: null };
     attempt.promise = (async () => {
@@ -254,6 +267,7 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
         assertCurrent(expected);
         const safe = safeContext(result, selectedScreen, clock());
         if (!PROOF.test(result.windowProof) || safe.terminalId !== bootstrap.terminalId) throw failure("The restaurant tablet identity could not be verified.", 502, "TERMINAL_LOCAL_INVALID");
+        requireExpected(safe);
         if (userInitiated && await readPermission({ signal, expected }) === "denied") throw permissionFailure("denied");
         assertCurrent(expected);
         context = safe; windowProof = result.windowProof;

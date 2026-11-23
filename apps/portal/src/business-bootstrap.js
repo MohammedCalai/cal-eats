@@ -1,26 +1,37 @@
 const BACKOFF = [5000, 10000, 30000, 60000];
 const denied = new Set(["TERMINAL_REVOKED", "TABLET_REVOKED", "TABLET_NOT_ENROLLED", "TERMINAL_NOT_PAIRED", "TERMINAL_LOCAL_INVALID", "TABLET_SESSION_RESPONSE_INVALID"]);
-const sameTerminal = (snapshot, result) => snapshot?.status === "ready" && snapshot.paired === true && snapshot.context?.principalKind === "terminal" && result?.principalKind === "terminal" && result.terminalId === snapshot.context.terminalId && result.businessId === snapshot.context.businessId && result.restaurantId === snapshot.context.restaurantId && result.user?.id === snapshot.context.user?.id;
+const sameIdentity = (expected, result) => expected?.principalKind === "terminal" && result?.principalKind === "terminal" && result.terminalId === expected.terminalId && result.businessId === expected.businessId && result.restaurantId === expected.restaurantId && result.user?.id === expected.user?.id;
+const sameTerminal = (snapshot, result) => snapshot?.status === "ready" && snapshot.paired === true && sameIdentity(snapshot.context, result);
+const isCalaiOnly = context => context?.restaurantId === null && context.products?.calai?.active === true && context.products?.["cal-eats"]?.active === false;
+const recoverableCalai = (snapshot, terminal) => terminal && snapshot?.terminalId === terminal.terminalId && snapshot.paired === true && snapshot.reconnectEligible === true;
 
 // This coordinates reads only. Its retry/latch state never grants authority;
 // every terminal identity still comes from the signed native companion.
 export function createBusinessBootstrap({ readHuman, connectTerminal, readTerminal, terminalStatus, canDiscover = () => false, setPrincipal = () => {}, onSession = () => {}, onLoading = () => {}, onTerminal = () => {}, onSignOut = () => {}, schedule = setTimeout, cancel = clearTimeout }) {
-  let generation = 0, pending = null, timer = null, retry = 0, signedOut = false, lastUser = null;
+  let generation = 0, pending = null, timer = null, retry = 0, signedOut = false, lastUser = null, verifiedCalai = null;
   const current = expected => expected === generation;
   function clearTimer() { if (timer !== null) cancel(timer); timer = null; }
-  function stop() { generation++; clearTimer(); pending?.controller.abort(); retry = 0; }
+  function stop() { generation++; clearTimer(); pending?.controller.abort(); retry = 0; verifiedCalai = null; }
   function signOut() { signedOut = true; try { onSignOut(); } finally { stop(); } }
-  function retryLater(expected, error) {
+  function retryLater(expected, error, recovery = null) {
     const snapshot = terminalStatus();
     const startupRetry = snapshot?.startupRetryEligible === true;
-    if (!current(expected) || signedOut || (snapshot?.paired !== true && (!startupRetry || retry >= BACKOFF.length)) || ["revoked", "unpaired", "not_installed", "permission_required", "permission_denied"].includes(snapshot?.status) || denied.has(error?.code) || [401, 403].includes(error?.status)) return;
+    if (!current(expected) || signedOut || denied.has(error?.code)) return;
+    if (recovery) {
+      if (verifiedCalai !== recovery || !recoverableCalai(snapshot, recovery) || retry >= BACKOFF.length) return;
+    } else if ((snapshot?.paired !== true && (!startupRetry || retry >= BACKOFF.length)) || ["revoked", "unpaired", "not_installed", "permission_required", "permission_denied"].includes(snapshot?.status) || [401, 403].includes(error?.status)) return;
     const delay = BACKOFF[Math.min(retry++, BACKOFF.length - 1)];
     clearTimer(); timer = schedule(() => {
       timer = null;
-      if (current(expected) && !pending && (!startupRetry || terminalStatus()?.startupRetryEligible === true)) void run(expected);
+      if (current(expected) && !pending && (!startupRetry || terminalStatus()?.startupRetryEligible === true) &&
+          (!recovery || recoverableCalai(terminalStatus(), recovery))) void run(expected, { recovery });
     }, delay);
   }
-  async function run(expected, { afterSignIn = false, alreadyConnected = false } = {}) {
+  function observeTerminal(snapshot) {
+    if (signedOut || pending || timer !== null || !recoverableCalai(snapshot, verifiedCalai)) return;
+    retryLater(generation, null, verifiedCalai);
+  }
+  async function run(expected, { afterSignIn = false, alreadyConnected = false, recovery = null } = {}) {
     if (!current(expected)) return;
     const controller = new AbortController(), attempt = { controller, promise: null };
     pending = attempt;
@@ -28,6 +39,16 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
       let human = null;
       try {
         try {
+          if (recovery) {
+            await connectTerminal({ signal: controller.signal, expectedTerminal: recovery });
+            if (!current(expected) || controller.signal.aborted || signedOut) return;
+            const verified = await readTerminal({ signal: controller.signal });
+            if (!current(expected) || controller.signal.aborted || signedOut) return;
+            if (!sameIdentity(recovery, verified) || !sameTerminal(terminalStatus(), verified) || !isCalaiOnly(verified)) return;
+            retry = 0;
+            onTerminal({ afterSignIn: false, terminalContext: verified, restored: true });
+            return;
+          }
           const result = await readHuman({ signal: controller.signal });
           if (!current(expected) || controller.signal.aborted) return;
           if (!result?.user?.id) throw Error("No authenticated business session.");
@@ -37,6 +58,7 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
           setPrincipal("human"); onSession({ user: human.user, principalKind: "human" });
         } catch (error) {
           if (!current(expected) || controller.signal.aborted) return;
+          if (recovery) { retryLater(expected, error, recovery); return; }
           lastUser = null;
         }
         if (signedOut || !canDiscover(human?.user || null)) {
@@ -50,6 +72,7 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
           if (!current(expected) || controller.signal.aborted || signedOut) return;
           if (!sameTerminal(terminalStatus(), verified)) throw Object.assign(Error("Tablet identity changed."), { code: "TERMINAL_LOCAL_INVALID" });
           retry = 0;
+          verifiedCalai = isCalaiOnly(verified) ? verified : null;
           if (human) onTerminal({afterSignIn,terminalContext:verified});
           else { setPrincipal("terminal"); onSession({ user: verified.user, principalKind: "terminal" }); }
         } catch (error) {
@@ -91,5 +114,5 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
     })();
     return attempt.promise;
   }
-  return { refresh, connectFromInteraction, signOut, stop, isSuspended: () => signedOut };
+  return { refresh, connectFromInteraction, observeTerminal, signOut, stop, isSuspended: () => signedOut };
 }
