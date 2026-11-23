@@ -6,10 +6,11 @@ import BusinessHomeLink from "./BusinessHomeLink.jsx";
 import TabletConnectionControls from "./TabletConnectionControls.jsx";
 import {BusinessMessageReminderProvider} from "./BusinessMessageReminder.jsx";
 import "./BusinessOrders.css";
-import { orderCustomerName, orderDeliveryAddress, orderDestination, orderStatusText, orderDatePreset } from "./order-presentation.js";
+import { canPrintOrderReceipt, orderCustomerName, orderDeliveryAddress, orderDestination, orderStatusText, orderDatePreset } from "./order-presentation.js";
 import { deliveryDeadlineAt, deliveryDispatchWarning } from "./delivery-deadline.js";
 import { DeliveryDeadlineBadge, useDeliveryDeadlineClock } from "./DeliveryDeadline.jsx";
 import CalaiPrinters from "./CalaiPrinters.jsx";
+import OrderReceiptPrintDialog from "./OrderReceiptPrintDialog.jsx";
 import "./Settings.css";
 import { useSidebarLayout } from "./sidebar-layout.js";
 import ServiceAreas from "./ServiceAreas.jsx";
@@ -296,6 +297,8 @@ function Orders() {
 }
 function OrdersWorkspace({ restaurant, permission, alerts }) {
   const workspace=useBusinessWorkspace(),canOperate=operationalTabletFor(workspace?.business?.id,restaurant.id,workspace?.terminal);
+  const canPrint = canOperate && workspace?.business?.products?.["cal-eats"]?.allowedOnTablet !== false;
+  const [printOrder, setPrintOrder] = useState(null);
   const tools=businessToolPermissions({permission,capabilities:restaurant.capabilities,principalKind:workspace?.business?.principalKind});
   const [page, setPage] = useState(1), [status, setStatus] = useState("all"), [datePreset,setDatePreset]=useState("all"),[dates,setDates]=useState({from:"",to:""});
   const query = new URLSearchParams({ page: String(page), pageSize: "25", status, ...(dates.from?{from:dates.from}:{}), ...(dates.to?{to:dates.to}:{}) });
@@ -351,12 +354,20 @@ function OrdersWorkspace({ restaurant, permission, alerts }) {
   const pagination = result.value?.pagination;
   useEffect(() => { if (pagination && page > Math.max(1, pagination.totalPages)) setPage(Math.max(1, pagination.totalPages)); }, [pagination?.totalPages, page]);
   const statuses = [["all", "All orders"], ["placed", "Awaiting confirmation"], ["accepted", "Confirmed"], ["preparing", "Preparing"], ["ready", "Ready"], ["out_for_delivery", "Out for delivery"], ["completed", "Completed"], ["rejected", "Rejected"]];
-  return <Page title="Orders" intro="View order details and messages. Order processing is available on the registered restaurant tablet.">
+  return <Page title="Orders" intro={<>View order details and messages. {!canPrint && <>
+    Print receipts and process orders from the registered restaurant tablet.
+    {tools.manageSettings && <> Check its setup in <NavLink to="/owner/printers">Printers</NavLink>.</>}
+  </>}</>}>
     <section className="business-order-dates" aria-label="Order date range"><div className="business-order-date-presets" role="group" aria-label="Order date presets">{[["all","All dates"],["today","Today"],["yesterday","Yesterday"],["this_week","This week"],["last_week","Last week"],["custom","Custom dates"]].map(([value,label])=><button type="button" key={value} aria-pressed={datePreset===value} onClick={()=>{setError("");setDatePreset(value);if(value!=="custom"){setDates(orderDatePreset(value));setPage(1);}}}>{label}</button>)}</div>{datePreset==="custom"&&<form className="business-order-custom-dates" key={`${dates.from}:${dates.to}`} onSubmit={event=>{event.preventDefault();const fields=new FormData(event.currentTarget),from=String(fields.get("from")||""),to=String(fields.get("to")||"");if(from>to){setError("Choose an end date on or after the start date.");return;}setError("");setDates({from,to});setPage(1);}}><label>From<input name="from" type="date" required defaultValue={dates.from}/></label><label>To<input name="to" type="date" required defaultValue={dates.to}/></label><button className="primary">Apply dates</button></form>}<small>{dates.from||dates.to?`Placed from ${dates.from||"the beginning"} to ${dates.to||"today"}`:"Showing all order dates"} · London time · weeks start Monday</small></section>
     <div className="workspace-toolbar"><label>Order status<select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button className="quiet" disabled={result.loading} onClick={() => void result.reload()}>Refresh orders</button></div>
     {error && !active && <Alert>{error}</Alert>}
-    {result.loading && !result.value ? <Skeleton/> : result.error ? <PageState error={result.error} retry={result.reload}/> : <OrderTable items={listItems(result.value)} now={deadlineNow} canOperate={canOperate} onOpen={order => { setError(""); setParams({ order: order.id }); }}/>}
+    {result.loading && !result.value ? <Skeleton/> : result.error ? <PageState error={result.error} retry={result.reload}/> : <OrderTable
+      items={listItems(result.value)} now={deadlineNow} canOperate={canOperate} canPrint={canPrint} restaurantId={restaurant.id}
+      onOpen={order => { setError(""); setParams({ order: order.id }); }}
+      onPrint={order => { if (canPrint && canPrintOrderReceipt(order, restaurant.id)) setPrintOrder(order); }}/>}
     {pagination && <div className="finance-pagination" aria-label="Order pages"><button className="quiet" disabled={page <= 1 || result.loading} onClick={() => setPage(value => value - 1)}>Previous orders</button><span>{pagination.total} orders · Page {page} of {Math.max(1, pagination.totalPages)}</span><button className="quiet" disabled={!pagination.hasNext || result.loading} onClick={() => setPage(value => value + 1)}>Next orders</button></div>}
+    {printOrder && <OrderReceiptPrintDialog key={printOrder.id} order={printOrder} businessId={workspace?.business?.id}
+      restaurantId={restaurant.id} allowed={canPrint} onClose={() => setPrintOrder(null)}/>}
     {selectedOrder && detailLoading && !active && <Dialog title={`Order ${selectedOrder.slice(0, 8).toUpperCase()}`} onClose={() => setParams({})}><p role="status">Loading order…</p></Dialog>}
     {active?.id === selectedOrder && active.restaurantId === restaurant.id && <Dialog title={active.fulfillment === "delivery" ? "Delivery order" : `Collection · ${orderCustomerName(active)}`} onClose={() => setParams({})}>
       {error && <Alert>{error}</Alert>}
@@ -587,9 +598,33 @@ function PageState({text,error,retry}){return <main className="state"><Brand/><p
 function BusinessAccessUnavailable(){const{user,refresh,suspendAutomaticSignIn}=React.useContext(SessionContext),[busy,setBusy]=useState(false),[error,setError]=useState("");async function switchAccount(){setBusy(true);setError("");suspendAutomaticSignIn();try{await endOperationalPresence();await api("/api/auth/logout",{...json("POST",{}),humanSession:true});disconnectLocalTerminal();await refresh()}catch(x){setError(x.message)}finally{setBusy(false)}}return <main className="auth"><section className="auth-card"><Brand/><p className="eyebrow">Business portal</p><h1>Use a business account</h1><p>You are signed in as {user?.name||"a customer"}. This account does not have restaurant or administrator access.</p>{error&&<Alert>{error}</Alert>}<div className="button-row"><a className="button-link" href="/order/">Return to customer ordering</a><button className="quiet" type="button" disabled={busy} onClick={switchAccount}>{busy?"Signing out…":"Sign out and switch account"}</button></div><p className="fine">Business access is not added by switching accounts. Sign in with an account that already has an authorised business role.</p></section></main>}
 function Denied({message="This workspace is not available for your account role."}){return <div className="panel"><h2>Access unavailable</h2><p>{message}</p></div>}
 function DataTable({headers,rows=[],loading,error,rowClasses=[]}){if(loading)return <Skeleton/>;if(error)return <Alert>{error}</Alert>;if(!rows.length)return <p className="empty">Nothing to show yet.</p>;return <div className="table-wrap responsive-table"><table><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i} className={rowClasses[i]||undefined}>{r.map((c,j)=><td key={j} data-label={headers[j]}>{c??"—"}</td>)}</tr>)}</tbody></table></div>}
-function OrderTable({items=[],onOpen,now=null,canOperate=false}){
- const warnings=items.map(order=>now===null?null:deliveryDispatchWarning(order,now));
- return <div className="business-orders-table"><DataTable headers={["Customer & destination","Status","Placed","Total",...(onOpen?["Action"]:[])]} rowClasses={warnings.map(warning=>warning?"business-delivery-due":"")} rows={items.map((o,index)=>[<div className="order-person"><strong>{orderDestination(o)}</strong><span>{o.fulfillment === "delivery" ? `Delivery · ${orderCustomerName(o)}` : "Collection"}</span><small>#{String(o.id||"").slice(0,8).toUpperCase()}</small></div>,<div className="business-order-warning-state"><span className="order-state">{orderStatusText(o)}</span><DeliveryDeadlineBadge warning={warnings[index]}/></div>,shortDate(o.createdAt),pounds(o.totalMinor),...(onOpen?[<button className="primary" aria-label={`${canOperate?"Manage":"View"} order for ${orderCustomerName(o)}`} onClick={()=>onOpen(o)}>{canOperate?"Manage order":"View order"}</button>]:[])])}/></div>;
+function OrderTable({ items, onOpen, onPrint, restaurantId, now, canOperate, canPrint }) {
+  const warnings = items.map(order => deliveryDispatchWarning(order, now));
+  return <div className="business-orders-table"><DataTable
+    headers={["Customer & destination", "Status", "Placed", "Total", "Actions"]}
+    rowClasses={warnings.map(warning => warning ? "business-delivery-due" : "")}
+    rows={items.map((order, index) => {
+      const customer = orderCustomerName(order), printable = canPrintOrderReceipt(order, restaurantId);
+      const open = canOperate ? "Manage order" : "View order";
+      return [
+        <div className="order-person"><strong>{orderDestination(order)}</strong>
+          <span>{order.fulfillment === "delivery" ? `Delivery · ${customer}` : "Collection"}</span>
+          <small>#{String(order.id || "").slice(0, 8).toUpperCase()}</small>
+        </div>,
+        <div className="business-order-warning-state"><span className="order-state">{orderStatusText(order)}</span>
+          <DeliveryDeadlineBadge warning={warnings[index]}/>
+        </div>,
+        shortDate(order.createdAt),
+        pounds(order.totalMinor),
+        <div className="business-order-row-actions">
+          <button type="button" className="primary" aria-label={`${open} for ${customer}`} onClick={() => onOpen(order)}>{open}</button>
+          <button type="button" className="quiet" aria-label={`Print receipt for ${customer}`} disabled={!canPrint || !printable}
+            title={!canPrint ? "Print from the registered restaurant tablet" : !printable ? "Available for confirmed orders" : undefined}
+            onClick={() => onPrint(order)}>Print</button>
+        </div>,
+      ];
+    })}
+  /></div>;
 }
 function OrderDetail({order}){return <div className="detail-list"><p><span>Fulfilment</span><strong>{order.fulfillment}</strong></p><p><span>Payment</span><strong>{order.paymentMethod?.replaceAll("_"," ")}</strong></p>{(order.customerEtaAt||order.estimatedReadyAt)&&<p><span>{order.fulfillment==="delivery"?"Expected delivery arrival":"Ready for collection"}</span><strong>{shortDate(order.customerEtaAt||order.estimatedReadyAt)}</strong></p>}{order.restaurantDiscountMinor>0&&<><p><span>Food before promotion</span><strong>{pounds(order.grossFoodMinor)}</strong></p><p><span>Restaurant promotion</span><strong>−{pounds(order.restaurantDiscountMinor)}</strong></p></>}<p><span>Total</span><strong>{pounds(order.totalMinor)}</strong></p>{listItems(order.items).map((i,n)=><p key={i.id||n}><span>{i.quantity} × {i.name||i.itemName}</span><strong>{i.isOfferItem?"Free offer":pounds(i.lineTotalMinor)}</strong></p>)}</div>}
 function Dialog({title,onClose,children}){return <WorkspaceDialog title={title} onClose={onClose}>{children}</WorkspaceDialog>}

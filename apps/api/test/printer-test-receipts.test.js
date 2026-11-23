@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { formatReceipt } from "../../print-bridge/src/receipt.js";
+import { requestAllowed } from "../../terminal-auth/src/protocol.js";
 import { journeyFixture } from "./helpers.js";
 import {enrolRegisteredTablet} from "./registered-tablet-fixture.js";
 
@@ -30,6 +31,45 @@ async function kitchen(f) {
   await heartbeat();
   return { owner, other, customer, restaurant, root, printer, printerPath, first, pair, heartbeat, claim, ack, diagnostic, tablet };
 }
+
+test("the reprint printer list is signed-tablet-only and exposes only eligible same-location names and IDs", async t => {
+  const f = await journeyFixture();
+  t.after(() => f.close());
+  const k = await kitchen(f), restaurantId = k.restaurant.id, at = f.config.now().toISOString();
+  const foreign = (await f.json("/api/restaurant/restaurants", { cookie: k.other })).body.data[0];
+  function printer({ enabled = 1, revoked = null, location = restaurantId, deviceLocation = location, deviceRevoked = null, paired = true } = {}) {
+    const id = randomUUID();
+    f.db.prepare("INSERT INTO restaurant_printers(id,restaurant_id,name,enabled,revoked_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")
+      .run(id, location, `Synthetic printer ${id.slice(0, 8)}`, enabled, revoked, at, at);
+    if (paired) f.db.prepare("INSERT INTO printer_devices(id,printer_id,restaurant_id,name,token_hash,revoked_at,created_at) VALUES(?,?,?,?,?,?,?)")
+      .run(randomUUID(), id, deviceLocation, "Synthetic device", randomUUID(), deviceRevoked, at);
+  }
+  printer({ enabled: 0 });
+  printer({ revoked: at });
+  printer({ deviceRevoked: at });
+  printer({ paired: false });
+  printer({ location: foreign.id });
+  printer({ deviceLocation: foreign.id });
+  await k.pair("Second device for the same printer");
+
+  const list = `${k.root}/printers?scope=reprint`;
+  assert.equal(requestAllowed("GET", list, restaurantId, k.tablet.businessId), true);
+  const owner = await f.json(list, { cookie: k.owner });
+  assert.equal(owner.status, 403);
+  assert.equal(owner.body.error.code, "REGISTERED_TABLET_REQUIRED");
+  assert.equal((await k.tablet.json(`/api/restaurant/restaurants/${foreign.id}/printers?scope=reprint`)).status, 404);
+  const result = await k.tablet.json(list);
+  assert.equal(result.status, 200, result.text);
+  assert.equal(result.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(result.body.data, { items: [{ id: k.printer.id, name: k.printer.name }] });
+
+  const ownerDetails = await f.json(`${k.root}/printers`, { cookie: k.owner });
+  assert.equal(ownerDetails.status, 200, ownerDetails.text);
+  assert.equal(ownerDetails.body.data.items.find(item => item.id === k.printer.id).ipAddress, "192.0.2.25");
+  assert.equal((await k.tablet.json(`${k.root}/printers`)).status, 403);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM device_print_jobs").get().n, 0);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM printer_test_jobs").get().n, 0);
+});
 
 test("sample receipts are registered-tablet-only, idempotent and separate from real orders, customer data and money", async () => {
   let now = Date.parse("2026-01-01T01:00:00Z");

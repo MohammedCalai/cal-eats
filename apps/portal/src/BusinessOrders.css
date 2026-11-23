@@ -6,3 +6,24 @@
 .business-order-contact{display:flex;gap:12px;flex-wrap:wrap}.business-order-contact a{min-height:44px;display:inline-flex;align-items:center;padding:9px 12px;border:1px solid #41608a;border-radius:10px;text-decoration:none;color:#a9d0ff}
 .business-order-items-summary{font-size:13px;line-height:1.65;color:#b6c8df;border-top:1px solid #344258;padding-top:12px;margin-top:4px}.business-order-items-summary p{margin:3px 0}
 @media(max-width:700px){.business-order-custom-dates{display:grid;grid-template-columns:1fr 1fr}.business-order-custom-dates label{min-width:0}.business-order-custom-dates button{grid-column:1/-1}.business-order-dates{padding:16px}.business-order-customer>strong{font-size:19px}}
+
+.business-order-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+.business-order-row-actions button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+.business-order-print-dialog form { display: grid; gap: 1rem; }
+.business-order-print-dialog form p { margin: 0; }
+@media (min-width: 601px) {
+  .business-order-row-actions { flex-wrap: nowrap; }
+}
+@media (min-width: 601px) and (max-width: 1100px) {
+  .business-orders-table td:first-child { min-width: 200px; }
+}
+@media (max-width: 600px) {
+  .business-orders-table td:first-child { min-width: 0; }
+}
