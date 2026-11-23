@@ -9,6 +9,7 @@ import { releaseOfferForOrder, notifyNewOrder, notifyOrderStatus } from "../offe
 import { retrieveAuthoritativeProviderState } from "./provider-events.js";
 import { queueEligibleStripeTransfers } from "./stripe-settlement.js";
 import { restaurantBankingConfig,bankingPaymentScope } from "./live-onboarding.js";
+import { STRIPE_PAYOUT_STATEMENT_DESCRIPTOR } from "./stripe-test.js";
 import { hasLiveBankingCredential,requireLiveBankingCredential } from "../auth/password-change.js";
 import {orderFinancialEnvironment,requireOrderFinancialEnvironment,recordVerifiedPayoutApiRead} from "../financial-environment.js";
 import {claimAccountSetupAttempt,recordAccountSetupFailure,completeAccountSetupAttempt} from "./account-setup-attempts.js";
@@ -216,6 +217,8 @@ async function accountAction({ req, res, db, config, owner, restaurantId, action
     if (!row?.provider_reference) row=await createRestaurantAccount(db,config,{restaurantId,owner,adapter});
     const payoutPolicy = await adapter.configureWeeklyPayouts({accountId:row.provider_reference,weeklyAnchor:"monday",idempotencyKey:`connect-schedule-anchor-v1:${mode}:${restaurantId}`});
     if (payoutPolicy?.status !== "confirmed" || payoutPolicy?.ok === false) throw new HttpError(503,"STRIPE_PAYOUT_POLICY_PENDING","Weekly payout settings could not be confirmed. Retry setup");
+    const payoutDescriptor=await adapter.configurePayoutStatementDescriptor({accountId:row.provider_reference,idempotencyKey:`connect-payout-descriptor-v1:${mode}:${restaurantId}`});
+    if(payoutDescriptor?.status!=="confirmed"||payoutDescriptor?.ok===false||payoutDescriptor?.providerReference!==row.provider_reference||payoutDescriptor?.statementDescriptor!==STRIPE_PAYOUT_STATEMENT_DESCRIPTOR)throw new HttpError(503,"STRIPE_PAYOUT_DESCRIPTOR_PENDING","Bank payout description could not be confirmed. Retry setup");
     const result = await adapter.createAccountLink({accountId:row.provider_reference,refreshUrl:new URL("/business/owner/stripe",config.origin).href,returnUrl:new URL("/business/owner/stripe",config.origin).href,idempotencyKey:`connect-link:${mode}:${restaurantId}:${retryKey}`});
     if (!result?.actionUrl || result.ok === false) throw new HttpError(503,"STRIPE_LINK_UNAVAILABLE","Stripe verification link is unavailable. Try again");
     return sendJson(res,200,{data:{url:result.actionUrl,providerMode:mode,expiresAt:result.expiresAt,...bankingPaymentScope(config)}});

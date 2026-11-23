@@ -1,5 +1,7 @@
 # Stripe payments and restaurant payouts
 
+**23 November 2026 payout descriptor:** Restaurant bank payouts are configured with the **CAL-EATS** descriptor; bank-display verification is pending. See the [configuration and next-deposit verification record](PAYOUT_STATEMENT_DESCRIPTOR.md). The dated deployment notes below describe their historical state.
+
 ## Current status — 29 October 2026
 
 The customer app, business tablet platform and Cal-Eats Admin source share the independent Cal-Eats payment APIs. The hosted preview at `eats.calai.info` now selects `stripe_test`, with live payments disabled. It uses the existing Cal-Eats general sandbox under Calai, account `acct_1UVAdqHSgkhglViC`. Sandbox placeholder ownership details do not establish a requirement to repeat real identity verification. Original Calai live credentials, settings and payments remain untouched.
