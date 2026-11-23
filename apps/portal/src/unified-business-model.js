@@ -38,6 +38,16 @@ export function canConnectBusinessProduct(business, product) {
   if (!BUSINESS_PRODUCTS.includes(product) || business?.principalKind === "terminal" || business?.canConnectProducts !== true) return false;
   return productPresentation(business, product).canConnect === true;
 }
+export function calaiTabletAuthorizationPath(business) {
+  const calai = productPresentation(business, "calai");
+  if (!business?.id || business.principalKind !== "human" || business.canManageProducts === true || business.canViewCalai !== true ||
+      !canConnectBusinessProduct(business, "calai") || !calai.linked || !calai.ready || calai.status !== "ready") return null;
+  return `/api/business/accounts/${encodeURIComponent(business.id)}/terminals/calai-authorization`;
+}
+export function canLoadEatsRestaurantWorkspace(business) {
+  return Boolean(business?.eatsRestaurantId && business.canViewEats === true &&
+    business.products?.["cal-eats"]?.allowedOnTablet !== false);
+}
 export function businessNavigation(business, eatsNavigation = []) {
   const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats");
   const dashboard = ["Dashboard", "/owner/dashboard"], showEats = eats.linked && eats.allowedOnTablet !== false;

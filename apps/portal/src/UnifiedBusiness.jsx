@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Link, NavLink, Navigate, Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct } from "./unified-business-model.js";
+import { BUSINESS_PRODUCTS, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath } from "./unified-business-model.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
@@ -90,6 +90,80 @@ export function BusinessAccountSwitcher() {
 function ProductMark({ product }) {
   return <span className={`business-account-mark product-${product}`} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{product === "calai" ? <><path d="M5 3h4l2 5-3 2a14 14 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2A18 18 0 0 1 3 5a2 2 0 0 1 2-2Z"/><path d="M15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2"/></> : <><path d="M4 7h16l-1 14H5L4 7ZM8 7V5a4 4 0 0 1 8 0v2"/><path d="M9 12h6M9 16h4"/></>}</svg></span>;
 }
+const ownerApi = (path, options) => api(path, { ...options, humanSession: true });
+function CalaiTabletAuthorization({ business }) {
+  const path = calaiTabletAuthorizationPath(business);
+  const { value, error: checkError, reload } = useBusinessResource(path, { request: ownerApi });
+  const [confirmation, setConfirmation] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const request = useRef(null);
+  useEffect(() => () => {
+    const pending = request.current;
+    request.current = null;
+    pending?.abort();
+  }, []);
+  const eligible = Boolean(path && value?.eligible === true && typeof value.authorized === "boolean" &&
+    typeof value.terminalId === "string" && value.terminalId && typeof value.tabletName === "string" && value.tabletName.trim());
+
+  async function authorise() {
+    if (request.current || !eligible || checkError || value.authorized || confirmation?.terminalId !== value.terminalId) return;
+    const controller = new AbortController();
+    request.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setSaving(true);
+    setError("");
+    try {
+      const result = await ownerApi(path, {
+        ...json("POST", { expectedTerminalId: confirmation.terminalId }),
+        signal: controller.signal,
+      });
+      if (request.current !== controller) return;
+      if (result?.eligible !== true || result.authorized !== true || result.terminalId !== confirmation.terminalId) {
+        throw new Error("The tablet's Calai access could not be confirmed. Check its current access before trying again.");
+      }
+      setConfirmation(null);
+    } catch (caught) {
+      if (request.current !== controller) return;
+      setConfirmation(null);
+      setError(caught.name === "AbortError"
+        ? "The request took too long. Check the tablet's current access before trying again."
+        : caught.message);
+    } finally {
+      clearTimeout(timeout);
+      if (request.current === controller) {
+        await reload();
+        if (request.current === controller) {
+          request.current = null;
+          setSaving(false);
+        }
+      }
+    }
+  }
+
+  if (!path || !eligible && !error && !checkError) return null;
+  return <div className="business-tablet-authorization">
+    <Feedback error={error}/>
+    {!eligible && checkError && <><p role="alert">Could not check current tablet access.</p><button type="button" className="quiet" onClick={() => void reload()}>Check again</button></>}
+    {eligible && <><h3>Calai on your ordering tablet</h3>
+      {checkError ? <><p role="alert">Could not check current tablet access.</p><button type="button" className="quiet" onClick={() => void reload()}>Check again</button></>
+        : value.authorized ? <p role="status"><strong>{value.tabletName}</strong> is authorised to use your Calai connection when its selected mode includes Calai.</p>
+        : <><p>Allow <strong>{value.tabletName}</strong> to use your verified Calai connection without an owner signed in. Your administrator still chooses the tablet’s app mode.</p>
+          <button type="button" className="quiet" disabled={saving} onClick={() => {
+            setError("");
+            setConfirmation({ terminalId: value.terminalId, tabletName: value.tabletName });
+          }}>Allow Calai on this tablet</button></>}
+    </>}
+    {confirmation && eligible && !checkError && !value.authorized && confirmation.terminalId === value.terminalId &&
+      <WorkspaceDialog title="Allow Calai on this tablet?" onClose={() => { if (!request.current) setConfirmation(null); }}>
+        <p>Allow <strong>{confirmation.tabletName}</strong> at <strong>{business.name}</strong> to open this Calai workspace using your verified account. This keeps its current app mode.</p>
+        <div className="button-row">
+          <button type="button" className="quiet" disabled={saving} onClick={() => setConfirmation(null)}>Cancel</button>
+          <button type="button" className="primary" disabled={saving} onClick={() => void authorise()}>{saving ? "Authorising…" : "Confirm tablet access"}</button>
+        </div>
+      </WorkspaceDialog>}
+  </div>;
+}
 function OwnerProductCard({ business, product }) {
   const state = productPresentation(business, product), settings = safeNativeLink(state.nativeLinks?.settings), finance = safeNativeLink(state.nativeLinks?.statements || state.nativeLinks?.billing);
   const reconnect = state.connectionStatus === "reconnect_required", status = state.usable ? "Connected" : !state.allowed ? "Not enabled" : state.status === "unavailable" ? "Temporarily unavailable" : reconnect ? "Sign in required" : state.linked ? "Setup needed" : "Not connected";
@@ -106,6 +180,7 @@ function OwnerProductCard({ business, product }) {
       {product === "calai" && !state.nativeAccountId && safeNativeLink(state.nativeLinks?.onboarding) && <a className="button-link" target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register with Calai</a>}
       {canConnectBusinessProduct(business, product) && !state.linked && product === "cal-eats" && <a className="button-link" target="_top" href="/order/?view=register-restaurant">List your restaurant</a>}
     </div>
+    {product === "calai" && <CalaiTabletAuthorization key={business.id} business={business}/>}
     {state.nativeAccountId && <details className="business-account-reference"><summary>Account details</summary><dl><div><dt>Business</dt><dd>{business.name}</dd></div><div><dt>Account reference</dt><dd>{state.nativeAccountId}</dd></div></dl></details>}
   </section>;
 }
@@ -176,6 +251,7 @@ export function BusinessConnections() {
           <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify account"}</button>
           {state.nativeLinks?.onboarding && safeNativeLink(state.nativeLinks.onboarding) && <p className="fine"><a target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register a Calai account</a></p>}
         </form>}
+        {product === "calai" && !proof && !busy && <CalaiTabletAuthorization key={business.id} business={business}/>}
       </section>
     </>}
   </div>;

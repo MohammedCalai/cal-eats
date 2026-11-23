@@ -38,7 +38,7 @@ import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
 import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
-import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions } from "./unified-business-model.js";
+import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
 
@@ -200,15 +200,15 @@ function OwnerBootstrap() {
 
 function OwnerRestaurantWorkspace({ user }) {
   const workspace = useBusinessWorkspace(), selectedBusinessId = workspace?.business?.id;
-  const result = useLoad(() => api("/api/restaurant/restaurants"), [user.id]);
+  const needsEats = canLoadEatsRestaurantWorkspace(workspace?.business);
+  const result = useLoad(() => needsEats ? api("/api/restaurant/restaurants") : [], [user.id, needsEats]);
   const storageKey = `cal-eats:business:last-restaurant:${user.id}`;
-  const restaurants = listItems(result.value);
+  const restaurants = needsEats ? listItems(result.value) : [];
   const [selected, setSelectedId] = useState(() => {
     try { return window.localStorage.getItem(storageKey) || ""; } catch { return ""; }
   });
-  const fallback = restaurants.find(item => (item.approvalStatus || item.status) === "approved" && !item.suspended && !item.paused && !item.profile?.paused) || restaurants[0];
   const scopedRestaurant = workspace?.business?.eatsRestaurantId;
-  const restaurant = scopedRestaurant && workspace?.business?.products?.["cal-eats"]?.allowedOnTablet !== false ? restaurants.find(item => item.id === scopedRestaurant) : null;
+  const restaurant = restaurants.find(item => item.id === scopedRestaurant) ?? null;
   useEffect(() => {
     if (result.loading || result.error) return;
     if (restaurant && selected !== restaurant.id) setSelectedId(restaurant.id);
@@ -224,8 +224,8 @@ function OwnerRestaurantWorkspace({ user }) {
     try { window.localStorage.setItem(storageKey, authorized.id); } catch { /* Keep the current in-memory selection. */ }
   }, [restaurants, storageKey]);
   if (!["restaurant", "owner", "staff"].includes(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
-  if (result.loading) return <PageState text="Loading your business…"/>;
-  if (result.error) return <PageState error={result.error} retry={result.reload}/>;
+  if (needsEats && result.loading) return <PageState text="Loading your business…"/>;
+  if (needsEats && result.error) return <PageState error={result.error} retry={result.reload}/>;
   const permission = restaurant?.permission || restaurant?.membershipPermission || "staff";
   return <RestaurantContext.Provider key={selectedBusinessId} value={{ restaurant, restaurants, setSelected, permission, refreshRestaurants:result.reload }}><Outlet /></RestaurantContext.Provider>;
 }

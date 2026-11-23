@@ -1,14 +1,52 @@
 import {HttpError} from './http.js';
 import {restaurantReadiness} from './readiness.js';
 import {merchantCommercialAcceptance} from './merchant-commercial.js';
+import {businessAccountMembership} from './business-account-membership.js';
 
 export {businessProductPolicyMigration69} from './business-product-policy-migration.js';
 const exists=(db,name)=>Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
-// Pairing in one product never delegates another product's private records.
-// The registering human must retain proof for the exact native Calai account.
+
+export function currentCalaiApproverProof(db, businessId, userId) {
+  const proof = db.prepare(`
+    SELECT p.id AS link_id, p.source_account_id, p.upstream_user_id AS source_user_id
+      FROM business_product_links p
+      JOIN business_accounts b ON b.id=p.business_id AND b.archived_at IS NULL
+      JOIN business_product_permissions permission
+        ON permission.business_id=b.id AND permission.product='calai' AND permission.allowed=1
+      JOIN business_product_authorities proof
+        ON proof.business_id=b.id AND proof.product='calai'
+        AND proof.source_account_id=p.source_account_id AND proof.source_user_id=p.upstream_user_id
+      JOIN users u ON u.id=proof.user_id AND u.role='restaurant'
+        AND u.account_enabled=1 AND u.principal_kind='human'
+      LEFT JOIN business_product_links eats ON eats.business_id=b.id AND eats.product='cal-eats'
+      LEFT JOIN restaurant_memberships local_owner
+        ON local_owner.restaurant_id=eats.restaurant_id AND local_owner.user_id=u.id AND local_owner.permission='owner'
+      LEFT JOIN restaurants r ON r.id=eats.restaurant_id AND r.archived_at IS NULL
+     WHERE p.business_id=? AND u.id=? AND p.product='calai' AND p.status='active'
+       AND (eats.id IS NULL OR (local_owner.user_id IS NOT NULL AND r.id IS NOT NULL))
+  `).get(businessId, userId);
+  if (!proof || businessAccountMembership(db, userId, businessId)?.permission !== 'owner') return null;
+  return proof;
+}
+
+// The paired identity may read this native account only through the original
+// issuer proof or an explicit approval from the verified business owner.
 export function terminalHasCalaiAuthority(db,terminalId,businessId){
  if(!terminalId||!businessId)return false;
- return Boolean(db.prepare("SELECT 1 FROM business_terminals t JOIN users u ON u.id=t.registered_by AND u.account_enabled=1 AND u.principal_kind='human' JOIN business_product_authorities a ON a.business_id=t.business_id AND a.product='calai' AND a.user_id=u.id JOIN business_product_links p ON p.business_id=a.business_id AND p.product=a.product AND p.source_account_id=a.source_account_id AND p.upstream_user_id=a.source_user_id WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL").get(terminalId,businessId));
+ if(db.prepare("SELECT 1 FROM business_terminals t JOIN users u ON u.id=t.registered_by AND u.account_enabled=1 AND u.principal_kind='human' JOIN business_product_authorities a ON a.business_id=t.business_id AND a.product='calai' AND a.user_id=u.id JOIN business_product_links p ON p.business_id=a.business_id AND p.product=a.product AND p.source_account_id=a.source_account_id AND p.upstream_user_id=a.source_user_id WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL").get(terminalId,businessId))return true;
+ const approved=db.prepare(`
+   SELECT consent.* FROM business_terminal_calai_approvals consent
+     JOIN business_terminals terminal ON terminal.id=consent.terminal_id
+       AND terminal.business_id=consent.business_id AND terminal.revoked_at IS NULL
+     JOIN admin_tablets tablet ON tablet.id=consent.tablet_id AND tablet.terminal_id=terminal.id
+       AND tablet.business_id=terminal.business_id AND tablet.lifecycle_state='assigned'
+       AND tablet.archived_at IS NULL AND tablet.authority_blocked_at IS NULL AND tablet.handoff_requested_at IS NULL
+    WHERE consent.terminal_id=? AND consent.business_id=?
+ `).get(terminalId,businessId);
+ if (!approved) return false;
+ const proof=currentCalaiApproverProof(db,businessId,approved.approved_by);
+ return Boolean(proof && proof.link_id===approved.native_link_id &&
+   proof.source_account_id===approved.source_account_id && proof.source_user_id===approved.source_user_id);
 }
 export function businessProductPermission(db,businessId,product){
  if(!exists(db,'business_product_permissions'))return product==='cal-eats';
