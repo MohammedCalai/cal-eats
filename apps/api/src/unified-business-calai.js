@@ -36,10 +36,11 @@ export function calaiBusinessReadPath(section,id=null,detail=null){
   throw new HttpError(404,'CALAI_RESOURCE_UNAVAILABLE','This Calai feature needs an additional source capability.');
 }
 export function createCalaiBusinessAdapter({fetchImpl=globalThis.fetch,timeoutMs=8000,responseLimitBytes=8*1024*1024}={}){
-  async function call(method,path,{body,accessToken,refreshToken}={}){
+  async function call(method,path,{body,accessToken,refreshToken,signal}={}){
     if(!/^\/api\/(?:auth\/(?:login|refresh-token)$|business-owner\/)/.test(path)||/[\\\r\n?#]/.test(path))throw new HttpError(400,'CALAI_ROUTE_NOT_ALLOWED','Calai route is not permitted.');
     const url=new URL(path,CALAI_BUSINESS_ORIGIN);if(url.origin!==CALAI_BUSINESS_ORIGIN)throw failure(403,'CALAI_ROUTE_NOT_ALLOWED');
-    let response;try{response=await fetchImpl(url,{method,redirect:'error',signal:AbortSignal.timeout(timeoutMs),headers:{accept:'application/json','content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{}),...(refreshToken?{cookie:'refreshToken='+refreshToken}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});}catch{throw failure();}
+    const timeout=AbortSignal.timeout(timeoutMs);
+    let response;try{response=await fetchImpl(url,{method,redirect:'error',signal:signal?AbortSignal.any([timeout,signal]):timeout,headers:{accept:'application/json','content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{}),...(refreshToken?{cookie:'refreshToken='+refreshToken}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});}catch{throw failure();}
     const limit=path.startsWith('/api/auth/')?128*1024:responseLimitBytes;
     if(Number(response.headers.get('content-length')??0)>limit){await response.body?.cancel();throw failure(502,'CALAI_RESPONSE_INVALID');}
     const chunks=[];let length=0;try{for await(const chunk of response.body??[]){length+=chunk.length;if(length>limit)throw Error();chunks.push(chunk);}}catch{await response.body?.cancel().catch(()=>{});throw failure(502,'CALAI_RESPONSE_INVALID');}
@@ -51,7 +52,7 @@ export function createCalaiBusinessAdapter({fetchImpl=globalThis.fetch,timeoutMs
     async login(email,password){const r=await call('POST','/api/auth/login',{body:{email,password}}),match=/^refreshToken=([A-Za-z0-9_.-]{20,10000})(?:;|$)/.exec(r.refreshCookie??'');if(!match)throw failure(502,'CALAI_RESPONSE_INVALID');return{user:r.data?.user,accessToken:r.data?.accessToken,refreshToken:match[1]};},
     async refresh(refreshToken){return(await call('POST','/api/auth/refresh-token',{refreshToken,body:{}})).data?.accessToken;},
     async identity(accessToken){const[profile,business]=await Promise.all([call('GET','/api/business-owner/settings/my-profile',{accessToken}),call('GET','/api/business-owner/business-hour',{accessToken})]);return{user:profile.data,business:business.data};},
-    async read(section,accessToken,{id=null,detail=null}={}){return(await call('GET','/api/business-owner'+calaiBusinessReadPath(section,id,detail),{accessToken})).data;}
+    async read(section,accessToken,{id=null,detail=null,signal}={}){return(await call('GET','/api/business-owner'+calaiBusinessReadPath(section,id,detail),{accessToken,signal})).data;}
   };
 }
 export function calaiBusinessAdapter(config){const settings=unifiedBusinessIntegrationConfig(config);if(!settings.encryptionKey)throw failure(503,'CALAI_BUSINESS_NOT_CONFIGURED');return settings.adapter??createCalaiBusinessAdapter();}

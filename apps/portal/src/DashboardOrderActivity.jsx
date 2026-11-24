@@ -22,13 +22,16 @@ export function useDashboardOrderActivity(business, products) {
   });
 }
 
-function CombinedOrderCards({ counters, products, checking, operations, operationsUnavailable }) {
+function CombinedOrderCards({ counters, products, checking, operations, operationsUnavailable, calaiLiveCalls }) {
   const [{ count: phoneOrders }, { count: onlineOrders }] = counters;
-  const phoneLoading = checking && products.includes("calai");
+  const calls = calaiLiveCalls?.activeCalls ?? null;
   const live = liveOrderCount(operations, operationsUnavailable);
-  const phoneLabel = phoneOrders === null
-    ? phoneLoading ? "Checking phone orders" : "Phone order count unavailable"
-    : phoneOrders + " phone orders today";
+  const callsLoading = checking && products.includes("calai");
+  const hasCallActivity = calaiLiveCalls && [calls, calaiLiveCalls.ringing, calaiLiveCalls.queued, calaiLiveCalls.forwarding]
+    .some(count => count > 0);
+  const callLabel = calls === null
+    ? callsLoading ? "Checking live calls" : "Live calls unavailable"
+    : calls === 1 ? "1 live call" : calls + " live calls";
   const liveLabel = live === null
     ? operationsUnavailable ? "Live order count unavailable" : "Checking live orders"
     : live + " live orders";
@@ -36,10 +39,19 @@ function CombinedOrderCards({ counters, products, checking, operations, operatio
   return <div className="dashboard-service-grid">
     <article className="dashboard-service-card source-calai" aria-labelledby="combined-calai-title">
       <header className="dashboard-service-heading">
-        <h3 id="combined-calai-title">Calai</h3><p>Phone orders</p>
+        <h3 id="combined-calai-title">Calai</h3><p>Live calls</p>
       </header>
-      <LiveOrderOrbit value={phoneOrders?.toLocaleString("en-GB")} label="TODAY" active={phoneOrders > 0} announcement={phoneLabel}/>
-      {phoneOrders === null && <p className="dashboard-service-status">{phoneLabel}</p>}
+      <LiveOrderOrbit value={calls?.toLocaleString("en-GB")} label="LIVE CALLS"
+        active={hasCallActivity} announcement={callLabel}/>
+      <div className="dashboard-service-status">
+        {calaiLiveCalls ? <div className="live-order-stages">
+          <span>{calaiLiveCalls.agentsInUse} {calaiLiveCalls.agentsInUse === 1 ? "agent" : "agents"} in use</span>
+          <span>{calaiLiveCalls.ringing} ringing</span>
+          <span>{calaiLiveCalls.queued} queued</span>
+          <span>{calaiLiveCalls.forwarding} forwarded</span>
+        </div> : <p>{callLabel}</p>}
+        {phoneOrders !== null && <p className="dashboard-service-today">{phoneOrders.toLocaleString("en-GB")} {phoneOrders === 1 ? "phone order" : "phone orders"} today</p>}
+      </div>
       {products.includes("calai") && <NavLink className="button-link dashboard-service-action" to="/owner/calai/orders">View phone orders</NavLink>}
     </article>
     <article className="dashboard-service-card source-cal-eats" aria-labelledby="combined-eats-title">
@@ -60,9 +72,11 @@ export function DashboardOrderActivity({ businessId, products, resource, workspa
   const combined = workspaceMode === "both";
   const visibleProducts = combined ? ["calai", "cal-eats"]
     : workspaceMode === "calai" ? ["calai"] : workspaceMode === "cal-eats" ? ["cal-eats"] : products;
-  const activity = dashboardOrderActivity(
-    resource.error ? null : resource.value, businessId, products,
-  );
+  const snapshot = !resource.error && resource.value?.business?.id === businessId ? resource.value : null;
+  const activity = dashboardOrderActivity(snapshot, businessId, products);
+  const callSnapshot = combined && products.includes("calai") ? snapshot?.calaiLiveCalls : null;
+  const validCallSnapshot = callSnapshot && ["activeCalls", "agentsInUse", "ringing", "queued", "forwarding"]
+    .every(key => Number.isSafeInteger(callSnapshot[key]) && callSnapshot[key] >= 0);
   const counters = visibleProducts.map(product => ({ product,
     count: activity.counters.find(counter => counter.product === product)?.count ?? null,
   }));
@@ -72,14 +86,15 @@ export function DashboardOrderActivity({ businessId, products, resource, workspa
   const countLabel = (count, loading = checking) => count === null ? (loading ? "Loading…" : "Unavailable") : count.toLocaleString("en-GB");
   return <section className={"panel dashboard-workspace-orders" + (combined ? " dashboard-workspace-orders--combined" : "")} aria-labelledby="dashboard-orders-title">
     <div className="dashboard-section-heading">
-      <div>{!combined && <p className="eyebrow">Today · London time</p>}<h2 id="dashboard-orders-title">{combined ? "Combined orders" : "Orders"}</h2></div>
+      <div>{!combined && <p className="eyebrow">Today · London time</p>}<h2 id="dashboard-orders-title">{combined ? "Live activity" : "Orders"}</h2></div>
       {!combined && <div className="button-row">
         {visibleProducts.includes("calai") && products.includes("calai") && <NavLink className="button-link" to="/owner/calai/orders">Calai orders</NavLink>}
         {visibleProducts.includes("cal-eats") && products.includes("cal-eats") && <NavLink className="button-link" to="/owner/orders">Cal-Eats orders</NavLink>}
       </div>}
     </div>
     {combined
-      ? <CombinedOrderCards counters={counters} products={products} checking={checking} operations={operations} operationsUnavailable={operationsUnavailable}/>
+      ? <CombinedOrderCards counters={counters} products={products} checking={checking} operations={operations}
+          operationsUnavailable={operationsUnavailable} calaiLiveCalls={validCallSnapshot ? callSnapshot : null}/>
       : <dl className="dashboard-source-counts dashboard-workspace-counts" aria-label="Orders received today">
       {counters.map(({ product, count }) => <div className={`dashboard-workspace-counter source-${product}`} key={product}><dt>{productName(product)}</dt><dd><strong>{countLabel(count, checking && products.includes(product))}</strong><span>{product === "calai" ? "Telephone orders" : "Online orders"}</span></dd></div>)}
     </dl>}
