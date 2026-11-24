@@ -119,7 +119,7 @@ export function assertBusinessIntakeAllowed(db,restaurantId,config={}){
  if(!exists(db,'business_product_permissions'))return;
  const row=db.prepare("SELECT p.business_id,COALESCE(a.allowed,0) allowed FROM business_product_links p LEFT JOIN business_product_permissions a ON a.business_id=p.business_id AND a.product='cal-eats' WHERE p.product='cal-eats' AND p.restaurant_id=?").get(restaurantId);
  if(!row||row.allowed!==1)throw new HttpError(409,'CAL_EATS_DISABLED','Cal-Eats ordering is unavailable for this restaurant. Existing orders remain accessible.');
- if(exists(db,'admin_tablets')&&db.prepare("SELECT 1 FROM business_terminals t JOIN admin_tablets a ON a.terminal_id=t.id AND a.business_id=t.business_id WHERE t.business_id=? AND t.revoked_at IS NULL AND a.archived_at IS NULL AND a.application_products='calai'").get(row.business_id))throw new HttpError(409,'TABLET_PRODUCT_INACTIVE','The restaurant tablet is not currently receiving Cal-Eats orders.');
+ if(exists(db,'admin_tablets')&&db.prepare("SELECT 1 FROM business_terminals t JOIN admin_tablets a ON a.terminal_id=t.id AND a.business_id=t.business_id WHERE t.business_id=? AND t.revoked_at IS NULL AND a.archived_at IS NULL AND a.application_products='calai'").get(row.business_id))throw new HttpError(409,'TABLET_PRODUCT_INACTIVE','This restaurant is not taking orders right now.');
  const state=businessProductState(db,row.business_id,'cal-eats',config);if(!state.connected||!state.readiness.ready)throw new HttpError(409,'CAL_EATS_SETUP_REQUIRED','This restaurant must finish its approved setup before taking new Cal-Eats orders.');
 }
 export function calEatsEnabledSql(alias='r'){

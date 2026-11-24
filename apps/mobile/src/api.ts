@@ -37,7 +37,13 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, signal: controller.signal, credentials: "omit", redirect: "error" });
     const payload = await response.json().catch(() => null) as { data?: T; error?: { code?: string; message?: string } } | null;
-    if (!response.ok) throw new ApiError(String(payload?.error?.message ?? `Request failed (${response.status}).`).replace(/\bStripe\b/gi,"card payment service"), response.status, payload?.error?.code);
+    if (!response.ok) {
+      const code = payload?.error?.code;
+      const message = ["TABLET_PRODUCT_INACTIVE", "CAL_EATS_SETUP_REQUIRED", "CAL_EATS_DISABLED"].includes(code ?? "")
+        ? "This restaurant isn't taking Cal-Eats orders right now. Please choose another restaurant or try again later."
+        : String(payload?.error?.message ?? `Request failed (${response.status}).`).replace(/\bStripe\b/gi,"card payment service");
+      throw new ApiError(message, response.status, code);
+    }
     if (!payload || !Object.prototype.hasOwnProperty.call(payload, "data")) throw new ApiError("We couldn’t load this information. Please try again.", response.status, "MALFORMED_RESPONSE");
     if ((options.method ?? "GET").toUpperCase() === "PATCH" && /^\/api\/notifications\/[^/?]+(?:\?|$)/.test(path)) invalidateNotifications();
     return payload.data as T;
