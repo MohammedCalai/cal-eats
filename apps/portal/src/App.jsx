@@ -79,9 +79,9 @@ function Brand({ mode = "cal-eats" }) {
   </span>;
   if (mode === "calai") return calaiBrand;
   if (mode === "both") return <span className="combined-business-brand" role="img" aria-label="Calai and Cal-Eats">
-    <img src="/assets/calai-business-mark.png" alt=""/>
+    <img className="combined-business-logo" src="/assets/calai-business-logo.png" alt=""/>
+    <img className="combined-business-mark" src="/assets/calai-business-mark.png" alt=""/>
     <span className="combined-business-wordmark" aria-hidden="true">
-      <span>Calai</span>
       <span className="combined-business-plus">+</span>
       <span>Cal<span className="combined-business-accent">-Eats</span></span>
     </span>

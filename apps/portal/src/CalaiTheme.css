@@ -69,23 +69,32 @@
   height: 50px;
   aspect-ratio: auto;
   transform: none;
-  mix-blend-mode: normal;
+  mix-blend-mode: lighten;
   object-fit: contain;
 }
 
 .combined-business-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 50px;
-  padding-inline: 4px;
 }
 
-.combined-business-brand > img {
-  width: 31px;
-  height: 40px;
+.combined-business-logo,
+.combined-business-mark {
+  height: 44px;
   flex: none;
   object-fit: contain;
+  mix-blend-mode: lighten;
+}
+
+.combined-business-logo {
+  width: 108px;
+}
+
+.combined-business-mark {
+  display: none;
+  width: 35px;
 }
 
 .combined-business-wordmark {
@@ -113,11 +122,16 @@
 @media (min-width: 1536px) {
   .sidebar-collapsed .calai-business-brand .brand-mark {
     object-fit: contain;
-    mix-blend-mode: normal;
+    mix-blend-mode: lighten;
   }
 
+  .sidebar-collapsed .combined-business-logo,
   .sidebar-collapsed .combined-business-wordmark {
     display: none;
+  }
+
+  .sidebar-collapsed .combined-business-mark {
+    display: block;
   }
 }
 
