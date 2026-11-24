@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
 import crypto from "node:crypto";
+import {EventEmitter} from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {PassThrough} from "node:stream";
 import test from "node:test";
+import {fileURLToPath} from "node:url";
 import {TerminalDevice,readManagedSetup} from "../src/device.js";
 import {managedSetupPoller} from "../src/index.js";
 import {encodeManagedEvidence,requestAllowed} from "../src/protocol.js";
-import {WindowsDeviceKey} from "../src/windows-key.js";
+import {runWindowsKeyHelper,WindowsDeviceKey} from "../src/windows-key.js";
 import {buildManagedTerminalInstaller,buildTerminalInstaller} from "../windows/build-installer.mjs";
 
 const jobId="11111111-1111-4111-8111-111111111111";
@@ -112,6 +115,78 @@ test("Windows PowerShell 5.1 checks delivery revision before building native arg
   const result=spawnSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",runner],{cwd:directory,encoding:"utf8",timeout:15000,windowsHide:true});
   assert.equal(result.status,0,result.stderr||result.stdout||String(result.error));
   assert.equal(result.stdout.trim(),"offline-delivery-revision-ok");
+});
+
+test("the managed CLI returns a typed failure and suppresses raw configuration errors",async t=>{
+  const directory=await temp(t);
+  const config=path.join(directory,"private-config-name.json");
+  await fs.writeFile(config,"invalid private configuration contents");
+  const entry=fileURLToPath(new URL("../src/index.js",import.meta.url));
+  const result=spawnSync(process.execPath,[entry,"--config",config,"--prepare-managed",jobId],{encoding:"utf8",timeout:10000});
+  assert.equal(result.status,1);
+  assert.equal(result.stdout,"");
+  assert.equal(result.stderr.trim(),"CAL_EATS_MANAGED_SETUP_ERROR_V1:TABLET_MANAGED_CONFIG:00000000");
+});
+
+test("key helper preserves one bounded diagnostic and discards other native errors",async()=>{
+  const invoke=stderr=>runWindowsKeyHelper({},{platform:"win32",spawnImpl(){
+    const child=Object.assign(new EventEmitter(),{
+      stdin:new PassThrough(),stdout:new PassThrough(),stderr:new PassThrough(),
+    });
+    queueMicrotask(()=>{
+      for(const chunk of stderr)child.stderr.write(Buffer.from(chunk));
+      child.stderr.end();
+      child.emit("close",1);
+    });
+    return child;
+  }});
+  const marker="CAL_EATS_TERMINAL_KEY_V1:TABLET_KEY_ACL_SET:80090010";
+  await assert.rejects(invoke([marker.slice(0,23),marker.slice(23),"\r\n"]),{
+    code:"TABLET_KEY_ACL_SET",windowsStatus:"80090010",
+  });
+  for(const stderr of [["private path or data"],[marker,"\n",marker],[marker,"\n\n"],["x".repeat(4097),marker]]){
+    await assert.rejects(invoke(stderr),{
+      code:"TABLET_KEY_HELPER_EXIT",windowsStatus:"00000000",message:"Tablet identity could not be used",
+    });
+  }
+});
+
+test("Windows PowerShell 5.1 reports only typed native setup errors and emits one valid proof",
+  {skip:process.platform!=="win32"},async t=>{
+  const directory=await temp(t);
+  const entry=path.join(directory,"test process with spaces.cjs");
+  await fs.writeFile(path.join(directory,"generated.ps1"),buildManagedTerminalInstaller({jobId,entraDeviceId,targetSerial}));
+  await fs.writeFile(entry,[
+    'const [, , mode, value]=process.argv;',
+    'if(mode==="ok"&&value==="path with spaces"){process.stdout.write("CAL_EATS_MANAGED_SETUP_V1:fixture-proof\\n");}',
+    'else if(mode==="known"){process.stderr.write("CAL_EATS_MANAGED_SETUP_ERROR_V1:TABLET_KEY_ACL_READ:80090010\\n");process.exitCode=1;}',
+    'else if(mode==="raw"){process.stderr.write("sensitive native message\\n");process.exitCode=5;}',
+    'else{process.stdout.write("sensitive invalid proof\\n");}',
+  ].join("\n"));
+  const runner=[
+    "param([string]$Node,[string]$Entry)",
+    "$ErrorActionPreference='Stop'",
+    "$parseErrors=$null",
+    "$tree=[Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) 'generated.ps1'),[ref]$null,[ref]$parseErrors)",
+    "if ($parseErrors.Count) { throw $parseErrors[0].Message }",
+    "$fn=$tree.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Read-TerminalManagedEvidence'},$true)",
+    ". ([scriptblock]::Create($fn.Extent.Text))",
+    "Read-TerminalManagedEvidence $Node $Entry @('ok','path with spaces')",
+    "foreach ($mode in @('known','raw','invalid')) {",
+    " try { Read-TerminalManagedEvidence $Node $Entry @($mode) } catch { Write-Output $_.Exception.Message }",
+    "}",
+  ].join("\r\n");
+  await fs.writeFile(path.join(directory,"fixture.ps1"),runner);
+  const result=spawnSync("powershell.exe",["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File","fixture.ps1",process.execPath,entry],
+    {cwd:directory,encoding:"utf8",timeout:15000,windowsHide:true});
+  assert.equal(result.status,0,result.stderr||result.stdout||String(result.error));
+  assert.equal(result.stderr,"");
+  assert.deepEqual(result.stdout.trim().split(/\r?\n/),[
+    "CAL_EATS_MANAGED_SETUP_V1:fixture-proof",
+    "The protected tablet key could not prepare managed setup evidence (TABLET_KEY_ACL_READ, Windows status 80090010).",
+    "The protected tablet key could not prepare managed setup evidence (TABLET_MANAGED_NODE_EXIT, status 5).",
+    "The protected tablet key could not prepare managed setup evidence (TABLET_MANAGED_EVIDENCE_OUTPUT).",
+  ]);
 });
 
 test("Windows PowerShell 5.1 parses managed installer and quietly rejects missing, wrong and ambiguous join proofs",

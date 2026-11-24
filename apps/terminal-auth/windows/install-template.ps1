@@ -99,6 +99,36 @@ function Get-TerminalManagedSetupRevision($Setup) {
  }
  return $Revision
 }
+function Read-TerminalManagedEvidence([string]$Node,[string]$Entry,[string[]]$Arguments) {
+ # Capture both streams separately. Never copy child errors or a partial proof
+ # to the Intune execution report.
+ $CommandArguments=@($Entry)+$Arguments
+ $Start=[Diagnostics.ProcessStartInfo]::new($Node,(($CommandArguments | ForEach-Object { '"'+$_+'"' }) -join ' '))
+ $Start.UseShellExecute=$false;$Start.CreateNoWindow=$true
+ $Start.RedirectStandardOutput=$true;$Start.RedirectStandardError=$true
+ $Failure='The protected tablet key could not prepare managed setup evidence'
+ try { $Process=[Diagnostics.Process]::Start($Start) } catch { throw "$Failure (TABLET_MANAGED_NODE_LAUNCH)." }
+ try {
+  $Output=$Process.StandardOutput.ReadToEndAsync()
+  $ErrorOutput=$Process.StandardError.ReadToEndAsync()
+  if (-not $Process.WaitForExit(60000)) {
+   try { $Process.Kill() } catch {}
+   throw "$Failure (TABLET_MANAGED_NODE_TIMEOUT)."
+  }
+  $Proof=$Output.GetAwaiter().GetResult()
+  $Diagnostic=$ErrorOutput.GetAwaiter().GetResult()
+  if ($Process.ExitCode -ne 0) {
+   if ($Diagnostic -cmatch '\ACAL_EATS_MANAGED_SETUP_ERROR_V1:((?:TABLET_[A-Z_]{3,50})|MANAGED_SETUP_CLOSED):([0-9A-F]{8})(?:\r?\n)?\z') {
+    throw "$Failure ($($Matches[1]), Windows status $($Matches[2]))."
+   }
+   throw "$Failure (TABLET_MANAGED_NODE_EXIT, status $($Process.ExitCode))."
+  }
+  if ($Diagnostic -or -not ($Proof -cmatch '\A(CAL_EATS_MANAGED_SETUP_V1:[A-Za-z0-9_-]{1,1000})(?:\r?\n)?\z')) {
+   throw "$Failure (TABLET_MANAGED_EVIDENCE_OUTPUT)."
+  }
+  return $Matches[1]
+ } finally { $Process.Dispose() }
+}
 $TerminalManagedSetup=$null
 $ManagedUuid='\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'
 if ($TerminalManagedSetupBase64) {
@@ -425,8 +455,7 @@ try {
   if ($TerminalManagedDeliveryRevision -gt 1) {
    $EvidenceArguments+=$TerminalManagedDeliveryRevision.ToString([Globalization.CultureInfo]::InvariantCulture)
   }
-  $Evidence=@(& $TerminalNode $TerminalEntry @EvidenceArguments)
-  if ($LASTEXITCODE -ne 0 -or $Evidence.Count -ne 1 -or $Evidence[0] -cnotmatch '\ACAL_EATS_MANAGED_SETUP_V1:[A-Za-z0-9_-]{1,1000}\z') { throw 'The protected tablet key could not prepare managed setup evidence.' }
+  $Evidence=Read-TerminalManagedEvidence $TerminalNode $TerminalEntry $EvidenceArguments
  }
  if (-not $ReuseManagedRelease -or $RestartManagedBroker -or $ExistingTask.State -ne 'Running') { Start-ScheduledTask -TaskName $TerminalTaskName -TaskPath '\' | Out-Null }
 } catch {
@@ -436,7 +465,7 @@ try {
  }
  throw
 }
-if ($TerminalManagedSetup) { Write-Output $Evidence[0] }
+if ($TerminalManagedSetup) { Write-Output $Evidence }
 else { Write-Output 'Protected restaurant tablet identity service installed. Original Calai printer credentials, queues and startup are preserved.' }
 } finally {
  if ($InstallLockHeld) { $InstallLock.ReleaseMutex() }

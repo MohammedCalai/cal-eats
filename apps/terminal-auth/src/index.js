@@ -3,7 +3,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {TerminalDevice,readManagedSetup} from "./device.js";
 import {startBroker} from "./broker.js";
-import {API_ORIGIN,BROKER_PORT,exactObject,encodeManagedEvidence,validManagedDeliveryRevision} from "./protocol.js";
+import {API_ORIGIN,BROKER_PORT,exactObject,encodeManagedEvidence,managedJobId,validManagedDeliveryRevision} from "./protocol.js";
 
 async function installedConfig(configPath){
   const config=JSON.parse(await fs.readFile(configPath,"utf8"));
@@ -53,15 +53,37 @@ export function managedSetupPoller({device,managedPath,clock=Date.now}){
     try{return await working;}finally{working=null;}
   };
 }
-async function managedEvidence(configPath,jobId,revisionArgument){
+const managedSetupCodes=new Set([
+  "MANAGED_SETUP_CLOSED","TABLET_LOCAL_REPLACEMENT_REQUIRED","TABLET_MANAGED_KEY_CHANGED",
+  "TABLET_MANAGED_SETUP_CONFLICT","TABLET_MANAGED_SETUP_INVALID","TABLET_SIGNATURE_INVALID",
+]);
+function managedEvidenceDiagnostic(error,stage){
+  const code=error?.code;
+  const keyError=/^TABLET_KEY_[A-Z_]{3,40}$/.test(code||"");
+  const knownCode=keyError||managedSetupCodes.has(code);
+  const status=keyError&&/^[0-9A-F]{8}$/.test(error.windowsStatus||"")?error.windowsStatus:"00000000";
+  return `CAL_EATS_MANAGED_SETUP_ERROR_V1:${knownCode?code:stage}:${status}`;
+}
+async function manageInstalledSetup(configPath,jobId,revisionArgument){
+  let stage="TABLET_MANAGED_REQUEST";
   const deliveryRevision=revisionArgument===undefined?1:Number(revisionArgument);
-  if(!validManagedDeliveryRevision(deliveryRevision)||
-    (revisionArgument!==undefined&&(deliveryRevision<2||String(deliveryRevision)!==revisionArgument)))throw Error("Invalid managed tablet delivery revision");
-  const {config,identityPath,setupPath,managedPath}=await installedConfig(configPath);
-  if(!await missing(setupPath))throw Error("Another tablet setup is in progress");
-  const device=await new TerminalDevice({identityPath,managedPath,apiBaseUrl:config.apiBaseUrl}).load();
-  const evidence=await device.prepareManagedSetup(jobId,managedPath,deliveryRevision);
-  return encodeManagedEvidence(evidence);
+  try{
+    if(!configPath||!managedJobId(jobId)||!validManagedDeliveryRevision(deliveryRevision)||
+      (revisionArgument!==undefined&&(deliveryRevision<2||String(deliveryRevision)!==revisionArgument)))throw Error();
+    stage="TABLET_MANAGED_CONFIG";
+    const {config,identityPath,setupPath,managedPath}=await installedConfig(path.resolve(configPath));
+    stage="TABLET_MANAGED_LEGACY_SETUP";
+    if(!await missing(setupPath))throw Error();
+    stage="TABLET_MANAGED_IDENTITY_LOAD";
+    const device=await new TerminalDevice({identityPath,managedPath,apiBaseUrl:config.apiBaseUrl}).load();
+    stage="TABLET_MANAGED_EVIDENCE_PREPARE";
+    const evidence=await device.prepareManagedSetup(jobId,managedPath,deliveryRevision);
+    stage="TABLET_MANAGED_EVIDENCE_ENCODE";
+    process.stdout.write(encodeManagedEvidence(evidence)+"\n");
+  }catch(error){
+    process.stderr.write(managedEvidenceDiagnostic(error,stage)+"\n");
+    process.exitCode=1;
+  }
 }
 export async function startInstalledBroker({configPath,signal,logger=record=>process.stdout.write(JSON.stringify(record)+"\n")}){
   const {config,identityPath,setupPath,managedPath}=await installedConfig(configPath);
@@ -92,15 +114,13 @@ export async function startInstalledBroker({configPath,signal,logger=record=>pro
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const index=process.argv.indexOf("--config"),configPath=index>=0&&process.argv[index+1];
-  if(!configPath){process.stderr.write("A protected tablet configuration is required.\n");process.exitCode=1;}
+  const managedIndex=process.argv.indexOf("--prepare-managed");
+  if(managedIndex>=0)await manageInstalledSetup(configPath,process.argv[managedIndex+1],process.argv[managedIndex+2]);
+  else if(!configPath){process.stderr.write("A protected tablet configuration is required.\n");process.exitCode=1;}
   else{
     const controller=new AbortController();
     process.once("SIGTERM",()=>controller.abort());process.once("SIGINT",()=>controller.abort());
-    const managedIndex=process.argv.indexOf("--prepare-managed");
-    const operation=managedIndex===-1
-      ? startInstalledBroker({configPath:path.resolve(configPath),signal:controller.signal})
-      : managedEvidence(path.resolve(configPath),process.argv[managedIndex+1],process.argv[managedIndex+2])
-          .then(line=>process.stdout.write(line+"\n"));
-    operation.catch(()=>{process.stderr.write("The protected restaurant tablet service could not start.\n");process.exitCode=1;});
+    startInstalledBroker({configPath:path.resolve(configPath),signal:controller.signal})
+      .catch(()=>{process.stderr.write("The protected restaurant tablet service could not start.\n");process.exitCode=1;});
   }
 }
