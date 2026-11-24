@@ -35,3 +35,29 @@ test("Windows key requests from a non-SYSTEM caller stop at the auth guard",{ski
   assert.match(runHelper('{"terminalId":"11111111-1111-4111-8111-111111111111","action":"public","provider":"software"}'),
     /^CAL_EATS_TERMINAL_KEY_V1:TABLET_KEY_AUTH:00000000\r?\n$/);
 });
+
+test("unavailable TPM is optional only for new managed software keys", {skip:process.platform!=="win32"},()=>{
+  const check=[
+    "$ErrorActionPreference='Stop'",
+    "$errors=$null;$tree=[Management.Automation.Language.Parser]::ParseFile($env:CAL_EATS_TEST_KEY_HELPER,[ref]$null,[ref]$errors)",
+    "if ($errors.Count) { throw $errors[0].Message }",
+    "$fn=$tree.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-TerminalAlternateKey'},$true)",
+    ". ([scriptblock]::Create($fn.Extent.Text))",
+    "$notReady=[Security.Cryptography.CryptographicException]::new(-2146893776)",
+    "$wrapped=[Management.Automation.MethodInvocationException]::new('wrapped',$notReady)",
+    "$denied=[Security.Cryptography.CryptographicException]::new(-2146893808)",
+    "$unexpectedType=[Runtime.InteropServices.ExternalException]::new('not a CNG error',-2146893776)",
+    "if (Test-TerminalAlternateKey {throw $wrapped} $true) { throw 'Unready optional TPM must return false' }",
+    "if (-not (Test-TerminalAlternateKey {$true} $true)) { throw 'Existing alternate key must still be reported' }",
+    "if (Test-TerminalAlternateKey {$false} $false) { throw 'Missing alternate key must return false' }",
+    "foreach ($case in @(@{Error=$wrapped;New=$false},@{Error=$denied;New=$true},@{Error=$unexpectedType;New=$true})) {",
+    " $reported=$null;try { Test-TerminalAlternateKey {throw $case.Error} $case.New | Out-Null } catch { $reported=$_.Exception.GetBaseException() }",
+    " if ($null -eq $reported -or $reported.HResult -ne $case.Error.GetBaseException().HResult) { throw 'Original provider error must be preserved' }",
+    "}",
+  ].join("\r\n");
+  const result=spawnSync(powershell,[...commonArgs,"-Command",check],{
+    env:{...process.env,CAL_EATS_TEST_KEY_HELPER:helper},encoding:"utf8",timeout:15000,windowsHide:true,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status,0,result.stderr);
+});

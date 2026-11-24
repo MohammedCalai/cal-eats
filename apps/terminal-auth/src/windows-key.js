@@ -54,7 +54,10 @@ export class WindowsDeviceKey{
     if(key.asymmetricKeyType!=="ec"||key.asymmetricKeyDetails?.namedCurve!=="prime256v1")throw keyError("TABLET_KEY_PUBLIC_INVALID");
     return value;
   }
-  async publicKey({create=false}={}){return this.validate(await this.helper({action:create?"create":"public",terminalId:this.terminalId,provider:"software"}));}
+  async publicKey({create=false,managedSetup=false}={}){
+    const action=create?(managedSetup?"create-managed":"create"):"public";
+    return this.validate(await this.helper({action,terminalId:this.terminalId,provider:"software"}));
+  }
   async sign(canonical){
     if(typeof canonical!=="string"||!/^(?:CAL-EATS-(?:PAIR|TERMINAL)-V1|Cal-Eats managed terminal (?:evidence v[12]|activation v1))\n/.test(canonical)||
       Buffer.byteLength(canonical)>16384)throw Error("Unsupported tablet signing context");

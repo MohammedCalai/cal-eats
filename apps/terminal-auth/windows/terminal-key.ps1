@@ -6,6 +6,17 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $FailureStage = 'REQUEST'
 $NativeError = $null
+function Test-TerminalAlternateKey([scriptblock]$Probe, [bool]$NewManagedSoftwareKey) {
+    try { return [bool](& $Probe) }
+    catch {
+        $Cause = $_.Exception.GetBaseException()
+        # The TPM is optional for a new identity that was assigned to the
+        # Software KSP. NTE_DEVICE_NOT_READY is 0x80090030.
+        if ($NewManagedSoftwareKey -and $Cause -is [Security.Cryptography.CryptographicException] -and
+            $Cause.HResult -eq -2146893776) { return $false }
+        throw
+    }
+}
 try {
     $Raw = [Console]::In.ReadToEnd()
     if ($Raw.Length -gt 32768) { throw 'Request too large' }
@@ -20,6 +31,8 @@ try {
     $Hardware = [Security.Cryptography.CngProvider]::new('Microsoft Platform Crypto Provider')
     $Options = [Security.Cryptography.CngKeyOpenOptions]::MachineKey
     if ($Request.provider -notin @('software','tpm')) { throw 'An explicit supported key provider is required' }
+    $NewManagedSoftwareKey = $Request.action -ceq 'create-managed' -and $Request.provider -ceq 'software'
+    if ($Request.action -ceq 'create-managed' -and -not $NewManagedSoftwareKey) { throw 'Managed setup requires the software key provider' }
     $Provider = if ($Request.provider -eq 'tpm') { $Hardware } else { $Software }
     $OtherProvider = if ($Request.provider -eq 'tpm') { $Software } else { $Hardware }
     $Key = $null
@@ -28,9 +41,11 @@ try {
         $Key = [Security.Cryptography.CngKey]::Open($KeyName, $Provider, $Options)
     } else {
         $FailureStage = 'ALTERNATE_PROVIDER_PROBE'
-        if ([Security.Cryptography.CngKey]::Exists($KeyName, $OtherProvider, $Options)) { throw 'An existing key uses a different provider. Explicit owner re-enrollment is required.' }
+        if (Test-TerminalAlternateKey { [Security.Cryptography.CngKey]::Exists($KeyName, $OtherProvider, $Options) } $NewManagedSoftwareKey) {
+            throw 'An existing key uses a different provider. Explicit owner re-enrollment is required.'
+        }
     }
-    if (-not $Key -and $Request.action -eq 'create') {
+    if (-not $Key -and ($Request.action -eq 'create' -or $NewManagedSoftwareKey)) {
         $FailureStage = 'CREATE'
         $Parameters = [Security.Cryptography.CngKeyCreationParameters]::new()
         $Parameters.Provider = $Provider
@@ -96,7 +111,7 @@ public static class CalEatsKeyAcl {
             try { $Signature = $Signer.SignData($Message, [Security.Cryptography.HashAlgorithmName]::SHA256) } finally { $Signer.Dispose() }
             if ($Signature.Length -ne 64) { throw 'Invalid P1363 signature' }
             $Output.signature = [Convert]::ToBase64String($Signature).TrimEnd('=').Replace('+','-').Replace('/','_')
-        } elseif ($Request.action -ne 'create' -and $Request.action -ne 'public') {
+        } elseif ($Request.action -ne 'create' -and $Request.action -ne 'public' -and -not $NewManagedSoftwareKey) {
             $FailureStage = 'REQUEST'
             throw 'Unsupported terminal key action'
         }

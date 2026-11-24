@@ -57,7 +57,7 @@ export class TerminalDevice{
     if(pending&&pending.jobId!==jobId&&pending.state!=="closed")throw failure("TABLET_MANAGED_SETUP_CONFLICT",409);
     if(pending?.jobId===jobId&&pending.state==="closed")throw failure("MANAGED_SETUP_CLOSED",410);
     const key=this.keyFactory(jobId);
-    const {publicKeySpki}=await key.publicKey({create:!this.identity&&pending?.jobId!==jobId});
+    const {publicKeySpki}=await key.publicKey({create:!this.identity&&pending?.jobId!==jobId,managedSetup:true});
     if(!managedPublicKey(publicKeySpki)||(this.identity&&this.identity.publicKeySpki!==publicKeySpki)||
         (pending?.jobId===jobId&&pending.publicKeySpki!==publicKeySpki))throw failure("TABLET_MANAGED_KEY_CHANGED",409);
     const signature=await key.sign(managedEvidenceCanonical({jobId,publicKeySpki,deliveryRevision}));

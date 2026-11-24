@@ -352,7 +352,7 @@ async function testDevice(t){
   const signingContexts=[],requests=[],keyAccess=[];
   let now=Date.parse("2026-11-23T12:00:00.000Z"),reply=()=>new Response(JSON.stringify({data:{status:"waiting"}}),{status:202});
   const keyFactory=id=>({
-    async publicKey({create=false}={}){keyAccess.push({id,create});return {publicKeySpki};},
+    async publicKey({create=false,managedSetup=false}={}){keyAccess.push({id,create,managedSetup});return {publicKeySpki};},
     async sign(canonical){
       signingContexts.push(canonical);
       return crypto.sign("sha256",Buffer.from(canonical),{key:keys.privateKey,dsaEncoding:"ieee-p1363"}).toString("base64url");
@@ -410,27 +410,33 @@ test("reissued delivery evidence binds revision and reuses the same protected pe
   assert.throws(()=>f.verify(second.signature,"Cal-Eats managed terminal evidence v2\n"+jobId+"\n3\n"+f.publicKeySpki));
   assert.throws(()=>f.verify(second.signature,"Cal-Eats managed terminal evidence v1\n"+jobId+"\n"+f.publicKeySpki));
   assert.equal(await fs.readFile(f.managedPath,"utf8"),original);
-  assert.deepEqual(f.keyAccess,[{id:jobId,create:true},{id:jobId,create:false}]);
+  assert.deepEqual(f.keyAccess,[{id:jobId,create:true,managedSetup:true},{id:jobId,create:false,managedSetup:true}]);
   await assert.rejects(f.device.prepareManagedSetup(jobId,f.managedPath,2.1),{code:"TABLET_MANAGED_SETUP_INVALID"});
   await f.poll();
   assert.deepEqual(f.requests,[{jobId,publicKeySpki:f.publicKeySpki}]);
 });
 
-test("existing Windows key adapter accepts delivery evidence v2 within its protected signing contexts",async()=>{
+test("Windows key adapter selects new managed creation explicitly and signs only supported contexts",async()=>{
   const keys=crypto.generateKeyPairSync("ec",{namedCurve:"prime256v1"});
   const publicKeySpki=keys.publicKey.export({type:"spki",format:"der"}).toString("base64");
   let calls=0;
   const key=new WindowsDeviceKey(jobId,{helper:async input=>{
     calls++;
-    assert.equal(input.action,"sign");assert.equal(input.terminalId,jobId);
+    assert.equal(input.terminalId,jobId);
+    assert.equal(input.provider,"software");
+    if(input.action!=="sign")return {publicKeySpki,machineKey:true,nonExportable:true,aclVerified:true,
+      provider:"Microsoft Software Key Storage Provider",action:input.action};
     const signature=crypto.sign("sha256",Buffer.from(input.messageBase64,"base64"),
       {key:keys.privateKey,dsaEncoding:"ieee-p1363"}).toString("base64url");
     return {publicKeySpki,signature,machineKey:true,nonExportable:true,aclVerified:true,
       provider:"Microsoft Software Key Storage Provider"};
   }});
+  assert.equal((await key.publicKey({create:true,managedSetup:true})).action,"create-managed");
+  assert.equal((await key.publicKey({create:false,managedSetup:true})).action,"public");
+  assert.equal((await key.publicKey({create:true})).action,"create");
   assert.match(await key.sign("Cal-Eats managed terminal evidence v2\n"+jobId+"\n2\n"+publicKeySpki),/^[A-Za-z0-9_-]{86}$/);
   await assert.rejects(key.sign("Cal-Eats managed terminal activation v2\n"+jobId+"\n"+challenge+"\n"+publicKeySpki),/Unsupported tablet signing context/);
-  assert.equal(calls,1);
+  assert.equal(calls,4);
 });
 
 test("pending poll backs off, authenticates the challenge and recovers exactly after a lost activation response",async t=>{
