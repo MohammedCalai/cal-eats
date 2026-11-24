@@ -64,3 +64,69 @@
 
 .calai-theme .dialog-heading>button[aria-label="Close"]{font-size:24px;line-height:1;min-width:44px}
 .calai-theme :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea){font-weight:500}
+.sidebar-top .calai-business-brand .brand-logo {
+  width: 122px;
+  height: 50px;
+  aspect-ratio: auto;
+  transform: none;
+  mix-blend-mode: normal;
+  object-fit: contain;
+}
+
+.combined-business-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.portal .sidebar-top .combined-business-brand > .brand {
+  width: 96px;
+}
+
+.combined-business-brand .calai-business-brand {
+  flex: none;
+  padding-right: 12px;
+  border-right: 1px solid #34343a;
+}
+
+.combined-business-brand .sidebar-top .calai-business-brand .brand-logo {
+  width: 100%;
+}
+
+@media (min-width: 1536px) {
+  .sidebar-collapsed .calai-business-brand .brand-mark {
+    object-fit: contain;
+    mix-blend-mode: normal;
+  }
+
+  .sidebar-collapsed .combined-business-brand {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .portal.sidebar-collapsed .sidebar-top .combined-business-brand > .brand,
+  .sidebar-collapsed .combined-business-brand .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sidebar-collapsed .combined-business-brand .calai-business-brand {
+    padding: 0;
+    border: 0;
+  }
+}
+
+.calai-theme .topbar > .top-actions {
+  display: flex;
+}
+
+[data-workspace-mode="both"] .sidebar .business-nav-section {
+  margin-top: 8px;
+}
+
+@media (min-width: 1536px) {
+  .portal.calai-theme .sidebar-top > .mobile-only {
+    display: none;
+  }
+}

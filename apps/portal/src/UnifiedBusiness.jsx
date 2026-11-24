@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Link, NavLink, Navigate, Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
+import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
 import { requestCalaiFirstTabletSetup, saveCalaiFirstTabletSetup } from "./calai-first-tablet-download.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
@@ -77,7 +77,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={business} terminal={terminal}/>{embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
+  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={business} terminal={terminal}/>{embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
 }
 function OperationalSurfacePresence({ business, terminal }) {
   const lastScope = useRef(null);
@@ -380,21 +380,33 @@ export function BusinessConnections({ tabletConnection }) {
   </div>;
 }
 export function NativeCalaiView({ section = "orders" }) {
-  const workspace = useBusinessWorkspace(), state = productPresentation(workspace?.business, "calai");
-  // Native call-summary reads can update Calai's own records. Leave that
-  // workflow in its existing app rather than polling it from this integration.
-  const resource = useBusinessResource(section === "orders" && state.usable ? "/api/business/calai/orders" : null, { poll: section === "orders" ? 30000 : 0 });
-  if (state.allowedOnTablet === false) return <Navigate to="/owner/dashboard" replace/>;
-  const settings = safeNativeLink(state.nativeLinks?.settings), rows = listItems(resource.value);
-  const title = section === "settings" ? "Calai settings" : section === "calls" ? "Calai calls" : "Calai orders";
+  const workspace = useBusinessWorkspace(), business = workspace?.business;
+  const state = productPresentation(business, "calai");
+  const tool = CALAI_WORKSPACE_TOOLS.find(({ id }) => id === section);
+  const permitted = workspace?.mode !== "cal-eats" && state.allowedOnTablet !== false;
+  const showOrders = section === "orders" && permitted && state.usable && business?.canViewCalai === true;
+  const resource = useBusinessResource(showOrders ? "/api/business/calai/orders" : null, {
+    poll: showOrders ? 30000 : 0,
+    scope: business?.id,
+  });
+  if (!tool || !permitted) return <Navigate to="/owner/dashboard" replace/>;
+  const nativeUrl = "https://calai.info" + tool.nativePath, rows = listItems(resource.value);
+
   return <div className="unified-business business-account-page business-native-page">
-    <header className="page-heading business-account-heading"><p className="eyebrow">{workspace?.business?.name || "Calai"}</p><h1>{title}</h1><p>{section === "settings" ? "Manage your Calai business preferences." : section === "calls" ? "Your business call history, summaries and recordings." : "Orders received through Calai."}</p></header>
-    {!state.usable ? <section className="panel business-native-intro"><ProductMark product="calai"/><div><h2>{state.connectionStatus === "reconnect_required" ? "Sign in to Calai again" : "Check your Calai connection"}</h2><p>Review the connected account to continue.</p><Link className="button-link" to="/owner/connections">Accounts & connections</Link></div></section>
-      : section === "settings" ? <section className="panel business-native-intro"><ProductMark product="calai"/><div><h2>Business settings</h2><p>Open your existing Calai settings to manage your business.</p>{settings ? <a className="button-link primary" target="_top" href={settings}>Open Calai settings</a> : <p className="fine">A settings link is not currently available. Use your usual Calai business sign-in.</p>}</div></section>
-      : section === "calls" ? <section className="panel business-native-intro"><ProductMark product="calai"/><div><h2>Call history</h2><p>View call summaries, recordings and transcripts in Calai.</p><a className="button-link primary" target="_top" href="https://calai.info/owner/call-summary">Open Calai calls</a></div></section>
-      : <section className="panel"><Resource {...resource}>{rows.length ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || `Order ${index + 1}`}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span></article>)}</div> : <div className="business-account-empty"><h2>No orders yet</h2><p>Calai orders for this business will appear here.</p></div>}</Resource></section>}
+    <header className="page-heading business-account-heading"><p className="eyebrow">{business?.name || "Calai"}</p><h1>{tool.label}</h1></header>
+    {state.usable ? <section className="panel business-native-intro">
+      <div><p>{showOrders ? "Open the original Calai order list for full order details." : "Use your existing Calai business sign-in to open this tool."}</p>
+        <a className="button-link primary" target="_blank" rel="noopener noreferrer" href={nativeUrl}>Open {tool.label} in Calai</a>
+      </div>
+    </section> : <section className="panel business-native-intro">
+      <div><h2>Check your Calai connection</h2><Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link></div>
+    </section>}
+    {showOrders && <section className="panel"><Resource {...resource}>{rows.length
+      ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || "Order " + (index + 1)}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span></article>)}</div>
+      : <p className="empty">No Calai orders yet.</p>}</Resource></section>}
   </div>;
 }
+
 export function ProductStatements() {
   const workspace = useBusinessWorkspace(), business = workspace?.business; if (!business) return null;
   const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats"), nativeStatement = safeNativeLink(calai.nativeLinks?.statements || calai.nativeLinks?.billing);
