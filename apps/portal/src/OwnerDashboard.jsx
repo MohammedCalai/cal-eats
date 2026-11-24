@@ -139,8 +139,6 @@ export default function OwnerDashboard({ restaurant, permission, userId, canOper
   const [period, setPeriod] = useState("today"), [page, setPage] = useState(1);
   const showCombined = workspaceMode === "both" || (!workspaceMode && products.length === 2);
   const orderActivity = useDashboardOrderActivity(business, showCombined ? products : []);
-  const combinedOrders = showCombined
-    ? <DashboardOrderActivity businessId={business.id} products={products} resource={orderActivity} workspaceMode="both"/> : null;
   const result = useDashboard(restaurant.id, period, page), active = useActiveOrders(restaurant.id), refresh = useRef(result.reload);
   const deadlineNow = useDeliveryDeadlineClock(active.items.some(order => deliveryDeadlineAt(order) !== null));
   const [updating, setUpdating] = useState(""), [actionError, setActionError] = useState(""), [manualRefreshing, setManualRefreshing] = useState(false);
@@ -179,12 +177,7 @@ export default function OwnerDashboard({ restaurant, permission, userId, canOper
   const needsMessageAction = isOwner && operations.unreadMessages > 0, needsOrderHelpAction = isOwner && operations.actionRequiredOrderHelp > 0;
   const selectedLabel = periods.find(([value]) => value === period)?.[1];
   function selectPeriod(next) { if (next !== period) { setPeriod(next); setPage(1); } }
-  return <div className="business-dashboard">
-    <header className="page-heading dashboard-heading"><div><h1>Dashboard</h1><p>{showCombined ? "Calai telephone orders and Cal-Eats online orders in one place." : "Your orders, conversations and live activity in one place."}</p></div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
-    <LiveOrders operations={data?.operations} unavailable={Boolean(result.error)} generatedAt={data?.generatedAt} source={showCombined ? "Cal-Eats" : undefined}/>
-    {combinedOrders}
-    <div className={showCombined ? "dashboard-eats-workspace" : "dashboard-product-workspace"}>
-    {showCombined && <header className="dashboard-product-heading"><h2>Cal-Eats operations & reports</h2><p>Accept and manage online orders below. Reporting dates apply to Cal-Eats.</p></header>}
+  const restaurantTools = <div className="dashboard-product-workspace">
     {(needsMessageAction || needsOrderHelpAction) && <section className="dashboard-action-prompts" aria-label="Customer actions needed"><div><strong>Customer action needed</strong><small>Open a message to stop its sound reminders. Review customer help requests below.</small></div>{needsMessageAction && <NavLink className="dashboard-action-prompt" to="/owner/inbox"><DashboardIcon/>Reply to {operations.unreadMessages} unread message{operations.unreadMessages === 1 ? "" : "s"} <span aria-hidden="true">→</span></NavLink>}{needsOrderHelpAction && <NavLink className="dashboard-action-prompt order-help" to="/owner/support?scope=customer"><DashboardIcon kind="refresh"/>Review {operations.actionRequiredOrderHelp} order help request{operations.actionRequiredOrderHelp === 1 ? "" : "s"} <span aria-hidden="true">→</span></NavLink>}</section>}
     {isOwner && <NavLink className={`dashboard-message-shortcut${operations.unreadMessages ? " has-unread" : ""}`} to="/owner/inbox"><span className="message-shortcut-icon" aria-hidden="true"><DashboardIcon/></span><span><strong>Customer messages</strong><small>{operations.unreadMessages ? `${operations.unreadMessages} unread message${operations.unreadMessages === 1 ? "" : "s"} · needs your reply` : "Read and reply to your customers"}</small></span><b aria-label={`${operations.unreadMessages || 0} unread messages`}>{operations.unreadMessages || 0}</b><span aria-hidden="true"><DashboardIcon kind="arrow"/></span></NavLink>}
     <BusinessMessageSoundStatus/>
@@ -202,6 +195,16 @@ export default function OwnerDashboard({ restaurant, permission, userId, canOper
       <div className="dashboard-secondary-grid"><section className="panel" aria-labelledby="dashboard-top-items-title"><p className="eyebrow">{selectedLabel}</p><h2 id="dashboard-top-items-title">Popular items</h2>{data.topItems?.length ? <ol className="dashboard-top-items">{data.topItems.slice(0, 5).map((item, index) => <li key={`${item.name}:${index}`}><div><span>{item.name}</span><strong>{item.quantity} ordered</strong></div><div className="dashboard-item-track" aria-hidden="true"><span style={{ width: `${Math.max(2, Math.min(100, (item.quantity / Math.max(1, ...data.topItems.map(row => row.quantity))) * 100))}%` }}/></div></li>)}</ol> : <p className="empty">No confirmed items in this period yet.</p>}</section><section className="panel" aria-labelledby="dashboard-tools-title"><p className="eyebrow">Day-to-day</p><h2 id="dashboard-tools-title">Restaurant tools</h2><div className="dashboard-tool-links"><NavLink to="/owner/menu">Edit menu & availability <span>→</span></NavLink>{isOwner && <><NavLink to="/owner/inbox">Customer messages <span>→</span></NavLink><NavLink to="/owner/customers">Your customers <span>→</span></NavLink><NavLink to="/owner/offers">Marketing & offers <span>→</span></NavLink><NavLink to="/owner/printers">Receipt printers <span>→</span></NavLink><NavLink to="/owner/settings">Opening hours & delivery <span>→</span></NavLink></>}<NavLink to="/owner/orders">Manage orders <span>→</span></NavLink></div></section></div>
       {!showCombined && <section className="panel" aria-labelledby="dashboard-orders-title"><div className="dashboard-section-heading"><div><p className="eyebrow">{selectedLabel}</p><h2 id="dashboard-orders-title">Orders</h2></div><span className="fine">{pagination?.total || 0} order{pagination?.total === 1 ? "" : "s"}</span></div>{items.length ? <div className="table-wrap responsive-table dashboard-order-table"><table><thead><tr><th>Order</th><th>Status</th></tr></thead><tbody>{items.map(order => <tr key={order.id}><td data-label="Order"><NavLink to={`/owner/orders?order=${encodeURIComponent(order.id)}`}>#{order.id.slice(0, 8).toUpperCase()}</NavLink><small>{order.customerName || "Customer"}</small><small>{shortDate(order.createdAt)}</small></td><td data-label="Status"><strong>{readable(order.status)}</strong><small>{readable(order.fulfillment)}</small></td></tr>)}</tbody></table></div> : <p className="empty">No orders were placed in this period.</p>}{pagination && pagination.totalPages > 1 && <nav className="dashboard-pagination" aria-label="Order pages"><button className="quiet" disabled={result.loading || page <= 1} onClick={() => setPage(previous => Math.max(1, previous - 1))}>Previous</button><span>Page {pagination.page} of {pagination.totalPages}</span><button className="quiet" disabled={result.loading || page >= pagination.totalPages} onClick={() => setPage(previous => previous + 1)}>Next</button></nav>}</section>}
     </div>}
-    </div>
+  </div>;
+
+  return <div className="business-dashboard">
+    <header className="page-heading dashboard-heading"><div><h1>Dashboard</h1>{!showCombined && <p>Your orders, conversations and live activity in one place.</p>}</div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
+    {showCombined
+      ? <DashboardOrderActivity businessId={business.id} products={products} resource={orderActivity}
+          workspaceMode="both" operations={data?.operations} operationsUnavailable={Boolean(result.error)}/>
+      : <LiveOrders operations={data?.operations} unavailable={Boolean(result.error)} generatedAt={data?.generatedAt}/>}
+    {showCombined
+      ? <details className="dashboard-online-tools"><summary>Cal-Eats tools &amp; reports</summary>{restaurantTools}</details>
+      : restaurantTools}
   </div>;
 }

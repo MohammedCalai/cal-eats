@@ -6,9 +6,242 @@
 .dashboard-workspace-counts .dashboard-workspace-counter dd span{font-size:.68rem;font-weight:500;line-height:1.35;color:#b7bdc9}
 .dashboard-workspace-counts .source-calai dd{border-color:#7860c5}
 .dashboard-workspace-availability{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;font-size:.85rem;color:#b7bdc9;line-height:1.5}
-.dashboard-eats-workspace,.dashboard-product-workspace{display:grid;gap:1rem;min-width:0}
-.dashboard-eats-workspace{border-top:1px solid #303137;padding-top:1.5rem}
-.dashboard-product-heading h2{font-size:1.3rem;margin:0 0 .4rem}
-.dashboard-product-heading p{font-size:.9rem;line-height:1.5;color:#b7bdc9;margin:0}
+.dashboard-product-workspace {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
 .dashboard-heading-actions>.button-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:.65rem .9rem;text-align:center}
 @media(max-width:540px){.dashboard-workspace-orders .dashboard-workspace-counts{gap:1.1rem .5rem;padding:1rem .4rem}.dashboard-workspace-counts .dashboard-workspace-counter{min-width:120px;flex:1}.dashboard-workspace-counts .dashboard-workspace-counter dd{width:120px;height:120px;border-width:6px}.dashboard-workspace-counts .dashboard-workspace-counter dd strong{font-size:1.05rem}.dashboard-heading-actions{flex-wrap:wrap}.dashboard-heading-actions>.button-link{white-space:normal}}
+
+.business-dashboard .dashboard-workspace-orders--combined {
+  margin-top: 0;
+  padding: clamp(1rem, 2.25vw, 1.65rem);
+}
+
+.dashboard-workspace-orders--combined .dashboard-section-heading {
+  margin-bottom: 1.1rem;
+}
+
+.business-dashboard .dashboard-workspace-orders--combined .dashboard-section-heading h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.3vw, 1.85rem);
+  line-height: 1.2;
+}
+
+.dashboard-service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(.75rem, 1.65vw, 1.25rem);
+  margin: 0 0 1.4rem;
+}
+
+.dashboard-service-card {
+  --service-accent: #bad8ff;
+  --service-border: #32425b;
+  --service-glow: #2d5b9755;
+  --service-surface: #161d2a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(.6rem, 1.2vw, .9rem);
+  min-width: 0;
+  border: 1px solid var(--service-border);
+  border-radius: 16px;
+  padding: clamp(.9rem, 2vw, 1.45rem);
+  background:
+    radial-gradient(ellipse at 50% 43%, var(--service-glow), transparent 64%),
+    linear-gradient(170deg, var(--service-surface), #15161c 80%);
+  box-shadow: inset 0 1px #ffffff0b;
+  text-align: center;
+}
+
+.dashboard-service-card.source-calai {
+  --service-accent: #dbccff;
+  --service-border: #483d5e;
+  --service-glow: #6747ad51;
+  --service-surface: #211b2f;
+}
+
+.dashboard-service-heading h3 {
+  margin: 0 0 .2rem;
+  color: #f6f7fa;
+  font-size: clamp(1.15rem, 2.1vw, 1.65rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.025em;
+}
+
+.dashboard-service-heading p,
+.dashboard-service-status {
+  margin: 0;
+  color: #b8c1ce;
+  font-size: .88rem;
+  line-height: 1.4;
+}
+
+.dashboard-service-heading p {
+  color: var(--service-accent);
+}
+
+.dashboard-service-status {
+  display: grid;
+  gap: .28rem;
+}
+
+.dashboard-service-status > p {
+  margin: 0;
+}
+
+.dashboard-service-status > .dashboard-service-today {
+  margin-top: .1rem;
+  color: #aeb8c8;
+}
+
+.business-dashboard .dashboard-service-card .live-order-orbit {
+  width: min(100%, clamp(210px, 23vw, 288px));
+  height: auto;
+  aspect-ratio: 1;
+  gap: .4rem;
+}
+
+.business-dashboard .dashboard-service-card .live-order-orbit-art {
+  filter: drop-shadow(0 10px 18px #07081285);
+}
+
+.business-dashboard .dashboard-service-card .live-order-orbit strong {
+  max-width: 85%;
+  overflow-wrap: anywhere;
+  font-size: clamp(3.35rem, 6.2vw, 5rem);
+}
+
+.business-dashboard .dashboard-service-card .live-order-orbit small {
+  max-width: 77%;
+  margin: 0;
+  color: var(--service-accent);
+  font-size: clamp(.7rem, 1.1vw, .85rem);
+  line-height: 1.25;
+  letter-spacing: .12em;
+}
+
+.business-dashboard .dashboard-service-card .live-order-stages {
+  column-gap: .9rem;
+  row-gap: .3rem;
+  font-size: .82rem;
+  line-height: 1.35;
+}
+
+.business-dashboard .dashboard-service-card .live-order-stages > span {
+  gap: .35rem;
+}
+
+.business-dashboard .dashboard-service-card .live-order-stages svg {
+  width: 14px;
+  height: 14px;
+}
+
+.business-dashboard .dashboard-service-action.button-link {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  margin-top: auto;
+  padding: .58rem 1.1rem;
+  border-color: var(--service-border);
+  border-radius: 9px;
+  color: #f6f7fa;
+  background: var(--service-surface);
+  font-size: .85rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.business-dashboard .dashboard-service-action.button-link:hover {
+  border-color: var(--service-accent);
+  background: #282e3a;
+}
+
+.dashboard-online-tools {
+  min-width: 0;
+  border: 1px solid #363944;
+  border-radius: 12px;
+  background: #18191f;
+}
+
+.dashboard-online-tools > summary {
+  min-height: 48px;
+  padding: .8rem 1rem;
+  color: #edf1fa;
+  font-weight: 650;
+  line-height: 1.4;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.dashboard-online-tools > summary::marker {
+  color: #a9cdff;
+}
+
+.dashboard-online-tools > summary:hover {
+  background: #20232c;
+  border-radius: 12px;
+}
+
+.dashboard-online-tools[open] > summary {
+  border-bottom: 1px solid #363944;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.dashboard-online-tools > .dashboard-product-workspace {
+  padding: 1rem;
+}
+
+@media (max-width: 560px) {
+  .business-dashboard .dashboard-workspace-orders--combined {
+    padding: .875rem;
+  }
+
+  .dashboard-service-grid {
+    gap: .55rem;
+  }
+
+  .dashboard-service-card {
+    padding: .7rem .35rem;
+  }
+
+  .dashboard-service-heading h3 {
+    font-size: 1.1rem;
+  }
+
+  .dashboard-service-heading p,
+  .dashboard-service-status,
+  .business-dashboard .dashboard-service-card .live-order-stages {
+    font-size: .77rem;
+  }
+
+  .business-dashboard .dashboard-service-card .live-order-orbit {
+    width: min(100%, clamp(120px, 34vw, 132px));
+    gap: .22rem;
+  }
+
+  .business-dashboard .dashboard-service-card .live-order-orbit strong {
+    font-size: clamp(2.35rem, 8.5vw, 2.9rem);
+  }
+
+  .business-dashboard .dashboard-service-card .live-order-orbit small {
+    font-size: .62rem;
+    letter-spacing: .09em;
+  }
+
+  .business-dashboard .dashboard-service-action.button-link {
+    padding-inline: .45rem;
+    font-size: .78rem;
+  }
+}
+
+@media (max-width: 355px) {
+  .dashboard-service-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { shortDate } from "./model.js";
 import { dashboardOrderActivity, productName } from "./unified-business-model.js";
 import { useBusinessResource } from "./UnifiedBusiness.jsx";
+import { liveOrderCount, LiveOrderOrbit, LiveOrderStages } from "./LiveOrders.jsx";
 import "./DashboardWorkspace.css";
 
 const statusLabels = {
@@ -21,8 +22,43 @@ export function useDashboardOrderActivity(business, products) {
   });
 }
 
-export function DashboardOrderActivity({ businessId, products, resource, workspaceMode }) {
-  const visibleProducts = workspaceMode === "both" ? ["calai", "cal-eats"]
+function CombinedOrderCards({ counters, products, checking, operations, operationsUnavailable }) {
+  const [{ count: phoneOrders }, { count: onlineOrders }] = counters;
+  const phoneLoading = checking && products.includes("calai");
+  const live = liveOrderCount(operations, operationsUnavailable);
+  const phoneLabel = phoneOrders === null
+    ? phoneLoading ? "Checking phone orders" : "Phone order count unavailable"
+    : phoneOrders + " phone orders today";
+  const liveLabel = live === null
+    ? operationsUnavailable ? "Live order count unavailable" : "Checking live orders"
+    : live + " live orders";
+
+  return <div className="dashboard-service-grid">
+    <article className="dashboard-service-card source-calai" aria-labelledby="combined-calai-title">
+      <header className="dashboard-service-heading">
+        <h3 id="combined-calai-title">Calai</h3><p>Phone orders</p>
+      </header>
+      <LiveOrderOrbit value={phoneOrders?.toLocaleString("en-GB")} label="TODAY" active={phoneOrders > 0} announcement={phoneLabel}/>
+      {phoneOrders === null && <p className="dashboard-service-status">{phoneLabel}</p>}
+      {products.includes("calai") && <NavLink className="button-link dashboard-service-action" to="/owner/calai/orders">View phone orders</NavLink>}
+    </article>
+    <article className="dashboard-service-card source-cal-eats" aria-labelledby="combined-eats-title">
+      <header className="dashboard-service-heading">
+        <h3 id="combined-eats-title">Cal-Eats</h3><p>Online orders</p>
+      </header>
+      <LiveOrderOrbit value={live?.toLocaleString("en-GB")} label="LIVE ORDERS" active={live > 0} announcement={liveLabel}/>
+      <div className="dashboard-service-status">
+        {live === null ? <p>{liveLabel}</p> : <LiveOrderStages operations={operations}/>}
+        {onlineOrders !== null && <p className="dashboard-service-today">{onlineOrders.toLocaleString("en-GB")} received today</p>}
+      </div>
+      {products.includes("cal-eats") && <NavLink className="button-link dashboard-service-action" to="/owner/orders">Manage online orders</NavLink>}
+    </article>
+  </div>;
+}
+
+export function DashboardOrderActivity({ businessId, products, resource, workspaceMode, operations, operationsUnavailable }) {
+  const combined = workspaceMode === "both";
+  const visibleProducts = combined ? ["calai", "cal-eats"]
     : workspaceMode === "calai" ? ["calai"] : workspaceMode === "cal-eats" ? ["cal-eats"] : products;
   const activity = dashboardOrderActivity(
     resource.error ? null : resource.value, businessId, products,
@@ -34,17 +70,19 @@ export function DashboardOrderActivity({ businessId, products, resource, workspa
   const checking = resource.loading && !resource.value && !resource.error;
   const unavailable = counters.filter(({ product, count }) => count === null && (!checking || !products.includes(product)));
   const countLabel = (count, loading = checking) => count === null ? (loading ? "Loading…" : "Unavailable") : count.toLocaleString("en-GB");
-  return <section className="panel dashboard-workspace-orders" aria-labelledby="dashboard-orders-title">
+  return <section className={"panel dashboard-workspace-orders" + (combined ? " dashboard-workspace-orders--combined" : "")} aria-labelledby="dashboard-orders-title">
     <div className="dashboard-section-heading">
-      <div><p className="eyebrow">Today · London time</p><h2 id="dashboard-orders-title">{workspaceMode === "both" ? "Combined orders" : "Orders"}</h2></div>
-      <div className="button-row">
+      <div>{!combined && <p className="eyebrow">Today · London time</p>}<h2 id="dashboard-orders-title">{combined ? "Combined orders" : "Orders"}</h2></div>
+      {!combined && <div className="button-row">
         {visibleProducts.includes("calai") && products.includes("calai") && <NavLink className="button-link" to="/owner/calai/orders">Calai orders</NavLink>}
         {visibleProducts.includes("cal-eats") && products.includes("cal-eats") && <NavLink className="button-link" to="/owner/orders">Cal-Eats orders</NavLink>}
-      </div>
+      </div>}
     </div>
-    <dl className="dashboard-source-counts dashboard-workspace-counts" aria-label="Orders received today">
+    {combined
+      ? <CombinedOrderCards counters={counters} products={products} checking={checking} operations={operations} operationsUnavailable={operationsUnavailable}/>
+      : <dl className="dashboard-source-counts dashboard-workspace-counts" aria-label="Orders received today">
       {counters.map(({ product, count }) => <div className={`dashboard-workspace-counter source-${product}`} key={product}><dt>{productName(product)}</dt><dd><strong>{countLabel(count, checking && products.includes(product))}</strong><span>{product === "calai" ? "Telephone orders" : "Online orders"}</span></dd></div>)}
-    </dl>
+    </dl>}
     {unavailable.length > 0 && <p className="dashboard-workspace-availability" role="status">Current order information is unavailable for {unavailable.map(({ product }) => productName(product)).join(" and ")}.{resource.error && products.length > 0 && <button type="button" className="quiet" onClick={() => void resource.reload()}>Refresh orders</button>}</p>}
     {rows.length ? <div className="table-wrap responsive-table dashboard-order-table">
       <table>
@@ -80,9 +118,9 @@ export function OrderActivityDashboard({ business, products, onRetryRestaurant, 
   return <div className="business-dashboard">
     <header className="page-heading dashboard-heading">
       <div>{workspaceMode === "calai" && <p className="eyebrow">Calai</p>}<h1>Dashboard</h1><p>{business.name}</p></div>
-      <div className="dashboard-heading-actions">{workspaceMode === "calai" && <a className="button-link" href="https://calai.info/owner/dashboard" target="_blank" rel="noopener noreferrer">Open original Calai dashboard ↗</a>}<button className="quiet" disabled={resource.loading || !products.length} onClick={() => void resource.reload()}>Refresh</button></div>
+      <div className="dashboard-heading-actions"><button className="quiet" disabled={resource.loading || !products.length} onClick={() => void resource.reload()}>Refresh</button></div>
     </header>
     {onRetryRestaurant && <p className="alert" role="status">Cal-Eats restaurant tools are temporarily unavailable. <button className="quiet" type="button" onClick={() => void onRetryRestaurant()}>Try again</button></p>}
-    <DashboardOrderActivity businessId={business.id} products={products} resource={resource} workspaceMode={workspaceMode}/>
+    <DashboardOrderActivity businessId={business.id} products={products} resource={resource} workspaceMode={workspaceMode} operationsUnavailable/>
   </div>;
 }
