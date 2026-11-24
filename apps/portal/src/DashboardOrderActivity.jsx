@@ -31,8 +31,6 @@ export function DashboardOrderActivity({ businessId, products, resource, workspa
     count: activity.counters.find(counter => counter.product === product)?.count ?? null,
   }));
   const rows = activity.rows.filter(order => visibleProducts.includes(order.source));
-  const total = counters.length && counters.every(({ count }) => count !== null)
-    ? counters.reduce((sum, { count }) => sum + count, 0) : null;
   const checking = resource.loading && !resource.value && !resource.error;
   const unavailable = counters.filter(({ product, count }) => count === null && (!checking || !products.includes(product)));
   const countLabel = (count, loading = checking) => count === null ? (loading ? "Loading…" : "Unavailable") : count.toLocaleString("en-GB");
@@ -46,7 +44,6 @@ export function DashboardOrderActivity({ businessId, products, resource, workspa
     </div>
     <dl className="dashboard-source-counts dashboard-workspace-counts" aria-label="Orders received today">
       {counters.map(({ product, count }) => <div className={`dashboard-workspace-counter source-${product}`} key={product}><dt>{productName(product)}</dt><dd><strong>{countLabel(count, checking && products.includes(product))}</strong><span>{product === "calai" ? "Telephone orders" : "Online orders"}</span></dd></div>)}
-      {visibleProducts.length > 1 && <div className="dashboard-workspace-counter total-counter"><dt>Total received</dt><dd><strong>{countLabel(total, checking && !unavailable.length)}</strong><span>Across both services</span></dd></div>}
     </dl>
     {unavailable.length > 0 && <p className="dashboard-workspace-availability" role="status">Current order information is unavailable for {unavailable.map(({ product }) => productName(product)).join(" and ")}.{resource.error && products.length > 0 && <button type="button" className="quiet" onClick={() => void resource.reload()}>Refresh orders</button>}</p>}
     {rows.length ? <div className="table-wrap responsive-table dashboard-order-table">

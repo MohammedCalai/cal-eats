@@ -5,11 +5,10 @@
 .dashboard-workspace-counts .dashboard-workspace-counter dd strong{font-size:clamp(1.05rem,2.5vw,1.8rem);line-height:1.15;overflow-wrap:anywhere;max-width:100%;font-variant-numeric:tabular-nums}
 .dashboard-workspace-counts .dashboard-workspace-counter dd span{font-size:.68rem;font-weight:500;line-height:1.35;color:#b7bdc9}
 .dashboard-workspace-counts .source-calai dd{border-color:#7860c5}
-.dashboard-workspace-counts .total-counter dd{border-color:#2e8390}
 .dashboard-workspace-availability{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;font-size:.85rem;color:#b7bdc9;line-height:1.5}
 .dashboard-eats-workspace,.dashboard-product-workspace{display:grid;gap:1rem;min-width:0}
 .dashboard-eats-workspace{border-top:1px solid #303137;padding-top:1.5rem}
 .dashboard-product-heading h2{font-size:1.3rem;margin:0 0 .4rem}
 .dashboard-product-heading p{font-size:.9rem;line-height:1.5;color:#b7bdc9;margin:0}
 .dashboard-heading-actions>.button-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:.65rem .9rem;text-align:center}
-@media(max-width:540px){.dashboard-workspace-orders .dashboard-workspace-counts{gap:1.1rem .5rem;padding:1rem .4rem}.dashboard-workspace-counts .dashboard-workspace-counter{min-width:120px;flex:1}.dashboard-workspace-counts .dashboard-workspace-counter dd{width:120px;height:120px;border-width:6px}.dashboard-workspace-counts .total-counter{flex-basis:100%}.dashboard-workspace-counts .dashboard-workspace-counter dd strong{font-size:1.05rem}.dashboard-heading-actions{flex-wrap:wrap}.dashboard-heading-actions>.button-link{white-space:normal}}
+@media(max-width:540px){.dashboard-workspace-orders .dashboard-workspace-counts{gap:1.1rem .5rem;padding:1rem .4rem}.dashboard-workspace-counts .dashboard-workspace-counter{min-width:120px;flex:1}.dashboard-workspace-counts .dashboard-workspace-counter dd{width:120px;height:120px;border-width:6px}.dashboard-workspace-counts .dashboard-workspace-counter dd strong{font-size:1.05rem}.dashboard-heading-actions{flex-wrap:wrap}.dashboard-heading-actions>.button-link{white-space:normal}}
