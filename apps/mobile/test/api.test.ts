@@ -34,3 +34,25 @@ test("guest mutations carry the configured API origin without a session or cooki
     if (previousBase === undefined) delete process.env.EXPO_PUBLIC_API_BASE_URL; else process.env.EXPO_PUBLIC_API_BASE_URL = previousBase;
   }
 });
+
+test("tablet intake errors keep their code without exposing tablet wording to customers", async () => {
+  const previousBase = process.env.EXPO_PUBLIC_API_BASE_URL, originalFetch = globalThis.fetch;
+  process.env.EXPO_PUBLIC_API_BASE_URL = "https://eats.calai.info";
+  try {
+    const client = await import(new URL("../src/api.ts?tablet-intake-copy", import.meta.url).href);
+    globalThis.fetch = (async () => new Response(JSON.stringify({ error: {
+      code: "TABLET_PRODUCT_INACTIVE",
+      message: "The restaurant tablet is not currently receiving Cal-Eats orders."
+    } }), { status: 409, headers: { "content-type": "application/json" } })) as typeof fetch;
+    await assert.rejects(client.api("/api/restaurants?fulfillment=collection"), (error: unknown) => {
+      assert.ok(error instanceof client.ApiError);
+      assert.equal(error.code, "TABLET_PRODUCT_INACTIVE");
+      assert.match(error.message, /restaurant/i);
+      assert.doesNotMatch(error.message, /tablet/i);
+      return true;
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousBase === undefined) delete process.env.EXPO_PUBLIC_API_BASE_URL; else process.env.EXPO_PUBLIC_API_BASE_URL = previousBase;
+  }
+});

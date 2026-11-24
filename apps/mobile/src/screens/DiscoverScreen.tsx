@@ -5,7 +5,7 @@ import { Alert } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import type {ServiceArea} from "../LocationPicker";
 
-import { api } from "../api";
+import { api, ApiError } from "../api";
 
 import { refreshCart } from "../model";
 
@@ -23,7 +23,7 @@ export function DiscoverScreen(props: Props) {
   const [browsing,setBrowsing]=useState(Boolean(props.browseHomePending)||!props.restaurant);
   const [offers,setOffers]=useState<Offer[]>([]); const [browsingFilters,setBrowsingFilters]=useState<BrowsingFilters>({cuisine:"",offersOnly:false,sort:"recommended",collection:"home"});
   const [postcode, setPostcode] = useState(props.address?.postcode||""); const [query, setQuery] = useState(""); const [restaurants, setRestaurants] = useState<Restaurant[]>([]); const [menu, setMenu] = useState<MenuItem[]>([]);const [serviceArea,setServiceArea]=useState<ServiceArea|null>(null);
-  const [discoveryLoading, setDiscoveryLoading] = useState(false), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const [discoveryLoading, setDiscoveryLoading] = useState(true), [menuLoading, setMenuLoading] = useState(false); const [error, setError] = useState(""); const [discoveryError, setDiscoveryError] = useState(""); const [loadMoreError, setLoadMoreError] = useState(""); const [notice, setNotice] = useState("");
   const [hasMoreRestaurants, setHasMoreRestaurants] = useState(false), [loadingMoreRestaurants, setLoadingMoreRestaurants] = useState(false);
   const discoveryScope = JSON.stringify([props.userId, props.token, props.fulfillment, postcode.trim(), query.trim(), browsingFilters.cuisine,browsingFilters.collection,browsingFilters.offersOnly,browsingFilters.sort]);
   const latestDiscoveryScope = useRef(discoveryScope); latestDiscoveryScope.current = discoveryScope;
@@ -47,6 +47,7 @@ export function DiscoverScreen(props: Props) {
     const current = () => mounted.current && discoveryRequest.current === request && latestDiscoveryScope.current === scope;
     discoveryPagination.current = { scope, page: append ? pagination.page : 0, hasMore: append && pagination.hasMore, loading: true };
     if (append) setLoadingMoreRestaurants(true); else { setDiscoveryLoading(true); setLoadingMoreRestaurants(false); setHasMoreRestaurants(false); }
+    if (append) setLoadMoreError(""); else { setDiscoveryError(""); setLoadMoreError(""); }
     setError("");
     try {
       const area = append && serviceArea ? serviceArea : await api<ServiceArea>(`/api/service-availability?postcode=${encodeURIComponent(postcode)}&fulfillment=${fulfillment}`, { token });
@@ -65,13 +66,13 @@ export function DiscoverScreen(props: Props) {
       const hasMore = result.length === 50;
       discoveryPagination.current = { scope, page, hasMore, loading: false };
       setHasMoreRestaurants(hasMore);
-    } catch (caught) { if (current()) setError((caught as Error).message); }
+    } catch (caught) { if (current()) { if (append) setLoadMoreError("We couldn't load more restaurants. Please try again."); else setDiscoveryError(caught instanceof ApiError && caught.code === "VALIDATION_ERROR" ? "Check your postcode and try again." : "We couldn't load restaurants right now. Please try again."); } }
     finally { if (current()) { discoveryPagination.current.loading = false; setDiscoveryLoading(false); setLoadingMoreRestaurants(false); } }
   }
   useEffect(() => {
     discoveryRequest.current++;
     discoveryPagination.current = { scope: discoveryScope, page: 0, hasMore: false, loading: false };
-    setRestaurants([]); setServiceArea(null); setHasMoreRestaurants(false); setLoadingMoreRestaurants(false); setDiscoveryLoading(true); setError("");
+    setRestaurants([]); setServiceArea(null); setHasMoreRestaurants(false); setLoadingMoreRestaurants(false); setDiscoveryLoading(true); setDiscoveryError(""); setLoadMoreError(""); setError("");
     const timer = setTimeout(() => void loadRestaurants(), query.trim() ? 350 : 0);
     return () => { clearTimeout(timer); discoveryRequest.current++; };
   }, [discoveryScope]);
@@ -109,5 +110,5 @@ export function DiscoverScreen(props: Props) {
   }
   if (props.restaurant && !browsing) return <RestaurantMenu token={props.token} onSignIn={props.onSignIn} onPromotionClaim={claimedPromotion} onScrollOffset={props.onScrollOffset} key={props.restaurant.id} restaurant={props.restaurant} menu={menu} cart={props.cart} fulfillment={props.fulfillment} loading={loading} error={error} notice={notice} onRefresh={() => void chooseRestaurant(props.restaurant!, true)} onBack={() => { menuRequest.current++; setMenuLoading(false);props.onScrollOffset?.(0); setBrowsing(true); setError(""); setNotice(""); }} onFulfillment={props.onFulfillment} onQuantity={changeQuantity} onSave={(item, quantity, selections) => updateCart([...latestCart.current.filter(entry => entry.item.id !== item.id), { item, quantity, selections }])} onCheckout={props.onCheckout}/>;
 
-  return <DiscoveryBrowse key={props.browseHomeRequest||0} onScrollOffset={props.onScrollOffset} token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={error} onRefresh={()=>void loadRestaurants()} hasMore={hasMoreRestaurants} loadingMore={loadingMoreRestaurants} onLoadMore={()=>void loadRestaurants(true)} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
+  return <DiscoveryBrowse key={props.browseHomeRequest||0} onScrollOffset={props.onScrollOffset} token={props.token} serviceArea={serviceArea} onLocation={selectLocation} restaurants={restaurants} offers={offers} fulfillment={props.fulfillment} onFulfillment={props.onFulfillment} postcode={postcode} onPostcode={setPostcode} query={query} onQuery={setQuery} loading={loading} error={discoveryError} actionError={error} onRefresh={()=>void loadRestaurants()} hasMore={hasMoreRestaurants} loadingMore={loadingMoreRestaurants} loadMoreError={loadMoreError} onLoadMore={()=>void loadRestaurants(true)} filters={browsingFilters} onFilters={patch=>setBrowsingFilters(old=>({...old,...patch}))} onOpen={(restaurant,offerId)=>{if(offerId&&props.onUseOffer)props.onUseOffer(restaurant.id,offerId);else void chooseRestaurant(restaurant);}}/>;
 }
