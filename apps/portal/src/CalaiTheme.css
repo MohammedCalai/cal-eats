@@ -74,24 +74,40 @@
 }
 
 .combined-business-brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
+  gap: 10px;
+  min-height: 50px;
+  padding-inline: 4px;
 }
 
-.portal .sidebar-top .combined-business-brand > .brand {
-  width: 96px;
-}
-
-.combined-business-brand .calai-business-brand {
+.combined-business-brand > img {
+  width: 31px;
+  height: 40px;
   flex: none;
-  padding-right: 12px;
-  border-right: 1px solid #34343a;
+  object-fit: contain;
 }
 
-.combined-business-brand .sidebar-top .calai-business-brand .brand-logo {
-  width: 100%;
+.combined-business-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #f8fafc;
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.combined-business-plus {
+  color: #92a2bd;
+  font-size: .75em;
+  font-weight: 500;
+}
+
+.combined-business-accent {
+  color: #67c7fc;
 }
 
 @media (min-width: 1536px) {
@@ -100,20 +116,8 @@
     mix-blend-mode: normal;
   }
 
-  .sidebar-collapsed .combined-business-brand {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .portal.sidebar-collapsed .sidebar-top .combined-business-brand > .brand,
-  .sidebar-collapsed .combined-business-brand .brand-mark {
-    width: 32px;
-    height: 32px;
-  }
-
-  .sidebar-collapsed .combined-business-brand .calai-business-brand {
-    padding: 0;
-    border: 0;
+  .sidebar-collapsed .combined-business-wordmark {
+    display: none;
   }
 }
 

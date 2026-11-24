@@ -78,7 +78,14 @@ function Brand({ mode = "cal-eats" }) {
     <img className="brand-mark" src="/assets/calai-business-mark.png" alt="Calai"/>
   </span>;
   if (mode === "calai") return calaiBrand;
-  if (mode === "both") return <span className="combined-business-brand">{calaiBrand}<Brand/></span>;
+  if (mode === "both") return <span className="combined-business-brand" role="img" aria-label="Calai and Cal-Eats">
+    <img src="/assets/calai-business-mark.png" alt=""/>
+    <span className="combined-business-wordmark" aria-hidden="true">
+      <span>Calai</span>
+      <span className="combined-business-plus">+</span>
+      <span>Cal<span className="combined-business-accent">-Eats</span></span>
+    </span>
+  </span>;
   return <span className="brand"><img className="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats" /><svg className="brand-mark" role="img" aria-label="Cal-Eats" viewBox="420 180 330 380"><image href="/assets/cal-eats-logo.png" width="2170" height="725"/></svg></span>;
 }
 
