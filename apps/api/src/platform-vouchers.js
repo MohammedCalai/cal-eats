@@ -3,6 +3,7 @@ import { requireRole } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { addNotification } from "./offers.js";
+import { customerSearch } from "./customer-search.js";
 
 const fail = (status, code, message) => { throw new HttpError(status, code, message); };
 const clean = (value, min, max, label) => { const result=typeof value==="string"?value.trim():"";if(result.length<min||result.length>max)fail(400,"VALIDATION_ERROR",`${label} is invalid`);return result; };
@@ -47,8 +48,8 @@ export function assertVoucherFunding(db,order) {let snapshot;try{snapshot=JSON.p
 export async function routePlatformVouchers({req,res,url,db,config,session}) {
   if(url.pathname==="/api/account/vouchers"&&req.method==="GET"){const user=requireRole(session,"customer");const now=stamp(config);return sendJson(res,200,{data:db.prepare(`${balanceSql} WHERE v.customer_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 100`).all(user.id).map(row=>voucherDto(row,now))});}
   if(url.pathname==="/api/admin/voucher-customers"&&req.method==="GET"){
-    requireRole(session,"admin");const q=(url.searchParams.get("q")||"").trim(),page=Number(url.searchParams.get("page")||1),size=Number(url.searchParams.get("pageSize")||25);if(q.length>160||!Number.isSafeInteger(page)||page<1||page>1000000||![10,25,50].includes(size))fail(400,"VALIDATION_ERROR","Customer search is invalid");
-    const pattern=`%${q.replace(/[\\%_]/g,"\\$&")}%`,filter="u.role='customer' AND (?='' OR u.name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\' OR u.phone LIKE ? ESCAPE '\\')",args=[q,pattern,pattern,pattern];const total=db.prepare(`SELECT COUNT(*) n FROM users u WHERE ${filter}`).get(...args).n;
+    requireRole(session,"admin");const {filter,args}=customerSearch(url),page=Number(url.searchParams.get("page")||1),size=Number(url.searchParams.get("pageSize")||25);if(!Number.isSafeInteger(page)||page<1||page>1000000||![10,25,50].includes(size))fail(400,"VALIDATION_ERROR","Customer search is invalid");
+    const total=db.prepare(`SELECT COUNT(*) n FROM users u WHERE ${filter}`).get(...args).n;
     const items=db.prepare(`SELECT u.id,u.name,u.email,u.phone,u.created_at,u.account_enabled,(SELECT COUNT(*) FROM orders o WHERE o.customer_id=u.id) order_count,(SELECT MAX(created_at) FROM orders o WHERE o.customer_id=u.id) last_order_at FROM users u WHERE ${filter} ORDER BY u.created_at DESC,u.id DESC LIMIT ? OFFSET ?`).all(...args,size,(page-1)*size).map(row=>({id:row.id,name:row.name,email:row.email,phone:row.phone,enabled:Boolean(row.account_enabled),createdAt:row.created_at,orderCount:row.order_count,lastOrderAt:row.last_order_at}));return sendJson(res,200,{data:{items,total,page,pageSize:size,totalPages:Math.ceil(total/size)}});
   }
   let match=url.pathname.match(/^\/api\/admin\/customers\/([^/]+)\/vouchers$/);
