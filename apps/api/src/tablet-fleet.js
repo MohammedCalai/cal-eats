@@ -12,6 +12,7 @@ import {assertFleetNewEnrolmentAllowed,canOfferOwnerCalaiSetup} from './tablet-f
 import {readTabletDirectory} from './tablet-directory.js';
 import {queueTabletManagedSetup, tabletManagedSetupState, tabletManagedTarget} from './tablet-managed-setup.js';
 import {tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
+import {terminalHasCalaiAuthority} from './business-product-policy.js';
 import {assertTabletSelectionReady,assertTabletSelectionDoesNotStrandWork,assertTabletSelectionActivation} from './tablet-assignment-safety.js';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,7 +62,12 @@ function invalidateTabletPresence(db,row){
 }
 function applicationAccess(db,row,business){
  const modes=['calai','cal-eats','both'].map(value=>({value,available:Boolean(business&&selectedProducts(value).every(product=>business.products?.[product]?.active&&business.products?.[product]?.readiness?.ready))}));
- return{selection:row.application_products??null,choices:modes,paired:Boolean(row.terminal_id&&db.prepare('SELECT 1 FROM business_terminals WHERE id=? AND revoked_at IS NULL').get(row.terminal_id)),configuration:tabletApplicationConfiguration(db,row.terminal_id,row.business_id),scope:'protected_cal_eats_application',windowsStartupChanged:false,nativeCalaiChanged:false};
+ const selection=row.application_products??null;
+ const paired=Boolean(row.terminal_id&&db.prepare('SELECT 1 FROM business_terminals WHERE id=? AND business_id=? AND revoked_at IS NULL').get(row.terminal_id,row.business_id));
+ const calai=business?.products?.calai;
+ const calaiApprovalRequired=Boolean(paired&&row.lifecycle_state==='assigned'&&['calai','both'].includes(selection)&&
+   calai?.active&&calai.readiness?.ready&&!terminalHasCalaiAuthority(db,row.terminal_id,row.business_id));
+ return{selection,choices:modes,paired,calaiApprovalRequired,configuration:tabletApplicationConfiguration(db,row.terminal_id,row.business_id),scope:'protected_cal_eats_application',windowsStartupChanged:false,nativeCalaiChanged:false};
 }
 function audit(db,actor,id,action,before,after,at,reason=null){db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor,'tablet_fleet',id,action,JSON.stringify({product:'cal-eats-integration',previous:before? snapshot(before):null,current:after?snapshot(after):null,reason,windowsConfigurationChanged:false,calaiUnchanged:true}),at);}
 function requestConfiguration(db,row,userId,at){

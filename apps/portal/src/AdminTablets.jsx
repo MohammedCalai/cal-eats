@@ -79,6 +79,9 @@ function TabletDetail({row,onChanged,onReload,onBack}){
         <p className="tablet-receipt-status" role="status">{label}{receivedAt?` · ${date(receivedAt)}`:requestedAt?` · Requested ${date(requestedAt)}`:''}</p>
         <button type="button" className="quiet" onClick={()=>void onReload()}>Refresh status</button>
       </div>}
+      {!restricted&&row.applicationAccess?.calaiApprovalRequired&&<p className="fine">
+        The restaurant owner needs to select <strong>Allow Calai on this tablet</strong> in Accounts &amp; connections.
+      </p>}
       <ApplicationForm key={row.revision} row={row} onSaved={onChanged}/>
     </section>
     <section className="panel" key={row.revision}>

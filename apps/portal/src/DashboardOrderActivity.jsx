@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { shortDate } from "./model.js";
-import { dashboardOrderActivity, productName } from "./unified-business-model.js";
+import { canUseCalaiWorkspaceTools, dashboardOrderActivity, productName, safeNativeLink } from "./unified-business-model.js";
 import { useBusinessResource } from "./UnifiedBusiness.jsx";
 import { liveOrderCount, LiveOrderOrbit, LiveOrderStages } from "./LiveOrders.jsx";
 import "./DashboardWorkspace.css";
@@ -130,10 +130,16 @@ export function DashboardOrderActivity({ businessId, products, resource, workspa
 
 export function OrderActivityDashboard({ business, products, onRetryRestaurant, workspaceMode }) {
   const resource = useDashboardOrderActivity(business, products);
+  const nativeCalai = workspaceMode === "calai" && canUseCalaiWorkspaceTools(business, workspaceMode)
+    ? safeNativeLink(business.products.calai.nativeLinks?.dashboard)
+    : null;
   return <div className="business-dashboard">
     <header className="page-heading dashboard-heading">
       <div>{workspaceMode === "calai" && <p className="eyebrow">Calai</p>}<h1>Dashboard</h1><p>{business.name}</p></div>
-      <div className="dashboard-heading-actions"><button className="quiet" disabled={resource.loading || !products.length} onClick={() => void resource.reload()}>Refresh</button></div>
+      <div className="dashboard-heading-actions">
+        {nativeCalai && <a className="button-link primary" href={nativeCalai}>Open Calai</a>}
+        <button className="quiet" disabled={resource.loading || !products.length} onClick={() => void resource.reload()}>Refresh</button>
+      </div>
     </header>
     {onRetryRestaurant && <p className="alert" role="status">Cal-Eats restaurant tools are temporarily unavailable. <button className="quiet" type="button" onClick={() => void onRetryRestaurant()}>Try again</button></p>}
     <DashboardOrderActivity businessId={business.id} products={products} resource={resource} workspaceMode={workspaceMode} operationsUnavailable/>

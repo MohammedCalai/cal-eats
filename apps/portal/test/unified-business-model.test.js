@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyTabletProductAccess, businessWorkspaceMode, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
+import { applyTabletProductAccess, businessWorkspaceMode, canUseCalaiWorkspaceTools, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
 import { dashboardOrderActivity, dashboardOrderProducts } from "../src/unified-business-model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
+test("linked Calai tools require current account permission and a matching workspace", () => {
+  const business = { principalKind: "terminal", canViewCalai: true, products: { calai: product("native") } };
+  assert.equal(canUseCalaiWorkspaceTools(business, "calai"), true);
+  assert.equal(canUseCalaiWorkspaceTools(business, "both"), true);
+  assert.equal(canUseCalaiWorkspaceTools(business, "cal-eats"), false);
+  assert.equal(canUseCalaiWorkspaceTools({ ...business, canViewCalai: false }, "calai"), false);
+  assert.equal(canUseCalaiWorkspaceTools({ ...business, products: { calai: product("native", { allowedOnTablet: false }) } }, "both"), false);
+});
 test("dashboard order sources respect each product and signed tablet selection", () => {
   const business = {
     id: "branch", eatsRestaurantId: "eats", canViewEats: true, canViewCalai: true,

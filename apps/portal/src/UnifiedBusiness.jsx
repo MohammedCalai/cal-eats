@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Link, NavLink, Navigate, Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
+import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, canUseCalaiWorkspaceTools, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
 import { requestCalaiFirstTabletSetup, saveCalaiFirstTabletSetup } from "./calai-first-tablet-download.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
@@ -384,7 +384,8 @@ export function NativeCalaiView({ section = "orders" }) {
   const state = productPresentation(business, "calai");
   const tool = CALAI_WORKSPACE_TOOLS.find(({ id }) => id === section);
   const permitted = workspace?.mode !== "cal-eats" && state.allowedOnTablet !== false;
-  const showOrders = section === "orders" && permitted && state.usable && business?.canViewCalai === true;
+  const toolsAvailable = permitted && canUseCalaiWorkspaceTools(business, workspace?.mode);
+  const showOrders = section === "orders" && toolsAvailable;
   const resource = useBusinessResource(showOrders ? "/api/business/calai/orders" : null, {
     poll: showOrders ? 30000 : 0,
     scope: business?.id,
@@ -394,12 +395,14 @@ export function NativeCalaiView({ section = "orders" }) {
 
   return <div className="unified-business business-account-page business-native-page">
     <header className="page-heading business-account-heading"><p className="eyebrow">{business?.name || "Calai"}</p><h1>{tool.label}</h1></header>
-    {state.usable ? <section className="panel business-native-intro">
+    {toolsAvailable ? <section className="panel business-native-intro">
       <div><p>{showOrders ? "Open the original Calai order list for full order details." : "Use your existing Calai business sign-in to open this tool."}</p>
         <a className="button-link primary" target="_blank" rel="noopener noreferrer" href={nativeUrl}>Open {tool.label} in Calai</a>
       </div>
     </section> : <section className="panel business-native-intro">
-      <div><h2>Check your Calai connection</h2><Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link></div>
+      <div>{business?.principalKind === "terminal" && state.usable
+        ? <><h2>Calai needs owner approval</h2><p>Ask the restaurant owner to choose <strong>Allow Calai on this tablet</strong> in Accounts &amp; connections.</p></>
+        : <><h2>Check your Calai connection</h2><Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link></>}</div>
     </section>}
     {showOrders && <section className="panel"><Resource {...resource}>{rows.length
       ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || "Order " + (index + 1)}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span></article>)}</div>

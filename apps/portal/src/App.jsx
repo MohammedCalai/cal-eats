@@ -40,7 +40,7 @@ import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint, subscribeTerminalStatus } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
 import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
-import { businessNavigation, CALAI_WORKSPACE_TOOLS, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
+import { businessNavigation, CALAI_WORKSPACE_TOOLS, canUseCalaiWorkspaceTools, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
 
@@ -276,7 +276,7 @@ function Shell({ kind }) {
   const tools = businessToolPermissions({ permission: owner?.permission, capabilities: owner?.restaurant?.capabilities, principalKind: business?.principalKind });
   const groups = businessNavigation(business, hasEats ? ownerNavigation(owner.permission, tools) : [], mode);
   const nav = groups.flatMap(group => group.items);
-  const calaiToolsAvailable = mode !== "cal-eats" && productPresentation(business, "calai").usable;
+  const calaiToolsAvailable = canUseCalaiWorkspaceTools(business, mode);
   const mobileNav = mode === "calai" ? [["Home", "/owner/dashboard"], ["Order list", "/owner/calai/orders"]]
     : hasEats ? ownerMobileNavigation(owner.permission, tools) : [["Home", "/owner/dashboard"], ["Accounts", "/owner/connections"]];
   useEffect(()=>{setOpen(false);window.scrollTo({top:0,left:0,behavior:"instant"});},[location.pathname]);

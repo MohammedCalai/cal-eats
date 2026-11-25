@@ -121,6 +121,10 @@ export function businessWorkspaceMode(business, tabletConfiguration) {
   return eats.linked && eats.allowedOnTablet !== false ? "both" : "calai";
 }
 
+export function canUseCalaiWorkspaceTools(business, mode) {
+  return (mode === "calai" || mode === "both") && business?.canViewCalai === true && productPresentation(business, "calai").usable;
+}
+
 export function businessNavigation(business, eatsNavigation = [], mode = businessWorkspaceMode(business)) {
   const eats = productPresentation(business, "cal-eats");
   const dashboard = ["Dashboard", "/owner/dashboard"];
