@@ -125,11 +125,12 @@ function App() {
     if (permission === "granted" && !bootstrap.current.isSuspended()) await refresh();
   }, [refresh]);
   const suspendAutomaticSignIn = useCallback(() => bootstrap.current.signOut(), []);
+  const automaticStartupAllowed = useCallback(() => !bootstrap.current.isSuspended(), []);
   useEffect(() => { void refresh(); return () => bootstrap.current.stop(); }, [refresh]);
   useEffect(() => subscribeTerminalStatus(bootstrap.current.observeTerminal), []);
   useEffect(()=>{const restored=()=>setSession(old=>({...old,terminalRevision:(old.terminalRevision||0)+1}));window.addEventListener("cal-eats-terminal-session-restored",restored);return()=>window.removeEventListener("cal-eats-terminal-session-restored",restored);},[]);
   if (session.loading) return <PageState text="Opening business platform…" />;
-  return <SessionContext.Provider value={{ ...session, refresh, setSession, suspendAutomaticSignIn, connectTablet, recheckTablet, observeManagedSetup, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>
+  return <SessionContext.Provider value={{ ...session, refresh, setSession, suspendAutomaticSignIn, automaticStartupAllowed, connectTablet, recheckTablet, observeManagedSetup, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/embedded" element={<Navigate to="/owner/connections" replace/>}/>
     <Route path="/admin/login" element={<PlatformAdminLogin user={session.user} onSignedIn={()=>refresh({afterSignIn:true})}/>} />
@@ -224,8 +225,8 @@ function Login() {
 }
 
 function OwnerBootstrap() {
-  const { user, embedded, observeManagedSetup } = React.useContext(SessionContext);
-  return <BusinessWorkspaceProvider key={user.id} userId={user.id} embedded={embedded} observeManagedSetup={observeManagedSetup}><OwnerRestaurantWorkspace user={user}/></BusinessWorkspaceProvider>;
+  const { user, embedded, observeManagedSetup, automaticStartupAllowed } = React.useContext(SessionContext);
+  return <BusinessWorkspaceProvider key={user.id} userId={user.id} embedded={embedded} observeManagedSetup={observeManagedSetup} automaticStartupAllowed={automaticStartupAllowed}><OwnerRestaurantWorkspace user={user}/></BusinessWorkspaceProvider>;
 }
 
 function OwnerRestaurantWorkspace({ user }) {

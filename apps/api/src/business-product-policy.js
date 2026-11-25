@@ -71,6 +71,18 @@ export function terminalHasCalaiAuthority(db,terminalId,businessId){
  return Boolean(proof && proof.link_id===approved.native_link_id &&
    proof.source_account_id===approved.source_account_id && proof.source_user_id===approved.source_user_id);
 }
+export function registeredCalaiApprovalTarget(db, businessId) {
+  return db.prepare(`
+    SELECT t.id, t.calai_owner_authority_binding, f.id AS tablet_id, f.display_name AS name
+      FROM business_terminals t
+      JOIN users u ON u.id=t.operator_user_id AND u.account_enabled=1 AND u.principal_kind='terminal'
+      JOIN admin_tablets f ON f.terminal_id=t.id AND f.business_id=t.business_id
+       AND f.lifecycle_state='assigned' AND f.archived_at IS NULL AND f.disabled_at IS NULL
+       AND f.authority_blocked_at IS NULL AND f.handoff_requested_at IS NULL AND f.requested_business_id IS NULL
+     WHERE t.business_id=? AND t.revoked_at IS NULL
+  `).get(businessId);
+}
+
 export function businessProductPermission(db,businessId,product){
  if(!exists(db,'business_product_permissions'))return product==='cal-eats';
  return db.prepare('SELECT allowed FROM business_product_permissions WHERE business_id=? AND product=?').get(businessId,product)?.allowed===1;

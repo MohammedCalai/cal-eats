@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Link, NavLink, Navigate, Outlet, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate, listItems } from "./model.js";
 import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, canUseCalaiWorkspaceTools, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
@@ -8,6 +8,7 @@ import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
 import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
+import {calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
 import { EMBEDDED_PARENT_ORIGIN, embeddedCommand, embeddedState } from "./embedded-business-model.js";
 import "./UnifiedBusiness.css";
 
@@ -32,7 +33,7 @@ export function useBusinessResource(path, { poll = 0, request = api, scope = nul
 }
 function Feedback({ error, notice }) { return <>{error && <p className="alert" role="alert">{error}</p>}{notice && <p className="alert success" role="status">{notice}</p>}</>; }
 function Resource({ value, loading, error, reload, children }) { return <>{error && <p className="alert" role="alert">{error} <button type="button" className="quiet" onClick={() => void reload()}>Try again</button></p>}{loading && !value ? <p role="status">Loading account information…</p> : value ? children : !error && <p className="empty">No account information is available.</p>}</>; }
-export function BusinessWorkspaceProvider({ userId, embedded = false, observeManagedSetup, children }) {
+export function BusinessWorkspaceProvider({ userId, embedded = false, observeManagedSetup, automaticStartupAllowed, children }) {
   const context = useBusinessResource("/api/business/context", { poll: 30000 });
   const accounts = useBusinessResource("/api/business/accounts");
   const [terminal, setTerminal] = useState(terminalStatus);
@@ -49,15 +50,19 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
   const tabletScope = pairedWithBusiness && context.value?.principalKind === "human" ? terminal.context.terminalId : null;
   const tabletContext = useBusinessResource(tabletScope ? "/api/business/context" : null, { poll: 15000, request: terminalApi, scope: tabletScope });
   const business = applyTabletProductAccess(context.value, tabletContext.value);
-  const signedConfiguration = pairedWithBusiness
-    ? (tabletScope ? tabletContext.value : context.value)?.tabletConfiguration
-    : null;
-  const configurationReadAt = tabletScope ? tabletContext.updatedAt : context.updatedAt;
+  const signedResource = tabletScope ? tabletContext : context;
+  const signedContext = pairedWithBusiness ? signedResource.value : null;
+  const signedConfiguration = signedContext?.tabletConfiguration;
+  const configurationReadAt = signedResource.updatedAt;
+  const location = useLocation();
+  const startupPage = location.pathname.replace(/\/+$/, "") === "/owner/dashboard" && !embedded &&
+    window.top === window && automaticStartupAllowed?.() === true;
+  const startupAssignment = startupPage && !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
   const received = useRef(null), sending = useRef(null);
   useEffect(() => {
     const businessId = business?.id, terminalId = terminal.context?.terminalId;
     const revision = signedConfiguration?.revision, tabletId = signedConfiguration?.tabletId;
-    if (!businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
+    if (startupAssignment?.authorised || !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
       signedConfiguration.receivedAt || signedConfiguration.status === "received") return;
     const key = `${businessId}:${terminalId}:${tabletId}:${revision}`;
     if (received.current === key || sending.current === key) return;
@@ -67,7 +72,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
       .then(() => { if (sending.current === key) received.current = key; })
       .catch(() => { /* Try again when the signed context is refreshed. */ })
       .finally(() => { if (sending.current === key) sending.current = null; });
-  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt]);
+  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised]);
   const [selecting, setSelecting] = useState(false), [selectionError, setSelectionError] = useState("");
   const navigate = useNavigate(), working = useRef(false);
   async function selectAccount(id) {
@@ -77,7 +82,46 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}><OperationalSurfacePresence business={business} terminal={terminal}/>{embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}<Resource {...context}>{selectionError && <p className="alert" role="alert">{selectionError}</p>}{children}</Resource></BusinessContext.Provider>;
+  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
+    <OperationalSurfacePresence business={business} terminal={terminal}/>
+    {embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}
+    <Resource {...context}>
+      {selectionError && <p className="alert" role="alert">{selectionError}</p>}
+      {startupAssignment ? <CalaiTabletStartup assignment={startupAssignment} allowConnections={business?.canConnectProducts === true}
+        automaticStartupAllowed={automaticStartupAllowed}/> : startupPage && tabletScope && !signedResource.value && signedResource.loading
+        ? <main className="auth"><p role="status">Opening business platform…</p></main> : children}
+    </Resource>
+  </BusinessContext.Provider>;
+}
+
+function CalaiTabletStartup({ assignment, allowConnections, automaticStartupAllowed }) {
+  const [attempt, setAttempt] = useState(0), [failure, setFailure] = useState(null);
+  const current = useRef(assignment);
+  current.current = assignment;
+  useEffect(() => {
+    if (!assignment.authorised) return;
+    const controller = new AbortController();
+    const isCurrent = expected => {
+      const device = terminalStatus();
+      return automaticStartupAllowed() && current.current.authorised && current.current.key === expected.key &&
+        device.status === "ready" && device.paired && device.context?.terminalId === expected.terminalId &&
+        device.context.businessId === expected.businessId && /^\/business\/owner\/dashboard\/*$/.test(window.location.pathname);
+    };
+    void openAssignedCalai({ assignment, request: terminalApi, isCurrent, signal: controller.signal,
+      replace: destination => window.location.replace(destination) })
+      .catch(() => { if (!controller.signal.aborted) setFailure({ key: assignment.key, attempt }); });
+    return () => controller.abort();
+  }, [assignment.key, assignment.authorised, automaticStartupAllowed, attempt]);
+
+  const failed = failure?.key === assignment.key && failure?.attempt === attempt;
+  return <main className="auth"><section className="auth-card">
+    <h1>Calai</h1>
+    {!assignment.authorised ? <p>Ask the restaurant owner to check this tablet’s Calai access.</p>
+      : failed ? <><p role="alert">The tablet’s Calai setting could not be confirmed.</p>
+        <button type="button" className="primary" onClick={() => setAttempt(value => value + 1)}>Try again</button></>
+        : <p role="status">Opening Calai…</p>}
+    {allowConnections && <Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link>}
+  </section></main>;
 }
 function OperationalSurfacePresence({ business, terminal }) {
   const lastScope = useRef(null);

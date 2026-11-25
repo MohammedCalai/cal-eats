@@ -124,6 +124,75 @@ test('device product command is atomic, refreshes valid grant scope, preserves l
   record=(await f.fleet('/'+id)).body.data;const revoked=await f.fleet('/'+id+'/disable',{method:'POST',body:{expectedRevision:record.revision,reason:'Retire the synthetic test tablet'}});assert.equal(revoked.status,200,revoked.text);assert.equal((await change('cal-eats',revoked.body.data.revision)).body.error.code,'TABLET_HANDOFF_PENDING');assert.equal((await tablet.json('/api/auth/me')).status,403);
 });
 
+test('opening Calai requires the exact authorised tablet and current Calai-only assignment', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.allow('calai')).status, 200);
+  assert.equal((await f.link({ session: f.adminSession })).status, 200);
+  const tablet = await enrolRegisteredTablet(f, { ownerCookie: f.ownerCookie });
+  const { terminalId } = tablet;
+  const route = '/api/business/accounts/' + f.business.id + '/surface/heartbeat';
+  const configure = async (mode, expectedRevision) => {
+    const result = await f.fleet('/' + terminalId + '/configuration', { method: 'POST', body: {
+      expectedRevision, displayName: 'Kitchen tablet', businessId: f.business.id, applicationProducts: mode
+    } });
+    assert.equal(result.status, 200, result.text);
+    return result.body.data.revision;
+  };
+  const body = (revision, extra = {}) => ({
+    state: 'open_calai', configurationTabletId: terminalId, configurationRevision: revision, ...extra
+  });
+  const openCalai = data => tablet.json(route, { method: 'POST', body: data });
+  const receiptCount = () => f.db.prepare('SELECT COUNT(*) n FROM tablet_application_receipts').get().n;
+
+  const both = await configure('both', 1);
+  assert.equal((await openCalai(body(both))).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
+  const current = await configure('calai', both);
+  const unsigned = await f.json(route, { method: 'POST', cookie: f.ownerCookie, body: body(current) });
+  assert.equal(unsigned.status, 403);
+  assert.equal((await openCalai(body(both))).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
+  assert.equal((await openCalai(body(current, { configurationTabletId: randomUUID() }))).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
+  assert.equal((await openCalai(body(current, { destination: 'https://example.invalid' }))).status, 400);
+  assert.equal((await openCalai(body(current))).body.error.code, 'CALAI_AUTHORITY_REQUIRED');
+  assert.equal(receiptCount(), 0);
+
+  assert.equal((await f.link()).status, 200);
+  const approval = await f.json('/api/business/accounts/' + f.business.id + '/terminals/calai-authorization', {
+    method: 'POST', cookie: f.ownerCookie, body: { expectedTerminalId: terminalId },
+  });
+  assert.equal(approval.status, 200, approval.text);
+  const first = tablet.options(route, { method: 'POST', body: body(current) });
+  const allowed = await f.json(route, first);
+  assert.equal(allowed.status, 200, allowed.text);
+  assert.equal(allowed.headers.get('cache-control'), 'private, no-store');
+  assert.equal(allowed.headers.has('set-cookie'), false);
+  assert.deepEqual(allowed.body, { data: { tabletConfiguration: {
+    tabletId: terminalId, revision: current, selection: 'calai', status: 'received',
+    receivedAt: f.config.now().toISOString()
+  } } });
+  assert.equal((await f.json(route, first)).body.error.code, 'TERMINAL_REQUEST_REPLAYED');
+  f.advance(1000);
+  assert.deepEqual((await openCalai(body(current))).body, allowed.body, 'The current receipt is idempotent');
+  assert.equal(receiptCount(), 1);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM surface_application_presence').get().n, 0);
+
+  assert.equal((await f.allow('calai', false)).status, 200);
+  assert.equal((await openCalai(body(current))).body.error.code, 'TABLET_PRODUCT_NOT_READY');
+  assert.equal((await f.allow('calai', true)).status, 200);
+  const calaiLink = f.db.prepare("UPDATE business_product_links SET status=? WHERE business_id=? AND product='calai'");
+  calaiLink.run('inactive', f.business.id);
+  assert.equal((await openCalai(body(current))).body.error.code, 'TABLET_PRODUCT_NOT_READY');
+  calaiLink.run('active', f.business.id);
+  const other = await f.call('/api/business/context', { session: f.otherSession });
+  assert.equal(other.status, 200, other.text);
+  const move = await f.fleet('/' + terminalId + '/reassign', { method: 'POST', body: {
+    expectedRevision: current, businessId: other.body.data.id,
+    confirmQuarantine: true, reason: 'Move the synthetic test Surface'
+  } });
+  assert.equal(move.status, 200, move.text);
+  assert.equal((await openCalai(body(current))).status, 403);
+  assert.equal(receiptCount(), 1);
+});
+
 function signedPair(document){const keys=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),publicKeySpki=keys.publicKey.export({type:'spki',format:'der'}).toString('base64');return{terminalId:document.terminalId,code:document.code,deviceName:'Synthetic physical tablet',publicKeySpki,challengeSignature:sign('sha256',Buffer.from(pairingCanonical({...document,publicKeySpki})),{key:keys.privateKey,dsaEncoding:'ieee-p1363'}).toString('base64url')};}
 
 test('existing registration and delayed signed pairing recheck mode readiness and active work before activating a saved selection',async t=>{

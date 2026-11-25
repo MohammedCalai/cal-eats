@@ -299,7 +299,7 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     const envelope = requestEnvelope(path, options, context), expected = generation, proof = windowProof;
     try { return await local("/v1/request", envelope, { expected, signal: options.signal, proof }); }
     catch (error) {
-      const operationDenied = ["TABLET_OPERATION_DENIED", "TERMINAL_OPERATION_DENIED", "OWNER_REQUIRED", "FORBIDDEN","PRODUCT_INACTIVE","PRODUCT_DISABLED","ADMIN_CONNECTION_PERMISSION_REQUIRED","CAL_EATS_DISABLED","BUSINESS_LINK_CHANGED","CALAI_RECONNECT_REQUIRED"].includes(error.code);
+      const operationDenied = ["TABLET_OPERATION_DENIED", "TERMINAL_OPERATION_DENIED", "OWNER_REQUIRED", "FORBIDDEN","PRODUCT_INACTIVE","PRODUCT_DISABLED","ADMIN_CONNECTION_PERMISSION_REQUIRED","CAL_EATS_DISABLED","BUSINESS_LINK_CHANGED","CALAI_RECONNECT_REQUIRED","CALAI_AUTHORITY_REQUIRED"].includes(error.code);
       if (!operationDenied && error.code !== "TERMINAL_ABORTED" && (error.status === 401 || error.status === 403 || error.status === 0 || error.code === "TERMINAL_LOCAL_INVALID" || error.status >= 500)) failed(error, "request", expected);
       throw error;
     }
