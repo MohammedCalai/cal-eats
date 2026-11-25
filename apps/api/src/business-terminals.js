@@ -5,7 +5,7 @@ import { withTransaction } from "./db/index.js";
 import {requireRestaurantMembership,requireRestaurantOwner} from './auth/authorization.js';
 import { businessAccountState, hasCurrentBusinessOwner, requireBusinessAccountOwner } from "./unified-business.js";
 import { buildTerminalInstaller } from "../../terminal-auth/windows/build-installer.mjs";
-import { businessProductPermission, businessProductState, currentCalaiApproverProof, ownerCalaiTabletBindingMatches, terminalHasCalaiAuthority } from "./business-product-policy.js";
+import { businessProductPermission, businessProductState, currentCalaiApproverProof, ownerCalaiTabletBindingMatches, registeredCalaiApprovalTarget, terminalHasCalaiAuthority } from "./business-product-policy.js";
 import {assertFleetNewEnrolmentAllowed,assertFleetTerminalAllowed,assertFleetPairingAllowed,canOfferOwnerCalaiSetup,recordEnrolledTabletInventory} from './tablet-fleet-policy.js';
 import {tabletApplicationProducts,tabletPrinterProductPermitted,tabletProductPermitted,tabletApplicationConfiguration,hasNativeCalaiSetupAuthority} from './tablet-product-policy.js';
 import {assertTabletSelectionActivation} from './tablet-assignment-safety.js';
@@ -257,15 +257,7 @@ function dto(row, config) {
 function calaiApprovalTarget(db, config, businessId, userId) {
   const proof = currentCalaiApproverProof(db, businessId, userId);
   if (!proof || !businessProductState(db, businessId, "calai", config).readiness.ready) return null;
-  const terminal = db.prepare(`
-    SELECT t.id, t.calai_owner_authority_binding, f.id AS tablet_id, f.display_name AS name
-      FROM business_terminals t
-      JOIN users u ON u.id=t.operator_user_id AND u.account_enabled=1 AND u.principal_kind='terminal'
-      JOIN admin_tablets f ON f.terminal_id=t.id AND f.business_id=t.business_id
-       AND f.lifecycle_state='assigned' AND f.archived_at IS NULL
-       AND f.authority_blocked_at IS NULL AND f.handoff_requested_at IS NULL
-     WHERE t.business_id=? AND t.revoked_at IS NULL
-  `).get(businessId);
+  const terminal = registeredCalaiApprovalTarget(db, businessId);
   if (!terminal) return null;
   let needsReplacement = false;
   if (terminal.calai_owner_authority_binding != null) {

@@ -293,11 +293,16 @@ test('product activation after bootstrap uses current signed server authority wi
   const f=fixture();await f.ready(session({products:{calai:{active:false,linked:false},'cal-eats':{active:false,linked:false}}}));
   f.queue.push(response({code:'PRODUCT_INACTIVE',message:'Not enabled on this tablet'},403));
   await assert.rejects(f.client.terminalApi('/api/business/calai/orders'),error=>error.code==='PRODUCT_INACTIVE');assert.equal(f.client.terminalStatus().status,'ready');
+  f.queue.push(response({code:'CALAI_AUTHORITY_REQUIRED',message:'Owner approval required'},403));
+  await assert.rejects(f.client.terminalApi(`/api/business/accounts/${BUSINESS}/surface/heartbeat`, {
+    method: 'POST', body: JSON.stringify({state: 'open_calai', configurationTabletId: TERMINAL, configurationRevision: 4}),
+  }), error=>error.code==='CALAI_AUTHORITY_REQUIRED');
+  assert.equal(f.client.terminalStatus().status,'ready');
   f.queue.push(response({items:[]}));assert.deepEqual(await f.client.terminalApi(`/api/restaurant/restaurants/${RESTAURANT}/orders`),{items:[]},'A later server activation is usable with the same location-bound device session');
   f.queue.push(response({items:[]}));assert.deepEqual(await f.client.terminalApi('/api/business/calai/orders'),{items:[]});
   await assert.rejects(f.client.terminalApi(`/api/restaurant/restaurants/${OTHER}/orders`),error=>error.code==='TERMINAL_OPERATION_DENIED');
   await assert.rejects(f.client.terminalApi('/api/business/orders',{method:'POST',body:{restaurantId:OTHER}}),error=>error.code==='TERMINAL_SCOPE_MISMATCH');
-  assert.equal(f.calls.length,5);
+  assert.equal(f.calls.length,6);
 });
 
 test("body/header validation rejects credential leaks, raw uploads, invalid JSON and oversized requests before sending", async () => {
