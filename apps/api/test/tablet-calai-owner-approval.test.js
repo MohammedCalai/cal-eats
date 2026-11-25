@@ -32,6 +32,20 @@ test("a verified owner delegates Calai reads to the existing admin-issued tablet
     eligible: false, authorized: false, terminalId: null, tabletName: null,
   });
   await f.attachCalai();
+  const password = await f.json("/api/auth/password", { method: "POST", cookie: f.adminCookie,
+    body: { currentPassword: "LocalAdmin!4310", newPassword: "SecureTabletAdmin!4310" } });
+  assert.equal(password.status, 200, password.text);
+  const tabletId = f.db.prepare("SELECT id FROM admin_tablets WHERE terminal_id=?").get(tablet.terminalId).id;
+  async function adminAccess(mode) {
+    f.db.prepare("UPDATE admin_tablets SET application_products=? WHERE id=?").run(mode, tabletId);
+    const result = await f.json(`/api/admin/tablets/${tabletId}`, { cookie: f.adminCookie });
+    assert.equal(result.status, 200, result.text);
+    assert.equal(result.body.data.applicationAccess.selection, mode);
+    return result.body.data.applicationAccess;
+  }
+  assert.equal((await adminAccess("calai")).calaiApprovalRequired, true);
+  assert.equal((await adminAccess("both")).calaiApprovalRequired, true);
+  assert.equal((await adminAccess("cal-eats")).calaiApprovalRequired, false);
   const eligible = await f.get();
   assert.deepEqual(eligible.body.data, {
     eligible: true, authorized: false, terminalId: tablet.terminalId, tabletName: "Synthetic kitchen Surface",
@@ -54,7 +68,7 @@ test("a verified owner delegates Calai reads to the existing admin-issued tablet
   assert.equal((await tablet.json(orders)).status, 403, "Current Cal-Eats-only mode still hides Calai");
   assert.equal(f.db.prepare("SELECT application_products FROM admin_tablets WHERE terminal_id=?").get(tablet.terminalId).application_products, "cal-eats");
 
-  f.db.prepare("UPDATE admin_tablets SET application_products='both' WHERE terminal_id=?").run(tablet.terminalId);
+  assert.equal((await adminAccess("both")).calaiApprovalRequired, false);
   assert.equal((await tablet.json("/api/business/context")).body.data.canViewCalai, true);
   assert.equal((await tablet.json(orders)).status, 200, "The same signed terminal and grant can now read Calai");
   assert.equal((await tablet.json("/api/business/calai/settings", { method: "POST", body: {} })).status, 403);

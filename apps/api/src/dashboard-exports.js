@@ -5,20 +5,54 @@ import { HttpError } from "./http.js";
 import { buildFinanceSummary, parseLondonDateRange, resolveFinanceScope } from "./marketplace-reporting.js";
 import { orderEnvironmentPredicate } from "./financial-environment.js";
 import { PAYABLE_ORDER_SQL } from "./order-confirmation.js";
+import { customerSearch } from "./customer-search.js";
+import { DEMO_ACCOUNTS } from "./seed.js";
 
 const MAX_ROWS = 50000;
 const MAX_BYTES = 10 * 1024 * 1024;
+const demoCustomerEmails = DEMO_ACCOUNTS.filter(account => account.role === "customer").map(account => account.email);
 const confirmed = "o.status IN ('accepted','preparing','ready','out_for_delivery','completed') AND (o.payment_method<>'card' OR o.payment_status IN ('stripe_captured','stripe_partially_refunded','stripe_refunded'))";
 const csvCell = value => {
   let text = String(value ?? "");
   if (!(typeof value === "number" && Number.isFinite(value)) && /^\s*[=+\-@]/u.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 };
-function csv(headers, rows) {
-  if (rows.length > MAX_ROWS) throw new HttpError(413, "EXPORT_TOO_LARGE", "Choose a shorter date range for this export.");
+function csv(headers, rows, limitMessage = "Choose a shorter date range for this export.") {
+  if (rows.length > MAX_ROWS) throw new HttpError(413, "EXPORT_TOO_LARGE", limitMessage);
   const body = "\uFEFF" + [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
-  if (Buffer.byteLength(body) > MAX_BYTES) throw new HttpError(413, "EXPORT_TOO_LARGE", "Choose a shorter date range for this export.");
+  if (Buffer.byteLength(body) > MAX_BYTES) throw new HttpError(413, "EXPORT_TOO_LARGE", limitMessage);
   return body;
+}
+function sendCsv(res, body, filename) {
+  res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${filename}"`, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  res.end(body);
+  return true;
+}
+
+function exportCustomerAppActivity({ res, url, db, config, session }) {
+  const admin = requireRole(session, "admin");
+  const { query, filter, args } = customerSearch(url);
+  const placeholders = demoCustomerEmails.map(() => "?").join(",");
+  const customers = db.prepare(`
+    SELECT u.email,
+      (SELECT COUNT(*) FROM orders o WHERE o.customer_id=u.id) AS ordersPlaced,
+      (SELECT COUNT(*) FROM orders o WHERE o.customer_id=u.id AND o.status='completed') AS ordersCompleted,
+      (SELECT MIN(n.created_at) FROM native_sessions n WHERE n.user_id=u.id) AS firstAppSignIn,
+      (SELECT MAX(n.created_at) FROM native_sessions n WHERE n.user_id=u.id) AS lastAppSignIn
+    FROM users u
+    WHERE ${filter}
+      AND u.email NOT IN (${placeholders})
+      AND NOT EXISTS (SELECT 1 FROM customer_erasure_tombstones e WHERE e.user_id=u.id)
+      AND EXISTS (SELECT 1 FROM native_sessions n WHERE n.user_id=u.id)
+    ORDER BY u.email
+    LIMIT ?`).all(...args, ...demoCustomerEmails, MAX_ROWS + 1);
+  const headers = ["Email", "Orders placed (all channels)", "Orders completed (all channels)", "First app sign-in (UTC)", "Last app sign-in (UTC)"];
+  const rows = customers.map(row => [row.email, row.ordersPlaced, row.ordersCompleted, row.firstAppSignIn, row.lastAppSignIn]);
+  const body = csv(headers, rows, "Narrow the customer search and export again.");
+  db.prepare("INSERT INTO audit_events(id,actor_user_id,entity_type,entity_id,action,details,created_at) VALUES(?,?,?,?,?,?,?)")
+    .run(randomUUID(), admin.id, "customer_app_activity", "platform", "customer_app_activity_csv_exported",
+      JSON.stringify({ rowCount: rows.length, filtered: Boolean(query) }), config.now().toISOString());
+  return sendCsv(res, body, "Cal-Eats-customer-app-activity.csv");
 }
 function orderScope(restaurantId, range, financialScope = null) {
   const clauses = [], values = [];
@@ -122,6 +156,9 @@ export function buildOwnerDashboardCsv({db,config,session,url,rowLimit=MAX_ROWS}
   return {...value,body:csv([...value.report.headers,"financialScope"],value.report.rows.map(row=>[...row,value.financialScope]))};
 }
 export async function routeDashboardExports({ req, res, url, db, config, session }) {
+  if (req.method === "GET" && url.pathname === "/api/admin/customers/app-activity.csv") {
+    return exportCustomerAppActivity({ res, url, db, config, session });
+  }
   const ownerMatch = url.pathname.match(/^\/api\/restaurant\/restaurants\/([^/]+)\/dashboard\/(metrics|orders)\.csv$/);
   const adminMatch = url.pathname.match(/^\/api\/admin\/dashboard\/(metrics|orders|restaurants)\.csv$/);
   if (req.method !== "GET" || (!ownerMatch && !adminMatch)) return false;
@@ -139,7 +176,5 @@ export async function routeDashboardExports({ req, res, url, db, config, session
   const body = csv([...report.headers,"financialScope"], report.rows.map(row=>[...row,financialScope]));
   db.prepare("INSERT INTO audit_events(id,actor_user_id,entity_type,entity_id,action,details,created_at) VALUES(?,?,?,?,?,?,?)").run(randomUUID(), user.id, "dashboard_export", restaurantId || "platform", "dashboard_csv_exported", JSON.stringify({ kind, restaurantId, financialScope, fromDate: range.fromDate, toDate: range.toDate, rowCount: report.rows.length }), stamp);
   const filename = `Cal-Eats-${restaurantId ? "business" : "platform"}-${kind}-${range.fromDate || "all"}-${range.toDate || "dates"}.csv`;
-  res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${filename}"`, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
-  res.end(body);
-  return true;
+  return sendCsv(res, body, filename);
 }
