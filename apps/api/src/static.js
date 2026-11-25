@@ -70,6 +70,8 @@ const assets = new Map([
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json; charset=utf-8"]],
   ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],
   ["/offline.html", ["offline.html", "text/html; charset=utf-8"]],
+  ["/assets/calai-business-logo.png", ["assets/calai-business-logo.png", "image/png"]],
+  ["/assets/calai-business-mark.png", ["assets/calai-business-mark.png", "image/png"]],
   ["/assets/calai-original.png", ["assets/calai-original.png", "image/png"]],
   ["/assets/cal-eats-logo.png", ["assets/cal-eats-logo.png", "image/png"]],
   ["/assets/food-demo.png", ["assets/food-demo.png", "image/png"]],

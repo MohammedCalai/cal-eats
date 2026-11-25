@@ -101,15 +101,39 @@ export function dashboardOrderActivity(value, businessId, products) {
   const rows = (scoped?.orders || []).filter(row => visibleSources.has(row.source)).slice(0, 12);
   return { counters, total, rows };
 }
-export function businessNavigation(business, eatsNavigation = []) {
-  const calai = productPresentation(business, "calai"), eats = productPresentation(business, "cal-eats");
-  const dashboard = ["Dashboard", "/owner/dashboard"], showEats = eats.linked && eats.allowedOnTablet !== false;
-  const eatsItems = showEats ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices") : [];
+export const CALAI_WORKSPACE_TOOLS = [
+  { id: "agents", label: "Agents", nativePath: "/owner/agents" },
+  { id: "test-voice", label: "Test Call Window", nativePath: "/owner/test-voice" },
+  { id: "calls", label: "Call Summary", nativePath: "/owner/call-summary" },
+  { id: "orders", label: "Order list", nativePath: "/owner/order-list" },
+  { id: "item-management", label: "Item Management", nativePath: "/owner/item-management" },
+  { id: "printer", label: "Printer Management", nativePath: "/owner/printer" },
+  { id: "settings", label: "Settings", nativePath: "/owner/settings" },
+];
+
+export function businessWorkspaceMode(business, tabletConfiguration) {
+  const selection = tabletConfiguration?.selection;
+  if (selection === "calai" || selection === "cal-eats" || selection === "both") return selection;
+  const calai = productPresentation(business, "calai");
+  const eats = productPresentation(business, "cal-eats");
+  const showsCalai = calai.usable || (calai.allowedOnTablet === true && eats.allowedOnTablet === false);
+  if (!showsCalai) return "cal-eats";
+  return eats.linked && eats.allowedOnTablet !== false ? "both" : "calai";
+}
+
+export function businessNavigation(business, eatsNavigation = [], mode = businessWorkspaceMode(business)) {
+  const eats = productPresentation(business, "cal-eats");
+  const dashboard = ["Dashboard", "/owner/dashboard"];
+  const calaiItems = CALAI_WORKSPACE_TOOLS.map(({ id, label }) => [label, "/owner/calai/" + id]);
+  const eatsItems = mode !== "calai" && eats.linked && eats.allowedOnTablet !== false
+    ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices")
+    : [];
+  if (mode === "calai") return [{ title: "", items: [dashboard, ...calaiItems] }];
   return [
-    ...(calai.usable ? [
+    ...(mode === "both" ? [
       { title: "", items: [dashboard] },
-      { title: "Calai", items: [["Calai orders", "/owner/calai/orders"], ["Calai calls", "/owner/calai/calls"], ["Calai settings", "/owner/calai/settings"]] },
-      ...(showEats ? [{ title: "Cal-Eats", items: eatsItems }] : []),
+      { title: "Calai", items: calaiItems },
+      { title: "Cal-Eats", items: eatsItems },
     ] : [{ title: "", items: [dashboard, ...eatsItems] }]),
     { title: "Account", items: [["Accounts & connections", "/owner/connections"], ["Statements", "/owner/statements"]] },
   ];

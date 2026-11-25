@@ -28,15 +28,34 @@ function LiveOrderOrbitArt({ live }) {
     <path d="M233 167A113 113 0 0 1 163 235" stroke={live ? "#5a9fff" : "#5c7293"} strokeOpacity=".5" strokeWidth="1.1" strokeLinecap="round"/>
   </svg>;
 }
+export function LiveOrderOrbit({ value, label, active, announcement }) {
+  return <div className="live-order-orbit">
+    <LiveOrderOrbitArt live={active}/>
+    <strong role="status" aria-atomic="true" aria-label={announcement}>{value ?? "—"}</strong>
+    <small>{label}</small>
+  </div>;
+}
+
+export function LiveOrderStages({ operations }) {
+  return <div className="live-order-stages">
+    <span><ActivityIcon kind="clock"/>{operations.pendingConfirmation} to confirm</span>
+    <span><ActivityIcon kind="kitchen"/>{operations.confirmedInKitchen} preparing</span>
+    <span><ActivityIcon kind="ready"/>{operations.readyForHandover} ready</span>
+  </div>;
+}
+
+export function liveOrderCount(operations, unavailable) {
+  return !unavailable && Number.isInteger(operations?.liveOrders) ? operations.liveOrders : null;
+}
+
 export default function LiveOrders({ operations, unavailable, generatedAt }) {
-  const known = operations && !unavailable && Number.isInteger(operations.liveOrders);
-  const count = known ? operations.liveOrders : null, live = count > 0;
+  const count = liveOrderCount(operations, unavailable), known = count !== null, live = count > 0;
   return <section className={`live-orders-panel${live ? " is-live" : ""}`} aria-label="Live restaurant orders">
     <div className="order-energy" aria-hidden="true"><i/><i/><i/></div>
     <div className="live-order-banner">
-      <div className="live-order-orbit"><LiveOrderOrbitArt live={live}/><strong role="status" aria-live="polite" aria-atomic="true" aria-label={known ? `${count} live orders` : "Live order count unavailable"}>{count ?? "—"}</strong><small>LIVE ORDERS</small></div>
+      <LiveOrderOrbit value={count} label="LIVE ORDERS" active={live} announcement={known ? count + " live orders" : "Live order count unavailable"}/>
       <div className="live-order-content"><p className="live-order-label"><span/> LIVE ACTIVITY</p><h2>{!known ? unavailable ? "Live status unavailable" : "Checking live orders…" : live ? count === 1 ? "Live order" : `${count} live orders` : "No live orders"}</h2><p>{known ? live ? "Follow confirmation, preparation and handover in one place." : "Keep this page open. New orders appear automatically." : "The count will return when the dashboard reconnects."}</p>
-        {known && <div className="live-order-stages"><span><ActivityIcon kind="clock"/>{operations.pendingConfirmation} to confirm</span><span><ActivityIcon kind="kitchen"/>{operations.confirmedInKitchen} preparing</span><span><ActivityIcon kind="ready"/>{operations.readyForHandover} ready</span></div>}
+        {known && <LiveOrderStages operations={operations}/>}
       </div>
       <NavLink to="/owner/orders" className="button-link">Order summary <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></NavLink>
     </div>

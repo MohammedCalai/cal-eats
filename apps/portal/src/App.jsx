@@ -40,7 +40,7 @@ import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint, subscribeTerminalStatus } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
 import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
-import { businessNavigation, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
+import { businessNavigation, CALAI_WORKSPACE_TOOLS, productPresentation, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
 
@@ -72,7 +72,20 @@ function useLoad(loader, deps = []) {
   return { ...state, reload };
 }
 
-function Brand() {
+function Brand({ mode = "cal-eats" }) {
+  const calaiBrand = <span className="brand calai-business-brand">
+    <img className="brand-logo" src="/assets/calai-business-logo.png" alt="Calai"/>
+    <img className="brand-mark" src="/assets/calai-business-mark.png" alt="Calai"/>
+  </span>;
+  if (mode === "calai") return calaiBrand;
+  if (mode === "both") return <span className="combined-business-brand" role="img" aria-label="Calai and Cal-Eats">
+    <img className="combined-business-logo" src="/assets/calai-business-logo.png" alt=""/>
+    <img className="combined-business-mark" src="/assets/calai-business-mark.png" alt=""/>
+    <span className="combined-business-wordmark" aria-hidden="true">
+      <span className="combined-business-plus">+</span>
+      <span>Cal<span className="combined-business-accent">-Eats</span></span>
+    </span>
+  </span>;
   return <span className="brand"><img className="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats" /><svg className="brand-mark" role="img" aria-label="Cal-Eats" viewBox="420 180 330 380"><image href="/assets/cal-eats-logo.png" width="2170" height="725"/></svg></span>;
 }
 
@@ -128,9 +141,7 @@ function App() {
           <Route path="connections" element={<BusinessConnections tabletConnection={<TabletConnectionAccess/>}/>}/>
           <Route path="statements" element={<ProductStatements/>}/>
           <Route path="devices" element={<Navigate to="/owner/printers" replace/>}/>
-          <Route path="calai/orders" element={<NativeCalaiView section="orders"/>}/>
-          <Route path="calai/calls" element={<NativeCalaiView section="calls"/>}/>
-          <Route path="calai/settings" element={<NativeCalaiView section="settings"/>}/>
+          {CALAI_WORKSPACE_TOOLS.map(({ id }) => <Route key={id} path={"calai/" + id} element={<NativeCalaiView section={id}/>}/>)}
           <Route element={<RequireEatsAccount/>}>
           <Route path="orders" element={<Orders />} />
           <Route path="menu" element={<Menu />} />
@@ -186,7 +197,7 @@ function FinanceOnly({children}){const tools=useRestaurantTools();return tools.v
 function OwnerOnly({ children }) { const { permission, restaurant } = React.useContext(RestaurantContext); return restaurant && permission === "owner" ? children : <Denied message="A Cal-Eats account with owner permission is required." />; }
 function RequireEatsAccount() {
   const context = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
-  if (workspace?.business?.products?.["cal-eats"]?.allowedOnTablet === false) return <Navigate to="/owner/dashboard" replace/>;
+  if (workspace?.mode === "calai" || workspace?.business?.products?.["cal-eats"]?.allowedOnTablet === false) return <Navigate to="/owner/dashboard" replace/>;
   if (context?.eatsError) return <section className="panel">
     <h1>Cal-Eats tools unavailable</h1>
     <button className="quiet" type="button" onClick={context.refreshRestaurants}>Try again</button>
@@ -219,7 +230,7 @@ function OwnerBootstrap() {
 
 function OwnerRestaurantWorkspace({ user }) {
   const workspace = useBusinessWorkspace(), selectedBusinessId = workspace?.business?.id;
-  const needsEats = canLoadEatsRestaurantWorkspace(workspace?.business);
+  const needsEats = workspace?.mode !== "calai" && canLoadEatsRestaurantWorkspace(workspace?.business);
   const result = useLoad(() => needsEats ? api("/api/restaurant/restaurants") : [], [user.id, needsEats]);
   const storageKey = `cal-eats:business:last-restaurant:${user.id}`;
   const eatsError = needsEats && Boolean(result.error);
@@ -245,7 +256,7 @@ function OwnerRestaurantWorkspace({ user }) {
   }, [restaurants, storageKey]);
   if (!["restaurant", "owner", "staff"].includes(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
   if (needsEats && result.loading) return <PageState text="Loading your business…"/>;
-  if (eatsError && !dashboardOrderProducts(workspace?.business).includes("calai")) return <PageState error={result.error} retry={result.reload}/>;
+  if (eatsError && workspace?.mode === "cal-eats") return <PageState error={result.error} retry={result.reload}/>;
   const permission = restaurant?.permission || restaurant?.membershipPermission || "staff";
   return <RestaurantContext.Provider key={selectedBusinessId} value={{ restaurant, restaurants, setSelected, permission, eatsError, refreshRestaurants:result.reload }}><Outlet /></RestaurantContext.Provider>;
 }
@@ -253,34 +264,101 @@ function OwnerRestaurantWorkspace({ user }) {
 function NavIcon({label}) {
   const paths={Menu:"M4 5h16M4 12h16M4 19h16",Inbox:"M3 5h18v14H3zM3 12h5l2 3h4l2-3h5",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",Offers:"M3 3h8l10 10-8 8L3 11zM7 7h.01",Cases:"M8 3h8v4H8zM8 5H5v16h14V5h-3M9 12h6M9 16h6",Home:"M3 11 12 3l9 8M5 10v11h14V10M9 21v-7h6v7",Orders:"M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"};
   const tools={Account:"M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 22v-3a8 8 0 0 1 16 0v3",Down:"M6 9l6 6 6-6",Toggle:"M4 6h16M4 12h16M4 18h16",Close:"M6 6l12 12M18 6 6 18",More:"M4 12h.01M12 12h.01M20 12h.01",location:"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0M15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0",Printers:"M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6zM18 12h.01",Support:"M3 14v-3a9 9 0 0 1 18 0v3M3 12h4v8H3zM17 12h4v8h-4zM17 20c0 2-3 2-5 2",Settings:"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z",bank:"M3 8l9-5 9 5H3zM5 11v7M10 11v7M15 11v7M20 11v7M3 21h18",card:"M2 8h20M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M6 16h4",Restaurants:"M3 10h18L19 3H5zM4 10v11h16V10M8 21v-7h8v7",Operations:"M3 12h4l3-8 4 16 3-8h4",clock:"M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"};
-  const key=({"Service areas":"location",Marketing:"Offers",Dashboard:"Home","Refund cases":"Cases","Earnings & payouts":"bank",Finance:"bank","Stripe setup":"card","Stripe readiness":"card","Access & deadlines":"clock","Account access":"clock","Payment readiness":"card","Resolution history":"Cases"})[label]||label;
+  const key=({"Agents":"Support","Test Call Window":"Operations","Call Summary":"clock","Order list":"Orders","Item Management":"Menu","Printer Management":"Printers","Service areas":"location",Marketing:"Offers",Dashboard:"Home","Refund cases":"Cases","Earnings & payouts":"bank",Finance:"bank","Stripe setup":"card","Stripe readiness":"card","Access & deadlines":"clock","Account access":"clock","Payment readiness":"card","Resolution history":"Cases"})[label]||label;
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d={paths[key]||tools[key]||paths.Home}/></svg>;
 }
 function Shell({ kind }) {
   const { user, refresh, suspendAutomaticSignIn } = React.useContext(SessionContext), owner = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
   const { desktop, collapsed, toggleDesktop } = useSidebarLayout(), [open, setOpen] = useState(false), [messageCount,setMessageCount]=useState(0), location=useLocation();
-  const business=workspace?.business, hasEats=Boolean(owner?.restaurant), canOperate=operationalTabletFor(business?.id,owner?.restaurant?.id,workspace?.terminal);
-  const tools=businessToolPermissions({permission:owner?.permission,capabilities:owner?.restaurant?.capabilities,principalKind:business?.principalKind});
-  const groups=businessNavigation(business,hasEats?ownerNavigation(owner.permission,tools):[]), nav=groups.flatMap(group=>group.items);
-  const mobileNav=hasEats?ownerMobileNavigation(owner.permission,tools):[["Home","/owner/dashboard"],["Accounts","/owner/connections"]];
+  const business = workspace?.business, mode = workspace?.mode || "cal-eats";
+  const hasEats = mode !== "calai" && Boolean(owner?.restaurant);
+  const canOperate = operationalTabletFor(business?.id, owner?.restaurant?.id, workspace?.terminal);
+  const tools = businessToolPermissions({ permission: owner?.permission, capabilities: owner?.restaurant?.capabilities, principalKind: business?.principalKind });
+  const groups = businessNavigation(business, hasEats ? ownerNavigation(owner.permission, tools) : [], mode);
+  const nav = groups.flatMap(group => group.items);
+  const calaiToolsAvailable = mode !== "cal-eats" && productPresentation(business, "calai").usable;
+  const mobileNav = mode === "calai" ? [["Home", "/owner/dashboard"], ["Order list", "/owner/calai/orders"]]
+    : hasEats ? ownerMobileNavigation(owner.permission, tools) : [["Home", "/owner/dashboard"], ["Accounts", "/owner/connections"]];
   useEffect(()=>{setOpen(false);window.scrollTo({top:0,left:0,behavior:"instant"});},[location.pathname]);
   useEffect(()=>{const close=event=>{if(event.key==="Escape")setOpen(false);},counts=event=>setMessageCount(event.detail?.messages||0);addEventListener("keydown",close);addEventListener("cal-eats-notification-counts",counts);return()=>{removeEventListener("keydown",close);removeEventListener("cal-eats-notification-counts",counts);};},[]);
   async function selectRestaurant(id){const account=workspace.accounts.find(row=>row.eatsRestaurantId===id);if(account)await workspace.selectAccount(account.id);}
   async function logout(){suspendAutomaticSignIn();await endOperationalPresence();await api("/api/auth/logout",{...json("POST",{}),humanSession:true}).catch(()=>{});disconnectLocalTerminal();await refresh();}
-  const showHeaderShortcuts=location.pathname.replace(/\/+$/,"")!=="/owner/dashboard";
-  return <OrderAlertProvider operationalRestaurantId={owner?.restaurant?.id} enabled={hasEats&&canOperate} restaurants={owner?.restaurants} onSelectRestaurant={selectRestaurant} onRefreshRestaurants={owner?.refreshRestaurants} userId={user.id}><BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id}><div className={`portal calai-theme${collapsed?" sidebar-collapsed":""}`}><a className="skip" href="#portal-main">Skip to content</a>{open&&!desktop&&<button className="sidebar-shade" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}<aside id="business-navigation" inert={!desktop&&!open?true:undefined} className={open?"sidebar open":"sidebar"}><div className="sidebar-top"><Brand/><button className="icon-button mobile-only" onClick={()=>setOpen(false)} aria-label="Close menu"><NavIcon label="Close"/></button></div><BusinessAccountSwitcher/><nav aria-label="Business navigation">{groups.map(group=><section className="business-nav-section" key={group.title}>{group.title&&<h2>{group.title}</h2>}{group.items.map(([label,path])=><NavLink key={path} to={path} title={label} aria-label={path==="/owner/inbox"&&messageCount>0?`${label}, ${messageCount} unread messages`:label}><span className="sidebar-nav-icon"><NavIcon label={label}/></span><span className="sidebar-nav-label">{label}</span>{path==="/owner/inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</NavLink>)}</section>)}</nav><div className="sidebar-note"><strong>{hasEats&&owner.permission==="staff"?"Restaurant staff":"Business account"}</strong><span>{user.name}</span><button className="quiet mobile-only" onClick={()=>void logout()}>Sign out</button></div></aside><div className="portal-body"><header className={`topbar business-header${showHeaderShortcuts?" business-header--with-shortcuts":""}`}><div className="business-header-identity"><button className="icon-button menu-button" onClick={()=>desktop?toggleDesktop():setOpen(value=>!value)} aria-label={desktop?(collapsed?"Expand side menu":"Collapse side menu"):(open?"Close menu":"Open menu")} aria-controls="business-navigation" aria-expanded={desktop?!collapsed:open}><NavIcon label="Toggle"/></button><div className="topbar-title"><span className="eyebrow">{business?.name||owner?.restaurant?.name||"Business platform"}</span><strong>{nav.find(([,path])=>location.pathname.startsWith(path))?.[0]||"Business platform"}</strong></div></div><nav className="business-header-navigation" aria-label="Business shortcuts" hidden={!showHeaderShortcuts}>{showHeaderShortcuts&&<BusinessHomeLink/>}<NotificationsPanel userId={user.id} restaurantId={owner?.restaurant?.id} enableSound={false} kind="owner" onSelectRestaurant={selectRestaurant} visible={showHeaderShortcuts} labelled/></nav><div className="top-actions"><button className="quiet topbar-signout" onClick={()=>void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0,1)||"C"}</span></div></header><main id="portal-main" className="content" tabIndex={-1}><Outlet/></main><nav className="mobile-bottom-nav" style={{gridTemplateColumns:`repeat(${mobileNav.length+1},minmax(0,1fr))`}} aria-label="Quick business tools">{mobileNav.map(([label,path])=><NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label==="Inbox"&&messageCount>0&&<b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}<button type="button" aria-label="More business tools" onClick={()=>setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button></nav></div></div></BusinessMessageReminderProvider></OrderAlertProvider>;
+  useEffect(() => {
+    const previous = document.title;
+    document.title = mode === "calai" ? "Calai Business" : mode === "both" ? "Calai & Cal-Eats Business" : "Cal-Eats Business";
+    return () => { document.title = previous; };
+  }, [mode]);
+  const showHeaderShortcuts = mode !== "calai" && location.pathname.replace(/\/+$/, "") !== "/owner/dashboard";
+
+  return <OrderAlertProvider operationalRestaurantId={owner?.restaurant?.id} enabled={hasEats && canOperate} restaurants={owner?.restaurants} onSelectRestaurant={selectRestaurant} onRefreshRestaurants={owner?.refreshRestaurants} userId={user.id}>
+    <BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id}>
+      <div className={`portal calai-theme${collapsed ? " sidebar-collapsed" : ""}`} data-workspace-mode={mode}>
+        <a className="skip" href="#portal-main">Skip to content</a>
+        {open && !desktop && <button className="sidebar-shade" aria-label="Close navigation" onClick={() => setOpen(false)}/>}
+        <aside id="business-navigation" inert={!desktop && !open ? true : undefined} className={open ? "sidebar open" : "sidebar"}>
+          <div className="sidebar-top"><Brand mode={mode}/><button className="icon-button mobile-only" onClick={() => setOpen(false)} aria-label="Close menu"><NavIcon label="Close"/></button></div>
+          <BusinessAccountSwitcher/>
+          <nav aria-label="Business navigation">{groups.map(group =>
+            <section className="business-nav-section" key={group.title}>
+              {group.title && <h2>{group.title}</h2>}
+              {group.items.map(([label, path]) => {
+                const hasUnread = path === "/owner/inbox" && messageCount > 0;
+                const nativeTool = calaiToolsAvailable && CALAI_WORKSPACE_TOOLS.find(
+                  ({ id }) => id !== "orders" && path === "/owner/calai/" + id,
+                );
+                const contents = <>
+                  <span className="sidebar-nav-icon"><NavIcon label={label}/></span>
+                  <span className="sidebar-nav-label">{label}</span>
+                  {hasUnread && <b className="nav-count">{messageCount}</b>}
+                </>;
+                return nativeTool
+                  ? <a key={path} href={"https://calai.info" + nativeTool.nativePath} target="_blank" rel="noopener noreferrer" title={label}>{contents}</a>
+                  : <NavLink key={path} to={path} title={label} aria-label={hasUnread ? `${label}, ${messageCount} unread messages` : label}>{contents}</NavLink>;
+              })}
+            </section>
+          )}</nav>
+          <div className="sidebar-note">
+            <strong>{hasEats && owner.permission === "staff" ? "Restaurant staff" : "Business account"}</strong><span>{user.name}</span>
+            {mode === "calai" && business?.canConnectProducts && <NavLink className="fine" to="/owner/connections">Accounts &amp; connections</NavLink>}
+            <button className="quiet mobile-only" onClick={() => void logout()}>Sign out</button>
+          </div>
+        </aside>
+        <div className="portal-body">
+          <header className={`topbar business-header${showHeaderShortcuts ? " business-header--with-shortcuts" : ""}`}>
+            <div className="business-header-identity">
+              <button className="icon-button menu-button" onClick={() => desktop ? toggleDesktop() : setOpen(value => !value)}
+                aria-label={desktop ? (collapsed ? "Expand side menu" : "Collapse side menu") : (open ? "Close menu" : "Open menu")}
+                aria-controls="business-navigation" aria-expanded={desktop ? !collapsed : open}><NavIcon label="Toggle"/></button>
+              <div className="topbar-title"><span className="eyebrow">{business?.name || owner?.restaurant?.name || "Business platform"}</span><strong>{nav.find(([, path]) => location.pathname.startsWith(path))?.[0] || "Business platform"}</strong></div>
+            </div>
+            {mode !== "calai" && <nav className="business-header-navigation" aria-label="Business shortcuts" hidden={!showHeaderShortcuts}>
+              {showHeaderShortcuts && <BusinessHomeLink/>}
+              <NotificationsPanel userId={user.id} restaurantId={owner?.restaurant?.id} enableSound={false} kind="owner" onSelectRestaurant={selectRestaurant} visible={showHeaderShortcuts} labelled/>
+            </nav>}
+            <div className="top-actions"><button className="quiet topbar-signout" onClick={() => void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0, 1) || "C"}</span></div>
+          </header>
+          <main id="portal-main" className="content" tabIndex={-1}><Outlet/></main>
+          <nav className="mobile-bottom-nav" style={{ gridTemplateColumns: `repeat(${mobileNav.length + 1},minmax(0,1fr))` }} aria-label="Quick business tools">
+            {mobileNav.map(([label, path]) => <NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label === "Inbox" && messageCount > 0 && <b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}
+            <button type="button" aria-label="More business tools" onClick={() => setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button>
+          </nav>
+        </div>
+      </div>
+    </BusinessMessageReminderProvider>
+  </OrderAlertProvider>;
 }
 
 function OwnerDashboard() {
   const {user}=React.useContext(SessionContext);
   const { restaurant, permission, eatsError, refreshRestaurants } = React.useContext(RestaurantContext);
   const workspace = useBusinessWorkspace(), business = workspace?.business;
+  const mode = workspace?.mode || "cal-eats";
   const canOperate = operationalTabletFor(business?.id, restaurant?.id, workspace?.terminal);
   const products = dashboardOrderProducts(business);
-  if (restaurant) return <OwnerDashboardView key={`${restaurant.id}:${permission}`}
+  if (restaurant && mode !== "calai") return <OwnerDashboardView key={`${restaurant.id}:${permission}`}
     restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate}
-    business={business} products={products}/>;
-  if (products.includes("calai")) return <OrderActivityDashboard business={business} products={products}
+    business={business} products={products} workspaceMode={mode}/>;
+  if (business && mode !== "cal-eats") return <OrderActivityDashboard business={business} products={products} workspaceMode={mode}
     onRetryRestaurant={eatsError ? refreshRestaurants : undefined}/>;
   return <>
     <header className="page-heading"><h1>Dashboard</h1><p>{business?.name}</p></header>
