@@ -37,9 +37,58 @@ test("unpaired, revoked and unknown ordinary browsers never enter an automatic b
 
 test("a native connection never replaces a separately authorised owner session or financial role",async()=>{
   const human={id:"owner-a",role:"restaurant"};let attempts=0,changed=0;
-  const f=fixture({readHuman:async()=>({user:human}),onTerminal:()=>{changed++;},connectTerminal:async()=>{if(attempts++===0)throw offline();f.setStatus({status:"ready",paired:true,context:terminalResult()});}});
+  const f=fixture({readHuman:async()=>({user:human}),preferTerminalForUser:()=>true,onTerminal:()=>{changed++;},connectTerminal:async()=>{if(attempts++===0)throw offline();f.setStatus({status:"ready",paired:true,context:terminalResult()});}});
   await f.controller.refresh();assert.equal(f.sessions.at(-1).user,human);assert.equal([...f.timers.values()][0].delay,5000);
   await f.next();assert.equal(changed,1);assert.ok(f.sessions.every(session=>session.user===human));assert.ok(f.principals.every(value=>value==="human"));f.controller.stop();
+});
+
+test("an unrelated customer cookie yields to the exact registered tablet only after signed verification", async () => {
+  const customer = { id: "shopper", role: "customer" };
+  let resolveSigned;
+  const f = fixture({
+    readHuman: async () => ({ user: customer }),
+    preferTerminalForUser: user => user.role === "customer",
+    readTerminal: () => new Promise(resolve => { resolveSigned = resolve; }),
+    onTerminal: () => assert.fail("The shopper is not the tablet's human operator"),
+  });
+  const pending = f.controller.refresh();
+  await flush();
+  assert.deepEqual(f.sessions, []);
+  assert.deepEqual(f.principals, []);
+  resolveSigned(terminalResult());
+  await pending;
+  assert.deepEqual(f.sessions, [{ user: terminalUser, principalKind: "terminal" }]);
+  assert.deepEqual(f.principals, ["terminal"]);
+  f.controller.stop();
+});
+
+test("an unsupported, denied or differently scoped tablet leaves the unrelated customer session in place", async () => {
+  const customer = { id: "shopper", role: "customer" };
+  const cases = [
+    { canDiscover: () => false },
+    { connectTerminal: async () => { throw Object.assign(Error("Browser permission denied"), { status: 403, code: "TERMINAL_PERMISSION_DENIED" }); } },
+    { readTerminal: async () => ({ ...terminalResult(), restaurantId: "other-restaurant" }) },
+    { readTerminal: async () => ({ ...terminalResult(), user: { ...terminalUser, role: "customer" } }) },
+  ];
+  for (const options of cases) {
+    const f = fixture({ readHuman: async () => ({ user: customer }), preferTerminalForUser: () => true, ...options });
+    await f.controller.refresh();
+    assert.deepEqual(f.sessions, [{ user: customer, principalKind: "human" }]);
+    assert.deepEqual(f.principals, ["human"]);
+    assert.equal(f.timers.size, 0);
+    f.controller.stop();
+  }
+});
+
+test("a customer cookie cannot release explicit tablet logout", async () => {
+  const customer = { id: "shopper", role: "customer" };
+  const f = fixture({ readHuman: async () => ({ user: customer }), preferTerminalForUser: () => true });
+  f.controller.signOut();
+  await f.controller.refresh({ afterSignIn: true });
+  assert.equal(f.controller.isSuspended(), true);
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.sessions, [{ user: customer, principalKind: "human" }]);
+  f.controller.stop();
 });
 
 test("explicit logout invalidates an in-flight bootstrap and its late completion cannot sign the tablet in again",async()=>{

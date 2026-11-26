@@ -24,7 +24,11 @@ test('landing promotes app downloads and ordering remains a distinct entry with 
   assert.equal(home.status, 200);
   const html = home.body.toString();
   const main = html.match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0];
-  const downloadPath = main?.match(/<a\b[^>]*\bhref="([^"]+)"[^>]*>Get the (?:Cal-Eats )?app<\/a>/)?.[1];
+  assert.match(main ?? '', /href="\/customers\/"/);
+  const customers = await serve('/customers/');
+  assert.equal(customers.status, 200);
+  const customerMain = customers.body.toString().match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0];
+  const downloadPath = customerMain?.match(/<a\b[^>]*\bhref="([^"]+)"[^>]*>Get the (?:Cal-Eats )?app<\/a>/)?.[1];
   assert.equal(downloadPath, '/download/');
   assert.doesNotMatch(html, /<form[^>]*action="\/order\/"/);
   assert.match(html, /href="\/business\/login"/);
@@ -36,7 +40,7 @@ test('landing promotes app downloads and ordering remains a distinct entry with 
   const order = await serve('/order/');
   assert.equal(order.status, 200);
   assert.match(order.body.toString(), /id="customer-bottom"/);
-  for (const pathname of ['/landing.css', '/landing.js', downloadPath, '/order/']) {
+  for (const pathname of ['/landing.css', '/landing.js', '/customers/', downloadPath, '/order/']) {
     const head = await serve(pathname, 'HEAD');
     assert.equal(head.status, 200);
     assert.equal(head.body, undefined);

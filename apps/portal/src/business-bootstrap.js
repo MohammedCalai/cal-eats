@@ -1,15 +1,19 @@
 const BACKOFF = [5000, 10000, 30000, 60000];
 const denied = new Set(["TERMINAL_REVOKED", "TABLET_REVOKED", "TABLET_NOT_ENROLLED", "TERMINAL_NOT_PAIRED", "TERMINAL_LOCAL_INVALID", "TABLET_SESSION_RESPONSE_INVALID"]);
-const sameIdentity = (expected, result) => expected?.principalKind === "terminal" && result?.principalKind === "terminal" && result.terminalId === expected.terminalId && result.businessId === expected.businessId && result.restaurantId === expected.restaurantId && result.user?.id === expected.user?.id;
+const sameIdentity = (expected, result) => expected?.principalKind === "terminal" && result?.principalKind === "terminal" && result.terminalId === expected.terminalId && result.businessId === expected.businessId && result.restaurantId === expected.restaurantId && result.user?.role === "restaurant" && result.user.id === expected.user?.id;
 const sameTerminal = (snapshot, result) => snapshot?.status === "ready" && snapshot.paired === true && sameIdentity(snapshot.context, result);
 const isCalaiOnly = context => context?.restaurantId === null && context.products?.calai?.active === true && context.products?.["cal-eats"]?.active === false;
 const recoverableCalai = (snapshot, terminal) => terminal && snapshot?.terminalId === terminal.terminalId && snapshot.paired === true && snapshot.reconnectEligible === true;
 
 // This coordinates reads only. Its retry/latch state never grants authority;
 // every terminal identity still comes from the signed native companion.
-export function createBusinessBootstrap({ readHuman, connectTerminal, readTerminal, terminalStatus, canDiscover = () => false, setPrincipal = () => {}, onSession = () => {}, onLoading = () => {}, onTerminal = () => {}, onSignOut = () => {}, schedule = setTimeout, cancel = clearTimeout }) {
+export function createBusinessBootstrap({ readHuman, connectTerminal, readTerminal, terminalStatus, canDiscover = () => false, preferTerminalForUser = () => false, setPrincipal = () => {}, onSession = () => {}, onLoading = () => {}, onTerminal = () => {}, onSignOut = () => {}, schedule = setTimeout, cancel = clearTimeout }) {
   let generation = 0, pending = null, timer = null, retry = 0, signedOut = false, lastUser = null, verifiedCalai = null;
   const current = expected => expected === generation;
+  function publishHuman(human) {
+    setPrincipal("human");
+    onSession({ user: human?.user ?? null, principalKind: "human" });
+  }
   function clearTimer() { if (timer !== null) cancel(timer); timer = null; }
   function stop() { generation++; clearTimer(); pending?.controller.abort(); retry = 0; verifiedCalai = null; }
   function signOut() { signedOut = true; try { onSignOut(); } finally { stop(); } }
@@ -59,7 +63,7 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
     const controller = new AbortController(), attempt = { controller, promise: null };
     pending = attempt;
     attempt.promise = (async () => {
-      let human = null;
+      let human = null, prefersTablet = false;
       try {
         try {
           if (recovery) {
@@ -76,16 +80,19 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
           if (!current(expected) || controller.signal.aborted) return;
           if (!result?.user?.id) throw Error("No authenticated business session.");
           human = result; lastUser = result.user;
-          // An explicit successful human sign-in is the only same-page reset.
-          if (afterSignIn) signedOut = false;
-          setPrincipal("human"); onSession({ user: human.user, principalKind: "human" });
+          // Only an explicit business sign-in releases a same-page logout.
+          if (afterSignIn && human.user.role !== "customer") signedOut = false;
+          // A shopper cookie belongs to a separate flow. A portal may wait for
+          // the local and signed tablet identities before deciding which to use.
+          prefersTablet = human.user.role === "customer" && preferTerminalForUser(human.user);
+          if (!prefersTablet) publishHuman(human);
         } catch (error) {
           if (!current(expected) || controller.signal.aborted) return;
           if (recovery) { retryLater(expected, error, recovery); return; }
           lastUser = null;
         }
         if (signedOut || !canDiscover(human?.user || null)) {
-          if (!human) { setPrincipal("human"); onSession({ user: null, principalKind: "human" }); }
+          if (!human || prefersTablet) publishHuman(human);
           return;
         }
         try {
@@ -96,11 +103,11 @@ export function createBusinessBootstrap({ readHuman, connectTerminal, readTermin
           if (!sameTerminal(terminalStatus(), verified)) throw Object.assign(Error("Tablet identity changed."), { code: "TERMINAL_LOCAL_INVALID" });
           retry = 0;
           verifiedCalai = isCalaiOnly(verified) ? verified : null;
-          if (human) onTerminal({afterSignIn,terminalContext:verified});
+          if (human && !prefersTablet) onTerminal({afterSignIn,terminalContext:verified});
           else { setPrincipal("terminal"); onSession({ user: verified.user, principalKind: "terminal" }); }
         } catch (error) {
           if (!current(expected) || controller.signal.aborted || signedOut) return;
-          if (!human) { setPrincipal("human"); onSession({ user: null, principalKind: "human" }); }
+          if (!human || prefersTablet) publishHuman(human);
           retryLater(expected, error);
         }
       } finally { if (pending === attempt) pending = null; }
