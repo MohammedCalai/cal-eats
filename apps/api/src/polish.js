@@ -133,17 +133,23 @@ function visibleMedia(db,session,id){
 }
 async function serveMedia({res,db,config,session,id}){
   const row=visibleMedia(db,session,id);
-  const object=db.prepare("SELECT * FROM media_asset_objects WHERE media_id=? AND restaurant_id=?").get(id,row.restaurant_id);
+  // Read inline bytes and their object binding in one database snapshot. A
+  // conversion committing between separate reads could expose an empty image.
+  const storage=db.prepare(`SELECT m.data,o.media_id,o.backend_id,o.object_key,o.object_version,o.byte_length,o.content_sha256
+    FROM media_assets m LEFT JOIN media_asset_objects o ON o.media_id=m.id AND o.restaurant_id=m.restaurant_id
+    WHERE m.id=? AND m.restaurant_id=?`).get(id,row.restaurant_id);
+  if(!storage)throw new HttpError(404,"NOT_FOUND","Resource not found");
   res.setHeader("Content-Security-Policy","sandbox; default-src 'none'");
-  if(object){
+  if(storage.media_id){
     const store=config.mediaObjectStore;
-    if(!store||store.backendId!==object.backend_id||object.byte_length!==row.byte_length)throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo is temporarily unavailable");
+    if(!store||store.backendId!==storage.backend_id||storage.byte_length!==row.byte_length)throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo is temporarily unavailable");
     let bytes;
-    try{bytes=await store.read({key:object.object_key,versionId:object.object_version,byteLength:object.byte_length,sha256:object.content_sha256});if(bytes.length!==row.byte_length||mediaSha256(bytes)!==object.content_sha256)throw Error("Invalid media content");}
+    try{bytes=await store.read({key:storage.object_key,versionId:storage.object_version,byteLength:storage.byte_length,sha256:storage.content_sha256});if(bytes.length!==row.byte_length||mediaSha256(bytes)!==storage.content_sha256)throw Error("Invalid media content");}
     catch{throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo is temporarily unavailable");}
     visibleMedia(db,session,id);
     res.writeHead(200,{"Content-Type":row.mime_type,"Content-Length":bytes.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(bytes);return true;
   }
-  const bytes=db.prepare("SELECT data FROM media_assets WHERE id=?").get(id).data;
+  const bytes=storage.data;
+  if(bytes.length!==row.byte_length)throw new HttpError(503,"MEDIA_STORAGE_UNAVAILABLE","The photo is temporarily unavailable");
   res.writeHead(200,{"Content-Type":row.mime_type,"Content-Length":bytes.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(bytes);return true;
 }

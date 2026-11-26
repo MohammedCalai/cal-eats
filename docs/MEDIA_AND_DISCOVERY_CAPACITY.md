@@ -10,13 +10,35 @@ Before rolling out at that scale, move image bytes behind a storage adapter to o
 
 ## Optional private object storage preparation (8 November)
 
-Migration56 adds tenant-bound immutable object metadata and a durable cleanup queue. `CALAI_MEDIA_STORAGE=database` remains the default. The alternative `s3` backend is prepared and locally tested but **is not configured or enabled on hosting**. It requires a dedicated private, versioned S3-compatible bucket and separately approved credentials. No existing image has been moved and no storage resource has been purchased.
+Migration 56 adds tenant-bound immutable object metadata and a durable cleanup queue. `CALAI_MEDIA_STORAGE=database` is the default. Object-backed storage requires a dedicated private versioned bucket and credentials restricted to the Cal-Eats image prefix.
 
 When explicitly enabled, new uploads retain `/api/media/:id` URLs and the same100,000,000-byte allowance per business, but put image bytes in object storage rather than the order database. Validation precedes upload; the final database transaction rechecks tenant ownership and quota after the network operation. Failed and interrupted uploads retain a durable cleanup reservation. Replacing or deleting an image queues cleanup only once no menu/cover references it. The bounded cleanup worker runs independently of payment-worker failures.
 
 The adapter verifies an immutable object version, byte length, MIME type and SHA-256 before publication. Every read requests that exact version, checks its bytes and rechecks restaurant visibility after awaiting storage. Pending, suspended, archived or private media keeps its authorization checks. Storage failures return a generic temporary error without credentials or provider details. Current delivery still goes through the API; CDN and large-volume delivery throughput have not been validated, and no broad browser security-policy exception was added.
 
-Required private settings: `CALAI_MEDIA_STORAGE=s3`, `CALAI_MEDIA_S3_BUCKET`, `CALAI_MEDIA_S3_REGION`, `CALAI_MEDIA_S3_ACCESS_KEY_ID`, `CALAI_MEDIA_S3_SECRET_ACCESS_KEY`, and optional HTTPS-origin `CALAI_MEDIA_S3_ENDPOINT` / boolean `CALAI_MEDIA_S3_FORCE_PATH_STYLE`. Use a Cal-Eats-only bucket and prefix-scoped object permissions. Bucket versioning is mandatory: an upload with no immutable version ID is not published. Do not assume every S3-compatible provider supports versioning; verify compatibility before selecting/provisioning storage. Existing database-backed images remain readable alongside new object-backed images.
+Set `CALAI_MEDIA_STORAGE=s3` for a provider that implements conditional creation, or `CALAI_MEDIA_STORAGE=b2` for Backblaze B2. Both modes use `CALAI_MEDIA_S3_BUCKET`, `CALAI_MEDIA_S3_REGION`, `CALAI_MEDIA_S3_ACCESS_KEY_ID`, `CALAI_MEDIA_S3_SECRET_ACCESS_KEY`, and optional `CALAI_MEDIA_S3_FORCE_PATH_STYLE`. Set the provider's HTTPS origin using `CALAI_MEDIA_S3_ENDPOINT` when applicable. B2 requires its matching regional `https://s3.<region>.backblazeb2.com` origin. Only uploads confirmed to have an immutable version ID can be published. Existing database-backed images remain readable alongside new object-backed images.
+
+B2 appends an immutable version on each upload. Cal-Eats reserves a fresh random key for each image write or relocation attempt, submits each B2 upload once, and binds the exact returned version after verification. Reads and backups use only that exact version and checksum, even if a newer version of the same key exists. Cleanup applies a delete marker by key and checks that B2 acknowledges it. Keep all versions and use a bucket- and prefix-scoped integration key with read and write access for image operations. Keep permanent version deletion authority separately controlled.
+
+### Moving existing covers and menu photos
+
+Run the operator script from the deployed Cal-Eats release. The read-only plan reports image counts and byte lengths without opening an object storage connection. It checks the schema and recorded sizes; the apply step validates each selected image's bytes and dimensions.
+
+```sh
+node scripts/migrate-media-to-objects.js --plan --db /data/calai-eats.sqlite
+```
+
+1. Take a verified Cal-Eats database backup. Enable versioning and verify storage access with the dedicated Cal-Eats bucket credentials. Deploy the matching configuration to every Cal-Eats API process before relocating any existing images. Test an approved upload and fetch in the matching environment. Confirm anonymous access is denied and the original version remains readable after a name-only deletion. For B2, confirm the original version also remains readable after appending different bytes to the same synthetic key.
+2. Apply a one-image batch and check its existing cover or menu photo URL. Then continue in bounded batches until `inlineImages` is zero. The script defaults to 25 images and accepts at most 100 per batch. A failed `put` or read-back stops the batch. A malformed inline image is counted and remains available from its source bytes for investigation. A failed batch exits with a nonzero status and can be retried after resolving its reported failure.
+
+   ```sh
+   node scripts/migrate-media-to-objects.js --apply --db /data/calai-eats.sqlite --limit 1
+   node scripts/migrate-media-to-objects.js --apply --db /data/calai-eats.sqlite --limit 25
+   ```
+
+3. Verify another read-only plan, check representative customer and owner photo URLs, take a new database backup, and verify every referenced object version against the backup as described below. SQLite can reuse freed image pages for future writes; its file size may remain the same. Treat any file compaction as a separately scheduled database-maintenance action.
+
+Each relocation uploads to a tenant-scoped immutable key, reads back the exact version, and compares its byte length and checksum before changing the database. A short SQLite transaction binds the version and clears the inline bytes together. IDs, photo URLs, cover and menu references, and the 100 MB allowance use the same saved metadata after relocation. Concurrent replacement or deletion takes precedence. Abandoned upload attempts enter the ordinary object cleanup queue. A rerun skips versions already bound. Once any image is object-backed, keep its matching bucket available to every release that serves it, including during rollback.
 
 ### Backups, restoration and later Calai migration
 
