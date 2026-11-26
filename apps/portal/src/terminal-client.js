@@ -134,7 +134,7 @@ async function readJson(response) {
 export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalThis.fetch(...args), clock = Date.now, screenIdFactory = () => globalThis.crypto.randomUUID(), timeoutMs = 10000, permissionTimeoutMs = 1000, permissionQuery = queryLoopbackPermission, discoveryHint = tabletDiscoveryHint, schedule = setTimeout, cancel = clearTimeout } = {}) {
   let generation = 0, csrfToken = null, windowProof = null, context = null, currentScreenId = null, connecting = null;
   let state = { status: "unchecked", terminalId: null, paired: null, errorCode: null, permission: "unknown", reconnectEligible: false };
-  let localAccessObserved = false, permissionBinding = null;
+  let localAccessObserved = false, permissionBinding = null, recoveringGrant = null, grantRenewalSuspended = false;
   const requests = new Set(), listeners = new Set();
   function publish(next) { state = { ...state, ...next }; for (const listener of listeners) listener(terminalStatus()); }
   function hint(enabled) { try { discoveryHint.write(enabled); } catch { /* Discovery hints never grant authority. */ } }
@@ -226,7 +226,7 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     try { return await Promise.race([work, abortPromise]); }
     finally { cancel(timer); requests.delete(controller); signal?.removeEventListener("abort", externalAbort); controller.signal.removeEventListener("abort", abortListener); }
   }
-  function connectAutomaticTerminal({ signal, screenId, userInitiated = false, expectedTerminal = null, managedBusinessId = null } = {}) {
+  function connectAutomaticTerminal({ signal, screenId, userInitiated = false, expectedTerminal = null, managedBusinessId = null, grantRenewal = null } = {}) {
     const selectedScreen = screenId || currentScreenId || screenIdFactory();
     const requireExpected = result => {
       if (managedBusinessId && result.businessId !== managedBusinessId) throw failure("The registered tablet belongs to a different business.", 403, "TERMINAL_LOCAL_INVALID");
@@ -238,11 +238,11 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     };
     if (!UUID.test(selectedScreen)) return Promise.reject(failure("The tablet screen identifier is invalid.", 400, "TERMINAL_SCREEN_INVALID"));
     if (signal?.aborted) return Promise.reject(aborted());
-    if (connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted && !(userInitiated && !connecting.userInitiated)) {
+    if (!grantRenewal && connecting && connecting.screenId === selectedScreen && !connecting.signal?.aborted && !(userInitiated && !connecting.userInitiated)) {
       const promise = connecting.signal === signal ? connecting.promise : waitForCaller(connecting.promise, signal);
       return expectedTerminal || managedBusinessId ? promise.then(requireExpected) : promise;
     }
-    if (windowProof && state.status === "ready" && currentScreenId === selectedScreen && Date.parse(context.expiresAt) > clock() + RENEW_BEFORE_MS) {
+    if (!grantRenewal && windowProof && state.status === "ready" && currentScreenId === selectedScreen && Date.parse(context.expiresAt) > clock() + RENEW_BEFORE_MS) {
       const promise = Promise.resolve(clone(context));
       return expectedTerminal || managedBusinessId ? promise.then(requireExpected) : promise;
     }
@@ -276,9 +276,19 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
         const safe = safeContext(result, selectedScreen, clock());
         if (!PROOF.test(result.windowProof) || safe.terminalId !== bootstrap.terminalId) throw failure("The restaurant tablet identity could not be verified.", 502, "TERMINAL_LOCAL_INVALID");
         requireExpected(safe);
+        if (grantRenewal) {
+          const verified = await local("/v1/request", requestEnvelope("/api/auth/me", {}, safe),
+            { expected, signal, proof: result.windowProof });
+          if (verified?.principalKind !== "terminal" || verified.user?.role !== "restaurant") {
+            throw failure("The registered tablet identity changed.", 403, "TERMINAL_LOCAL_INVALID");
+          }
+          grantRenewal.verified = requireExpected(verified);
+          grantRenewal.restoredGeneration = expected;
+        }
         if (userInitiated && await readPermission({ signal, expected }) === "denied") throw permissionFailure("denied");
         assertCurrent(expected);
         context = safe; windowProof = result.windowProof;
+        grantRenewalSuspended = false;
         hint(true);
         publish({ status: "ready", paired: true, terminalId: safe.terminalId, errorCode: null });
         return clone(context);
@@ -293,22 +303,59 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     })();
     connecting = attempt; return attempt.promise;
   }
-  async function terminalApi(path, options = {}) {
+  function startGrantRenewal(scope, previousGeneration) {
+    const controller = new AbortController();
+    const attempt = { scope, previousGeneration, controller, verified: null, restoredGeneration: null, promise: null };
+    recoveringGrant = attempt;
+    attempt.promise = connectAutomaticTerminal({ signal: controller.signal, expectedTerminal: scope, grantRenewal: attempt })
+      .finally(() => { if (recoveringGrant === attempt) recoveringGrant = null; });
+    return attempt;
+  }
+  async function waitForRestoredGrant(attempt, signal) {
+    await waitForCaller(attempt.promise, signal);
+    if (grantRenewalSuspended || attempt.restoredGeneration !== generation) throw changed();
+  }
+  async function terminalApi(path, options = {}, allowReadRenewal = true) {
+    const read = String(options.method || "GET").toUpperCase() === "GET";
+    if (read && recoveringGrant) await waitForRestoredGrant(recoveringGrant, options.signal);
     if (windowProof && context && Date.parse(context.expiresAt) <= clock() + RENEW_BEFORE_MS) await connectAutomaticTerminal({ signal: options.signal });
     if (!windowProof || !context || state.status !== "ready") throw failure("Reconnect the registered restaurant tablet to continue.", 401, "TERMINAL_SESSION_REQUIRED", true);
-    const envelope = requestEnvelope(path, options, context), expected = generation, proof = windowProof;
+    const scope = context, envelope = requestEnvelope(path, options, scope), expected = generation, proof = windowProof;
     try { return await local("/v1/request", envelope, { expected, signal: options.signal, proof }); }
     catch (error) {
+      // This exact response comes before the cloud route runs. The broker has
+      // already discarded its stale grant when it returns this error.
+      if (read && allowReadRenewal && !grantRenewalSuspended && !options.signal?.aborted) {
+        const sameRecovery = error.code === "TERMINAL_CONTEXT_CHANGED" &&
+          recoveringGrant?.previousGeneration === expected ? recoveringGrant : null;
+        const expired = expected === generation && state.paired === true && error.status === 401 &&
+          error.code === "TERMINAL_SESSION_EXPIRED";
+        const renewal = sameRecovery || (expired ? startGrantRenewal(scope, expected) : null);
+        if (renewal) {
+          await waitForRestoredGrant(renewal, options.signal);
+          if (path === "/api/auth/me") return renewal.verified;
+          return terminalApi(path, options, false);
+        }
+      }
       const operationDenied = ["TABLET_OPERATION_DENIED", "TERMINAL_OPERATION_DENIED", "OWNER_REQUIRED", "FORBIDDEN","PRODUCT_INACTIVE","PRODUCT_DISABLED","ADMIN_CONNECTION_PERMISSION_REQUIRED","CAL_EATS_DISABLED","BUSINESS_LINK_CHANGED","CALAI_RECONNECT_REQUIRED","CALAI_AUTHORITY_REQUIRED"].includes(error.code);
       if (!operationDenied && error.code !== "TERMINAL_ABORTED" && (error.status === 401 || error.status === 403 || error.status === 0 || error.code === "TERMINAL_LOCAL_INVALID" || error.status >= 500)) failed(error, "request", expected);
       throw error;
     }
   }
-  function disconnectLocalTerminal() { localAccessObserved = false; hint(false); invalidate("unchecked"); connecting = null; }
-  function clearDiscoveryHint() { hint(false); }
+  function cancelGrantRenewal() {
+    grantRenewalSuspended = true;
+    recoveringGrant?.controller.abort();
+    recoveringGrant = null;
+  }
+  function disconnectLocalTerminal() { cancelGrantRenewal(); localAccessObserved = false; hint(false); invalidate("unchecked"); connecting = null; }
+  function clearDiscoveryHint() { cancelGrantRenewal(); hint(false); }
+  function canRequest(path, method = "GET") {
+    const currentScope = state.status === "ready" ? context : method === "GET" ? recoveringGrant?.scope : null;
+    return Boolean(currentScope && allowedPath(path, method, currentScope));
+  }
   function terminalStatus() { return { ...state, startupRetryEligible: state.paired === null && knownGrantedTransportFailure(state.errorCode), context: clone(context), expiresAt: context?.expiresAt || null }; }
   function subscribe(listener) { listeners.add(listener); listener(terminalStatus()); return () => listeners.delete(listener); }
-  return { connectAutomaticTerminal, terminalApi, disconnectLocalTerminal, terminalStatus, recheckLoopbackPermission, clearDiscoveryHint, subscribe };
+  return { connectAutomaticTerminal, terminalApi, disconnectLocalTerminal, terminalStatus, recheckLoopbackPermission, clearDiscoveryHint, canRequest, subscribe };
 }
 
 const automatic = createAutomaticTerminalClient();
@@ -319,4 +366,4 @@ export const terminalStatus = () => automatic.terminalStatus();
 export const recheckLoopbackPermission = options => automatic.recheckLoopbackPermission(options);
 export const subscribeTerminalStatus = listener => automatic.subscribe(listener);
 export const clearTabletDiscoveryHint = () => automatic.clearDiscoveryHint();
-export const terminalCanRequest = (path,method='GET') => {const state=automatic.terminalStatus();return state.status==='ready'&&state.context&&allowedPath(path,String(method).toUpperCase(),state.context);};
+export const terminalCanRequest = (path, method = "GET") => automatic.canRequest(path, String(method).toUpperCase());

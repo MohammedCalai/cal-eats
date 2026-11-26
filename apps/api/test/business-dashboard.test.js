@@ -1,9 +1,11 @@
-import {tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
+import {enrolRegisteredTablet, tabletJson as registeredTabletJson} from './registered-tablet-fixture.js';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { dashboardRange } from "../src/business-dashboard.js";
 import { journeyFixture } from "./helpers.js";
+import { requestAllowed } from "../../terminal-auth/src/protocol.js";
+import { activeDashboardOrdersPath, restaurantDashboardPath } from "../../portal/src/dashboard-refresh-state.js";
 
 test("dashboard presets use London calendar days, Monday weeks and exact DST boundaries", () => {
   const spring = dashboardRange("today", new Date("2026-03-29T12:00:00.000Z"));
@@ -114,4 +116,74 @@ test("business dashboard scopes periods, roles, earnings, messages and transfer 
     for (const row of staffView.orders.items) for (const field of ["totalMinor", "refundsMinor", "commissionMinor", "netEarningsMinor", "paymentMethod", "paymentState", "payoutState", "payoutLabel", "providerMode"]) assert.equal(field in row, false);
     assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length, 0);
   } finally { await f.close(); }
+});
+
+
+test("the registered tablet loads both dashboard reads through the installed companion allowlist", async t => {
+  const now = "2026-11-24T12:00:00.000Z";
+  const f = await journeyFixture({ now: () => new Date(now) });
+  t.after(() => f.close());
+
+  const ownerCookie = await f.login("restaurant@calai.local", "LocalRestaurant!4310");
+  const otherOwnerCookie = await f.login("restaurant2@calai.local", "LocalRestaurant2!4310");
+  const tablet = await enrolRegisteredTablet(f, { ownerCookie });
+  const restaurantId = tablet.restaurantId;
+  const other = (await f.json("/api/restaurant/restaurants", { cookie: otherOwnerCookie })).body.data[0];
+  const { id: customerId } = f.db.prepare("SELECT id FROM users WHERE role='customer' LIMIT 1").get();
+
+  const insert = f.db.prepare(`INSERT INTO orders (
+    id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,total_minor,
+    commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,
+    created_at,updated_at,merchant_visible_at
+  ) VALUES (?,?,'Dashboard fixture',?,?,'GBP',400,400,28,?,?,'delivery',?,'dashboard-fixture',?,?,?)`);
+  function add(status, createdAt = now, { location = restaurantId, method = "cash", payment = "cash_due", visible = now } = {}) {
+    const id = randomUUID();
+    insert.run(id, location, customerId, status, method, payment, id, createdAt, createdAt, visible);
+    return id;
+  }
+  const newestPending = add("placed");
+  const oldestPending = add("placed", "2026-11-23T10:00:00.000Z");
+  const accepted = add("accepted", "2026-11-24T09:00:00.000Z");
+  const preparing = add("preparing", "2026-11-23T09:00:00.000Z");
+  const ready = add("ready");
+  const delivering = add("out_for_delivery");
+  add("completed");
+  add("placed", now, { method: "card", payment: "stripe_pending", visible: null });
+  add("placed", now, { location: other.id });
+
+  function signedRead(path) {
+    assert.equal(requestAllowed("GET", path, restaurantId, tablet.businessId), true, path);
+    return tablet.json(path);
+  }
+  const dashboard = await signedRead(restaurantDashboardPath(restaurantId, "today", 1, "terminal"));
+  assert.equal(dashboard.status, 200, dashboard.text);
+  assert.equal(dashboard.body.data.finance, null);
+  assert.equal(dashboard.body.data.operations.activeOrders, 6);
+  assert.equal(dashboard.body.data.operations.liveOrders, 5);
+  assert.ok(dashboard.body.data.orders.items.every(row => !Object.hasOwn(row, "totalMinor") && !Object.hasOwn(row, "commissionMinor")));
+
+  const ownerDashboardPath = restaurantDashboardPath(restaurantId, "today", 1, "human");
+  assert.equal(new URL(ownerDashboardPath, f.config.origin).searchParams.get("view"), "operations");
+  const ownerDashboard = await f.json(ownerDashboardPath, { cookie: ownerCookie });
+  assert.equal(ownerDashboard.status, 200, ownerDashboard.text);
+  assert.equal(ownerDashboard.body.data.finance, null);
+
+  const activePath = activeDashboardOrdersPath(restaurantId);
+  const active = await signedRead(activePath);
+  assert.equal(active.status, 200, active.text);
+  assert.deepEqual(active.body.data.items.map(order => order.id), [oldestPending, newestPending, accepted, preparing, ready, delivering]);
+  assert.equal(active.body.data.pagination.total, 6);
+  assert.ok(active.body.data.items.every(order => order.restaurantId === restaurantId && !Object.hasOwn(order, "commissionMinor")));
+
+  const second = await signedRead(activePath.replace("page=1&pageSize=12", "page=2&pageSize=2"));
+  assert.equal(second.status, 200, second.text);
+  assert.deepEqual(second.body.data.items.map(order => order.id), [accepted, preparing]);
+  assert.equal(second.body.data.pagination.total, 6);
+  assert.equal(second.body.data.pagination.hasNext, true);
+
+  const dated = await signedRead(activePath + "&from=2026-11-24&to=2026-11-24");
+  assert.equal(dated.status, 200, dated.text);
+  assert.deepEqual(dated.body.data.items.map(order => order.id), [newestPending, accepted, ready, delivering]);
+  assert.equal((await signedRead(activePath.replace("status=active", "status=preparing"))).body.data.items[0].id, preparing);
+  assert.equal((await tablet.json(activeDashboardOrdersPath(other.id))).status, 404);
 });
