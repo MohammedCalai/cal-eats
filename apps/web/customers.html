@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#071b36">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Cal-Eats charges customers £0 in service fees. Explore the planned LU1–LU7 launch area and see how local ordering will work. Restaurant delivery charges may apply.">
+  <title>For customers · Cal-Eats</title>
+  <link rel="icon" href="/assets/calai-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/maplibre-gl.css">
+  <link rel="stylesheet" href="/landing.css">
+  <link rel="stylesheet" href="/privacy-security.css">
+  <script type="module" src="/landing.js"></script>
+  <script type="module" src="/coverage-map.js"></script>
+</head>
+<body class="landing-page marketing-page customer-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Cal-Eats home"><img class="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats"></a>
+    <nav aria-label="Main navigation">
+      <a class="audience-link" href="/customers/" aria-current="page">For customers</a>
+      <a class="audience-link" href="/restaurants/">For restaurants</a>
+      <a class="section-link" href="#coverage">Coverage</a>
+      <a class="sign-in" href="/business/login">Business sign in</a>
+      <a class="switch-calai" href="https://calai.info/"><span class="switch-mark" aria-hidden="true">↗</span> Switch to Calai</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero customer-hero">
+      <div class="hero-copy">
+        <p class="eyebrow">For customers · Local favourites. More value in every order.</p>
+        <h1 class="fee-headline">0% SERVICE FEE</h1>
+        <p class="hero-lead fee-explanation">Cal-Eats charges customers £0 in service fees.</p>
+        <p class="fee-qualification">Restaurant delivery charges may apply.</p>
+        <p class="customer-availability">Cal-Eats is preparing to launch in Luton and surrounding areas. Public app downloads are coming soon; invited customers can continue using their existing access.</p>
+        <div class="hero-actions">
+          <a class="button" href="#coverage">Explore the UK map <span aria-hidden="true">→</span></a>
+          <a class="button hero-secondary" href="/download/">See app availability</a>
+        </div>
+        <ul class="hero-highlights" aria-label="Cal-Eats highlights">
+          <li>No customer service fee</li>
+          <li>Clear checkout total</li>
+          <li>Delivery or collection where offered</li>
+        </ul>
+      </div>
+      <figure class="hero-visual">
+        <img src="/assets/food-demo.png" alt="Illustrative chicken rice bowl and seasoned fries on a navy background">
+        <figcaption>Illustrative food photography</figcaption>
+      </figure>
+    </section>
+
+    <section class="research-section" aria-labelledby="research-title">
+      <div class="research-card">
+        <span class="research-number" aria-hidden="true">40%</span>
+        <div>
+          <p class="eyebrow">Why the service fee matters</p>
+          <h2 id="research-title">40% of British adults say food-delivery service fees are too high.</h2>
+          <a href="https://yougov.com/en-gb/articles/54863-food-delivery-services-are-mainly-used-as-a-treat-in-britain-but-high-fees-frustrate-many">Source: YouGov, 29 May 2026.</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="benefits" id="why-cal-eats" aria-labelledby="benefits-title">
+      <div class="section-heading">
+        <p class="eyebrow">Why order with Cal-Eats?</p>
+        <h2 id="benefits-title">More reasons to choose local.</h2>
+        <p>Good food should come with a clear total and a straightforward way to support the restaurants you love.</p>
+      </div>
+      <div class="benefit-grid">
+        <article class="benefit-card benefit-card-featured"><span class="benefit-symbol" aria-hidden="true">£0</span><h3>No customer service fee</h3><p>Cal-Eats adds no platform service fee to your order. A restaurant-set delivery charge may apply and is shown separately.</p></article>
+        <article class="benefit-card"><span class="benefit-symbol" aria-hidden="true">£</span><h3>Restaurant-set menu prices</h3><p>Restaurants set their online menu prices, which may differ from in-store prices. Check the price shown before ordering.</p></article>
+        <article class="benefit-card"><span class="benefit-symbol" aria-hidden="true">✓</span><h3>See the total clearly</h3><p>Review your items, offers and any delivery charge before you confirm your order.</p></article>
+        <article class="benefit-card"><span class="benefit-symbol" aria-hidden="true">♥</span><h3>Back local restaurants</h3><p>When Cal-Eats opens in your area, find participating local favourites and choose delivery or collection where offered.</p></article>
+      </div>
+    </section>
+
+    <section class="coverage" id="coverage" aria-labelledby="coverage-title">
+      <div class="section-heading">
+        <p class="eyebrow">Our UK ambition</p>
+        <h2 id="coverage-title">Where Cal-Eats operates</h2>
+        <p>Explore the whole UK and zoom in to see cities, towns and streets. Blue marks a planned launch area; we aim to expand across the country over time. Delivery availability will depend on your exact postcode and participating restaurants.</p>
+      </div>
+      <div class="coverage-layout">
+        <div class="map-panel">
+          <div class="map-toolbar">
+            <strong>Explore the UK</strong>
+            <div class="map-controls" aria-label="Map controls">
+              <button id="map-reset" type="button">UK view</button>
+            </div>
+          </div>
+          <div class="coverage-viewport">
+            <div id="coverage-map" role="region" aria-label="Interactive map of UK cities and streets with the planned Cal-Eats launch area highlighted in blue"></div>
+            <p id="map-message" class="map-message" role="status">Loading the map…</p>
+          </div>
+          <div class="map-panel-footer">
+            <div class="map-legend"><span><i class="legend-selected" aria-hidden="true"></i> Planned launch area</span></div>
+            <p class="map-attribution">Map: <a href="https://openfreemap.org/">OpenFreeMap</a> · <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>. Blue area: <a href="https://github.com/missinglink/uk-postcode-polygons">UK postcode polygons</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>; derived from OS Code-Point Open, containing OS and Royal Mail data © Crown copyright and database right 2012. Postcode district outlines are indicative and may have changed.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="steps" id="how-it-works" aria-labelledby="steps-title">
+      <div class="section-heading">
+        <p class="eyebrow">Dinner, sorted</p>
+        <h2 id="steps-title">A simpler way to order locally</h2>
+      </div>
+      <ol>
+        <li><span>1</span><div><h3>Find nearby food</h3><p>When ordering opens, save your address in the app and explore participating local restaurants.</p></div></li>
+        <li><span>2</span><div><h3>Make it yours</h3><p>See clear prices, allergen information supplied by restaurants, and available choices.</p></div></li>
+        <li><span>3</span><div><h3>Follow your order</h3><p>Choose delivery or collection and check progress from confirmation to completion.</p></div></li>
+      </ol>
+    </section>
+
+    <section class="faq" id="questions" aria-labelledby="faq-title">
+      <div class="section-heading"><p class="eyebrow">Good to know</p><h2 id="faq-title">Questions, answered.</h2></div>
+      <div class="faq-grid">
+        <details><summary>Does Cal-Eats charge a customer service fee?</summary><p>No. Cal-Eats does not add a platform service fee. Restaurants may charge for delivery, and that charge is shown separately before checkout.</p></details>
+        <details><summary>Are menu prices the same as in-store?</summary><p>Restaurants set their online menu prices, which may differ from in-store prices. Review the shown price before ordering.</p></details>
+        <details><summary>Where can I order?</summary><p>LU1–LU7 is the planned launch area. Once ordering opens, the app will show participating restaurants and delivery or collection options for your exact postcode.</p></details>
+        <details><summary>Who delivers the food?</summary><p>Participating restaurants use their own delivery drivers. Collection is also supported. Cal-Eats does not provide a courier fleet.</p></details>
+        <details><summary>How will I get the app?</summary><p>The iPhone and Android download buttons will connect you to the official stores when Cal-Eats is publicly available. Existing invited users can continue using their invitation.</p></details>
+      </div>
+    </section>
+
+    <section class="closing">
+      <p class="eyebrow">Hungry for something local?</p>
+      <h2>Your next local favourite is on its way.</h2>
+      <a class="button light" href="/download/">Get the Cal-Eats app</a>
+    </section>
+  </main>
+
+  <footer class="legal-footer">
+    <a class="brand footer-brand" href="/" aria-label="Cal-Eats home"><img class="brand-logo" src="/assets/cal-eats-logo.png" alt="Cal-Eats"></a>
+    <p>Local food, made simpler.</p>
+    <nav aria-label="Footer navigation"><a href="/customers/">For customers</a><a href="/restaurants/">For restaurants</a><a href="/download/">Get the app</a><a href="/support/">Help &amp; support</a><a href="/privacy-security/">Privacy &amp; security</a><a href="/legal/privacy">Privacy Notice</a><a href="/legal/terms">Customer Terms</a><a href="/account-deletion/">Delete your account</a><a href="/business/login">Business sign in</a><a href="https://calai.info/">Switch to Calai</a></nav>
+    <p class="fine company-details">Cal-Eats is operated by CALAI LTD · Registered in England and Wales · Company number 16995419. <a href="/privacy-security/#contact">Company details</a><br>General enquiries: <a href="mailto:caleats@calai.info">caleats@calai.info</a></p>
+  </footer>
+</body>
+</html>

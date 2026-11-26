@@ -14,6 +14,10 @@ const assets = new Map([
   ["/order-experience.css",["order-experience.css","text/css; charset=utf-8"]],
   ["/order-history-groups.js",["order-history-groups.js","text/javascript; charset=utf-8"]],
   ["/", ["landing.html", "text/html; charset=utf-8"]],
+  ["/customers", ["customers.html", "text/html; charset=utf-8"]],
+  ["/customers/", ["customers.html", "text/html; charset=utf-8"]],
+  ["/restaurants", ["restaurants.html", "text/html; charset=utf-8"]],
+  ["/restaurants/", ["restaurants.html", "text/html; charset=utf-8"]],
   ["/order", ["index.html", "text/html; charset=utf-8"]],
   ["/order/", ["index.html", "text/html; charset=utf-8"]],
   ["/account-access/", ["index.html", "text/html; charset=utf-8"]],
@@ -32,6 +36,7 @@ const assets = new Map([
   ["/download.js", ["download.js", "text/javascript; charset=utf-8"]],
   ["/landing.css", ["landing.css", "text/css; charset=utf-8"]],
   ["/landing.js", ["landing.js", "text/javascript; charset=utf-8"]],
+  ["/coverage-map.js", ["coverage-map.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/customer-account.js", ["customer-account.js", "text/javascript; charset=utf-8"]],
   ["/customer-deletion.js", ["customer-deletion.js", "text/javascript; charset=utf-8"]],
@@ -75,6 +80,11 @@ const assets = new Map([
   ["/assets/calai-original.png", ["assets/calai-original.png", "image/png"]],
   ["/assets/cal-eats-logo.png", ["assets/cal-eats-logo.png", "image/png"]],
   ["/assets/food-demo.png", ["assets/food-demo.png", "image/png"]],
+  ["/assets/lu-districts.geojson", ["assets/lu-districts.geojson", "application/geo+json; charset=utf-8"]],
+  ["/assets/maplibre-gl.mjs", ["assets/maplibre-gl.mjs", "text/javascript; charset=utf-8"]],
+  ["/assets/maplibre-gl-worker.mjs", ["assets/maplibre-gl-worker.mjs", "text/javascript; charset=utf-8"]],
+  ["/assets/maplibre-gl.css", ["assets/maplibre-gl.css", "text/css; charset=utf-8"]],
+  ["/assets/maplibre-LICENSE.txt", ["assets/maplibre-LICENSE.txt", "text/plain; charset=utf-8"]],
   ["/assets/calai-icon.svg", ["assets/calai-icon.svg", "image/svg+xml"]],
   ["/assets/calai-icon-maskable.svg", ["assets/calai-icon-maskable.svg", "image/svg+xml"]]
 ]);
@@ -97,7 +107,10 @@ export async function serveStatic(req, res, pathname, config = {}) {
   try {
     let body = await readFile(path.join(webRoot, asset[0]));
     if (hosted && asset[0] === "index.html") body = Buffer.from(body.toString("utf8").replace('<body class="customer-app">', '<body class="customer-app" data-app-first="true">'));
-    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    const mapResource = asset[0] === "customers.html" || asset[0] === "assets/maplibre-gl-worker.mjs";
+    res.setHeader("Content-Security-Policy", mapResource
+      ? "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://tiles.openfreemap.org; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      : "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     res.writeHead(200, { "Content-Type": asset[1], "Content-Length": body.length, "Cache-Control": "no-store" });
     res.end(req.method === "HEAD" ? undefined : body);
     return true;
