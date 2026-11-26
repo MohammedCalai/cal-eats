@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
+import {Readable} from "node:stream";
+import {S3Client,PutObjectCommand,HeadObjectCommand,GetObjectCommand,DeleteObjectCommand} from "@aws-sdk/client-s3";
 import {journeyFixture} from "./helpers.js";
 import {loadMediaObjectStore,mediaObjectKey,mediaSha256,runMediaObjectCleanup} from "../src/media-object-store.js";
 import fs from "node:fs";
@@ -24,6 +26,91 @@ test("media storage is opt-in with isolated credentials and tenant UUID object k
   for(const env of [{CALAI_MEDIA_STORAGE:"public"},{CALAI_MEDIA_STORAGE:"s3"},{CALAI_MEDIA_STORAGE:"s3",CALAI_MEDIA_S3_BUCKET:"private-images",CALAI_MEDIA_S3_REGION:"auto",CALAI_MEDIA_S3_ENDPOINT:"http://insecure.test"}])assert.throws(()=>loadMediaObjectStore(undefined,env));
   assert.throws(()=>mediaObjectKey("../escape",randomUUID(),"image/png"));
   const tenant=randomUUID(),asset=randomUUID();assert.equal(mediaObjectKey(tenant,asset,"image/png"),`restaurants/${tenant}/${asset}.png`);
+});
+
+const backblazeSettings = {
+  CALAI_MEDIA_STORAGE: "b2",
+  CALAI_MEDIA_S3_BUCKET: "private-cal-eats-test",
+  CALAI_MEDIA_S3_REGION: "eu-central-003",
+  CALAI_MEDIA_S3_ENDPOINT: "https://s3.eu-central-003.backblazeb2.com",
+  CALAI_MEDIA_S3_ACCESS_KEY_ID: "synthetic-key-id",
+  CALAI_MEDIA_S3_SECRET_ACCESS_KEY: "synthetic-key-value",
+  CALAI_MEDIA_S3_FORCE_PATH_STYLE: "true",
+};
+
+test("B2 opt-in requires the provider's regional HTTPS origin; S3 still uses atomic conditional uploads", async t => {
+  for (const endpoint of [undefined, "https://s3.eu-central-004.backblazeb2.com", "https://s3.eu-central-003.backblazeb2.com.example.invalid", "https://s3.eu-central-003.backblazeb2.com:444"]) {
+    assert.throws(() => loadMediaObjectStore(undefined, { ...backblazeSettings, CALAI_MEDIA_S3_ENDPOINT: endpoint }), /regional HTTPS endpoint/);
+  }
+  const store = loadMediaObjectStore(undefined, { ...backblazeSettings, CALAI_MEDIA_STORAGE: "s3" });
+  const key = mediaObjectKey(randomUUID(), randomUUID(), image.mimeType), bytes = Buffer.from(png, "base64"), sha256 = mediaSha256(bytes);
+  t.mock.method(S3Client.prototype, "send", async function (command) {
+    assert.equal(await this.config.maxAttempts(), 2);
+    if (command instanceof PutObjectCommand) {
+      assert.equal(command.input.IfNoneMatch, "*");
+      return { VersionId: "s3-version" };
+    }
+    assert.ok(command instanceof HeadObjectCommand);
+    assert.equal(command.input.VersionId, "s3-version");
+    return { VersionId: "s3-version", ContentLength: bytes.length, ContentType: image.mimeType, Metadata: { sha256 } };
+  });
+  assert.deepEqual(await store.put({ key, bytes, sha256, mimeType: image.mimeType }), { versionId: "s3-version" });
+});
+
+test("B2 sends a single-attempt append and reads each verified version after a newer write and hide marker", async t => {
+  const store = loadMediaObjectStore(undefined, backblazeSettings);
+  const key = mediaObjectKey(randomUUID(), randomUUID(), image.mimeType), versions = new Map();
+  let omitVersion = false, acknowledgeMarker = true, hidden = false;
+  const transport = t.mock.method(S3Client.prototype, "send", async function (command) {
+    const input = command.input;
+    assert.equal(input.Key, key);
+    if (command instanceof PutObjectCommand) {
+      assert.equal(await this.config.maxAttempts(), 1);
+      assert.equal(input.IfNoneMatch, undefined);
+      if (omitVersion) return {};
+      const id = `b2-version-${versions.size + 1}`;
+      versions.set(id, { bytes: input.Body, sha256: input.Metadata.sha256, mimeType: input.ContentType });
+      return { VersionId: id };
+    }
+    assert.equal(await this.config.maxAttempts(), 2);
+    if (command instanceof DeleteObjectCommand) {
+      assert.equal(input.VersionId, undefined, "cleanup never deletes a specific version");
+      if (!acknowledgeMarker) return {};
+      hidden = true;
+      return { DeleteMarker: true };
+    }
+    assert.ok(command instanceof HeadObjectCommand || command instanceof GetObjectCommand);
+    const saved = versions.get(input.VersionId);
+    assert.ok(saved, "verification and reads always select an existing exact version, even after hide");
+    return { VersionId: input.VersionId, ContentLength: saved.bytes.length, ContentType: saved.mimeType,
+      Metadata: { sha256: saved.sha256 }, ...(command instanceof GetObjectCommand ? { Body: Readable.from([saved.bytes]) } : {}) };
+  });
+
+  const original = Buffer.from(png, "base64"), newer = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGOQjr0JAAHoAVLonYB/AAAAAElFTkSuQmCC", "base64");
+  const put = async bytes => {
+    const sha256 = mediaSha256(bytes);
+    const { versionId } = await store.put({ key, bytes, mimeType: image.mimeType, sha256 });
+    return { key, versionId, byteLength: bytes.length, sha256 };
+  };
+  const first = await put(original);
+  const second = await put(newer);
+  assert.notEqual(first.versionId, second.versionId);
+  assert.deepEqual(await store.read(first), original);
+  assert.deepEqual(await store.read(second), newer);
+  acknowledgeMarker = false;
+  await assert.rejects(store.remove(key), /hide marker/);
+  acknowledgeMarker = true;
+  await store.remove(key);
+  assert.equal(hidden, true);
+  assert.deepEqual(await store.read(first), original);
+  assert.deepEqual(await store.read(second), newer);
+
+  const callsBeforeInvalid = transport.mock.callCount();
+  await assert.rejects(store.read({ ...first, versionId: "null" }), /Missing immutable object version/);
+  assert.equal(transport.mock.callCount(), callsBeforeInvalid);
+  omitVersion = true;
+  await assert.rejects(put(original), /Versioned private image storage/);
+  assert.equal(transport.mock.callCount(), callsBeforeInvalid + 1, "unversioned upload cannot reach publication verification");
 });
 
 test("object photos preserve public URL, quota and authorization without image BLOBs in the order database",async()=>{

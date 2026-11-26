@@ -3,6 +3,8 @@ import {S3Client,PutObjectCommand,HeadObjectCommand,GetObjectCommand,DeleteObjec
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const keyPattern=/^restaurants\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(png|jpg)$/i;
+const backblazeRegion=/^(?:eu-central|us-east|us-west|ca-east)-\d{3}$/;
+const immutableVersion=value=>typeof value==="string"&&value.length>0&&value.length<=1024&&value!=="null"&&!/[\r\n\0]/.test(value);
 export const mediaSha256=bytes=>createHash("sha256").update(bytes).digest("hex");
 
 export function mediaObjectKey(restaurantId,assetId,mimeType){
@@ -16,31 +18,38 @@ export function loadMediaObjectStore(input,env=process.env){
   if(input!==undefined)return input;
   const mode=env.CALAI_MEDIA_STORAGE??"database";
   if(mode==="database")return null;
-  if(mode!=="s3")throw Error("CALAI_MEDIA_STORAGE must be database or s3");
+  if(mode!=="s3"&&mode!=="b2")throw Error("CALAI_MEDIA_STORAGE must be database, s3 or b2");
+  const backblaze=mode==="b2";
   const bucket=env.CALAI_MEDIA_S3_BUCKET,region=env.CALAI_MEDIA_S3_REGION;
   if(!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket??"")||!region||region.length>80)throw Error("Private media bucket and region are required");
   const endpoint=env.CALAI_MEDIA_S3_ENDPOINT?new URL(env.CALAI_MEDIA_S3_ENDPOINT):null;
   if(endpoint&&(endpoint.protocol!=="https:"||endpoint.username||endpoint.password||endpoint.search||endpoint.hash||endpoint.pathname!=="/"))throw Error("Media object endpoint must be an HTTPS origin");
+  if(backblaze&&(!backblazeRegion.test(region)||endpoint?.origin!==`https://s3.${region}.backblazeb2.com`))throw Error("B2 requires its matching regional HTTPS endpoint");
   const accessKeyId=env.CALAI_MEDIA_S3_ACCESS_KEY_ID,secretAccessKey=env.CALAI_MEDIA_S3_SECRET_ACCESS_KEY;
   if(!accessKeyId||!secretAccessKey||/[\r\n\0]/.test(accessKeyId+secretAccessKey))throw Error("Dedicated private media credentials are required");
   const forcePathStyle=env.CALAI_MEDIA_S3_FORCE_PATH_STYLE??"false";
   if(!["true","false"].includes(forcePathStyle))throw Error("Media path style must be true or false");
   const backendId=mediaSha256(`${endpoint?.origin??"aws-s3"}\n${region}\n${bucket}`);
-  const client=new S3Client({region,...(endpoint?{endpoint:endpoint.origin}:{}),forcePathStyle:forcePathStyle==="true",credentials:{accessKeyId,secretAccessKey},maxAttempts:2,requestChecksumCalculation:"WHEN_REQUIRED"});
+  const options={region,...(endpoint?{endpoint:endpoint.origin}:{}),forcePathStyle:forcePathStyle==="true",credentials:{accessKeyId,secretAccessKey},requestChecksumCalculation:"WHEN_REQUIRED"};
+  const client=new S3Client({...options,maxAttempts:2});
+  const uploadClient=backblaze?new S3Client({...options,maxAttempts:1}):client;
   const checkKey=key=>{if(!keyPattern.test(key))throw Error("Invalid media object key");return key;};
   const store={backendId,
     async put({key,bytes,mimeType,sha256}){
       checkKey(key);
       if(mediaSha256(bytes)!==sha256)throw Error("Media object checksum mismatch");
-      const uploaded=await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:bytes,ContentType:mimeType,CacheControl:"private, max-age=60",Metadata:{sha256},IfNoneMatch:"*"}),{abortSignal:AbortSignal.timeout(15000)});
+      // B2 appends an immutable version and does not implement conditional PUT.
+      // The upload/relocation callers reserve a fresh key per attempt. Disable
+      // SDK PUT replay for B2 and publish/read only the verified exact version.
+      const uploaded=await uploadClient.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:bytes,ContentType:mimeType,CacheControl:"private, max-age=60",Metadata:{sha256},...(backblaze?{}:{IfNoneMatch:"*"})}),{abortSignal:AbortSignal.timeout(15000)});
       const versionId=uploaded.VersionId;
-      if(typeof versionId!=="string"||!versionId||versionId==="null"||versionId.length>1024||/[\r\n\0]/.test(versionId))throw Error("Versioned private image storage is required for recoverable backups");
+      if(!immutableVersion(versionId))throw Error("Versioned private image storage is required for recoverable backups");
       const result=await client.send(new HeadObjectCommand({Bucket:bucket,Key:key,VersionId:versionId}),{abortSignal:AbortSignal.timeout(15000)});
       if(result.VersionId!==versionId||result.ContentLength!==bytes.length||result.Metadata?.sha256!==sha256||result.ContentType!==mimeType)throw Error("Stored media object could not be verified");
       return {versionId};
     },
     async read({key,versionId,byteLength,sha256}){
-      if(typeof versionId!=="string"||!versionId)throw Error("Missing object version");
+      if(!immutableVersion(versionId))throw Error("Missing immutable object version");
       const result=await client.send(new GetObjectCommand({Bucket:bucket,Key:checkKey(key),VersionId:versionId}),{abortSignal:AbortSignal.timeout(15000)});
       if(result.VersionId!==versionId||result.ContentLength!==byteLength||byteLength>1048576||result.Metadata?.sha256!==sha256){result.Body?.destroy?.();throw Error("Media object metadata mismatch");}
       const chunks=[];let size=0;
@@ -52,7 +61,10 @@ export function loadMediaObjectStore(input,env=process.env){
     },
     // Delete the current key, never an immutable version referenced by a
     // database backup. Bucket lifecycle must retain those versions separately.
-    async remove(key){await client.send(new DeleteObjectCommand({Bucket:bucket,Key:checkKey(key)}),{abortSignal:AbortSignal.timeout(15000)});}
+    async remove(key){
+      const result=await client.send(new DeleteObjectCommand({Bucket:bucket,Key:checkKey(key)}),{abortSignal:AbortSignal.timeout(15000)});
+      if(backblaze&&result.DeleteMarker!==true)throw Error("B2 did not acknowledge a hide marker");
+    }
   };
   return Object.freeze(store);
 }
