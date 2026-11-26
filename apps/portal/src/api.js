@@ -23,7 +23,6 @@ export async function api(path, options = {}) {
     const detail = body?.error || body;
     throw new ApiError(detail?.message || `Request failed (${response.status})`, response.status, detail?.code);
   }
-  if(path==='/api/auth/login'||path==='/api/auth/logout')businessApiPrincipal='human';
   return body?.data ?? body;
 }
 

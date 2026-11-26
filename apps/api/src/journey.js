@@ -36,6 +36,10 @@ import { orderShopRating, restaurantRatingSummary } from "./shop-ratings.js";
 import { assertCustomerContentAllowed } from "./content-moderation.js";
 import {createCustomerReceiptPdf,receiptPdfFilename} from "./customer-receipt-pdf.js";
 
+const ACTIVE_RESTAURANT_ORDER_STAGES = ["placed", "accepted", "preparing", "ready", "out_for_delivery"];
+const RESTAURANT_ORDER_FILTERS = new Set(["all", "active", ...ACTIVE_RESTAURANT_ORDER_STAGES, "completed", "rejected"]);
+const ACTIVE_RESTAURANT_ORDER_PRIORITY = `CASE status ${ACTIVE_RESTAURANT_ORDER_STAGES.map((stage, priority) => `WHEN '${stage}' THEN ${priority}`).join(" ")} END, created_at ASC, id ASC`;
+
 export const integer = (value, min, max, label) => {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, "VALIDATION_ERROR", `${label} is invalid`);
   return value;
@@ -271,12 +275,27 @@ export async function routeJourney({ req, res, url, db, config, session }) {
   if (match && req.method === "GET") {
     const member = requireRestaurantMembership(db, session, match[1]);
     const permission = db.prepare("SELECT permission FROM restaurant_memberships WHERE restaurant_id=? AND user_id=?").get(match[1], member.id).permission;
-    const status=url.searchParams.get("status")??"all",paged=url.searchParams.has("page")||url.searchParams.has("pageSize"),rawPage=url.searchParams.get("page")??"1",rawSize=url.searchParams.get("pageSize")??"25",page=Number(rawPage),pageSize=Number(rawSize);
-    if(!["all","placed","accepted","preparing","ready","out_for_delivery","completed","rejected"].includes(status)||!/^\d+$/.test(rawPage)||!/^\d+$/.test(rawSize)||!Number.isSafeInteger(page)||page<1||page>100000||pageSize<1||pageSize>100)throw new HttpError(400,"VALIDATION_ERROR","Order filters are invalid");
-    const range=parseLondonDateRange(url);
-    if(["placed","accepted","preparing","ready","out_for_delivery"].includes(status)&&db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(match[1])?.archived_at)return sendJson(res,200,{data:paged?{items:[],pagination:{page,pageSize,total:0,totalPages:0,hasNext:false,hasPrevious:page>1}}:[]});
-    const where=`restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${status==="all"?"":" AND status=?"}${range.from?" AND created_at>=?":""}${range.toExclusive?" AND created_at<?":""}`,parameters=[match[1],...(status==="all"?[]:[status]),...(range.from?[range.from]:[]),...(range.toExclusive?[range.toExclusive]:[])];
-    const rows=db.prepare(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC,id DESC${paged?" LIMIT ? OFFSET ?":""}`).all(...parameters,...(paged?[pageSize,(page-1)*pageSize]:[])).map(row=>orderDto(db,row,permission==="owner",permission==="owner",config));
+    const status = url.searchParams.get("status") ?? "all";
+    const paged = url.searchParams.has("page") || url.searchParams.has("pageSize");
+    const rawPage = url.searchParams.get("page") ?? "1", rawSize = url.searchParams.get("pageSize") ?? "25";
+    const page = Number(rawPage), pageSize = Number(rawSize);
+    if (!RESTAURANT_ORDER_FILTERS.has(status) || !/^\d+$/.test(rawPage) || !/^\d+$/.test(rawSize) ||
+        !Number.isSafeInteger(page) || page < 1 || page > 100000 || pageSize < 1 || pageSize > 100) {
+      throw new HttpError(400, "VALIDATION_ERROR", "Order filters are invalid");
+    }
+    const range = parseLondonDateRange(url);
+    const active = status === "active";
+    if ((active || ACTIVE_RESTAURANT_ORDER_STAGES.includes(status)) &&
+        db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(match[1])?.archived_at) {
+      return sendJson(res, 200, { data: paged ? { items: [], pagination: { page, pageSize, total: 0, totalPages: 0, hasNext: false, hasPrevious: page > 1 } } : [] });
+    }
+    const statuses = active ? ACTIVE_RESTAURANT_ORDER_STAGES : status === "all" ? [] : [status];
+    const where = `restaurant_id=? AND (payment_method<>'card' OR payment_status IN ('stripe_authorized','stripe_captured','stripe_partially_refunded','stripe_refunded') OR status<>'placed')${statuses.length ? ` AND status IN (${statuses.map(() => "?").join(",")})` : ""}${range.from ? " AND created_at>=?" : ""}${range.toExclusive ? " AND created_at<?" : ""}`;
+    const parameters = [match[1], ...statuses, ...(range.from ? [range.from] : []), ...(range.toExclusive ? [range.toExclusive] : [])];
+    const orderBy = active ? ACTIVE_RESTAURANT_ORDER_PRIORITY : "created_at DESC, id DESC";
+    const rows = db.prepare(`SELECT * FROM orders WHERE ${where} ORDER BY ${orderBy}${paged ? " LIMIT ? OFFSET ?" : ""}`)
+      .all(...parameters, ...(paged ? [pageSize, (page - 1) * pageSize] : []))
+      .map(row => orderDto(db, row, permission === "owner", permission === "owner", config));
     if(!paged)return sendJson(res,200,{data:rows});
     const total=db.prepare(`SELECT COUNT(*) n FROM orders WHERE ${where}`).get(...parameters).n;
     return sendJson(res,200,{data:{items:rows,pagination:{page,pageSize,total,totalPages:Math.ceil(total/pageSize),hasNext:page*pageSize<total,hasPrevious:page>1}}});

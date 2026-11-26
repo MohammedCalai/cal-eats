@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { createAutomaticTerminalClient } from "../src/terminal-client.js";
 import { createBusinessBootstrap } from "../src/business-bootstrap.js";
 import { createSurfacePresenceClient } from "../src/surface-presence-client.js";
+import { TerminalDevice } from "../../terminal-auth/src/device.js";
+import { startBroker } from "../../terminal-auth/src/broker.js";
 
 const TERMINAL = "a1111111-1111-4111-8111-111111111111", BUSINESS = "b2222222-2222-4222-8222-222222222222", RESTAURANT = "c3333333-3333-4333-8333-333333333333", ACTOR = "d4444444-4444-4444-8444-444444444444", SCREEN = "e5555555-5555-4555-8555-555555555555", OTHER = "f6666666-6666-4666-8666-666666666666";
 const CSRF = "c".repeat(43), WINDOW = "w".repeat(43), NEXT_WINDOW = "n".repeat(43);
@@ -38,6 +40,160 @@ function bootstrapFixture(client) {
   });
   return { ...clock, sessions, restored, controller };
 }
+
+test("cold startup renews an expired protected broker grant and opens the same Eats tablet", async t => {
+  const origin = "https://eats.calai.info", calls = [], old = "o".repeat(43), fresh = "f".repeat(43);
+  const scoped = session({ products: { calai: { active: false }, "cal-eats": { active: true } } });
+  const device = new TerminalDevice({ identityPath: "unused", clock: () => NOW,
+    keyFactory: () => ({ sign: async () => "s".repeat(86) }),
+    fetchImpl: async (url, options) => {
+      calls.push(url.pathname);
+      if (url.pathname.endsWith("/operator-session")) return response({ ...scoped, token: fresh }, 201);
+      assert.equal(url.pathname, "/api/auth/me");
+      return options.headers["X-Cal-Eats-Terminal-Session"] === old
+        ? response({ code: "TERMINAL_SESSION_EXPIRED" }, 401)
+        : response(scoped);
+    },
+  });
+  device.identity = { paired: true, terminalId: TERMINAL, businessId: BUSINESS };
+  device.grant = { ...scoped, token: old };
+  const broker = await startBroker({ device, origin, port: 0 });
+  t.after(broker.stop);
+  const f = fixture({ fetchImpl: (url, options) => fetch("http://127.0.0.1:" + broker.server.address().port +
+    new URL(url).pathname, { ...options, headers: { ...options.headers, Origin: origin } }) });
+  const boot = bootstrapFixture(f.client);
+  await boot.controller.refresh();
+  boot.controller.stop();
+  assert.deepEqual(calls, ["/api/auth/me", "/api/terminal-devices/" + TERMINAL + "/operator-session", "/api/auth/me"]);
+  assert.equal(boot.sessions.at(-1).user.id, ACTOR);
+  assert.equal(boot.sessions.at(-1).principalKind, "terminal");
+  assert.equal(boot.timers.size, 0);
+});
+
+test("the real four-slot broker serves a burst of tablet reads without delaying writes or sending a cancelled read", { timeout: 5000 }, async t => {
+  const origin = "https://eats.calai.info", held = deferred(), firstTwo = deferred(), calls = [];
+  let activeReads = 0, maximumReads = 0;
+  const device = new TerminalDevice({ identityPath: "unused", clock: () => NOW,
+    keyFactory: () => ({ sign: async () => "s".repeat(86) }),
+    fetchImpl: async (url, options) => {
+      calls.push({ method: options.method, path: url.pathname + url.search });
+      if (options.method === "GET") {
+        activeReads++;
+        maximumReads = Math.max(maximumReads, activeReads);
+        if (activeReads === 2) firstTwo.resolve();
+        await held.promise;
+        activeReads--;
+      }
+      return response({ ok: true });
+    },
+  });
+  device.identity = { paired: true, terminalId: TERMINAL, businessId: BUSINESS };
+  device.grant = { ...session(), token: "t".repeat(43) };
+  const broker = await startBroker({ device, origin, port: 0 });
+  t.after(() => { held.resolve(); broker.stop(); });
+  const f = fixture({ fetchImpl: (url, options) => fetch("http://127.0.0.1:" + broker.server.address().port +
+    new URL(url).pathname, { ...options, headers: { ...options.headers, Origin: origin } }) });
+  await f.client.connectAutomaticTerminal();
+  const root = "/api/restaurant/restaurants/" + RESTAURANT;
+  const controller = new AbortController();
+  const reads = ["placed", "accepted", "preparing", "ready", "out_for_delivery"].map(status =>
+    f.client.terminalApi(root + "/orders?status=" + status));
+  const cancelledPath = root + "/message-attention";
+  const cancelled = assert.rejects(f.client.terminalApi(cancelledPath, { signal: controller.signal }), { code: "TERMINAL_ABORTED" });
+
+  await firstTwo.promise;
+  controller.abort();
+  await cancelled;
+  const mutation = "/api/restaurant/orders/" + OTHER + "/status";
+  assert.deepEqual(await f.client.terminalApi(mutation, { method: "PATCH", body: { status: "ready" } }), { ok: true });
+  assert.deepEqual(calls.map(value => value.method), ["GET", "GET", "PATCH"], "The write bypassed the held read queue");
+
+  held.resolve();
+  assert.deepEqual(await Promise.all(reads), Array.from({ length: 5 }, () => ({ ok: true })));
+  assert.equal(maximumReads, 2);
+  assert.equal(calls.some(call => call.path === cancelledPath), false);
+  assert.equal(calls.filter(call => call.path === mutation).length, 1);
+});
+
+test("queued reads cannot leave their signed window after logout or a new device generation", async () => {
+  for (const stop of ["clearDiscoveryHint", "disconnectLocalTerminal"]) {
+    const f = fixture(), held = deferred();
+    await f.ready();
+    f.queue.push(() => held.promise, () => held.promise);
+    const pending = Promise.allSettled([
+      f.client.terminalApi("/api/business/context"),
+      f.client.terminalApi("/api/business/dashboard"),
+    ]);
+    const queued = assert.rejects(f.client.terminalApi("/api/auth/me"), { code: "TERMINAL_CONTEXT_CHANGED" });
+    await until(() => f.calls.length === 4);
+    f.client[stop]();
+    held.resolve(response({ ok: true }));
+    await queued;
+    await pending;
+    assert.equal(f.calls.length, 4, "The old queued read never reached the broker");
+  }
+});
+
+test("an expired read renews once before concurrent reads resume and never replays a write", async () => {
+  const f = fixture();
+  await f.ready();
+  const path = "/api/restaurant/restaurants/" + RESTAURANT + "/orders";
+  const check = deferred();
+  f.queue.push(response({ code: "TERMINAL_SESSION_EXPIRED" }, 401), response(bootstrap()),
+    response(session({ windowProof: NEXT_WINDOW })), () => check.promise);
+  const obsolete = f.client.terminalApi(path);
+  await until(() => f.calls.length === 6);
+  assert.equal(f.client.terminalStatus().context, null, "No recovered scope before the signed identity check");
+  assert.equal(f.client.canRequest(path), true, "Further reads use the pending signed connection");
+  const concurrent = f.client.terminalApi("/api/business/context");
+  const write = "/api/restaurant/orders/" + OTHER + "/status";
+  await assert.rejects(f.client.terminalApi(write, { method: "PATCH", body: { status: "completed" } }),
+    { code: "TERMINAL_SESSION_REQUIRED" });
+  assert.equal(f.calls.length, 6);
+  f.queue.push(response({ items: [] }), response({ id: BUSINESS }));
+  check.resolve(response(session()));
+  const values = await Promise.all([obsolete, concurrent]);
+  assert.ok(values.some(value => Array.isArray(value.items)));
+  assert.ok(values.some(value => value.id === BUSINESS));
+  const reads = f.calls.slice(5).map(call => JSON.parse(call.options.body).path);
+  assert.deepEqual(reads.sort(), ["/api/auth/me", "/api/business/context", path].sort());
+
+  const ready = fixture();
+  await ready.ready();
+  ready.queue.push(response({ code: "TERMINAL_SESSION_EXPIRED" }, 401));
+  await assert.rejects(ready.client.terminalApi(write, { method: "PATCH", body: { status: "completed" } }),
+    { code: "TERMINAL_SESSION_EXPIRED" });
+  assert.equal(ready.calls.length, 3);
+});
+
+test("stale grant renewal refuses changed scope, a revoked device, a second expiry and explicit sign-out", async () => {
+  for (const condition of ["business", "restaurant", "operator", "signed-scope", "revoked", "twice", "signed-out", "new-generation"]) {
+    const f = fixture();
+    await f.ready();
+    const local = session(condition === "business" ? { businessId: OTHER } :
+      condition === "restaurant" ? { restaurantId: OTHER } : condition === "operator" ? { user: { ...session().user, id: OTHER } } : {});
+    const cloud = deferred();
+    f.queue.push(response({ code: "TERMINAL_SESSION_EXPIRED" }, 401), response(bootstrap()), response(local),
+      condition === "signed-out" ? () => cloud.promise : condition === "signed-scope" ? response(session({ restaurantId: OTHER })) :
+        condition === "revoked" ? response({ code: "TERMINAL_REVOKED" }, 403) : response(session()));
+    if (condition === "twice") f.queue.push(response({ code: "TERMINAL_SESSION_EXPIRED" }, 401));
+
+    const unsubscribe = condition === "new-generation" ? f.client.subscribe(snapshot => {
+      if (snapshot.status === "ready" && f.calls.length === 6) f.client.disconnectLocalTerminal();
+    }) : () => {};
+    const operation = f.client.terminalApi("/api/business/context");
+    if (condition === "signed-out") {
+      await until(() => f.calls.length === 6);
+      f.client.clearDiscoveryHint();
+      cloud.resolve(response(session()));
+    }
+    await assert.rejects(operation);
+    unsubscribe();
+    assert.equal(f.client.terminalStatus().context, null, condition);
+    const count = { business: 5, restaurant: 5, operator: 5, twice: 7 };
+    assert.equal(f.calls.length, count[condition] ?? 6, condition);
+  }
+});
 
 test("actual cold bootstrap retries a known granted tablet whose local broker is still starting", async () => {
   const f = fixture(); f.setHint(true);
@@ -221,7 +377,7 @@ test("actual operational presence reconnects the same tablet through fresh broke
 });
 
 test("cloud denial detected by another signed read or during reconnect stops actual presence", async () => {
-  for (const condition of ["expired", "wrong-status", "during-reconnect"]) {
+  for (const condition of ["cloud-denied", "wrong-status", "during-reconnect"]) {
     const f = fixture(); await f.ready();
     const clock = pollClock(), states = [];
     const client = createSurfacePresenceClient({ status: f.client.terminalStatus, request: f.client.terminalApi,
@@ -237,7 +393,7 @@ test("cloud denial detected by another signed read or during reconnect stops act
       await until(() => states.at(-1)?.code === "TERMINAL_BUSINESS_UNAVAILABLE");
       assert.equal(f.calls.length, 7);
     } else {
-      const code = condition === "expired" ? "TERMINAL_SESSION_EXPIRED" : "TABLET_LOCAL_CSRF_REQUIRED";
+      const code = condition === "cloud-denied" ? "TERMINAL_SIGNATURE_EXPIRED" : "TABLET_LOCAL_CSRF_REQUIRED";
       f.queue.push(response({ code }, 401));
       await assert.rejects(f.client.terminalApi("/api/auth/me"), error => error.status === 401);
       clock.next().run();

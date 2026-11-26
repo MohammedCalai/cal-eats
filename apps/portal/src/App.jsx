@@ -95,7 +95,7 @@ function TabletConnectionAccess() {
 }
 
 function App() {
-  const [session, setSession] = useState({ loading: true, user: null, generation: 0 });
+  const [session, setSession] = useState({ loading: true, user: null, principalKind: null, generation: 0 });
   const embedded = useRef(window.parent !== window && window.location.pathname.startsWith("/business/embedded"));
   const bootstrap = useRef(null);
   if (!bootstrap.current) bootstrap.current = createBusinessBootstrap({
@@ -109,7 +109,7 @@ function App() {
     canDiscover: canDiscoverTablet,
     setPrincipal: setBusinessApiPrincipal,
     onLoading: () => setSession(old => ({ ...old, loading: true })),
-    onSession: result => setSession(old => ({ ...old, loading: false, user: result.user, generation: old.generation + 1 })),
+    onSession: result => setSession(old => ({ ...old, loading: false, user: result.user, principalKind: result.principalKind, generation: old.generation + 1 })),
     onTerminal: ({afterSignIn, restored}) => {
       if (restored) { window.dispatchEvent(new Event("cal-eats-terminal-session-restored")); return; }
       if (afterSignIn) resumeOperationalPresenceAfterSignIn();
@@ -210,18 +210,41 @@ function RequireEatsAccount() {
 }
 
 function Login() {
-  const { user, refresh, embedded } = React.useContext(SessionContext), navigate=useNavigate(),location=useLocation();
+  const { user, principalKind, refresh, embedded } = React.useContext(SessionContext), navigate=useNavigate(),location=useLocation();
   const [mode,setMode]=useState(embedded?"calai":"cal-eats"),[error,setError]=useState(""),[busy,setBusy]=useState(false),formRef=useRef(null),inFlight=useRef(false);
-  if(user)return BUSINESS_ROLES.has(user.role)?<Navigate to={businessReturnPath(location.state?.returnTo,user.role)} replace/>:<BusinessAccessUnavailable/>;
+  const ownerSignIn = new URLSearchParams(location.search).get("as") === "owner";
+  const calaiSignIn = !ownerSignIn && mode === "calai";
+  const returnTo = location.state?.returnTo;
+  if(user&&(!ownerSignIn||principalKind!=="terminal"))return BUSINESS_ROLES.has(user.role)?<Navigate to={businessReturnPath(returnTo,user.role)} replace/>:<BusinessAccessUnavailable/>;
   function choose(next){if(inFlight.current)return;formRef.current?.reset();setError("");setMode(next);}
   async function submit(event){
-    event.preventDefault();if(inFlight.current)return;const form=event.currentTarget,fields=new FormData(form),endpoint=mode==="calai"?"/api/business/auth/calai/login":"/api/auth/login";
+    event.preventDefault();if(inFlight.current)return;const form=event.currentTarget,fields=new FormData(form),endpoint=calaiSignIn?"/api/business/auth/calai/login":"/api/auth/login";
     inFlight.current=true;setBusy(true);setError("");
-    try{const signed=await api(endpoint,json("POST",{email:String(fields.get("email")||"").trim(),password:String(fields.get("password")||"")}));form.reset();const target=businessReturnPath(location.state?.returnTo,signed.user?.role);await refresh({afterSignIn:true});navigate(target,{replace:true});}
+    try{
+      const signed=await api(endpoint,{...json("POST",{email:String(fields.get("email")||"").trim(),password:String(fields.get("password")||"")}),humanSession:true});
+      const confirmed=await api("/api/auth/me",{humanSession:true}).catch(error=>{if(error.status!==401)throw error;return null;});
+      if(!signed.user?.id||confirmed?.user?.id!==signed.user.id)throw Error("Your browser could not keep you signed in. Allow cookies for this site and try again.");
+      form.reset();await refresh({afterSignIn:true});navigate(businessReturnPath(returnTo,signed.user.role),{replace:true});
+    }
     catch(caught){setError(caught.message);}
     finally{const password=form.elements.namedItem("password");if(password)password.value="";inFlight.current=false;setBusy(false);}
   }
-  return <main className="auth"><section className="auth-card"><Brand/><p className="eyebrow">{mode==="calai"?"Calai business connection":"Cal-Eats Business"}</p><h1>{mode==="calai"?"Verify your Calai business account":"Sign in to the business platform"}</h1><p>{mode==="calai"?"Use your existing Calai owner sign-in to open its authorised business connection. Calai and Cal-Eats keep separate native accounts and permissions.":"Restaurant teams and Cal-Eats administrators use this platform. Your account determines the tools you can access."}</p>{error&&<Alert>{error}</Alert>}<form ref={formRef} onSubmit={submit}><Field label={mode==="calai"?"Calai owner email":"Email"} name="email" type="email" required disabled={busy} autoComplete="username"/><Field label={mode==="calai"?"Calai password":"Password"} name="password" type="password" required disabled={busy} autoComplete="current-password"/><button className="primary" disabled={busy}>{busy?"Signing in…":mode==="calai"?"Verify Calai account":"Sign in"}</button></form><p><button className="quiet" type="button" disabled={busy} onClick={()=>choose(mode==="calai"?"cal-eats":"calai")}>{mode==="calai"?"Use a Cal-Eats account instead":"Use your existing Calai business account"}</button></p><p>New to Cal-Eats? <a href="/order/?view=register-restaurant">List your restaurant</a></p><p className="fine">Payment availability, bank payouts and printer connections are shown in your workspace.</p></section></main>;
+  return <main className="auth"><section className="auth-card">
+    <Brand/><p className="eyebrow">{calaiSignIn?"Calai business connection":"Cal-Eats Business"}</p>
+    <h1>{ownerSignIn?"Sign in as owner":calaiSignIn?"Verify your Calai business account":"Sign in to the business platform"}</h1>
+    <p>{ownerSignIn?"Use your Cal-Eats owner account to open the full business menu.":calaiSignIn?"Use your existing Calai owner sign-in to open its authorised business connection. Calai and Cal-Eats keep separate native accounts and permissions.":"Restaurant teams and Cal-Eats administrators use this platform. Your account determines the tools you can access."}</p>
+    {error&&<Alert>{error}</Alert>}
+    <form ref={formRef} onSubmit={submit}>
+      <Field label={calaiSignIn?"Calai owner email":"Email"} name="email" type="email" required disabled={busy} autoComplete="username"/>
+      <Field label={calaiSignIn?"Calai password":"Password"} name="password" type="password" required disabled={busy} autoComplete="current-password"/>
+      <button className="primary" disabled={busy}>{busy?"Signing in…":calaiSignIn?"Verify Calai account":"Sign in"}</button>
+    </form>
+    {ownerSignIn ? <p><NavLink to={user?businessReturnPath(returnTo,user.role):"/login"}>{user?"Back to the tablet workspace":"Back to business sign-in"}</NavLink></p> : <>
+      <p><button className="quiet" type="button" disabled={busy} onClick={()=>choose(calaiSignIn?"cal-eats":"calai")}>{calaiSignIn?"Use a Cal-Eats account instead":"Use your existing Calai business account"}</button></p>
+      <p>New to Cal-Eats? <a href="/order/?view=register-restaurant">List your restaurant</a></p>
+      <p className="fine">Payment availability, bank payouts and printer connections are shown in your workspace.</p>
+    </>}
+  </section></main>;
 }
 
 function OwnerBootstrap() {
@@ -269,7 +292,7 @@ function NavIcon({label}) {
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d={paths[key]||tools[key]||paths.Home}/></svg>;
 }
 function Shell({ kind }) {
-  const { user, refresh, suspendAutomaticSignIn } = React.useContext(SessionContext), owner = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
+  const { user, principalKind, refresh, suspendAutomaticSignIn } = React.useContext(SessionContext), owner = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
   const { desktop, collapsed, toggleDesktop } = useSidebarLayout(), [open, setOpen] = useState(false), [messageCount,setMessageCount]=useState(0), location=useLocation();
   const business = workspace?.business, mode = workspace?.mode || "cal-eats";
   const hasEats = mode !== "calai" && Boolean(owner?.restaurant);
@@ -317,7 +340,11 @@ function Shell({ kind }) {
                   : <NavLink key={path} to={path} title={label} aria-label={hasUnread ? `${label}, ${messageCount} unread messages` : label}>{contents}</NavLink>;
               })}
             </section>
-          )}</nav>
+          )}
+            {mode !== "calai" && principalKind === "terminal" && <NavLink to="/login?as=owner" state={{returnTo:`${location.pathname}${location.search}`}} title="Sign in as owner" aria-label="Sign in as owner">
+              <span className="sidebar-nav-icon"><NavIcon label="Account"/></span><span className="sidebar-nav-label">Sign in as owner</span>
+            </NavLink>}
+          </nav>
           <div className="sidebar-note">
             <strong>{hasEats && owner.permission === "staff" ? "Restaurant staff" : "Business account"}</strong><span>{user.name}</span>
             {mode === "calai" && business?.canConnectProducts && <NavLink className="fine" to="/owner/connections">Accounts &amp; connections</NavLink>}
