@@ -6,6 +6,7 @@ import { exactObject, HttpError, readJson, sendJson } from "./http.js";
 import { messageEncryptionKey } from "./message-encryption.js";
 import { createOrderAlertEmailAdapter } from "./order-alert-email.js";
 import { customerErasureDueAt } from "./privacy-deadline.js";
+import { CALEATS_INBOX } from "./caleats-contact.js";
 
 const ORDERS = "SELECT id FROM orders WHERE customer_id=?";
 const THREADS = "SELECT id FROM restaurant_customer_threads WHERE customer_id=?";
@@ -294,7 +295,7 @@ async function dispatchConfirmations(db,config,{adapter,limit=10,workerId=random
         const decipher=createDecipheriv("aes-256-gcm",key,Buffer.from(row.nonce,"base64"));decipher.setAAD(Buffer.from(`cal-eats:erasure-confirmation:v1:${row.id}`));decipher.setAuthTag(Buffer.from(row.auth_tag,"base64"));
         const recipient=Buffer.concat([decipher.update(Buffer.from(row.ciphertext,"base64")),decipher.final()]).toString("utf8");
         if(row.mode!=="local"&&/(?:\.(?:invalid|local|test)|@example\.(?:com|net|org))$/i.test(recipient))outcome={status:"cancelled",errorCode:"DEMO_RECIPIENT_EXTERNAL_SEND_DISABLED"};
-        else outcome=await sender({id:row.id,to:recipient,from:config.orderAlertEmail.from,subject:"Cal-Eats | Your account deletion has been completed",messageId:`<cal-eats-account-email-${row.id}@${new URL(config.origin).hostname}>`,text:["Your Cal-Eats account deletion has been completed.","Your login, saved addresses, optional messages, marketing preferences and device notification registrations have been removed. Necessary order and financial records and minimal legal evidence remain pseudonymised for the retention periods in our privacy notice. Backup copies expire under our backup schedule and must not restore your erased account.","This confirmation does not require you to sign in. For a privacy query, contact support@calai.info."].join("\n\n")},{beforeSend});
+        else outcome=await sender({id:row.id,to:recipient,from:config.orderAlertEmail.from,subject:"Cal-Eats | Your account deletion has been completed",messageId:`<cal-eats-account-email-${row.id}@${new URL(config.origin).hostname}>`,text:["Your Cal-Eats account deletion has been completed.","Your login, saved addresses, optional messages, marketing preferences and device notification registrations have been removed. Necessary order and financial records and minimal legal evidence remain pseudonymised for the retention periods in our privacy notice. Backup copies expire under our backup schedule and must not restore your erased account.",`This confirmation does not require you to sign in. For a privacy query, contact ${CALEATS_INBOX}.`].join("\n\n")},{beforeSend});
       }
     }catch{outcome={status:db.prepare("SELECT dispatch_started_at FROM customer_erasure_confirmation_outbox WHERE id=?").get(row.id)?.dispatch_started_at?"unknown":"failed",errorCode:"PRIVACY_CONFIRMATION_DELIVERY_FAILED"};}
     const status=["sent","local_saved","failed","unknown","cancelled"].includes(outcome?.status)?outcome.status:"unknown",stamp=config.now().toISOString(),purge=["sent","local_saved","unknown","cancelled"].includes(status);

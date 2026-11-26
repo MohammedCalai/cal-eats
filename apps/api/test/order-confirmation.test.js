@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { journeyFixture } from "./helpers.js";
 import {tabletJson} from "./registered-tablet-fixture.js";
@@ -48,13 +49,40 @@ test("3-minute escalation starts at merchant visibility, waits through 179 secon
     f.db.prepare("UPDATE orders SET payment_method='card',payment_status='stripe_pending',merchant_visible_at=NULL,confirmation_due_at=NULL,created_at=? WHERE id=?").run(new Date(start-3600000).toISOString(),unpaid.id);
     notifyNewOrder(f.db,f.db.prepare("SELECT * FROM orders WHERE id=?").get(unpaid.id),new Date(start).toISOString());assert.equal(f.db.prepare("SELECT merchant_visible_at FROM orders WHERE id=?").get(unpaid.id).merchant_visible_at,null);
     f.set(start+179000);assert.equal((await runOrderConfirmationAlerts(f.db,f.config)).queued,0);
-    f.set(start+180000);const first=await runOrderConfirmationAlerts(f.db,f.config);assert.equal(first.queued,1);assert.equal(first.localSaved,1);assert.equal(f.db.prepare("SELECT status FROM order_confirmation_email_outbox WHERE order_id=?").get(order.id).status,"local_saved");
+    f.set(start+180000);const first=await runOrderConfirmationAlerts(f.db,f.config);assert.equal(first.queued,1);assert.equal(first.localSaved,1);
+    const alert=f.db.prepare("SELECT id,status,recipient FROM order_confirmation_email_outbox WHERE order_id=?").get(order.id);
+    assert.equal(alert.status,"local_saved");
+    assert.equal(alert.recipient,"caleats@calai.info");
+    const mail=fs.readFileSync(path.join(f.config.orderAlertEmail.localDirectory,alert.id+".eml"),"utf8");
+    assert.match(mail,/^To: caleats@calai\.info\r?$/m);
+    assert.match(mail,/^Reply-To: caleats@calai\.info\r?$/m);
     await runOrderConfirmationAlerts(f.db,f.config);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM order_confirmation_email_outbox").get().n,1);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE order_id=? AND type='order_unconfirmed'").get(order.id).n,1);
     assert.equal(fs.readdirSync(f.config.orderAlertEmail.localDirectory).filter(name=>name.endsWith(".eml")).length,1);
     const authorisedAt=start+3600000;f.set(authorisedAt);f.db.prepare("UPDATE orders SET payment_status='stripe_authorized' WHERE id=?").run(unpaid.id);notifyNewOrder(f.db,f.db.prepare("SELECT * FROM orders WHERE id=?").get(unpaid.id),new Date(authorisedAt).toISOString());
     assert.equal(f.db.prepare("SELECT merchant_visible_at FROM orders WHERE id=?").get(unpaid.id).merchant_visible_at,new Date(authorisedAt).toISOString());
     f.set(authorisedAt+179000);assert.equal((await runOrderConfirmationAlerts(f.db,f.config)).queued,0);f.set(authorisedAt+180000);assert.equal((await runOrderConfirmationAlerts(f.db,f.config)).queued,1);
-    const admin=await f.json("/api/admin/order-confirmation-alerts",{cookie:f.admin});assert.equal(admin.body.data.email.realDeliveryEnabled,false);assert.equal(admin.body.data.summary.local_saved,2);
+    const admin=await f.json("/api/admin/order-confirmation-alerts",{cookie:f.admin});assert.equal(admin.body.data.email.recipient,"caleats@calai.info");assert.equal(admin.body.data.email.realDeliveryEnabled,false);assert.equal(admin.body.data.summary.local_saved,2);
+  }finally{await f.close();}
+});
+
+test("a pending legacy escalation is retargeted before dispatch and sends only to the Cal-Eats inbox",async()=>{
+  const f=await setup();
+  try {
+    const order=await f.place();
+    f.set(f.stamp+180000);
+    const id=randomUUID(), now=new Date(f.stamp).toISOString();
+    f.db.prepare("INSERT INTO order_confirmation_email_outbox(id,order_id,restaurant_id,recipient,subject,body,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,?,?,?,?,'local','pending',?,?)")
+      .run(id,order.id,f.restaurant.id,"old-operator@example.invalid","Pending alert","Fixture only",`<cal-eats-order-alert-${id}@calai.info>`,now,now);
+    const recipients=[];
+    const result=await runOrderConfirmationAlerts(f.db,f.config,{adapter:async(message,{beforeSend})=>{
+      assert.equal(beforeSend(),true);
+      recipients.push(message.to);
+      return {status:"sent"};
+    }});
+    assert.deepEqual(recipients,["caleats@calai.info"]);
+    assert.equal(result.sent,1);
+    const saved=f.db.prepare("SELECT recipient,status FROM order_confirmation_email_outbox WHERE id=?").get(id);
+    assert.deepEqual({...saved},{recipient:"caleats@calai.info",status:"sent"});
   }finally{await f.close();}
 });
 
@@ -86,6 +114,6 @@ test("failed and ambiguous email outcomes remain visible without blind resend ac
 test("SMTP adapter requires explicit safe TLS configuration and treats uncertain transport errors as unknown",async()=>{
   assert.throws(()=>loadOrderAlertEmailConfig({mode:"smtp",host:"attacker.invalid"},"fixture.sqlite",{}),/approved host/);
   const settings=loadOrderAlertEmailConfig({mode:"smtp",recipient:"owner@example.invalid",from:"sender@example.invalid",host:"smtp.ionos.co.uk",port:465,user:"sender@example.invalid",password:"fixture-only",enabled:true},"fixture.sqlite",{}),message={id:"test-id",to:"owner@example.invalid",from:"sender@example.invalid",subject:"Unconfirmed demo order",text:"No customer details",messageId:"<cal-eats-order-alert-test-id@calai.info>"};
-  let calls=0;const sender=createOrderAlertEmailAdapter(settings,{transportFactory:options=>{assert.equal(options.secure,true);assert.equal(options.requireTLS,true);assert.equal(options.tls.rejectUnauthorized,true);return{async sendMail(){calls++;const error=new Error("Do not expose raw transport details");error.code="ETIMEDOUT";throw error;}};}});
+  let calls=0;const sender=createOrderAlertEmailAdapter(settings,{transportFactory:options=>{assert.equal(options.secure,true);assert.equal(options.requireTLS,true);assert.equal(options.tls.rejectUnauthorized,true);return{async sendMail(mail){assert.equal(mail.to,message.to);assert.equal(mail.replyTo,"caleats@calai.info");calls++;const error=new Error("Do not expose raw transport details");error.code="ETIMEDOUT";throw error;}};}});
   assert.equal((await sender(message,{beforeSend:()=>false})).status,"cancelled");assert.equal(calls,0);assert.equal((await sender(message,{beforeSend:()=>true})).status,"unknown");assert.equal(calls,1);
 });

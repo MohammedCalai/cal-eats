@@ -45,6 +45,8 @@ test("help requests produce receipts, team notifications and an encrypted reply 
     assert.equal(detail.body.data.waitingFor, "customer");
     await f.json(`/api/support/${ticket.id}`, { method: "PATCH", cookie: customer, body: { status: "resolved" } });
     assert.equal((await f.json(`/api/support/${ticket.id}`, { cookie: customer })).body.data.status, "resolved");
+    const recipients = f.db.prepare("SELECT recipient FROM customer_transactional_email_outbox WHERE support_case_id=? ORDER BY rowid").all(ticket.id);
+    assert.deepEqual(recipients.map(row => row.recipient), ["caleats@calai.info", "customer@calai.local", "customer@calai.local", "caleats@calai.info"]);
   } finally { await f.close(); }
 });
 
@@ -60,5 +62,7 @@ test("order help is routed to its restaurant and cannot be read by another resta
     assert.equal((await f.json(`/api/support/${ticket.id}`, { cookie: other })).status, 404);
     const page = await f.json(`/api/restaurant/restaurants/${restaurant.id}/support?page=1&pageSize=10`, { cookie: owner });
     assert.equal(page.body.data.total, 1); assert.equal(page.body.data.items[0].id, ticket.id);
+    const recipients = f.db.prepare("SELECT recipient FROM customer_transactional_email_outbox WHERE support_case_id=? ORDER BY recipient").all(ticket.id);
+    assert.deepEqual(recipients.map(row => row.recipient), ["customer@calai.local", "restaurant@calai.local"]);
   } finally { await f.close(); }
 });

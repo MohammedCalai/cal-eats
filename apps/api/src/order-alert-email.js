@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { createGraphMailAdapter, graphMailReadiness, loadGraphMailConfig } from "./graph-mail.js";
+import { CALEATS_INBOX } from "./caleats-contact.js";
 import { mailAttachments } from "./mail-attachments.js";
 
 const HOSTS = new Set(["smtp.ionos.co.uk", "smtp.ionos.com"]);
@@ -28,8 +29,7 @@ export function orderAlertEmailTransportReadiness(settings) {
   return { mode: settings.mode, from: settings.from, configured, realDeliveryEnabled: configured, host: settings.mode === "graph" ? "graph.microsoft.com" : settings.host || null, port: settings.mode === "graph" ? 443 : settings.port, note: settings.mode === "local" ? "Saved to a private local mailbox only; no email is sent" : configured ? "Mail transport configured; sent means accepted by the provider, not confirmed inbox delivery. Microsoft sign-in may need renewing." : "Automatic email delivery is not configured; the connected desktop mailbox does not grant this app sending access" };
 }
 export function orderAlertEmailReadiness(settings) {
-  const transport = orderAlertEmailTransportReadiness(settings);
-  return { ...transport, recipient: settings.recipient || null, configured: transport.configured && Boolean(settings.recipient), realDeliveryEnabled: transport.realDeliveryEnabled && Boolean(settings.recipient) };
+  return { ...orderAlertEmailTransportReadiness(settings), recipient: CALEATS_INBOX };
 }
 
 export function createOrderAlertEmailAdapter(settings, { transportFactory, graphOptions } = {}) {
@@ -48,7 +48,7 @@ export function createOrderAlertEmailAdapter(settings, { transportFactory, graph
       const body = message.html ? `Content-Type: multipart/alternative; boundary="${boundary}"\r\n\r\n--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(message.text).toString("base64")}\r\n--${boundary}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(message.html).toString("base64")}\r\n--${boundary}--\r\n` : `Content-Type: text/plain; charset=utf-8\r\n\r\n${message.text.replace(/\r?\n/g,"\r\n")}\r\n`;
       const mixedBoundary = `${boundary}-mixed`;
       const fullBody = attachments.length ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"\r\n\r\n--${mixedBoundary}\r\n${body}\r\n${attachments.map(item => `--${mixedBoundary}\r\nContent-Type: text/csv; charset=utf-8; name="${item.filename}"\r\nContent-Disposition: attachment; filename="${item.filename}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${item.contentBase64.match(/.{1,76}/g).join("\r\n")}\r\n`).join("")}--${mixedBoundary}--\r\n` : body;
-      const content = `From: Cal-Eats <${message.from}>\r\nTo: ${message.to}\r\nSubject: =?UTF-8?B?${Buffer.from(message.subject).toString("base64")}?=\r\nMessage-ID: ${message.messageId}\r\nMIME-Version: 1.0\r\n${fullBody}`;
+      const content = `From: Cal-Eats <${message.from}>\r\nTo: ${message.to}\r\nReply-To: ${CALEATS_INBOX}\r\nSubject: =?UTF-8?B?${Buffer.from(message.subject).toString("base64")}?=\r\nMessage-ID: ${message.messageId}\r\nMIME-Version: 1.0\r\n${fullBody}`;
       try {
         fs.mkdirSync(settings.localDirectory, { recursive: true });
         const filename = path.join(settings.localDirectory, `${message.id}.eml`);
@@ -69,7 +69,7 @@ export function createOrderAlertEmailAdapter(settings, { transportFactory, graph
       }
       // Dependencies/DNS preparation can yield; recheck the order at the final dispatch boundary.
       if (!beforeSend()) return { status: "cancelled" };
-      const result = await transport.sendMail({ from: { name: "Cal-Eats", address: message.from }, to: message.to, subject: message.subject, text: message.text, ...(message.html ? { html: message.html } : {}), ...(attachments.length ? { attachments: attachments.map(item => ({ filename: item.filename, contentType: item.contentType, content: Buffer.from(item.contentBase64,"base64") })) } : {}), messageId: message.messageId, disableFileAccess: true, disableUrlAccess: true });
+      const result = await transport.sendMail({ from: { name: "Cal-Eats", address: message.from }, to: message.to, replyTo: CALEATS_INBOX, subject: message.subject, text: message.text, ...(message.html ? { html: message.html } : {}), ...(attachments.length ? { attachments: attachments.map(item => ({ filename: item.filename, contentType: item.contentType, content: Buffer.from(item.contentBase64,"base64") })) } : {}), messageId: message.messageId, disableFileAccess: true, disableUrlAccess: true });
       const accepted = Array.isArray(result?.accepted) && result.accepted.some(value => (typeof value === "string" ? value : value?.address)?.toLowerCase() === message.to.toLowerCase());
       return accepted ? { status: "sent" } : { status: "failed", errorCode: "SMTP_RECIPIENT_NOT_ACCEPTED" };
     } catch (error) {

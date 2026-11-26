@@ -18,6 +18,7 @@ test("completed PDF preserves saved customer amounts and text without merchant f
     f.db.prepare("UPDATE order_items SET name='Café Ελληνικά 中文',quantity=2,unit_price_minor=1000,selected_modifiers=? WHERE order_id=?").run(JSON.stringify([{name:"Extra mint"}]),id);
     const result=await f.request(path,{cookie:customer});assert.equal(result.status,200);assert.equal(result.headers.get("content-type"),"application/pdf");assert.equal(result.headers.get("cache-control"),"private, no-store");assert.equal(result.headers.get("x-content-type-options"),"nosniff");assert.match(result.headers.get("content-disposition"),/^attachment; filename="Cal-Eats-receipt-[a-z0-9-]+\.pdf"$/);assert.equal(result.bodyBuffer.subarray(0,5).toString(),"%PDF-");
     const pdf=await readPdf(result.bodyBuffer);for(const value of ["Café","Ελληνικά","[U+4E2D]","Extra mint","£20.00","-£5.00","£15.00","£2.50","£17.50","£12.50","Card payment received"])assert.ok(pdf.text.includes(value),value);
+    assert.match(pdf.text,/Cal-Eats · caleats@calai\.info/);
     assert.doesNotMatch(pdf.text,/commission|provider fee|VAT|Secret allergy|private@example|Private Road/i);
     assert.equal((await f.request(path,{cookie:owner})).status,200);assert.equal((await f.request(path,{cookie:admin})).status,200);
     f.db.prepare("UPDATE users SET role='customer' WHERE email='restaurant2@calai.local'").run();assert.equal((await f.request(path,{cookie:other})).status,404);

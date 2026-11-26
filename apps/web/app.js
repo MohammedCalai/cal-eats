@@ -438,8 +438,8 @@ function renderVerificationPage({ initial = state.emailVerification, checkout = 
 
 function recoveryDeliveryHtml(delivery) {
   if (delivery === "email") return `<h1>Check your email</h1><div class="notice" role="status">If an active account matches this email, a password reset link will arrive shortly.</div><p class="muted">Check your inbox and spam folder. Open the link to choose a new password, then return to the Cal-Eats app or website to sign in.</p>`;
-  if (delivery === "local_simulation") return `<h1>Development recovery</h1><div class="notice" role="status">Reset instructions are recorded locally in this development environment. They are not sent by email.</div><p class="muted">Contact <a href="mailto:support@calai.info?subject=Cal-Eats%20account%20help">Cal-Eats support</a> if you need help signing in. Never include your password.</p>`;
-  return `<h1>Email recovery is unavailable</h1><div class="notice" role="status">We cannot send password reset emails right now.</div><p class="muted">Contact <a href="mailto:support@calai.info?subject=Cal-Eats%20account%20help">Cal-Eats support</a> for help signing in. Never include your password.</p>`;
+  if (delivery === "local_simulation") return `<h1>Development recovery</h1><div class="notice" role="status">Reset instructions are recorded locally in this development environment. They are not sent by email.</div><p class="muted">Contact <a href="mailto:caleats@calai.info?subject=Cal-Eats%20account%20help">Cal-Eats support</a> if you need help signing in. Never include your password.</p>`;
+  return `<h1>Email recovery is unavailable</h1><div class="notice" role="status">We cannot send password reset emails right now.</div><p class="muted">Contact <a href="mailto:caleats@calai.info?subject=Cal-Eats%20account%20help">Cal-Eats support</a> for help signing in. Never include your password.</p>`;
 }
 
 async function authSubmit(form, register = false) {

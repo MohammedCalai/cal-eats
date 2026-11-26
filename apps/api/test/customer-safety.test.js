@@ -72,7 +72,7 @@ test("native safety reports validate ownership, retry once and stay privately in
     assert.equal((await f.json("/api/customer-safety/reports", { cookie: s.customer, method: "POST", headers: { "Idempotency-Key": "safety-foreign-order" }, body: { ...body, orderId: "someone-elses-order" } })).status, 404);
     assert.equal((await f.json("/api/customer-safety/reports", { cookie: s.customer, method: "POST", headers: { "Idempotency-Key": "safety-wrong-message" }, body: { ...body, messageId: "someone-elses-message" } })).status, 404);
     const recipients = f.db.prepare("SELECT recipient FROM customer_transactional_email_outbox WHERE support_case_id=? ORDER BY rowid").all(id).map(row => row.recipient);
-    assert.deepEqual(recipients, ["admin@calai.local", "customer@calai.local"]);
+    assert.deepEqual(recipients, ["caleats@calai.info", "customer@calai.local"]);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_safety_reports").get().n, 1);
     const destination=path.join(BACKUP_ROOT,`safety-${randomUUID()}.sqlite`);
     try {

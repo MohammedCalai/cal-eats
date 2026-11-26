@@ -1,5 +1,6 @@
 import {PDFDocument} from "pdfkit";
 import {fileURLToPath} from "node:url";
+import {CALEATS_INBOX} from "./caleats-contact.js";
 
 const regular=fileURLToPath(new URL("../assets/fonts/NotoSans-Regular.ttf",import.meta.url));
 const bold=fileURLToPath(new URL("../assets/fonts/NotoSans-Bold.ttf",import.meta.url));
@@ -74,7 +75,7 @@ export function createCustomerReceiptPdf(order){
       for(let i=range.start;i<range.start+range.count;i++){
         doc.switchToPage(i);const bottom=doc.page.margins.bottom;doc.page.margins.bottom=20;
         doc.save().strokeColor("#D8E7F0").moveTo(left,doc.page.height-57).lineTo(left+width,doc.page.height-57).stroke().restore();
-        doc.font("receipt").fontSize(8).fillColor("#5B7488").text("Cal-Eats · support@calai.info",left,doc.page.height-44,{width:width-80,lineBreak:false});
+        doc.font("receipt").fontSize(8).fillColor("#5B7488").text(`Cal-Eats · ${CALEATS_INBOX}`,left,doc.page.height-44,{width:width-80,lineBreak:false});
         doc.text(`${i+1} / ${range.count}`,left+width-80,doc.page.height-44,{width:80,align:"right",lineBreak:false});doc.page.margins.bottom=bottom;
       }
       doc.end();

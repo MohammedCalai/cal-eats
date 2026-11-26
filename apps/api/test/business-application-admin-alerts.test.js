@@ -12,15 +12,33 @@ test("one application atomically queues separate applicant and configured-admini
     const created=await f.json("/api/auth/restaurant-register",request);assert.equal(created.status,201,created.text);const rid=created.body.data.restaurantId;
     const admin=f.db.prepare("SELECT id FROM users WHERE role='admin' AND email='admin@calai.local'").get();
     let rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox WHERE event_kind='business_application'").all();assert.equal(rows.length,2);
-    const alert=rows.find(r=>JSON.parse(r.payload).recipientRole==="admin"),applicant=rows.find(r=>r.id!==alert.id);assert.equal(alert.recipient,"admin@calai.local");assert.equal(alert.customer_id,admin.id);assert.equal(applicant.recipient,application.email);
+    const alert=rows.find(r=>JSON.parse(r.payload).recipientRole==="admin"),applicant=rows.find(r=>r.id!==alert.id);assert.equal(alert.recipient,"caleats@calai.info");assert.equal(alert.customer_id,admin.id);assert.equal(applicant.recipient,application.email);
     const notice=f.db.prepare("SELECT * FROM user_notifications WHERE event_key=?").get(`business-application:${rid}:admin-received`);assert.equal(notice.user_id,admin.id);assert.equal(notice.type,"business_application_received");assert.equal(notice.restaurant_id,rid);assert.equal(notice.message.includes(application.mobile),false);
     const mail=buildCustomerEmail(alert,f.config);for(const value of [application.name,application.email,application.mobile,application.address])assert.ok(mail.text.includes(value));assert.match(mail.html,/Fixture &lt;Kitchen&gt;/);assert.ok(mail.text.includes(`/business/admin/restaurants?restaurant=${rid}&section=access`));
-    assert.equal(buildCustomerEmail(applicant,f.config).text.includes(application.mobile),false);
+    const acknowledgement=buildCustomerEmail(applicant,f.config);
+    assert.equal(acknowledgement.to,application.email);
+    assert.equal(acknowledgement.from,"caleats-support@calai.info");
+    assert.match(acknowledgement.html,/mailto:caleats@calai\.info/);
+    assert.equal(acknowledgement.text.includes(application.mobile),false);
     const replay=await f.json("/api/auth/restaurant-register",request);assert.equal(replay.status,200,replay.text);
     for(let i=0;i<2;i++)assert.equal(queueBusinessApplicationAdminAlerts(f.db,f.config,{restaurantId:rid}).emailId,alert.id);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM user_notifications WHERE type='business_application_received'").get().n,1);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_transactional_email_outbox WHERE event_kind='business_application'").get().n,2);
-    const sent=[];const result=await runCustomerTransactionalEmails(f.db,f.config,{adapter:async(message,{beforeSend})=>{assert.equal(beforeSend(),true);sent.push(message.to);return{status:"sent"};}});assert.equal(result.sent,2);assert.deepEqual(sent.sort(),["admin@calai.local",application.email].sort());
+    const sent=[];const result=await runCustomerTransactionalEmails(f.db,f.config,{adapter:async(message,{beforeSend})=>{assert.equal(beforeSend(),true);sent.push(message.to);return{status:"sent"};}});assert.equal(result.sent,2);assert.deepEqual(sent.sort(),["caleats@calai.info",application.email].sort());
+  }finally{await f.close();}
+});
+
+test("an old application email addressed to the configured administrator cannot dispatch to it",async()=>{
+  const f=await setup();try{
+    const created=await f.json("/api/auth/restaurant-register",request);
+    assert.equal(created.status,201,created.text);
+    f.db.prepare("UPDATE customer_transactional_email_outbox SET recipient='admin@calai.local' WHERE json_extract(payload,'$.recipientRole')='admin'").run();
+    const delivered=[];
+    const result=await runCustomerTransactionalEmails(f.db,f.config,{adapter:async(message,{beforeSend})=>{assert.equal(beforeSend(),true);delivered.push(message.to);return{status:"sent"};}});
+    assert.equal(result.cancelled,1);
+    assert.deepEqual(delivered,[application.email]);
+    assert.equal((await f.json("/api/auth/restaurant-register",request)).status,200);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_transactional_email_outbox WHERE event_kind='business_application'").get().n,2);
   }finally{await f.close();}
 });
 

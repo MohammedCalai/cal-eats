@@ -3,6 +3,7 @@ import { withTransaction } from "./db/index.js";
 import { requireRole } from "./auth/authorization.js";
 import { HttpError, sendJson } from "./http.js";
 import { createOrderAlertEmailAdapter, orderAlertEmailReadiness } from "./order-alert-email.js";
+import { CALEATS_INBOX } from "./caleats-contact.js";
 import {includeArchivedRestaurants} from "./restaurant-catalogue.js";
 
 export const ORDER_CONFIRMATION_MS = 180000;
@@ -60,7 +61,7 @@ function queueOverdue(db, config, limit) {
     for (const order of rows) {
       const id = randomUUID(), reference = order.id.slice(0,8).toUpperCase(), link = new URL("/business/admin/orders",config.origin); link.searchParams.set("orderId",order.id);
       const subject = `Cal-Eats order ${reference} is unconfirmed after 3 minutes`, body = `An order has not been confirmed by the restaurant within three minutes.\n\nOrder: ${reference}\nRestaurant: ${safe(order.restaurant_name)}\nBusiness phone: ${safe(order.restaurant_phone,60) || "Not supplied"}\nVisible to restaurant since: ${order.merchant_visible_at}\n\nReview: ${link.href}\n\nNo customer contact, address, card or payment details are included. Confirm the current order status before contacting the business.`, messageId = `<cal-eats-order-alert-${id}@calai.info>`;
-      db.prepare("INSERT OR IGNORE INTO order_confirmation_email_outbox(id,order_id,restaurant_id,recipient,subject,body,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'pending',?,?)").run(id,order.id,order.restaurant_id,settings.recipient || "platform-owner@example.invalid",subject,body,messageId,settings.mode,stamp,stamp);
+      db.prepare("INSERT OR IGNORE INTO order_confirmation_email_outbox(id,order_id,restaurant_id,recipient,subject,body,message_id,mode,status,queued_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'pending',?,?)").run(id,order.id,order.restaurant_id,CALEATS_INBOX,subject,body,messageId,settings.mode,stamp,stamp);
       for (const admin of db.prepare("SELECT id FROM users WHERE role='admin' AND account_enabled=1").all()) db.prepare("INSERT OR IGNORE INTO user_notifications(id,user_id,type,title,message,order_id,restaurant_id,event_key,created_at) VALUES(?,?,'order_unconfirmed','Order needs restaurant confirmation',?,?,? ,?,?)").run(randomUUID(),admin.id,`${safe(order.restaurant_name)} has not confirmed order ${reference} after 3 minutes.`,order.id,order.restaurant_id,`order:${order.id}:confirmation-overdue`,stamp);
     }
     return rows.length;
@@ -77,16 +78,17 @@ async function run(db, config, { workerId = randomUUID(), limit = 25, adapter, b
   const sender = adapter ?? createOrderAlertEmailAdapter(config.orderAlertEmail);
   for (let index = 0; index < limit; index++) {
     const row = withTransaction(db, () => {
-      const now = iso(config), candidate = db.prepare("SELECT * FROM order_confirmation_email_outbox WHERE status='pending' ORDER BY queued_at,id LIMIT 1").get();
+      const now = iso(config), candidate = db.prepare("SELECT * FROM order_confirmation_email_outbox WHERE status='pending' AND dispatch_started_at IS NULL ORDER BY queued_at,id LIMIT 1").get();
       if (!candidate) return null;
       if (!stillEligible(db,candidate.order_id,now)) { cancelUnsentOrderConfirmationAlert(db,candidate.order_id,now); result.cancelled++; return null; }
-      const lease = new Date(Date.parse(now)+120000).toISOString(), claim = db.prepare("UPDATE order_confirmation_email_outbox SET status='claimed',lease_owner=?,lease_expires_at=?,attempts=attempts+1,updated_at=? WHERE id=? AND status='pending'").run(workerId,lease,now,candidate.id);
-      return claim.changes === 1 ? { ...candidate, lease_owner:workerId,lease_expires_at:lease } : null;
+      const lease = new Date(Date.parse(now)+120000).toISOString();
+      const claim = db.prepare("UPDATE order_confirmation_email_outbox SET status='claimed',recipient=?,lease_owner=?,lease_expires_at=?,attempts=attempts+1,updated_at=? WHERE id=? AND status='pending' AND dispatch_started_at IS NULL").run(CALEATS_INBOX,workerId,lease,now,candidate.id);
+      return claim.changes === 1 ? { ...candidate, recipient:CALEATS_INBOX,lease_owner:workerId,lease_expires_at:lease } : null;
     });
     if (!row) break;
     const current = () => {
       const now = iso(config), owned = db.prepare("SELECT * FROM order_confirmation_email_outbox WHERE id=? AND status='claimed' AND lease_owner=? AND lease_expires_at>?").get(row.id,workerId,now);
-      return Boolean(owned && stillEligible(db,row.order_id,now));
+      return Boolean(owned?.recipient === CALEATS_INBOX && stillEligible(db,row.order_id,now));
     };
     const beforeSend = () => withTransaction(db, () => {
       const now = iso(config);

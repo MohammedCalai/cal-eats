@@ -33,7 +33,7 @@ test("public deletion requests remain accessible without sign-in or the app and 
       const email = links.find(link => link.startsWith("mailto:") && link.includes("?subject="));
       assert.ok(email, "Deletion must be requestable without logging in");
       const destination = new URL(email);
-      assert.equal(destination.pathname, "support@calai.info");
+      assert.equal(destination.pathname, "caleats@calai.info");
       assert.equal(destination.searchParams.get("subject"), "Cal-Eats account deletion request");
       assert.equal(destination.searchParams.has("body"), false, "No personal information is embedded in the email link");
     }

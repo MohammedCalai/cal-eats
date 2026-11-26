@@ -28,7 +28,7 @@ export default class PortalErrorBoundary extends React.Component {
         <p className="portal-recovery-warning">Reloading may discard changes you haven’t saved on this page.</p>
         {this.state.reloadFailed && <p className="portal-recovery-warning" role="status">Use your browser’s refresh button to reopen the workspace.</p>}
         <button type="button" className="primary" disabled={this.state.reloading} onClick={this.handleReload}>{this.state.reloading ? "Reloading…" : "Reload workspace"}</button>
-        <a href="mailto:support@calai.info?subject=Cal-Eats%20workspace%20help">Contact Cal-Eats support</a>
+        <a href="mailto:caleats@calai.info?subject=Cal-Eats%20workspace%20help">Contact Cal-Eats support</a>
       </section>
     </main>;
   }
