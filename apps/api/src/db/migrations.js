@@ -362,5 +362,10 @@ CREATE INDEX idx_audit_entity_action ON audit_events(entity_type,entity_id,actio
   terminalCalaiApprovalMigration74,
   terminalCalaiFirstSetupMigration75,
   tabletManagedSetupMigration76,
-  tabletManagedSetupRetryMigration77
+  tabletManagedSetupRetryMigration77,
+  {
+    version: 78,
+    name: "business_product_restaurant_lookup",
+    sql: "CREATE INDEX business_product_restaurant_idx ON business_product_links(restaurant_id,product);"
+  }
 ];

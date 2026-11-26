@@ -18,19 +18,27 @@ const stats = values => {
   return { count: sorted.length, p50: at(.5), p95: at(.95), max: at(1) };
 };
 
-export function seedDirectoryFixture(db, { restaurants = 10_000, menuItemsPerRestaurant = 20, historyPerRestaurant = 5 } = {}) {
+export function seedDirectoryFixture(db, { restaurants = 10_000, menuItemsPerRestaurant = 20, historyPerRestaurant = 5, enableDiscovery = false } = {}) {
   for (const [value, maximum] of [[restaurants, 10_000], [menuItemsPerRestaurant, 50], [historyPerRestaurant, 20]]) if (!Number.isSafeInteger(value) || value < 1 || value > maximum) throw new Error("Directory fixture size is outside its local safety bounds");
   const stamp = DIRECTORY_NOW.toISOString(), customerId = "directory-customer";
   const restaurant = db.prepare("INSERT INTO restaurants(id,name,status,created_at,cuisine,description,collection_enabled,delivery_enabled,delivery_outcodes,delivery_fee_minor,estimated_delivery_minutes,always_open) VALUES(?,?,'approved',?,?,?,1,1,?,?,?,1)");
   const item = db.prepare("INSERT INTO menu_items(id,restaurant_id,name,description,price_minor,available,created_at,updated_at,category,sort_order) VALUES(?,?,?,?,1000,1,?,?,?,?)");
   const order = db.prepare("INSERT INTO orders(id,restaurant_id,restaurant_name,customer_id,status,currency,subtotal_minor,delivery_fee_minor,total_minor,commission_minor,payment_method,payment_status,fulfillment,idempotency_key,request_hash,created_at,updated_at) VALUES(?,?,?,?,'completed','GBP',1000,0,1000,70,'mock_card','mock_captured','collection',?,?,?,?)");
   const rating = db.prepare("INSERT INTO restaurant_order_ratings(order_id,restaurant_id,customer_id,stars,created_at) VALUES(?,?,?,?,?)");
+  const business = enableDiscovery && db.prepare("INSERT INTO business_accounts(id,name,created_at,updated_at) VALUES(?,?,?,?)");
+  const link = enableDiscovery && db.prepare("INSERT INTO business_product_links(id,business_id,product,source_account_id,restaurant_id,status,created_at,updated_at) VALUES(?,?,'cal-eats',?,?,'active',?,?)");
+  const permission = enableDiscovery && db.prepare("INSERT INTO business_product_permissions(business_id,product,allowed,changed_at) VALUES(?,'cal-eats',1,?)");
   withTransaction(db, () => {
     // This invalid hash cannot authenticate. No real customer/owner identities exist.
     db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at) VALUES(?,?,'directory@load.invalid','invalid-synthetic-hash','customer',?)").run(customerId, "Synthetic directory customer", stamp);
     for (let index = 0; index < restaurants; index++) {
       const id = directoryId(index), name = `Synthetic restaurant ${String(index).padStart(5, "0")}`;
       restaurant.run(id, name, stamp, `Synthetic ${index % 20}`, "Synthetic capacity fixture only", JSON.stringify([index % 2 ? "N1" : "LU1"]), index % 5 ? 199 : 0, 20 + index % 20);
+      if (enableDiscovery) {
+        business.run(id, name, stamp, stamp);
+        link.run(id, id, id, id, stamp, stamp);
+        permission.run(id, stamp);
+      }
       for (let dish = 0; dish < menuItemsPerRestaurant; dish++) item.run(`${id}-item-${dish}`, id, index === restaurants - 1 && dish === menuItemsPerRestaurant - 1 ? "Rare capers finale" : `Synthetic dish ${dish}`, "Synthetic menu fixture", stamp, stamp, dish % 2 ? "Sides" : "Mains", dish);
       for (let history = 0; history < historyPerRestaurant; history++) {
         const orderId = `${id}-history-${history}`, recent = history < 1 + index % 5;
@@ -40,7 +48,7 @@ export function seedDirectoryFixture(db, { restaurants = 10_000, menuItemsPerRes
       }
     }
   });
-  return { restaurants, menuItems: restaurants * menuItemsPerRestaurant, historicalOrders: restaurants * historyPerRestaurant, ratings: restaurants * Math.min(historyPerRestaurant, 2), syntheticAccounts: 1, images: 0 };
+  return { restaurants, directoryEnabledRestaurants: enableDiscovery ? restaurants : 0, menuItems: restaurants * menuItemsPerRestaurant, historicalOrders: restaurants * historyPerRestaurant, ratings: restaurants * Math.min(historyPerRestaurant, 2), syntheticAccounts: 1, images: 0 };
 }
 
 function observedQuery(db, query, url) {
@@ -61,7 +69,7 @@ export async function runDirectoryCapacity({ baselineDiscover = null, baselineLa
   const failures = [], httpMeasurements = [], queryMeasurements = [];
   try {
     migrateDatabase(db);
-    const seedStarted = performance.now(), dataset = seedDirectoryFixture(db), seedMs = performance.now() - seedStarted;
+    const seedStarted = performance.now(), dataset = seedDirectoryFixture(db, { enableDiscovery: true }), seedMs = performance.now() - seedStarted;
     db.exec("ANALYZE");
     const ids = Array.from({ length: dataset.restaurants }, (_, index) => directoryId(index));
     const cases = [

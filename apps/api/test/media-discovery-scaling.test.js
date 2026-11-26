@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { DIRECTORY_NOW, directoryId, seedDirectoryFixture } from "../../../scripts/load-restaurant-directory.js";
 import { journeyFixture } from "./helpers.js";
 import {ensureBusinessForRestaurant} from "../src/unified-business.js";
+import { migrateDatabase, openDatabase } from "../src/db/index.js";
+import { migrations } from "../src/db/migrations.js";
 import { assertMediaCapacity, RESTAURANT_MEDIA_LIMIT_BYTES } from "../src/media-policy.js";
+import { discoverRestaurants } from "../src/restaurant-discovery.js";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII=";
 const image = { mimeType: "image/png", dataBase64: png };
@@ -72,4 +76,33 @@ test("discovery filters before bounded stable pagination and finds matches beyon
     assert.equal((await f.json("/api/restaurants?q=rare%20caper&fulfillment=delivery&postcode=N1%201AA")).body.data.length, 0);
     for (const query of ["page=0", "pageSize=101", "pageSize=1.5"]) assert.equal((await f.json(`/api/restaurants?${query}`)).status, 400);
   } finally { await f.close(); }
+});
+
+test("restaurant product index upgrades existing links and leaves discovery rows unchanged", () => {
+  const db = openDatabase(":memory:");
+  try {
+    db.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
+    for (const migration of migrations.filter(item => item.version < 78)) {
+      if (migration.foreignKeysOff) db.exec("PRAGMA foreign_keys=OFF");
+      db.exec(migration.sql);
+      db.prepare("INSERT INTO schema_migrations VALUES(?,?,?)").run(migration.version, migration.name, DIRECTORY_NOW.toISOString());
+      if (migration.foreignKeysOff) db.exec("PRAGMA foreign_keys=ON");
+    }
+    seedDirectoryFixture(db, { restaurants: 61, menuItemsPerRestaurant: 2, historyPerRestaurant: 1, enableDiscovery: true });
+    const disabled = directoryId(30);
+    db.prepare("UPDATE business_product_permissions SET allowed=0 WHERE business_id=? AND product='cal-eats'").run(disabled);
+    const query = route => discoverRestaurants(db, new URL(route, "http://localhost"), DIRECTORY_NOW);
+    const routes = ["/api/restaurants?page=6&pageSize=10", "/api/restaurants?q=rare%20capers"];
+    const before = routes.map(query);
+    assert.deepEqual(before[0].rows.map(row => row.id), Array.from({ length: 10 }, (_, index) => directoryId(index + 51)));
+    assert.deepEqual(before[1].rows.map(row => row.id), [directoryId(60)]);
+
+    migrateDatabase(db);
+    assert.deepEqual(routes.map(query), before);
+    const pointLookup = db.prepare("EXPLAIN QUERY PLAN SELECT business_id FROM business_product_links WHERE restaurant_id=? AND product='cal-eats'");
+    assert.match(pointLookup.all(directoryId(60)).map(row => row.detail).join("\n"), /SEARCH .*business_product_restaurant_idx.*restaurant_id=\? AND product=\?/);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM business_product_links").get().count, 61);
+    assert.equal(db.prepare("SELECT allowed FROM business_product_permissions WHERE business_id=? AND product='cal-eats'").get(disabled).allowed, 0);
+    assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+  } finally { db.close(); }
 });
