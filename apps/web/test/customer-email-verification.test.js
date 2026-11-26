@@ -70,5 +70,5 @@ test("expired, incomplete and interrupted confirmation links provide recovery wi
   let calls = 0; const container = surface();
   const invalid = mountEmailConfirmation(container, { token: "incomplete", api: async () => { calls++; } }); await invalid.confirm(); assert.equal(calls, 0); assert.match(container.innerHTML, /incomplete or invalid/); invalid.close();
   const expired = mountEmailConfirmation(container, { token: "b".repeat(43), api: async () => { calls++; throw Object.assign(Error("Token is invalid or expired"), { code: "TOKEN_INVALID" }); } });
-  assert.equal(calls, 0); await expired.confirm(); assert.equal(calls, 1); assert.match(container.innerHTML, /expired or has already been used/); assert.match(container.innerHTML, /support@calai.info/); expired.close();
+  assert.equal(calls, 0); await expired.confirm(); assert.equal(calls, 1); assert.match(container.innerHTML, /expired or has already been used/); assert.match(container.innerHTML, /caleats@calai.info/); expired.close();
 });

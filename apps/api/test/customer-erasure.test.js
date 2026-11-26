@@ -90,6 +90,7 @@ test("verified customer deletion: review, blockers, atomic minimisation, financi
     const confirmation=f.db.prepare("SELECT * FROM customer_erasure_confirmation_outbox").get();assert.equal(confirmation.status,"pending");assert.ok(!JSON.stringify(confirmation).includes(user.email));
     let sent;
     const delivery=await runCustomerErasureConfirmations(f.db,f.config,{adapter:async(message,{beforeSend})=>{assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_erasure_tombstones WHERE user_id=?").get(user.id).n,1);assert.equal(beforeSend(),true);sent=message;return{status:"sent"};}});assert.equal(delivery.sent,1);assert.equal(sent.to,user.email);assert.match(sent.text,/does not require you to sign in/);assert.equal(f.db.prepare("SELECT ciphertext FROM customer_erasure_confirmation_outbox").get().ciphertext,null);
+    assert.match(sent.text,/contact caleats@calai\.info/);
     assert.equal(f.db.prepare("PRAGMA foreign_key_check").all().length,0);
   }finally{await f.close();}
 });

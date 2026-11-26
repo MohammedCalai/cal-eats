@@ -28,7 +28,12 @@ test("Graph mail validates sender, checks cancellation after auth and preserves 
     clientFactory: async () => ({ getTokenCache: () => ({ getAllAccounts: async () => [{ username: settings.sender }] }), acquireTokenSilent: async () => ({ accessToken: "TEST_ONLY", scopes: ["Mail.Send"] }) }),
     fetchImpl: async (url, request) => {
       calls++; assert.equal(url, "https://graph.microsoft.com/v1.0/me/sendMail"); assert.equal(request.redirect, "error");
-      const payload = JSON.parse(request.body); assert.equal(payload.message.toRecipients.length, 1); assert.equal(payload.message.toRecipients[0].emailAddress.address, "customer@example.invalid"); assert.equal(payload.saveToSentItems, true);
+      const payload = JSON.parse(request.body);
+      assert.deepEqual(payload.message.toRecipients,[{emailAddress:{address:"customer@example.invalid"}}]);
+      assert.deepEqual(payload.message.replyTo,[{emailAddress:{address:"caleats@calai.info"}}]);
+      assert.equal(payload.message.ccRecipients,undefined);
+      assert.equal(payload.message.bccRecipients,undefined);
+      assert.equal(payload.saveToSentItems, true);
       if (throwNetwork) throw new Error("sensitive provider details must not leak");
       return { status: responseStatus };
     }

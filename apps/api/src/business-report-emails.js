@@ -7,6 +7,7 @@ import {buildOwnerDashboardCsv} from "./dashboard-exports.js";
 import {parseLondonDateRange,resolveFinanceScope,operationFinancePredicate,statementCsv} from "./marketplace-reporting.js";
 import {listBusinessPaymentAdjustments,exportBusinessPaymentAdjustmentsCsv} from "./business-payment-adjustment-reporting.js";
 import {createOrderAlertEmailAdapter,orderAlertEmailTransportReadiness} from "./order-alert-email.js";
+import {CALEATS_INBOX} from "./caleats-contact.js";
 
 const MAX_BYTES=1024*1024,MAX_ROWS=10000,DAY=86400000,workers=new WeakMap(),adapters=new WeakMap();
 const identifier="[A-Za-z0-9_-]{8,100}",hash=value=>createHash("sha256").update(value).digest("hex"),fail=(code,message,status=400)=>new HttpError(status,code,message);
@@ -119,7 +120,7 @@ export async function routeBusinessReportEmails({req,res,url,db,config,session})
 export function buildBusinessReportEmail(row,config){
   const csv=boundedCsv(row.csv);if(hash(csv)!==row.content_sha256)throw Error("Report snapshot changed");
   const link=new URL("/business/owner/earnings",config.origin).href,label=row.financial_scope==="testing"?"Testing history":"Live business activity";
-  return {id:row.id,to:row.recipient,from:config.orderAlertEmail.from,messageId:row.message_id,subject:`Cal-Eats | Your requested ${row.report_kind.replaceAll("-"," ")} report`,text:`Cal-Eats\n\nYour requested report is attached as a CSV file, which opens in Excel and other spreadsheet apps.\n${label}. Prepared ${row.created_at}.\n\nKeep the attachment private. The file reflects the recorded information when requested; it is not proof of a bank deposit.\n\nView your business platform: ${link}\nFor help: support@calai.info`,attachments:[{filename:row.filename,contentType:"text/csv",contentBase64:Buffer.from(csv).toString("base64")}]};
+  return {id:row.id,to:row.recipient,from:config.orderAlertEmail.from,messageId:row.message_id,subject:`Cal-Eats | Your requested ${row.report_kind.replaceAll("-"," ")} report`,text:`Cal-Eats\n\nYour requested report is attached as a CSV file, which opens in Excel and other spreadsheet apps.\n${label}. Prepared ${row.created_at}.\n\nKeep the attachment private. The file reflects the recorded information when requested; it is not proof of a bank deposit.\n\nView your business platform: ${link}\nFor help: ${CALEATS_INBOX}`,attachments:[{filename:row.filename,contentType:"text/csv",contentBase64:Buffer.from(csv).toString("base64")}]};
 }
 function sourceFailure(db,config,row){
   if(!restaurantCapabilities(db,{user:{id:row.user_id,role:"restaurant"}},row.restaurant_id)[reportCapability(row.report_kind)])return "REPORT_PERMISSION_CHANGED";

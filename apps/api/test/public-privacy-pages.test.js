@@ -8,6 +8,16 @@ const version = "2026-11-08-v1", stamp = "2026-11-08T00:00:00.000Z";
 const hashes = { terms: "b20a70bce474651c3d3e67a92a6391dd5030244b7a8069df0cb4ea9bd29490f1", privacy: "eb363ca14c8dde6bda1c934d6b412386eaa567d9ac1cad6ec9384366bba425c7" };
 const documents = Object.fromEntries(Object.keys(hashes).map(kind => [kind, { archiveFile: `customer-${kind}-${version}.txt`, version, sha256: hashes[kind], url: `/legal/${kind}/${version}`, approvedAt: stamp, effectiveAt: stamp, approvalReference: "Isolated public-information regression fixture for approved policy copies" }]));
 
+function assertCalEatsInbox(html) {
+  const links = [...html.matchAll(/href="(mailto:[^"]+)"/g)].map(match => new URL(match[1]));
+  assert.ok(links.length, "A contact link must be available");
+  for (const link of links) {
+    assert.equal(link.pathname, "caleats@calai.info");
+    assert.equal(link.searchParams.has("cc"), false);
+    assert.equal(link.searchParams.has("bcc"), false);
+  }
+}
+
 test("public privacy and applicant information stays accessible without the app, with safe GET/HEAD routes and complete local links", async () => {
   const f = await journeyFixture({ now: () => new Date("2026-11-14T12:00:00.000Z"), customerLegal: { enabled: true, documents } });
   try {
@@ -20,7 +30,7 @@ test("public privacy and applicant information stays accessible without the app,
       assert.match(response.headers.get("content-security-policy"), /script-src 'self'/);
       assert.equal(response.headers.get("set-cookie"), undefined);
       assert.doesNotMatch(response.text, /<script\b|data-auto-download=|<form\b/);
-      assert.match(response.text, /support@calai\.info/);
+      assertCalEatsInbox(response.text);
       const head = await f.request(route, { method: "HEAD" });
       assert.equal(head.status, 200); assert.equal(head.text, "");
       assert.equal(head.headers.get("content-length"), response.headers.get("content-length"));
@@ -55,6 +65,7 @@ test("public entry pages expose current policies, company details and a proporti
     for (const route of ["/", "/download/", "/support/", "/account-deletion/"]) {
       const { status, text } = await f.request(route);
       assert.equal(status, 200);
+      if (route !== "/") assertCalEatsInbox(text);
       const footer = text.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/)?.[0];
       assert.ok(footer, route);
       for (const link of ["/legal/terms", "/legal/privacy", "/privacy-security/"]) assert.ok(footer.includes(`href="${link}`), `${route} missing ${link}`);
@@ -69,8 +80,9 @@ test("public entry pages expose current policies, company details and a proporti
     assert.ok(contact, companyLink);
     assert.match(contact, /CALAI LTD[\s\S]*Registered in England and Wales[\s\S]*16995419/);
     assert.match(contact, /Registered office: 62 Cades Close, Luton, England, LU1 5QQ/);
-    assert.match(contact, /href="mailto:support@calai\.info"/);
+    assert.match(contact, /href="mailto:caleats@calai\.info"/);
     const support = (await f.request("/support/")).text;
+    assert.match(support, /mailto:caleats@calai\.info\?subject=Cal-Eats%20enquiry/);
     assert.match(support, /case.by.case|reviewed individually/i);
     assert.match(support, /evidence/i);
     assert.match(support, /statutory|legal rights/i);

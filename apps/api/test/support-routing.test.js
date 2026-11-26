@@ -10,6 +10,9 @@ test("business support goes to admin, keeps both reply directions, and sends rol
  const f=await journeyFixture({orderAlertEmail:{mode:"local",from:"caleats-support@calai.info"}});
  try{
   const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"),admin=await f.login("admin@calai.local","LocalAdmin!4310"),other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310"),customer=await f.login("customer@calai.local","LocalCustomer!4310");
+  const addAdmin=f.db.prepare("INSERT INTO users(id,name,email,password_hash,role,created_at,account_enabled) VALUES(?,?,?,'fixture','admin',?,?)");
+  addAdmin.run("second-admin","Second admin","second-admin@example.invalid","2099-01-01T00:00:00.000Z",1);
+  addAdmin.run("disabled-admin","Disabled admin","disabled-admin@example.invalid","2000-01-01T00:00:00.000Z",0);
   const restaurant=(await f.json("/api/restaurant/restaurants",{cookie:owner})).body.data[0],foreign=(await f.json("/api/restaurant/restaurants",{cookie:other})).body.data[0];
   const request={method:"POST",cookie:owner,headers:{"Idempotency-Key":"business-support-request"},body:{subject:"Business platform help",message:"Private original business message",restaurantId:restaurant.id}};
   assert.equal((await f.json("/api/support",{...request,body:{...request.body,restaurantId:foreign.id}})).status,404);
@@ -24,11 +27,38 @@ test("business support goes to admin, keeps both reply directions, and sends rol
   const thread=(await f.json(`/api/support/${ticket.id}`,{cookie:owner})).body.data;assert.equal(thread.message,request.body.message);assert.deepEqual(thread.messages.map(x=>x.message),["Private business follow-up","Private platform answer"]);assert.equal(thread.waitingFor,"customer");assert.equal(thread.isTeam,false);
   const latest=(await f.json(`/api/support/${ticket.id}?limit=1`,{cookie:owner})).body.data;assert.ok(latest.nextCursor);const older=(await f.json(`/api/support/${ticket.id}?limit=1&${new URLSearchParams(latest.nextCursor)}`,{cookie:owner})).body.data;assert.equal(older.messages[0].message,"Private business follow-up");
   await f.json(`/api/support/${ticket.id}`,{cookie:admin,method:"PATCH",body:{status:"resolved"}});
-  const rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox ORDER BY rowid").all();assert.equal(rows.length,5);assert.deepEqual(rows.map(r=>r.recipient),["admin@calai.local","restaurant@calai.local","admin@calai.local","restaurant@calai.local","restaurant@calai.local"]);
-  for(const row of rows){const mail=buildCustomerEmail(row,f.config);assert.equal(/Private (original|business|platform)/.test(mail.text+mail.html+row.payload),false);assert.ok(mail.text.includes(`/business/${row.recipient.startsWith("admin")?"admin":"owner"}/support?case=${ticket.id}`));}
+  const secondaryNotices=f.db.prepare("SELECT type FROM user_notifications WHERE user_id='second-admin' AND support_case_id=? ORDER BY rowid").all(ticket.id);
+  assert.deepEqual(secondaryNotices.map(row=>row.type),["support_request","support_reply"]);
+  const rows=f.db.prepare("SELECT * FROM customer_transactional_email_outbox ORDER BY rowid").all();assert.equal(rows.length,5);assert.deepEqual(rows.map(r=>r.recipient),["caleats@calai.info","restaurant@calai.local","caleats@calai.info","restaurant@calai.local","restaurant@calai.local"]);
+  for(const row of rows){const mail=buildCustomerEmail(row,f.config);assert.equal(/Private (original|business|platform)/.test(mail.text+mail.html+row.payload),false);assert.ok(mail.text.includes(`/business/${row.recipient==="caleats@calai.info"?"admin":"owner"}/support?case=${ticket.id}`));}
   const sent=await runCustomerTransactionalEmails(f.db,f.config);assert.equal(sent.localSaved,5);assert.equal((await runCustomerTransactionalEmails(f.db,f.config)).localSaved,0);
   await reply(admin,"admin-followup-02","Another private answer");f.db.prepare("UPDATE users SET account_enabled=0 WHERE email='restaurant@calai.local'").run();
   let unsafe=0;const cancelled=await runCustomerTransactionalEmails(f.db,f.config,{adapter:async()=>{unsafe++;return{status:"sent"};}});assert.equal(unsafe,0);assert.equal(cancelled.cancelled,1);
+ }finally{await f.close();}
+});
+
+test("a legacy pending platform support email is cancelled without forwarding or resending",async()=>{
+ const f=await journeyFixture();
+ try{
+  const cookie=await f.login("customer@calai.local","LocalCustomer!4310");
+  const request={method:"POST",cookie,headers:{"Idempotency-Key":"old-platform-email"},body:{subject:"Account help",message:"Question about my account"}};
+  const initial=await f.json("/api/support",request);
+  assert.equal(initial.status,201,initial.text);
+  const ticket=initial.body.data;
+  const old=f.db.prepare("SELECT id FROM customer_transactional_email_outbox WHERE support_case_id=? AND recipient='caleats@calai.info'").get(ticket.id);
+  f.db.prepare("UPDATE customer_transactional_email_outbox SET recipient='support@calai.info' WHERE id=?").run(old.id);
+  const deliver=[];
+  const worker=()=>runCustomerTransactionalEmails(f.db,f.config,{adapter:async(message,{beforeSend})=>{assert.equal(beforeSend(),true);deliver.push(message.to);return{status:"sent"};}});
+  const result=await worker();
+  assert.equal(result.cancelled,1);
+  assert.deepEqual(deliver,["customer@calai.local"]);
+  const cancelled=f.db.prepare("SELECT status,last_error FROM customer_transactional_email_outbox WHERE id=?").get(old.id);
+  assert.deepEqual({...cancelled},{status:"cancelled",last_error:"SUPPORT_RECIPIENT_OR_SOURCE_CHANGED"});
+  const replay=await f.json("/api/support",request);
+  assert.equal(replay.status,200,replay.text);
+  assert.equal(replay.body.data.id,ticket.id);
+  assert.equal((await worker()).sent,0);
+  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM customer_transactional_email_outbox WHERE support_case_id=?").get(ticket.id).n,2);
  }finally{await f.close();}
 });
 

@@ -53,6 +53,7 @@ test("all six report families attach exact scoped CSV snapshots without creating
     for(const source of sources){f.advance(11*60000);const queued=await f.request(source);assert.equal(queued.status,202,queued.text);const saved=row(f,queued.body.data.id);expected.set(saved.id,saved.csv);assert.equal(saved.financial_scope,"testing");}
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM marketplace_report_jobs").get().n,1);
     const result=await runBusinessReportEmails(f.db,f.config,{adapter:async(message,{beforeSend})=>{
+      assert.match(message.text,/For help: caleats@calai\.info/);
       assert.equal(message.to,f.actor.email);assert.equal(message.attachments.length,1);const csv=Buffer.from(message.attachments[0].contentBase64,"base64").toString();assert.equal(csv,expected.get(message.id));assert.match(message.attachments[0].filename,/\.csv$/);assert.equal(beforeSend(),true);return{status:"sent"};
     }});assert.equal(result.sent,6);
     const weeklyJob=f.db.prepare("SELECT * FROM business_report_email_outbox WHERE report_kind='weekly-statement'").get();assert.equal(weeklyJob.content_sha256,createHash("sha256").update("heading,value\r\nrecorded,42\r\n").digest("hex"));
