@@ -18,6 +18,26 @@ The adapter verifies an immutable object version, byte length, MIME type and SHA
 
 Required private settings: `CALAI_MEDIA_STORAGE=s3`, `CALAI_MEDIA_S3_BUCKET`, `CALAI_MEDIA_S3_REGION`, `CALAI_MEDIA_S3_ACCESS_KEY_ID`, `CALAI_MEDIA_S3_SECRET_ACCESS_KEY`, and optional HTTPS-origin `CALAI_MEDIA_S3_ENDPOINT` / boolean `CALAI_MEDIA_S3_FORCE_PATH_STYLE`. Use a Cal-Eats-only bucket and prefix-scoped object permissions. Bucket versioning is mandatory: an upload with no immutable version ID is not published. Do not assume every S3-compatible provider supports versioning; verify compatibility before selecting/provisioning storage. Existing database-backed images remain readable alongside new object-backed images.
 
+### Moving existing covers and menu photos
+
+Run the operator script from the deployed Cal-Eats release. The read-only plan reports image counts and byte lengths without opening an object storage connection. It checks the schema and recorded sizes; the apply step validates each selected image's bytes and dimensions.
+
+```sh
+node scripts/migrate-media-to-objects.js --plan --db /data/calai-eats.sqlite
+```
+
+1. Take a verified Cal-Eats database backup. Enable versioning and verify storage access with the dedicated Cal-Eats bucket credentials. Deploy the matching configuration to every Cal-Eats API process before relocating any existing images. Test an approved upload and fetch in the matching environment; the provider must return and serve an immutable version ID.
+2. Apply a one-image batch and check its existing cover or menu photo URL. Then continue in bounded batches until `inlineImages` is zero. The script defaults to 25 images and accepts at most 100 per batch. A failed `put` or read-back stops the batch. A malformed inline image is counted and remains available from its source bytes for investigation. A failed batch exits with a nonzero status and can be retried after resolving its reported failure.
+
+   ```sh
+   node scripts/migrate-media-to-objects.js --apply --db /data/calai-eats.sqlite --limit 1
+   node scripts/migrate-media-to-objects.js --apply --db /data/calai-eats.sqlite --limit 25
+   ```
+
+3. Verify another read-only plan, check representative customer and owner photo URLs, take a new database backup, and verify every referenced object version against the backup as described below. SQLite can reuse freed image pages for future writes; its file size may remain the same. Treat any file compaction as a separately scheduled database-maintenance action.
+
+Each relocation uploads to a tenant-scoped immutable key, reads back the exact version, and compares its byte length and checksum before changing the database. A short SQLite transaction binds the version and clears the inline bytes together. IDs, photo URLs, cover and menu references, and the 100 MB allowance use the same saved metadata after relocation. Concurrent replacement or deletion takes precedence. Abandoned upload attempts enter the ordinary object cleanup queue. A rerun skips versions already bound. Once any image is object-backed, keep its matching bucket available to every release that serves it, including during rollback.
+
 ### Backups, restoration and later Calai migration
 
 Database backups preserve immutable object-version references and write a `.media-objects.jsonl` sidecar when external images exist. This inventory is **not a backup of object bytes**. Keep those object versions and their independent backups for as long as a retained database snapshot references them. The application never permanently deletes an object version: cleanup only removes the current key. Provider lifecycle rules and backup retention must be reviewed together before activation.
