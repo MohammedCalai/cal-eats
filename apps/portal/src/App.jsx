@@ -56,6 +56,7 @@ const CalaiPlatformPage=React.lazy(()=>import("./CalaiPlatformPages.jsx").then(m
 const SessionContext = React.createContext(null);
 const RestaurantContext = React.createContext(null);
 const BUSINESS_ROLES = new Set(["admin", "restaurant", "owner", "staff"]);
+const RESTAURANT_ROLES = new Set(["restaurant", "owner", "staff"]);
 const canDiscoverTablet = user => (/Win/i.test(globalThis.navigator?.platform || "") || /Windows/i.test(globalThis.navigator?.userAgent || "")) && (!user || BUSINESS_ROLES.has(user.role));
 function OwnerStripeFinance(){return <Navigate to="/owner/earnings?view=payouts" replace/>}
 
@@ -106,7 +107,8 @@ function App() {
     onSignOut: clearTabletDiscoveryHint,
     // Platform detection only avoids unnecessary local discovery on phones;
     // it cannot confer operational permission without a signed native grant.
-    canDiscover: canDiscoverTablet,
+    canDiscover: user => canDiscoverTablet(user?.role === "customer" ? null : user),
+    preferTerminalForUser: user => user?.role === "customer",
     setPrincipal: setBusinessApiPrincipal,
     onLoading: () => setSession(old => ({ ...old, loading: true })),
     onSession: result => setSession(old => ({ ...old, loading: false, user: result.user, principalKind: result.principalKind, generation: old.generation + 1 })),
@@ -249,6 +251,7 @@ function Login() {
 
 function OwnerBootstrap() {
   const { user, embedded, observeManagedSetup, automaticStartupAllowed } = React.useContext(SessionContext);
+  if (!RESTAURANT_ROLES.has(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
   return <BusinessWorkspaceProvider key={user.id} userId={user.id} embedded={embedded} observeManagedSetup={observeManagedSetup} automaticStartupAllowed={automaticStartupAllowed}><OwnerRestaurantWorkspace user={user}/></BusinessWorkspaceProvider>;
 }
 
@@ -278,7 +281,6 @@ function OwnerRestaurantWorkspace({ user }) {
     setSelectedId(authorized.id);
     try { window.localStorage.setItem(storageKey, authorized.id); } catch { /* Keep the current in-memory selection. */ }
   }, [restaurants, storageKey]);
-  if (!["restaurant", "owner", "staff"].includes(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
   if (needsEats && result.loading) return <PageState text="Loading your business…"/>;
   if (eatsError && workspace?.mode === "cal-eats") return <PageState error={result.error} retry={result.reload}/>;
   const permission = restaurant?.permission || restaurant?.membershipPermission || "staff";
@@ -699,7 +701,29 @@ function Simulation({mode="local_simulator"}){const stripe=String(mode).startsWi
 function Field({label,...props}){return <label>{label}<input {...props}/></label>}
 function Skeleton(){return <div className="skeleton" aria-label="Loading"><i/><i/><i/></div>}
 function PageState({text,error,retry}){return <main className="state"><Brand/><p>{error||text}</p>{retry&&<button className="primary" onClick={retry}>Try again</button>}</main>}
-function BusinessAccessUnavailable(){const{user,refresh,suspendAutomaticSignIn}=React.useContext(SessionContext),[busy,setBusy]=useState(false),[error,setError]=useState("");async function switchAccount(){setBusy(true);setError("");suspendAutomaticSignIn();try{await endOperationalPresence();await api("/api/auth/logout",{...json("POST",{}),humanSession:true});disconnectLocalTerminal();await refresh()}catch(x){setError(x.message)}finally{setBusy(false)}}return <main className="auth"><section className="auth-card"><Brand/><p className="eyebrow">Business portal</p><h1>Use a business account</h1><p>You are signed in as {user?.name||"a customer"}. This account does not have restaurant or administrator access.</p>{error&&<Alert>{error}</Alert>}<div className="button-row"><a className="button-link" href="/order/">Return to customer ordering</a><button className="quiet" type="button" disabled={busy} onClick={switchAccount}>{busy?"Signing out…":"Sign out and switch account"}</button></div><p className="fine">Business access is not added by switching accounts. Sign in with an account that already has an authorised business role.</p></section></main>}
+function BusinessAccessUnavailable() {
+  const { user, refresh, suspendAutomaticSignIn } = React.useContext(SessionContext);
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  async function switchAccount() {
+    setBusy(true); setError(""); suspendAutomaticSignIn();
+    try {
+      await endOperationalPresence();
+      await api("/api/auth/logout", { ...json("POST", {}), humanSession: true });
+      disconnectLocalTerminal();
+      await refresh();
+    } catch (caught) { setError(caught.message); }
+    finally { setBusy(false); }
+  }
+  return <main className="auth"><section className="auth-card">
+    <Brand/><p className="eyebrow">Business portal</p><h1>Use a business account</h1>
+    <p>You are signed in as {user?.name || "a customer"}. Switch to your restaurant or administrator account to continue.</p>
+    {error && <Alert>{error}</Alert>}
+    <div className="button-row">
+      <button className="primary" type="button" disabled={busy} onClick={switchAccount}>{busy ? "Signing out…" : "Sign out and switch account"}</button>
+      <a className="button-link" href="/order/">Return to customer ordering</a>
+    </div>
+  </section></main>;
+}
 function Denied({message="This workspace is not available for your account role."}){return <div className="panel"><h2>Access unavailable</h2><p>{message}</p></div>}
 function DataTable({headers,rows=[],loading,error,rowClasses=[]}){if(loading)return <Skeleton/>;if(error)return <Alert>{error}</Alert>;if(!rows.length)return <p className="empty">Nothing to show yet.</p>;return <div className="table-wrap responsive-table"><table><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i} className={rowClasses[i]||undefined}>{r.map((c,j)=><td key={j} data-label={headers[j]}>{c??"—"}</td>)}</tr>)}</tbody></table></div>}
 function OrderTable({ items, onOpen, businessId, restaurantId, now, canOperate, printPrincipal }) {
