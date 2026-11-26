@@ -70,6 +70,70 @@ test("cold startup renews an expired protected broker grant and opens the same E
   assert.equal(boot.timers.size, 0);
 });
 
+test("the real four-slot broker serves a burst of tablet reads without delaying writes or sending a cancelled read", { timeout: 5000 }, async t => {
+  const origin = "https://eats.calai.info", held = deferred(), firstTwo = deferred(), calls = [];
+  let activeReads = 0, maximumReads = 0;
+  const device = new TerminalDevice({ identityPath: "unused", clock: () => NOW,
+    keyFactory: () => ({ sign: async () => "s".repeat(86) }),
+    fetchImpl: async (url, options) => {
+      calls.push({ method: options.method, path: url.pathname + url.search });
+      if (options.method === "GET") {
+        activeReads++;
+        maximumReads = Math.max(maximumReads, activeReads);
+        if (activeReads === 2) firstTwo.resolve();
+        await held.promise;
+        activeReads--;
+      }
+      return response({ ok: true });
+    },
+  });
+  device.identity = { paired: true, terminalId: TERMINAL, businessId: BUSINESS };
+  device.grant = { ...session(), token: "t".repeat(43) };
+  const broker = await startBroker({ device, origin, port: 0 });
+  t.after(() => { held.resolve(); broker.stop(); });
+  const f = fixture({ fetchImpl: (url, options) => fetch("http://127.0.0.1:" + broker.server.address().port +
+    new URL(url).pathname, { ...options, headers: { ...options.headers, Origin: origin } }) });
+  await f.client.connectAutomaticTerminal();
+  const root = "/api/restaurant/restaurants/" + RESTAURANT;
+  const controller = new AbortController();
+  const reads = ["placed", "accepted", "preparing", "ready", "out_for_delivery"].map(status =>
+    f.client.terminalApi(root + "/orders?status=" + status));
+  const cancelledPath = root + "/message-attention";
+  const cancelled = assert.rejects(f.client.terminalApi(cancelledPath, { signal: controller.signal }), { code: "TERMINAL_ABORTED" });
+
+  await firstTwo.promise;
+  controller.abort();
+  await cancelled;
+  const mutation = "/api/restaurant/orders/" + OTHER + "/status";
+  assert.deepEqual(await f.client.terminalApi(mutation, { method: "PATCH", body: { status: "ready" } }), { ok: true });
+  assert.deepEqual(calls.map(value => value.method), ["GET", "GET", "PATCH"], "The write bypassed the held read queue");
+
+  held.resolve();
+  assert.deepEqual(await Promise.all(reads), Array.from({ length: 5 }, () => ({ ok: true })));
+  assert.equal(maximumReads, 2);
+  assert.equal(calls.some(call => call.path === cancelledPath), false);
+  assert.equal(calls.filter(call => call.path === mutation).length, 1);
+});
+
+test("queued reads cannot leave their signed window after logout or a new device generation", async () => {
+  for (const stop of ["clearDiscoveryHint", "disconnectLocalTerminal"]) {
+    const f = fixture(), held = deferred();
+    await f.ready();
+    f.queue.push(() => held.promise, () => held.promise);
+    const pending = Promise.allSettled([
+      f.client.terminalApi("/api/business/context"),
+      f.client.terminalApi("/api/business/dashboard"),
+    ]);
+    const queued = assert.rejects(f.client.terminalApi("/api/auth/me"), { code: "TERMINAL_CONTEXT_CHANGED" });
+    await until(() => f.calls.length === 4);
+    f.client[stop]();
+    held.resolve(response({ ok: true }));
+    await queued;
+    await pending;
+    assert.equal(f.calls.length, 4, "The old queued read never reached the broker");
+  }
+});
+
 test("an expired read renews once before concurrent reads resume and never replays a write", async () => {
   const f = fixture();
   await f.ready();

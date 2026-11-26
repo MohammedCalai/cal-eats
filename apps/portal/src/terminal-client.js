@@ -4,6 +4,7 @@ const LOCAL_ORIGIN = "http://127.0.0.1:17864";
 const PRODUCT = "calai-business-terminal";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROOF = /^[A-Za-z0-9_-]{43}$/;
+const MAX_CONCURRENT_SIGNED_READS = 2;
 const MAX_BODY = 64 * 1024, MAX_RESPONSE = 1024 * 1024, RENEW_BEFORE_MS = 65000;
 const utf8Length = value => new TextEncoder().encode(value).length;
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
@@ -135,7 +136,31 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
   let generation = 0, csrfToken = null, windowProof = null, context = null, currentScreenId = null, connecting = null;
   let state = { status: "unchecked", terminalId: null, paired: null, errorCode: null, permission: "unknown", reconnectEligible: false };
   let localAccessObserved = false, permissionBinding = null, recoveringGrant = null, grantRenewalSuspended = false;
-  const requests = new Set(), listeners = new Set();
+  const requests = new Set(), listeners = new Set(), queuedReads = new Set();
+  let activeReads = 0;
+  function drainReads() {
+    while (activeReads < MAX_CONCURRENT_SIGNED_READS && queuedReads.size) {
+      const next = queuedReads.values().next().value;
+      queuedReads.delete(next);
+      activeReads++;
+      next.start(() => { activeReads--; drainReads(); });
+    }
+  }
+  function reserveReadSlot(signal) {
+    if (signal?.aborted) return Promise.reject(aborted());
+    return new Promise((resolve, reject) => {
+      const stop = () => entry.cancel(aborted());
+      const detach = () => signal?.removeEventListener("abort", stop);
+      const entry = {
+        start(release) { detach(); resolve(release); },
+        cancel(error) { queuedReads.delete(entry); detach(); reject(error); },
+      };
+      queuedReads.add(entry);
+      signal?.addEventListener("abort", stop, { once: true });
+      drainReads();
+    });
+  }
+  function cancelQueuedReads() { for (const read of queuedReads) read.cancel(changed()); }
   function publish(next) { state = { ...state, ...next }; for (const listener of listeners) listener(terminalStatus()); }
   function hint(enabled) { try { discoveryHint.write(enabled); } catch { /* Discovery hints never grant authority. */ } }
   function hinted() { try { return discoveryHint.read() === true; } catch { return false; } }
@@ -144,6 +169,7 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
   const permissionFailure = permission => failure(permission === "denied" ? "Browser permission for this tablet connection is blocked. Review this site's permissions, then check again." : "Connect this tablet to allow its local ordering connection.", 403, permission === "denied" ? "TERMINAL_PERMISSION_DENIED" : "TERMINAL_PERMISSION_REQUIRED");
   function invalidate(status, code = null, reconnectEligible = false) {
     generation++; csrfToken = null; windowProof = null; context = null;
+    cancelQueuedReads();
     for (const controller of requests) controller.abort(changed());
     publish({ status, errorCode: code, reconnectEligible });
   }
@@ -321,8 +347,15 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
     if (windowProof && context && Date.parse(context.expiresAt) <= clock() + RENEW_BEFORE_MS) await connectAutomaticTerminal({ signal: options.signal });
     if (!windowProof || !context || state.status !== "ready") throw failure("Reconnect the registered restaurant tablet to continue.", 401, "TERMINAL_SESSION_REQUIRED", true);
     const scope = context, envelope = requestEnvelope(path, options, scope), expected = generation, proof = windowProof;
-    try { return await local("/v1/request", envelope, { expected, signal: options.signal, proof }); }
-    catch (error) {
+    let releaseRead;
+    try {
+      if (read) {
+        releaseRead = await reserveReadSlot(options.signal);
+        assertCurrent(expected);
+        if (grantRenewalSuspended) throw changed();
+      }
+      return await local("/v1/request", envelope, { expected, signal: options.signal, proof });
+    } catch (error) {
       // This exact response comes before the cloud route runs. The broker has
       // already discarded its stale grant when it returns this error.
       if (read && allowReadRenewal && !grantRenewalSuspended && !options.signal?.aborted) {
@@ -332,6 +365,8 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
           error.code === "TERMINAL_SESSION_EXPIRED";
         const renewal = sameRecovery || (expired ? startGrantRenewal(scope, expected) : null);
         if (renewal) {
+          releaseRead?.();
+          releaseRead = null;
           await waitForRestoredGrant(renewal, options.signal);
           if (path === "/api/auth/me") return renewal.verified;
           return terminalApi(path, options, false);
@@ -340,10 +375,13 @@ export function createAutomaticTerminalClient({ fetchImpl = (...args) => globalT
       const operationDenied = ["TABLET_OPERATION_DENIED", "TERMINAL_OPERATION_DENIED", "OWNER_REQUIRED", "FORBIDDEN","PRODUCT_INACTIVE","PRODUCT_DISABLED","ADMIN_CONNECTION_PERMISSION_REQUIRED","CAL_EATS_DISABLED","BUSINESS_LINK_CHANGED","CALAI_RECONNECT_REQUIRED","CALAI_AUTHORITY_REQUIRED"].includes(error.code);
       if (!operationDenied && error.code !== "TERMINAL_ABORTED" && (error.status === 401 || error.status === 403 || error.status === 0 || error.code === "TERMINAL_LOCAL_INVALID" || error.status >= 500)) failed(error, "request", expected);
       throw error;
+    } finally {
+      releaseRead?.();
     }
   }
   function cancelGrantRenewal() {
     grantRenewalSuspended = true;
+    cancelQueuedReads();
     recoveringGrant?.controller.abort();
     recoveringGrant = null;
   }
