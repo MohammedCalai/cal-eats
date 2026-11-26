@@ -88,7 +88,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     <Resource {...context}>
       {selectionError && <p className="alert" role="alert">{selectionError}</p>}
       {startupAssignment ? <CalaiTabletStartup assignment={startupAssignment} allowConnections={business?.canConnectProducts === true}
-        automaticStartupAllowed={automaticStartupAllowed}/> : startupPage && tabletScope && !signedResource.value && signedResource.loading
+        automaticStartupAllowed={automaticStartupAllowed}/> : tabletScope && !signedResource.value && signedResource.loading
         ? <main className="auth"><p role="status">Opening business platform…</p></main> : children}
     </Resource>
   </BusinessContext.Provider>;
