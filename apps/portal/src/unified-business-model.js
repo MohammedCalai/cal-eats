@@ -125,6 +125,17 @@ export function canUseCalaiWorkspaceTools(business, mode) {
   return (mode === "calai" || mode === "both") && business?.canViewCalai === true && productPresentation(business, "calai").usable;
 }
 
+export function calaiWorkspaceReadPath(section, business, mode) {
+  if (!canUseCalaiWorkspaceTools(business, mode)) return null;
+  if (section === "orders") return "/api/business/calai/orders";
+  if (mode !== "both") return null;
+  if (section === "settings") return "/api/business/calai/hours";
+  if (business.principalKind === "terminal") return null;
+  if (section === "agents") return "/api/business/calai/agents";
+  if (section === "item-management") return "/api/business/calai/menu";
+  return null;
+}
+
 export function businessNavigation(business, eatsNavigation = [], mode = businessWorkspaceMode(business)) {
   const eats = productPresentation(business, "cal-eats");
   const dashboard = ["Dashboard", "/owner/dashboard"];

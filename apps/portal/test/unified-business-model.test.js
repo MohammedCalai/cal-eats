@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyTabletProductAccess, businessWorkspaceMode, canUseCalaiWorkspaceTools, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
+import { applyTabletProductAccess, businessWorkspaceMode, canUseCalaiWorkspaceTools, calaiWorkspaceReadPath, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
 import { dashboardOrderActivity, dashboardOrderProducts } from "../src/unified-business-model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
@@ -11,6 +11,22 @@ test("linked Calai tools require current account permission and a matching works
   assert.equal(canUseCalaiWorkspaceTools(business, "cal-eats"), false);
   assert.equal(canUseCalaiWorkspaceTools({ ...business, canViewCalai: false }, "calai"), false);
   assert.equal(canUseCalaiWorkspaceTools({ ...business, products: { calai: product("native", { allowedOnTablet: false }) } }, "both"), false);
+});
+test("Both previews only supported Calai reads and leaves tablet permissions intact", () => {
+  const business = { principalKind: "human", canViewCalai: true, products: { calai: product("native") } };
+  assert.equal(calaiWorkspaceReadPath("agents", business, "both"), "/api/business/calai/agents");
+  assert.equal(calaiWorkspaceReadPath("item-management", business, "both"), "/api/business/calai/menu");
+  assert.equal(calaiWorkspaceReadPath("orders", business, "calai"), "/api/business/calai/orders");
+  assert.equal(calaiWorkspaceReadPath("settings", { ...business, principalKind: "terminal" }, "both"), "/api/business/calai/hours");
+  for (const section of ["agents", "item-management", "calls", "test-voice", "printer"]) {
+    assert.equal(calaiWorkspaceReadPath(section, { ...business, principalKind: "terminal" }, "both"), null);
+  }
+  for (const section of ["calls", "test-voice", "printer", "../admin"]) {
+    assert.equal(calaiWorkspaceReadPath(section, business, "both"), null);
+  }
+  assert.equal(calaiWorkspaceReadPath("agents", business, "calai"), null);
+  assert.equal(calaiWorkspaceReadPath("orders", business, "cal-eats"), null);
+  assert.equal(calaiWorkspaceReadPath("orders", { ...business, canViewCalai: false }, "both"), null);
 });
 test("dashboard order sources respect each product and signed tablet selection", () => {
   const business = {

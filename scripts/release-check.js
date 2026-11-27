@@ -61,7 +61,18 @@ for (const file of javascript) {
 try {
   const remoteConfig = spawnSync("git", ["config", "--get-regexp", "^remote\\..*\\.(url|pushurl)$"], { cwd: root, encoding: "utf8" });
   if (remoteConfig.status > 1) failures.push("Could not inspect Git remote destinations.");
-  if (/github\.com[/:]calai-operation\//i.test(remoteConfig.stdout || "")) failures.push("Original Calai GitHub account must not be configured as a Cal-Eats remote destination.");
+  const configured = (remoteConfig.stdout || "").split(/\r?\n/).map(line => line.replace(/^remote\.\S+\s+/, ""));
+  const originDestinations = [[], ["--push"]].map(args => spawnSync("git", ["remote", "get-url", ...args, "--all", "origin"], { cwd: root, encoding: "utf8" }));
+  const protectedRemotes = [...configured, ...originDestinations.flatMap(result => (result.stdout || "").trim().split(/\r?\n/))]
+    .filter(url => /github\.com[/:]calai-operation\//i.test(url));
+  if (protectedRemotes.length) {
+    const official = /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)calai-operation\/calai-platform(?:\.git)?\/?$/i;
+    const repositoryRoot = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8" });
+    const officialProject = repositoryRoot.status === 0 && relative(resolve(repositoryRoot.stdout.trim()), root) === "cal-eats" &&
+      originDestinations.every(result => result.status === 0 && result.stdout.trim().split(/\r?\n/).every(url => official.test(url))) &&
+      protectedRemotes.every(url => official.test(url));
+    if (!officialProject) failures.push("Calai Operations Git is permitted only for the cal-eats child of the official calai-platform repository.");
+  }
   const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
   const privatePattern = /(^|\/)(?:data|backups|logs|artifacts|local-mail|mail|reference|node_modules|\.expo)(\/|$)|apps\/print-bridge\/(?:config\.json|var\/)|(^|\/)\.env(?:\.|$)|\.(?:sqlite(?:-shm|-wal)?|log|zip|tar|tgz)$/i;
   const disallowed = tracked.filter((file) => file !== ".env.example" && privatePattern.test(file.replaceAll(sep, "/")));

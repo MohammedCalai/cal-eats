@@ -5,6 +5,7 @@ import BusinessSoundSetting from "./BusinessSoundSetting.jsx";
 import BusinessHomeLink from "./BusinessHomeLink.jsx";
 import TabletConnectionControls from "./TabletConnectionControls.jsx";
 import {BusinessMessageReminderProvider} from "./BusinessMessageReminder.jsx";
+import { CalaiActivityAlert } from "./CalaiActivityAlert.jsx";
 import "./BusinessOrders.css";
 import { orderReceiptPrincipal, orderCustomerName, orderDeliveryAddress, orderDestination, orderStatusText, orderDatePreset } from "./order-presentation.js";
 import { deliveryDeadlineAt, deliveryDispatchWarning } from "./delivery-deadline.js";
@@ -302,7 +303,7 @@ function Shell({ kind }) {
   const tools = businessToolPermissions({ permission: owner?.permission, capabilities: owner?.restaurant?.capabilities, principalKind: business?.principalKind });
   const groups = businessNavigation(business, hasEats ? ownerNavigation(owner.permission, tools) : [], mode);
   const nav = groups.flatMap(group => group.items);
-  const calaiToolsAvailable = canUseCalaiWorkspaceTools(business, mode);
+  const linkToStandaloneCalai = mode === "calai" && canUseCalaiWorkspaceTools(business, mode);
   const mobileNav = mode === "calai" ? [["Home", "/owner/dashboard"], ["Order list", "/owner/calai/orders"]]
     : hasEats ? ownerMobileNavigation(owner.permission, tools) : [["Home", "/owner/dashboard"], ["Accounts", "/owner/connections"]];
   useEffect(()=>{setOpen(false);window.scrollTo({top:0,left:0,behavior:"instant"});},[location.pathname]);
@@ -329,7 +330,7 @@ function Shell({ kind }) {
               {group.title && <h2>{group.title}</h2>}
               {group.items.map(([label, path]) => {
                 const hasUnread = path === "/owner/inbox" && messageCount > 0;
-                const nativeTool = calaiToolsAvailable && CALAI_WORKSPACE_TOOLS.find(
+                const nativeTool = linkToStandaloneCalai && CALAI_WORKSPACE_TOOLS.find(
                   ({ id }) => id !== "orders" && path === "/owner/calai/" + id,
                 );
                 const contents = <>
@@ -367,7 +368,10 @@ function Shell({ kind }) {
             </nav>}
             <div className="top-actions"><button className="quiet topbar-signout" onClick={() => void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0, 1) || "C"}</span></div>
           </header>
-          <main id="portal-main" className="content" tabIndex={-1}><Outlet/></main>
+          <main id="portal-main" className="content" tabIndex={-1}>
+            <CalaiActivityAlert business={business} workspaceMode={mode} terminal={workspace?.terminal} userId={user.id}/>
+            <Outlet/>
+          </main>
           <nav className="mobile-bottom-nav" style={{ gridTemplateColumns: `repeat(${mobileNav.length + 1},minmax(0,1fr))` }} aria-label="Quick business tools">
             {mobileNav.map(([label, path]) => <NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label === "Inbox" && messageCount > 0 && <b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}
             <button type="button" aria-label="More business tools" onClick={() => setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button>

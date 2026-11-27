@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
-import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, canUseCalaiWorkspaceTools, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
+import { shortDate, listItems, pounds } from "./model.js";
+import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, canUseCalaiWorkspaceTools, calaiWorkspaceReadPath, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
 import { requestCalaiFirstTabletSetup, saveCalaiFirstTabletSetup } from "./calai-first-tablet-download.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
@@ -429,29 +429,76 @@ export function NativeCalaiView({ section = "orders" }) {
   const tool = CALAI_WORKSPACE_TOOLS.find(({ id }) => id === section);
   const permitted = workspace?.mode !== "cal-eats" && state.allowedOnTablet !== false;
   const toolsAvailable = permitted && canUseCalaiWorkspaceTools(business, workspace?.mode);
-  const showOrders = section === "orders" && toolsAvailable;
-  const resource = useBusinessResource(showOrders ? "/api/business/calai/orders" : null, {
-    poll: showOrders ? 30000 : 0,
+  const path = calaiWorkspaceReadPath(section, business, workspace?.mode);
+  const resource = useBusinessResource(path, {
+    poll: path && section === "orders" ? 30000 : 0,
     scope: business?.id,
   });
   if (!tool || !permitted) return <Navigate to="/owner/dashboard" replace/>;
-  const nativeUrl = "https://calai.info" + tool.nativePath, rows = listItems(resource.value);
+  const nativeUrl = "https://calai.info" + tool.nativePath;
+  const descriptions = {
+    agents: "View the phone agents for this location.",
+    "test-voice": "Start a test call in Calai’s calling tool.",
+    calls: "Open Calai to view call history and transcripts. Live activity appears on the dashboard.",
+    orders: "View this location’s phone orders. Calai has the full order details and receipt controls.",
+    "item-management": "View this location’s Calai menu. Use Calai to make changes.",
+    printer: "Calai manages its own printer settings.",
+    settings: "View Calai’s opening hours for this location. Use Calai to make changes.",
+  };
 
   return <div className="unified-business business-account-page business-native-page">
     <header className="page-heading business-account-heading"><p className="eyebrow">{business?.name || "Calai"}</p><h1>{tool.label}</h1></header>
     {toolsAvailable ? <section className="panel business-native-intro">
-      <div><p>{showOrders ? "Open the original Calai order list for full order details." : "Use your existing Calai business sign-in to open this tool."}</p>
-        <a className="button-link primary" target="_blank" rel="noopener noreferrer" href={nativeUrl}>Open {tool.label} in Calai</a>
+      <div><p>{descriptions[section]}</p>
+        {!path && business?.principalKind === "terminal" && ["agents", "item-management"].includes(section) &&
+          <p>Sign in as the Calai owner to view this tool.</p>}
+        <a className="button-link quiet" target="_blank" rel="noopener noreferrer" href={nativeUrl}>Open {tool.label} in Calai</a>
       </div>
     </section> : <section className="panel business-native-intro">
       <div>{business?.principalKind === "terminal" && state.usable
         ? <><h2>Calai needs owner approval</h2><p>Ask the restaurant owner to choose <strong>Allow Calai on this tablet</strong> in Accounts &amp; connections.</p></>
         : <><h2>Check your Calai connection</h2><Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link></>}</div>
     </section>}
-    {showOrders && <section className="panel"><Resource {...resource}>{rows.length
-      ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || "Order " + (index + 1)}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span></article>)}</div>
-      : <p className="empty">No Calai orders yet.</p>}</Resource></section>}
+    {path && <section className="panel"><Resource {...resource}><CalaiToolRecords section={section} value={resource.value}/></Resource></section>}
   </div>;
+}
+
+function CalaiToolRecords({ section, value }) {
+  if (section === "settings") {
+    return <><h2>Opening hours</h2><dl className="business-connection-details">
+      <div><dt>Opens</dt><dd>{value?.openingTime || "Unspecified"}</dd></div>
+      <div><dt>Closes</dt><dd>{value?.closingTime || "Unspecified"}</dd></div>
+      <div><dt>Closed days</dt><dd>{(Array.isArray(value?.offDays) ? value.offDays.filter(day => typeof day === "string").join(", ") : "") || "None specified"}</dd></div>
+    </dl></>;
+  }
+  const rows = listItems(value).filter(row => row && typeof row === "object").slice(0, 100);
+  if (!rows.length) {
+    const blank = { orders: "No Calai orders yet.", agents: "No Calai agents listed.", "item-management": "No Calai menu items listed." };
+    return <p className="empty">{blank[section]}</p>;
+  }
+  return <div className="business-native-records">{rows.map((row, index) => {
+    let title, subtitle, status;
+    if (section === "orders") {
+      title = row.customerName || "Phone order";
+      const date = row.createdAt || row.created_at;
+      subtitle = [row.reference || row.orderNumber || (typeof row.id === "string" && "#" + row.id.slice(0, 8).toUpperCase()),
+        Number.isFinite(Date.parse(date)) && shortDate(date)].filter(Boolean).join(" · ");
+      status = row.confirmationStatus === true || row.confirmationStatus === "confirmed" ? "Confirmed"
+        : row.confirmationStatus === false || row.confirmationStatus === "unconfirmed" ? "Unconfirmed" : "Recorded";
+    } else if (section === "agents") {
+      title = row.name || "Unnamed agent";
+      subtitle = row.twilioNumber;
+      status = row.status;
+    } else {
+      title = row.name || "Unnamed item";
+      subtitle = [row.category, row.unit].filter(Boolean).join(" · ");
+      status = row.price !== null && row.price !== undefined && row.price !== "" && Number.isFinite(Number(row.price))
+        ? pounds(Math.round(Number(row.price) * 100)) : null;
+    }
+    return <article key={row.id || index}><div><strong>{String(title)}</strong>{subtitle && <small>{String(subtitle)}</small>}</div>
+      {status && <span className="pill">{String(status)}</span>}
+    </article>;
+  })}</div>;
 }
 
 export function ProductStatements() {
