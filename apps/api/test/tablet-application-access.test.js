@@ -12,8 +12,8 @@ import {pairingCanonical} from '../../terminal-auth/src/protocol.js';
 import {assertBusinessIntakeAllowed} from '../src/business-product-policy.js';
 import {ensureBusinessForRestaurant} from '../src/unified-business.js';
 
-async function fixture(t){
-  const f=await businessFixture();t.after(()=>f.close());
+async function fixture(t, options){
+  const f=await businessFixture(options);t.after(()=>f.close());
   const adminCookie=await f.login('admin@calai.local','LocalAdmin!4310');
   const secured=await f.json('/api/auth/password',{method:'POST',cookie:adminCookie,body:{currentPassword:'LocalAdmin!4310',newPassword:'SecureTabletProducts!4310'}});assert.equal(secured.status,200,secured.text);
   Object.assign(f.adminSession,f.sessionFor(f.admin));
@@ -191,6 +191,52 @@ test('opening Calai requires the exact authorised tablet and current Calai-only 
   assert.equal(move.status, 200, move.text);
   assert.equal((await openCalai(body(current))).status, 403);
   assert.equal(receiptCount(), 1);
+});
+
+test('native Both launches only for the designated tablet and records a receipt only after presentation', async t => {
+  const tabletId = randomUUID(), f = await fixture(t, {nativeBothTabletId: tabletId});
+  assert.equal((await f.allow('calai')).status, 200);
+  assert.equal((await f.link()).status, 200);
+  const tablet = await enrolRegisteredTablet(f, {ownerCookie: f.ownerCookie});
+  const route = '/api/business/accounts/' + f.business.id + '/surface/heartbeat';
+  const configure = async (id, expectedRevision) => {
+    const result = await f.fleet('/' + id + '/configuration', {method:'POST',body:{
+      expectedRevision, displayName:'Kitchen tablet', businessId:f.business.id, applicationProducts:'both'
+    }});
+    assert.equal(result.status, 200, result.text);
+    return result.body.data.revision;
+  };
+  const revision = await configure(tablet.terminalId, 1);
+  const body = (state, id=tabletId) => ({state, configurationTabletId:id, configurationRevision:revision});
+  const send = (state, id) => tablet.json(route, {method:'POST',body:body(state, id)});
+  const count = () => f.db.prepare('SELECT COUNT(*) n FROM tablet_application_receipts').get().n;
+  assert.equal((await send('open_both', tablet.terminalId)).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
+  assert.equal((await tablet.json('/api/business/context')).body.data.nativeBothLaunch, undefined);
+  // Inventory identity and signed terminal identity can be distinct.
+  f.db.prepare('UPDATE admin_tablets SET id=? WHERE terminal_id=?').run(tabletId, tablet.terminalId);
+  const oldReceivedAt = f.config.now().toISOString();
+  f.db.prepare('INSERT INTO tablet_application_receipts VALUES(?,?,?,?,?)').run(tabletId,revision,tablet.terminalId,f.business.id,oldReceivedAt);
+  f.advance(1000);
+  const currentContext=(await tablet.json('/api/business/context')).body.data;
+  assert.equal(currentContext.nativeBothLaunch, true);
+  assert.equal(currentContext.tabletConfiguration.receivedAt, null, 'An existing standalone receipt does not prove native presentation');
+  assert.equal((await f.json('/api/business/context', {cookie:f.ownerCookie})).body.data.nativeBothLaunch, undefined);
+  assert.equal((await f.json(route, {method:'POST',cookie:f.ownerCookie,body:body('both_rendered')})).status, 403);
+  assert.equal((await send('configuration_received')).body.error.code, 'COMBINED_WORKSPACE_REQUIRED');
+  const launch = await send('open_both');
+  assert.equal(launch.status, 200, launch.text);
+  assert.equal(launch.body.data.tabletConfiguration.receivedAt, null);
+  assert.equal(count(), 1);
+  const stale = await tablet.json(route, {method:'POST',body:{...body('both_rendered'),configurationRevision:revision-1}});
+  assert.equal(stale.body.error.code, 'TABLET_CONFIGURATION_CHANGED');
+  const rendered=await send('both_rendered');assert.equal(rendered.status, 200, rendered.text);
+  assert.notEqual(rendered.body.data.tabletConfiguration.receivedAt,oldReceivedAt);
+  assert.deepEqual((await send('both_rendered')).body, rendered.body);
+  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM audit_events WHERE action='native_both_rendered'").get().n,1);
+  assert.equal(count(), 1);
+  assert.equal((await f.allow('calai', false)).status, 200);
+  assert.equal((await send('open_both')).body.error.code, 'TABLET_PRODUCT_NOT_READY');
+  assert.equal((await send('both_rendered')).body.error.code, 'TABLET_PRODUCT_NOT_READY');
 });
 
 function signedPair(document){const keys=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),publicKeySpki=keys.publicKey.export({type:'spki',format:'der'}).toString('base64');return{terminalId:document.terminalId,code:document.code,deviceName:'Synthetic physical tablet',publicKeySpki,challengeSignature:sign('sha256',Buffer.from(pairingCanonical({...document,publicKeySpki})),{key:keys.privateKey,dsaEncoding:'ieee-p1363'}).toString('base64url')};}

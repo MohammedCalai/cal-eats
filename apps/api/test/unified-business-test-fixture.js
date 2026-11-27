@@ -7,7 +7,7 @@ import {createSession,readSession} from '../src/auth/sessions.js';
 import {ensureBusinessForRestaurant,routeUnifiedBusiness} from '../src/unified-business.js';
 import {ensureBusinessProductPermissions} from '../src/business-product-policy.js';
 export const SOURCE_USER='b25f9f46-efb5-41b9-9a53-226b861df2fe',SOURCE_BUSINESS='b2222222-2222-4222-8222-222222222222',SOURCE_PASSWORD='Synthetic Calai Password! ',EATS_PASSWORD='LocalRestaurant!4310';
-export async function businessFixture({allowEats=true}={}){
+export async function businessFixture({allowEats=true,nativeBothTabletId}={}){
  let time=Date.parse('2031-01-01T12:00:00Z');
  const state={id:SOURCE_USER,businessId:SOURCE_BUSINESS,email:'restaurant@calai.local',role:'BUSINESS_OWNER',available:true,active:true,reads:[],identities:0,logins:0,hook:null,readHook:null};
  const jwt=days=>['e30',Buffer.from(JSON.stringify({id:state.id,role:state.role,exp:Math.floor(time/1000)+days*86400})).toString('base64url'),'synthetic_signature'].join('.');
@@ -19,7 +19,7 @@ export async function businessFixture({allowEats=true}={}){
   async read(section){check();state.reads.push(section);await state.readHook?.(section);if(section==='orders')return[{id:'c3333333-3333-4333-8333-333333333333',createdAt:new Date(time).toISOString(),customerName:'Synthetic phone customer',confirmationStatus:true,totalPrice:12.5,orderType:'delivery',password:'redacted',nested:{accessToken:'redacted'}}];return{section,apiKey:'redacted',nested:{password:'redacted',safe:true}};},
  };
  const integration={encryptionKey:randomBytes(32).toString('base64url'),adapter};
- const f=await journeyFixture({configureSeedBusinesses:false,now:()=>new Date(time),rateLimit:{attempts:500,windowMs:60000},businessIntegration:integration}),config={...f.config,businessIntegration:integration};
+ const f=await journeyFixture({configureSeedBusinesses:false,nativeBothTabletId,now:()=>new Date(time),rateLimit:{attempts:500,windowMs:60000},businessIntegration:integration}),config={...f.config,businessIntegration:integration};
  const user=email=>f.db.prepare('SELECT id,name,email,role FROM users WHERE email=?').get(email),owner=user('restaurant@calai.local'),admin=user('admin@calai.local'),otherOwner=user('restaurant2@calai.local');
  const restaurant=f.db.prepare('SELECT r.* FROM restaurants r JOIN restaurant_memberships m ON m.restaurant_id=r.id WHERE m.user_id=? LIMIT 1').get(owner.id),business=ensureBusinessForRestaurant(f.db,restaurant.id,config);
  const sessionFor=user=>{const created=createSession(f.db,user.id,config);return readSession(f.db,created.token,config);},session=sessionFor(owner),adminSession=sessionFor(admin),otherSession=sessionFor(otherOwner);

@@ -141,7 +141,7 @@ export function businessNavigation(business, eatsNavigation = [], mode = busines
   const dashboard = ["Dashboard", "/owner/dashboard"];
   const calaiItems = CALAI_WORKSPACE_TOOLS.map(({ id, label }) => [label, "/owner/calai/" + id]);
   const eatsItems = mode !== "calai" && eats.linked && eats.allowedOnTablet !== false
-    ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices")
+    ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices" && (mode !== "both" || path !== "/owner/printers"))
     : [];
   if (mode === "calai") return [{ title: "", items: [dashboard, ...calaiItems] }];
   return [

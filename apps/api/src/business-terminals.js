@@ -119,7 +119,7 @@ function terminalContext(db, config, terminal) {
       db.prepare("INSERT INTO restaurant_memberships(restaurant_id,user_id,created_at,permission) VALUES(?,?,?,'staff') ON CONFLICT(restaurant_id,user_id) DO UPDATE SET permission='staff'").run(eats, actor.id, now(config));
     }
   });
-  return { user: publicUser(actor), principalKind: "terminal", terminalId: terminal.id, businessId: terminal.business_id, restaurantId: eats, calaiReadAuthorized:products.calai.active && terminalHasCalaiAuthority(db,terminal.id,terminal.business_id), products, tabletConfiguration:tabletApplicationConfiguration(db,terminal.id,terminal.business_id) };
+  return { user: publicUser(actor), principalKind: "terminal", terminalId: terminal.id, businessId: terminal.business_id, restaurantId: eats, calaiReadAuthorized:products.calai.active && terminalHasCalaiAuthority(db,terminal.id,terminal.business_id), products, tabletConfiguration:tabletApplicationConfiguration(db,terminal.id,terminal.business_id,config) };
 }
 
 export async function verifyBusinessTerminalRequest({ req, db, config }) {

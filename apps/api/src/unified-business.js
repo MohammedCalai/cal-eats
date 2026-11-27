@@ -5,7 +5,7 @@ import {createSession,cookieFor} from './auth/sessions.js';
 import {verifyPassword} from './auth/passwords.js';
 import {businessProductState,businessProductPermission,ensureBusinessProductPermissions,terminalHasCalaiAuthority} from './business-product-policy.js';
 import {businessAccountMembership as membership} from './business-account-membership.js';
-import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration} from './tablet-product-policy.js';
+import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration,nativeBothPilot} from './tablet-product-policy.js';
 import {managedTabletAwaitingBrowser} from './tablet-managed-setup.js';
 import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
@@ -90,7 +90,8 @@ function selectedContext(db,session,config){
  state.products.calai.financialAccess=!terminal(session)&&calaiAllowed;
  state.products['cal-eats'].financialAccess=!terminal(session)&&Boolean(admin||capabilities.viewFinance);
  state.products['cal-eats'].capabilities={viewOrders:canViewEats,viewPayouts:state.products['cal-eats'].financialAccess,manageMenu:!terminal(session)&&Boolean(admin||capabilities.manageMenu),viewDevices:!terminal(session)&&Boolean(admin||capabilities.viewDevices),manageTerminal:!terminal(session)&&Boolean(admin||capabilities.manageTerminal)};
- return{...state,...(terminal(session)?{tabletConfiguration:tabletApplicationConfiguration(db,session.terminalId,state.id)}:{}),canManageProducts:admin,canConnectProducts:rights.canManageProducts,canViewEats:canViewEats&&(!terminal(session)||state.products['cal-eats'].allowedOnTablet),canViewCalai:terminal(session)?state.products.calai.allowedOnTablet&&terminalHasCalaiAuthority(db,session.terminalId,state.id):calaiAllowed,principalKind:terminal(session)?'terminal':'human'};
+ const assignment=terminal(session)?tabletApplicationConfiguration(db,session.terminalId,state.id,config):null;
+ return{...state,...(terminal(session)?{tabletConfiguration:assignment,...(nativeBothPilot(config,assignment)?{nativeBothLaunch:true}:{})}:{}),canManageProducts:admin,canConnectProducts:rights.canManageProducts,canViewEats:canViewEats&&(!terminal(session)||state.products['cal-eats'].allowedOnTablet),canViewCalai:terminal(session)?state.products.calai.allowedOnTablet&&terminalHasCalaiAuthority(db,session.terminalId,state.id):calaiAllowed,principalKind:terminal(session)?'terminal':'human'};
 }
 function selectAccount(db,userId,id,now){db.prepare('INSERT INTO business_account_preferences(user_id,business_id,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET business_id=excluded.business_id,updated_at=excluded.updated_at').run(userId,id,now);}
 function revokeSourceTerminals(db,businessId,now){

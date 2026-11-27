@@ -244,10 +244,10 @@ HcmV?d00001
 
 diff --git a/frontend/src/components/cal-eats/CalEatsWorkspace.jsx b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..976a6712b0202398fefd2a9a0f9fccf6e260c823
+index 0000000000000000000000000000000000000000..33461aa6bcbafaa778301698017089b3eb5530ac
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
-@@ -0,0 +1,227 @@
+@@ -0,0 +1,235 @@
 +import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 +import { Icon } from '@iconify/react';
 +import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -353,6 +353,14 @@ index 0000000000000000000000000000000000000000..976a6712b0202398fefd2a9a0f9fccf6
 +  }, [enabled, user?.id, user?.businessId, user?.role]);
 +
 +  const view = visible ? desiredView : connected ? 'background' : 'accounts';
++  const receipt = connected ? state.presentationReceipt : null;
++  const receiptBusiness = connected ? state.business.id : null;
++  useEffect(() => {
++    if (receipt) frameRef.current?.contentWindow?.postMessage({
++      type: 'cal-eats-workspace:both-rendered', version: 1, businessId: receiptBusiness,
++      tabletId: receipt.tabletId, revision: receipt.revision,
++    }, childOrigin);
++  }, [receiptBusiness, receipt?.tabletId, receipt?.revision]);
 +  const messageSound = useHostedMessageReminder(connected ? state.business.id : null, connected ? state.messageAttention : null, frameRef, childOrigin);
 +  useEffect(() => { if (enabled) sendView(view); }, [enabled, view, sendView]);
 +  return <Workspace.Provider value={{ enabled, connected, state, stale, frameRef, desiredView, visible, view, sendView, messageSound }}>
@@ -988,10 +996,10 @@ index 0000000000000000000000000000000000000000..9265a0087c75ddf30d50ac31aaf32a66
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.mjs b/frontend/src/components/cal-eats/workspace-model.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..541367c621815caebb5487909d3d310ceba08134
+index 0000000000000000000000000000000000000000..3a6e24418bd3aec846cde146b9dbace7b91669d2
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.mjs
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,160 @@
 +import { workspaceLiveStats } from './workspace-live-stats.mjs';
 +
 +export const CAL_EATS_ORIGIN = 'https://eats.calai.info';
@@ -1006,13 +1014,12 @@ index 0000000000000000000000000000000000000000..541367c621815caebb5487909d3d310c
 +  { view: 'customers', label: 'Customers', icon: 'lucide:users', permission: 'viewCustomers' },
 +  { view: 'offers', label: 'Marketing', icon: 'lucide:tag', permission: 'manageMarketing' },
 +  { view: 'support', label: 'Support', icon: 'lucide:life-buoy', permission: 'viewSupport' },
-+  { view: 'devices', label: 'Printers', icon: 'lucide:printer', permission: 'viewDevices' },
 +  { view: 'payouts', label: 'Earnings & payouts', icon: 'lucide:wallet', permission: 'viewPayouts' },
 +  { view: 'settings', label: 'Settings', icon: 'lucide:settings', permission: 'manageSettings' },
 +  { view: 'notifications', label: 'Notifications', icon: 'lucide:bell', permission: 'viewOrders' },
 +  { view: 'statements', label: 'Statements', icon: 'lucide:files', permission: 'viewOrders' },
 +]);
-+export const WORKSPACE_VIEWS = Object.freeze(['background', 'dashboard', 'accounts', ...WORKSPACE_TOOLS.map(tool => tool.view)]);
++export const WORKSPACE_VIEWS = Object.freeze(['background', 'dashboard', 'accounts', 'devices', ...WORKSPACE_TOOLS.map(tool => tool.view)]);
 +
 +export function workspaceOrigin(development, previewOrigin) {
 +  if (development && typeof previewOrigin === 'string' && /^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(previewOrigin)) {
@@ -1100,8 +1107,12 @@ index 0000000000000000000000000000000000000000..541367c621815caebb5487909d3d310c
 +  const counters = combined ? { calai: calaiCounter, 'cal-eats': eatsCounter } : null;
 +  const messageAttention = combined && (capabilities.viewInbox || capabilities.viewOrders)
 +    ? readMessageAttention(value.messageAttention) : null;
++  const receipt = value.presentationReceipt;
++  const presentationReceipt = combined && value.tabletMode === 'both' && plain(receipt) &&
++    isId(receipt.tabletId) && Number.isSafeInteger(receipt.revision) && receipt.revision >= 1
++    ? { tabletId: receipt.tabletId, revision: receipt.revision } : null;
 +  return { authenticated: true, business: combined ? { id: value.business.id, name: value.business.name } : null,
-+    counters, capabilities, orders, pendingOrderCount, messageAttention, matchesNativeAccount, combined,
++    counters, capabilities, orders, pendingOrderCount, messageAttention, presentationReceipt, matchesNativeAccount, combined,
 +    ...workspaceLiveStats(combined && capabilities.viewOrders ? value : null) };
 +}
 +
@@ -1151,10 +1162,10 @@ index 0000000000000000000000000000000000000000..541367c621815caebb5487909d3d310c
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.test.mjs b/frontend/src/components/cal-eats/workspace-model.test.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7b4be222ccab88d995a9ac855e7813fba7aa6259
+index 0000000000000000000000000000000000000000..9eaa17a69b6d738fc9ce935f7ec14eb066de9c80
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.test.mjs
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,219 @@
 +import assert from 'node:assert/strict';
 +import test from 'node:test';
 +import {readFileSync} from 'node:fs';
@@ -1174,6 +1185,15 @@ index 0000000000000000000000000000000000000000..7b4be222ccab88d995a9ac855e7813fb
 +const source = {}, nativeUser = { id: id('1'), businessId: id('2'), role: 'BUSINESS_OWNER' };
 +function data() { return { type: WORKSPACE_STATE, version: 1, authenticated: true, workspaceMode: 'both', principalKind: 'human', tabletMode: null, business: { id: id('3'), name: 'Independent restaurant' }, products: { calai: { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active', sourceAccountId: nativeUser.businessId, verifiedSourceUserId: nativeUser.id }, 'cal-eats': { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active' } }, counters: { calai: { today: 4, available: true }, 'cal-eats': { today: 6, available: true } }, capabilities: { viewOrders: true, viewPayouts: false, manageMenu: false, viewDevices: true } }; }
 +const event = value => ({ origin: CAL_EATS_ORIGIN, source, data: value });
++
++test('native presentation receipt is scoped to the matched owner and current combined tablet', () => {
++  const packet = { ...data(), tabletMode:'both', presentationReceipt:{tabletId:id('8'),revision:4,extra:'ignored'} };
++  const parse = value => workspaceStateFromMessage(event(value), source, nativeUser).presentationReceipt;
++  assert.deepEqual(parse(packet),{tabletId:id('8'),revision:4});
++  assert.equal(parse({...packet,tabletMode:null}),null);
++  assert.equal(parse({...packet,presentationReceipt:{tabletId:id('8'),revision:0}}),null);
++  assert.equal(workspaceStateFromMessage(event(packet),source,{...nativeUser,businessId:id('7')}).presentationReceipt,null);
++});
 +
 +test('unread totals and sound metadata are scoped to the connected business and its conversation permissions', () => {
 +  const value = data();
@@ -1297,6 +1317,7 @@ index 0000000000000000000000000000000000000000..7b4be222ccab88d995a9ac855e7813fb
 +});
 +test('navigation allows only fixed view names and preserves existing native startup addresses', () => {
 +  for (const view of ['dashboard', 'orders', 'payouts', 'menu', 'accounts', 'devices', 'inbox', 'customers', 'offers', 'support', 'settings']) assert.equal(navigateWorkspaceMessage(view).view, view);
++  assert.ok(!WORKSPACE_TOOLS.some(tool => tool.view === 'devices'), 'Both uses the existing native Printer Management menu');
 +  for (const value of ['https://evil.invalid', '/api/order/accept', 'logout', 'calai-disable', '__proto__']) assert.throws(() => navigateWorkspaceMessage(value));
 +  assert.equal(workspaceViewForPath('/owner/dashboard'), null);
 +  assert.equal(workspaceViewForPath('/owner/settings/business'), null);
@@ -1688,7 +1709,7 @@ index e9440b7a72138c91eeec9cc4439fcee36d7d992a..1ce970eec24e2d4b14812e86550084a2
              isCurrentPlan={plan.id === currentPlanId}
            />
 diff --git a/frontend/src/router/router.jsx b/frontend/src/router/router.jsx
-index 27ce2a727cc3193a9a7988a6920465a517cb48ab..864b3f761537e0bc7626e69279b5c79034458190 100644
+index 27ce2a727cc3193a9a7988a6920465a517cb48ab..ba025ee12231f529cd3582451eb1c30a19d1b0c1 100644
 --- a/frontend/src/router/router.jsx
 +++ b/frontend/src/router/router.jsx
 @@ -25,6 +25,8 @@ import BusinessInfo from "../pages/owner/settings/BusinessInfo";
@@ -1700,16 +1721,17 @@ index 27ce2a727cc3193a9a7988a6920465a517cb48ab..864b3f761537e0bc7626e69279b5c790
  
  // auth
  import LogIn from "../pages/auth/LogIn";
-@@ -82,6 +84,8 @@ const router = createBrowserRouter([
+@@ -82,6 +84,9 @@ const router = createBrowserRouter([
      children: [
         // owner
        { path: "/owner/dashboard", element: <OwnerDashboard /> },
 +      { path: "/owner/accounts-connections", element: <CalEatsEmbeddedPage /> },
++      { path: "/owner/cal-eats/devices", element: <Navigate to="/owner/printer" replace /> },
 +      ...WORKSPACE_TOOLS.map(({ view }) => ({ path: workspacePath(view), element: <CalEatsEmbeddedPage /> })),
        { path: "/owner/agents", element: <AgentList /> },
        { path: "/owner/call-summary", element: <CallSummary /> },
        { path: "/owner/order-list", element: <OrderList /> },
-@@ -128,4 +132,4 @@ const router = createBrowserRouter([
+@@ -128,4 +133,4 @@ const router = createBrowserRouter([
    // },
  ]);
  

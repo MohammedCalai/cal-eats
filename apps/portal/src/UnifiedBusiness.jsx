@@ -8,7 +8,7 @@ import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
 import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
-import {calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
+import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
 import { EMBEDDED_PARENT_ORIGIN, acceptsHostedMessageSound, embeddedCommand, embeddedState } from "./embedded-business-model.js";
 import { useOrderAlerts } from "./NewOrderAlerts.jsx";
 import { useBusinessMessageAlerts } from "./BusinessMessageReminder.jsx";
@@ -59,22 +59,36 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
   const location = useLocation();
   const startupPage = location.pathname.replace(/\/+$/, "") === "/owner/dashboard" && !embedded &&
     window.top === window && automaticStartupAllowed?.() === true;
-  const startupAssignment = startupPage && !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
+  const assignment = !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
+  const startupAssignment = startupPage ? assignment : null;
+  const requiresHostReceipt = signedContext?.nativeBothLaunch === true && signedConfiguration?.selection === "both";
+  const presentation = embedded && assignment?.selection === "both" && assignment.authorised ? assignment : null;
+  const [renderedKey, setRenderedKey] = useState(null);
+  useEffect(() => {
+    if (!presentation) return;
+    const receive = event => {
+      if (acceptsRenderedBoth(event, window.parent, EMBEDDED_PARENT_ORIGIN, presentation)) setRenderedKey(presentation.key);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [presentation?.key]);
   const received = useRef(null), sending = useRef(null);
   useEffect(() => {
     const businessId = business?.id, terminalId = terminal.context?.terminalId;
     const revision = signedConfiguration?.revision, tabletId = signedConfiguration?.tabletId;
-    if (startupAssignment?.authorised || !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
+    if (signedResource.error || startupAssignment?.authorised || (requiresHostReceipt && (!presentation || renderedKey !== presentation.key)) ||
+      !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
       signedConfiguration.receivedAt || signedConfiguration.status === "received") return;
     const key = `${businessId}:${terminalId}:${tabletId}:${revision}`;
     if (received.current === key || sending.current === key) return;
     sending.current = key;
     void terminalApi(`/api/business/accounts/${encodeURIComponent(businessId)}/surface/heartbeat`,
-      json("POST", { state: "configuration_received", configurationTabletId: tabletId, configurationRevision: revision }))
+      json("POST", { state: requiresHostReceipt ? "both_rendered" : "configuration_received", configurationTabletId: tabletId, configurationRevision: revision }))
       .then(() => { if (sending.current === key) received.current = key; })
       .catch(() => { /* Try again when the signed context is refreshed. */ })
       .finally(() => { if (sending.current === key) sending.current = null; });
-  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised]);
+  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised,
+    signedResource.error, requiresHostReceipt, renderedKey, presentation?.key]);
   const [selecting, setSelecting] = useState(false), [selectionError, setSelectionError] = useState("");
   const navigate = useNavigate(), working = useRef(false);
   async function selectAccount(id) {
@@ -84,7 +98,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), tabletMode: !signedResource.error ? signedConfiguration?.selection || null : null, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
+  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), tabletMode: !signedResource.error ? signedConfiguration?.selection || null : null, presentation, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
     <OperationalSurfacePresence business={business} terminal={terminal}/>
     <Resource {...context}>
       {selectionError && <p className="alert" role="alert">{selectionError}</p>}
@@ -115,12 +129,13 @@ function CalaiTabletStartup({ assignment, allowConnections, automaticStartupAllo
   }, [assignment.key, assignment.authorised, automaticStartupAllowed, attempt]);
 
   const failed = failure?.key === assignment.key && failure?.attempt === attempt;
+  const label = assignment.selection === "both" ? "Calai and Cal-Eats" : "Calai";
   return <main className="auth"><section className="auth-card">
-    <h1>Calai</h1>
-    {!assignment.authorised ? <p>Ask the restaurant owner to check this tablet’s Calai access.</p>
-      : failed ? <><p role="alert">The tablet’s Calai setting could not be confirmed.</p>
+    <h1>{label}</h1>
+    {!assignment.authorised ? <p>Ask the restaurant owner to check this tablet’s access to {label}.</p>
+      : failed ? <><p role="alert">The tablet’s setting for {label} could not be confirmed.</p>
         <button type="button" className="primary" onClick={() => setAttempt(value => value + 1)}>Try again</button></>
-        : <p role="status">Opening Calai…</p>}
+        : <p role="status">Opening {label}…</p>}
     {allowConnections && <Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link>}
   </section></main>;
 }
@@ -177,13 +192,16 @@ export function EmbeddedBusinessBridge({ allowedPathList, hostedMessageSound }) 
     const send = () => {
       const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, null,
         Boolean(business && !workspace.error), { mode, tabletMode, pendingOrderCount, paths, messageAttention: attention });
+      if (payload.authenticated && workspace.presentation) payload.presentationReceipt = {
+        tabletId: workspace.presentation.tabletId, revision: workspace.presentation.revision
+      };
       window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN);
     };
     send();
     const timer = setInterval(send, 30000);
     return () => clearInterval(timer);
   }, [business, workspace.error, dashboard.value, dashboard.error, mode, tabletMode, pendingOrderCount, allowedPathList,
-    hostAudioBusiness, attention?.restaurantId, attention?.checkedAt, attention?.revision, attention?.unreadCount,
+    workspace.presentation?.key, hostAudioBusiness, attention?.restaurantId, attention?.checkedAt, attention?.revision, attention?.unreadCount,
     attention?.acknowledgedRevision, attention?.soundEnabled, attention?.orderAlarmActive]);
   return null;
 }

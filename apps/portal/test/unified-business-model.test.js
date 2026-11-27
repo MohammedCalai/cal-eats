@@ -181,7 +181,9 @@ test("business tablet navigation retains ordinary tools without a monitoring wor
       const business={principalKind,products:{...(withCalai?{calai:product("calai-account")}:{}),"cal-eats":product("eats-account",{capabilities:{viewDevices:true}})}};
       const groups=businessNavigation(business,nativeLinks),paths=groups.flatMap(group=>group.items.map(([,path])=>path));
       assert.equal(paths.filter(path=>path==="/owner/dashboard").length,1);
-      assert.ok(paths.includes("/owner/orders"));assert.ok(paths.includes("/owner/printers"),"Printer setup stays available");
+      assert.ok(paths.includes("/owner/orders"));
+      assert.equal(paths.includes("/owner/printers"),!withCalai,"Cal-Eats provides printer settings when used alone");
+      assert.equal(paths.includes("/owner/calai/printer"),withCalai,"Both uses the shared Calai printer settings");
       assert.ok(paths.includes("/owner/connections"));assert.ok(paths.includes("/owner/statements"));
       assert.ok(!paths.includes("/owner/devices"),"Device-health monitoring belongs to the manager phone app");
       assert.ok(groups.every(group=>group.title!=="Workspace"));
