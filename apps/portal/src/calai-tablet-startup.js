@@ -6,6 +6,28 @@ export function ownerCombinedWorkspaceLink(business, workspace) {
     workspace?.mode === "both" && !workspace.embedded && !["connecting","ready"].includes(workspace.terminal?.status)
     ? BOTH_DASHBOARD : null;
 }
+// A prior local discovery or Windows app window is a presentation hint only.
+// The device's services and launch permission always come from its signed context.
+export function workspaceEntry({ business, mode, terminal, embedded, dashboard, tabletWindow, signed, combinedRequested, freshHumanContext }) {
+  if (embedded) return { mode };
+  const standaloneMode = business?.canViewEats === false && business.canViewCalai === true ? "calai" : "cal-eats";
+  const entry = { mode: mode === "both" ? standaloneMode : mode };
+  if (!business || !dashboard) return entry;
+  const device = tabletWindow || terminal?.paired === true || business.principalKind === "terminal";
+  if (device) {
+    const selection = signed?.tabletConfiguration;
+    if (terminal?.status !== "ready" || terminal.paired !== true || terminal.context?.principalKind !== "terminal" ||
+        !ID.test(terminal.context.terminalId ?? "") || terminal.context.businessId !== business.id ||
+        signed?.principalKind !== "terminal" || signed.id !== business.id || !ID.test(selection?.tabletId ?? "") ||
+        !Number.isSafeInteger(selection.revision) || selection.revision < 1 ||
+        !["cal-eats", "calai", "both"].includes(selection.selection)) return { ...entry, waitForTablet: true };
+    if (selection.selection === "both" && signed.nativeBothLaunch !== true) return { ...entry, combinedUnavailable: true };
+    return entry;
+  }
+  const ownerLink = freshHumanContext ? ownerCombinedWorkspaceLink(business, { mode, terminal, embedded }) : null;
+  return { ...entry, ownerLink, openOwnerWorkspace: Boolean(ownerLink && combinedRequested) };
+}
+
 const readyProduct = product => product?.linked === true && product.active === true &&
   product.allowedOnTablet === true && product.readiness?.ready === true;
 

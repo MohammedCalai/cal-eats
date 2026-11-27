@@ -8,7 +8,7 @@ import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
 import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
-import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
+import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai, workspaceEntry} from "./calai-tablet-startup.js";
 import {configurationChanged,readMode,sameConfiguration,startTabletModeWatch} from "./tablet-mode-watch.js";
 import { EMBEDDED_PARENT_ORIGIN, acceptsHostedMessageSound, embeddedCommand, embeddedState } from "./embedded-business-model.js";
 import { useOrderAlerts } from "./NewOrderAlerts.jsx";
@@ -36,7 +36,7 @@ export function useBusinessResource(path, { poll = 0, request = api, scope = nul
 }
 function Feedback({ error, notice }) { return <>{error && <p className="alert" role="alert">{error}</p>}{notice && <p className="alert success" role="status">{notice}</p>}</>; }
 function Resource({ value, loading, error, reload, children }) { return <>{error && <p className="alert" role="alert">{error} <button type="button" className="quiet" onClick={() => void reload()}>Try again</button></p>}{loading && !value ? <p role="status">Loading account information…</p> : value ? children : !error && <p className="empty">No account information is available.</p>}</>; }
-export function BusinessWorkspaceProvider({ userId, embedded = false, observeManagedSetup, automaticStartupAllowed, children }) {
+export function BusinessWorkspaceProvider({ userId, embedded = false, tabletWindow, connectTablet, recheckTablet, observeManagedSetup, automaticStartupAllowed, children }) {
   const context = useBusinessResource("/api/business/context", { poll: 30000 });
   const accounts = useBusinessResource("/api/business/accounts");
   const [terminal, setTerminal] = useState(terminalStatus);
@@ -78,7 +78,24 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     window.top === window && automaticStartupAllowed?.() === true;
   const assignment = !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
   const startupAssignment = startupPage && (assignment?.authorised || location.pathname.replace(/\/+$/,"") === "/owner/dashboard") ? assignment : null;
-  const requiresHostReceipt = signedContext?.nativeBothLaunch === true && signedConfiguration?.selection === "both";
+  const entry = workspaceEntry({
+    business, mode: businessWorkspaceMode(business, signedConfiguration), terminal, embedded, tabletWindow,
+    dashboard: startupPage && location.pathname.replace(/\/+$/, "") === "/owner/dashboard",
+    signed: signedResource.error ? null : signedContext,
+    combinedRequested: new URLSearchParams(location.search).get("workspace") === "both",
+    freshHumanContext: !context.error,
+  });
+  useEffect(() => {
+    if (entry.openOwnerWorkspace) window.location.replace(entry.ownerLink);
+  }, [entry.openOwnerWorkspace, entry.ownerLink]);
+  const attemptedPoll = useRef(null);
+  useEffect(() => {
+    if (entry.waitForTablet && context.updatedAt && attemptedPoll.current !== context.updatedAt && terminal.permission === "granted" && ["connection_unavailable", "offline"].includes(terminal.status)) {
+      attemptedPoll.current = context.updatedAt;
+      void observeManagedSetup?.(business.id);
+    }
+  }, [entry.waitForTablet, terminal.permission, terminal.status, context.updatedAt, business?.id, observeManagedSetup]);
+  const requiresHostReceipt = signedConfiguration?.selection === "both";
   const presentation = embedded && assignment?.selection === "both" && assignment.authorised ? assignment : null;
   const [renderedKey, setRenderedKey] = useState(null);
   useEffect(() => {
@@ -93,7 +110,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
   useEffect(() => {
     const businessId = business?.id, terminalId = terminal.context?.terminalId;
     const revision = signedConfiguration?.revision, tabletId = signedConfiguration?.tabletId;
-    if (signedResource.error || startupAssignment?.authorised || (embedded && !requiresHostReceipt) || signedConfiguration?.selection === "calai" ||
+    if (signedResource.error || entry.waitForTablet || entry.combinedUnavailable || startupAssignment?.authorised || (embedded && !requiresHostReceipt) || signedConfiguration?.selection === "calai" ||
       (requiresHostReceipt && (!presentation || renderedKey !== presentation.key)) ||
       !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
       signedConfiguration.receivedAt || signedConfiguration.status === "received") return;
@@ -106,7 +123,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
       .catch(() => { /* Try again when the signed context is refreshed. */ })
       .finally(() => { if (sending.current === key) sending.current = null; });
   }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised,
-    signedResource.error, requiresHostReceipt, renderedKey, presentation?.key, embedded]);
+    signedResource.error, requiresHostReceipt, renderedKey, presentation?.key, embedded, entry.waitForTablet, entry.combinedUnavailable]);
   const [selecting, setSelecting] = useState(false), [selectionError, setSelectionError] = useState("");
   const navigate = useNavigate(), working = useRef(false);
   async function selectAccount(id) {
@@ -116,15 +133,45 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), tabletMode: !signedResource.error ? signedConfiguration?.selection || null : null, presentation, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
+  let content = children;
+  if (startupAssignment) {
+    content = <CalaiTabletStartup assignment={startupAssignment} allowConnections={business?.canConnectProducts === true}
+      automaticStartupAllowed={automaticStartupAllowed}/>;
+  } else if (entry.waitForTablet) {
+    const retry = tabletScope || signedContext ? signedResource.reload :
+      terminal.permission === "denied" ? recheckTablet : connectTablet;
+    content = <WaitingForTablet terminal={terminal} retry={retry}/>;
+  } else if (entry.combinedUnavailable) {
+    content = <main className="auth"><p role="status">The combined workspace is unavailable for this tablet.</p></main>;
+  } else if (entry.openOwnerWorkspace || tabletScope && !signedResource.value && signedResource.loading) {
+    content = <main className="auth"><p role="status">Opening business platform…</p></main>;
+  }
+  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: entry.mode, ownerLink: entry.ownerLink, tabletMode: !signedResource.error ? signedConfiguration?.selection || null : null, presentation, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
     <OperationalSurfacePresence business={business} terminal={terminal}/>
     <Resource {...context}>
       {selectionError && <p className="alert" role="alert">{selectionError}</p>}
-      {startupAssignment ? <CalaiTabletStartup assignment={startupAssignment} allowConnections={business?.canConnectProducts === true}
-        automaticStartupAllowed={automaticStartupAllowed}/> : tabletScope && !signedResource.value && signedResource.loading
-        ? <main className="auth"><p role="status">Opening business platform…</p></main> : children}
+      {content}
     </Resource>
   </BusinessContext.Provider>;
+}
+
+function WaitingForTablet({ terminal, retry }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  async function reconnect() {
+    setBusy(true); setError("");
+    try { await retry(); }
+    catch (caught) { setError(caught.message); }
+    finally { setBusy(false); }
+  }
+  return <main className="auth"><section className="auth-card">
+    <h1>Connecting to the restaurant tablet</h1>
+    <p role="status">{terminal.status === "revoked" ? "The tablet registration has been revoked. Contact your administrator." :
+      terminal.status === "permission_denied" ? "Allow this site to connect to the tablet, then retry." :
+      "Waiting for this tablet’s assigned workspace."}</p>
+    {error && <p className="alert" role="alert">{error}</p>}
+    {terminal.status !== "connecting" && <button className="quiet" type="button" disabled={busy} onClick={reconnect}>
+      {busy ? "Checking…" : "Retry connection"}</button>}
+  </section></main>;
 }
 
 function CalaiTabletStartup({ assignment, allowConnections, automaticStartupAllowed }) {

@@ -24,7 +24,7 @@ import { businessReturnPath } from "./model.js";
 import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
 import OwnerDashboardView, { DashboardCsvDownload } from "./OwnerDashboard.jsx";
-import {ownerCombinedWorkspaceLink} from "./calai-tablet-startup.js";
+import {tabletDiscoveryHint} from "./loopback-permission.js";
 import { OrderActivityDashboard } from "./DashboardOrderActivity.jsx";
 import EarningsPage from "./EarningsPage.jsx";
 import MerchantAgreement from "./MerchantAgreement.jsx";
@@ -100,6 +100,8 @@ function TabletConnectionAccess() {
 function App() {
   const [session, setSession] = useState({ loading: true, user: null, principalKind: null, generation: 0 });
   const embedded = useRef(window.parent !== window && window.location.pathname.startsWith("/business/embedded"));
+  const [tabletWindow] = useState(() => canDiscoverTablet(null) && (tabletDiscoveryHint.read() ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true));
   const hostedMessageSound = useRef(embedded.current && new URLSearchParams(window.location.search).get("messageSound") === "host");
   const bootstrap = useRef(null);
   if (!bootstrap.current) bootstrap.current = createBusinessBootstrap({
@@ -138,7 +140,7 @@ function App() {
   useEffect(() => subscribeTerminalStatus(bootstrap.current.observeTerminal), []);
   useEffect(()=>{const restored=()=>setSession(old=>({...old,terminalRevision:(old.terminalRevision||0)+1}));window.addEventListener("cal-eats-terminal-session-restored",restored);return()=>window.removeEventListener("cal-eats-terminal-session-restored",restored);},[]);
   if (session.loading) return <PageState text="Opening business platform…" />;
-  return <SessionContext.Provider value={{ ...session, refresh, setSession, suspendAutomaticSignIn, automaticStartupAllowed, connectTablet, recheckTablet, observeManagedSetup, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current, hostedMessageSound:hostedMessageSound.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>
+  return <SessionContext.Provider value={{ ...session, tabletWindow, refresh, setSession, suspendAutomaticSignIn, automaticStartupAllowed, connectTablet, recheckTablet, observeManagedSetup, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current, hostedMessageSound:hostedMessageSound.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/embedded" element={<Navigate to="/owner/connections" replace/>}/>
     <Route path="/admin/login" element={<PlatformAdminLogin user={session.user} onSignedIn={()=>refresh({afterSignIn:true})}/>} />
@@ -258,9 +260,9 @@ function Login() {
 }
 
 function OwnerBootstrap() {
-  const { user, embedded, observeManagedSetup, automaticStartupAllowed } = React.useContext(SessionContext);
+  const { user, embedded, tabletWindow, observeManagedSetup, automaticStartupAllowed, connectTablet, recheckTablet } = React.useContext(SessionContext);
   if (!RESTAURANT_ROLES.has(user.role)) return BUSINESS_ROLES.has(user.role) ? <Denied /> : <BusinessAccessUnavailable />;
-  return <BusinessWorkspaceProvider key={user.id} userId={user.id} embedded={embedded} observeManagedSetup={observeManagedSetup} automaticStartupAllowed={automaticStartupAllowed}><OwnerRestaurantWorkspace user={user}/></BusinessWorkspaceProvider>;
+  return <BusinessWorkspaceProvider key={user.id} userId={user.id} embedded={embedded} tabletWindow={tabletWindow} connectTablet={connectTablet} recheckTablet={recheckTablet} observeManagedSetup={observeManagedSetup} automaticStartupAllowed={automaticStartupAllowed}><OwnerRestaurantWorkspace user={user}/></BusinessWorkspaceProvider>;
 }
 
 function OwnerRestaurantWorkspace({ user }) {
@@ -403,7 +405,7 @@ function OwnerDashboard() {
   const products = dashboardOrderProducts(business);
   if (restaurant && mode !== "calai") return <OwnerDashboardView key={`${restaurant.id}:${permission}`}
     restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate}
-    business={business} products={products} workspaceMode={mode} combinedLink={ownerCombinedWorkspaceLink(business,workspace)}/>;
+    business={business} products={products} workspaceMode={mode} combinedLink={workspace?.ownerLink}/>;
   if (business && mode !== "cal-eats") return <OrderActivityDashboard business={business} products={products} workspaceMode={mode}
     onRetryRestaurant={eatsError ? refreshRestaurants : undefined}/>;
   return <>
