@@ -40,7 +40,7 @@ import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, use
 import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint, subscribeTerminalStatus } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
-import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
+import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, EmbeddedBusinessBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
 import { businessNavigation, CALAI_WORKSPACE_TOOLS, canUseCalaiWorkspaceTools, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
@@ -301,7 +301,9 @@ function Shell({ kind }) {
   const hasEats = mode !== "calai" && Boolean(owner?.restaurant);
   const canOperate = operationalTabletFor(business?.id, owner?.restaurant?.id, workspace?.terminal);
   const tools = businessToolPermissions({ permission: owner?.permission, capabilities: owner?.restaurant?.capabilities, principalKind: business?.principalKind });
-  const groups = businessNavigation(business, hasEats ? ownerNavigation(owner.permission, tools) : [], mode);
+  const embedded = workspace?.embedded === true;
+  const eatsNavigation = hasEats ? ownerNavigation(owner.permission, tools) : [];
+  const groups = businessNavigation(business, eatsNavigation, mode);
   const nav = groups.flatMap(group => group.items);
   const linkToStandaloneCalai = mode === "calai" && canUseCalaiWorkspaceTools(business, mode);
   const mobileNav = mode === "calai" ? [["Home", "/owner/dashboard"], ["Order list", "/owner/calai/orders"]]
@@ -319,7 +321,8 @@ function Shell({ kind }) {
 
   return <OrderAlertProvider operationalRestaurantId={owner?.restaurant?.id} enabled={hasEats && canOperate} restaurants={owner?.restaurants} onSelectRestaurant={selectRestaurant} onRefreshRestaurants={owner?.refreshRestaurants} userId={user.id}>
     <BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id}>
-      <div className={`portal calai-theme${collapsed ? " sidebar-collapsed" : ""}`} data-workspace-mode={mode}>
+      {embedded && <EmbeddedBusinessBridge allowedPathList={eatsNavigation.map(([, path]) => path).join("\n")}/>}
+      <div className={`portal calai-theme${collapsed ? " sidebar-collapsed" : ""}${embedded ? " portal--calai-embed" : ""}`} data-workspace-mode={mode}>
         <a className="skip" href="#portal-main">Skip to content</a>
         {open && !desktop && <button className="sidebar-shade" aria-label="Close navigation" onClick={() => setOpen(false)}/>}
         <aside id="business-navigation" inert={!desktop && !open ? true : undefined} className={open ? "sidebar open" : "sidebar"}>
@@ -369,7 +372,9 @@ function Shell({ kind }) {
             <div className="top-actions"><button className="quiet topbar-signout" onClick={() => void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0, 1) || "C"}</span></div>
           </header>
           <main id="portal-main" className="content" tabIndex={-1}>
-            <CalaiActivityAlert business={business} workspaceMode={mode} terminal={workspace?.terminal} userId={user.id}/>
+            {!embedded && <CalaiActivityAlert business={business} workspaceMode={mode} terminal={workspace?.terminal} userId={user.id}/>}
+            {embedded && principalKind === "terminal" && location.pathname === "/owner/connections" &&
+              <p className="fine"><NavLink to="/login?as=owner" state={{ returnTo: location.pathname }}>Sign in as Cal-Eats owner</NavLink></p>}
             <Outlet/>
           </main>
           <nav className="mobile-bottom-nav" style={{ gridTemplateColumns: `repeat(${mobileNav.length + 1},minmax(0,1fr))` }} aria-label="Quick business tools">

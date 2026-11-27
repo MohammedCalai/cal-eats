@@ -1,0 +1,622 @@
+diff --git a/frontend/src/components/cal-eats/CalEatsWorkspace.jsx b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b719e49fb50
+--- /dev/null
++++ b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
+@@ -0,0 +1,172 @@
++import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
++import { Icon } from '@iconify/react';
++import { Link, NavLink, useLocation } from 'react-router-dom';
++import useAuth from '../../hooks/useAuth';
++import { WORKSPACE_TOOLS, displayOrderCount, displayTotalCount, navigateWorkspaceMessage, requestedWorkspace, workspaceIframeAllow, workspaceOrigin, workspacePath, workspaceStateFromMessage, workspaceViewForPath } from './workspace-model.mjs';
++
++const Workspace = createContext(null);
++const childOrigin = workspaceOrigin(import.meta.env.DEV, import.meta.env.VITE_CAL_EATS_LOCAL_PREVIEW_ORIGIN);
++const childUrl = new URL('/business/embedded', childOrigin).href;
++const companies = [['calai', 'Calai phone orders'], ['cal-eats', 'Cal-Eats online orders']];
++const money = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
++const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
++const connectionPanel = 'mb-4 rounded-2xl border border-[#2a3b57] bg-[#142033] p-4 text-sm text-blue-100';
++
++function readWorkspaceIntent(identity) {
++  try { return sessionStorage.getItem('calai:combined-workspace') === identity; }
++  catch { return false; }
++}
++
++function saveWorkspaceIntent(identity, enabled) {
++  try {
++    if (enabled) sessionStorage.setItem('calai:combined-workspace', identity);
++    else if (readWorkspaceIntent(identity)) sessionStorage.removeItem('calai:combined-workspace');
++  } catch { /* Combined navigation still works without tab storage. */ }
++}
++
++export function CalEatsWorkspaceProvider({ children }) {
++  const { user } = useAuth();
++  const { pathname, search } = useLocation();
++  const identity = user?.role === 'BUSINESS_OWNER' && user.id && user.businessId && pathname.startsWith('/owner/')
++    ? `${user.id}:${user.businessId}` : null;
++  const desiredView = workspaceViewForPath(pathname);
++  const requested = requestedWorkspace(pathname, search);
++  const [enabledFor, setEnabledFor] = useState(() => identity && readWorkspaceIntent(identity) ? identity : null);
++  const enabled = Boolean(identity && (requested === 'both' || (requested !== 'calai' && enabledFor === identity)));
++  useEffect(() => {
++    if (!identity) {
++      setEnabledFor(null);
++      return;
++    }
++    if (requested === 'both' || requested === 'calai') {
++      setEnabledFor(requested === 'both' ? identity : null);
++      saveWorkspaceIntent(identity, requested === 'both');
++    }
++  }, [identity, requested]);
++
++  return <WorkspaceConnection key={enabled ? identity : 'standalone'} enabled={enabled} user={user} desiredView={desiredView}>
++    {children}
++  </WorkspaceConnection>;
++}
++
++function WorkspaceConnection({ children, enabled, user, desiredView }) {
++  const frameRef = useRef(null);
++  const [state, setState] = useState(null);
++  const [stale, setStale] = useState(false);
++  const connected = !stale && state?.combined === true;
++  const canOpen = connected && WORKSPACE_TOOLS.some(tool => tool.view === desiredView && state.capabilities[tool.permission]);
++  const showAccounts = desiredView === 'accounts' && !stale && (state?.authenticated === false || state?.matchesNativeAccount === true);
++  const visible = Boolean(canOpen || showAccounts);
++  const sendView = useCallback(view => {
++    frameRef.current?.contentWindow?.postMessage(navigateWorkspaceMessage(view), childOrigin);
++  }, []);
++
++  useEffect(() => {
++    if (!enabled) return;
++    let deadline;
++    function waitForProof(ms) {
++      clearTimeout(deadline);
++      deadline = setTimeout(() => setStale(true), ms);
++    }
++    function receive(event) {
++      const next = workspaceStateFromMessage(event, frameRef.current?.contentWindow, user, childOrigin);
++      if (!next) return;
++      setState(next);
++      setStale(false);
++      waitForProof(65_000);
++    }
++    waitForProof(15_000);
++    window.addEventListener('message', receive);
++    return () => { clearTimeout(deadline); window.removeEventListener('message', receive); };
++  }, [enabled, user?.id, user?.businessId, user?.role]);
++
++  const view = visible ? desiredView : connected ? 'dashboard' : 'accounts';
++  useEffect(() => { if (enabled) sendView(view); }, [enabled, view, sendView]);
++  return <Workspace.Provider value={{ enabled, connected, state, stale, frameRef, desiredView, visible, view, sendView }}>
++    {children}
++  </Workspace.Provider>;
++}
++
++export function CalEatsWorkspaceNavigation({ collapsed = false, onNavigate }) {
++  const current = useContext(Workspace);
++  if (!current?.enabled) return null;
++  const tools = current.connected ? WORKSPACE_TOOLS.filter(tool => current.state.capabilities[tool.permission]) : [];
++  const items = [...tools, { view: 'accounts', label: 'Accounts & connections', icon: 'lucide:link-2' }];
++  return <section aria-label="Cal-Eats navigation" className="mt-5 border-t border-[#262626] pt-3">
++    <p className={`px-2 pb-2 text-xs font-semibold text-blue-200 ${collapsed ? '2xl:sr-only' : ''}`}>Cal-Eats</p>
++    {items.map(({ view, label, icon }) => <NavLink key={view} to={workspacePath(view)} onClick={onNavigate}
++      aria-label={`Cal-Eats ${label}`}
++      className={({ isActive }) => `flex items-center gap-4 rounded-xl border border-l-4 px-2 py-3.5 transition-colors ${collapsed ? '2xl:justify-center 2xl:px-0' : ''} ${isActive ? 'border-blue-600/30 border-l-blue-600 bg-[#18181A] text-white' : 'border-transparent text-gray-300 hover:bg-[#18181A] hover:text-white'}`}>
++      <Icon icon={icon} width="24" className="shrink-0" aria-hidden="true" />
++      <span className={`whitespace-nowrap text-sm ${collapsed ? '2xl:hidden' : ''}`}>{label}</span>
++    </NavLink>)}
++  </section>;
++}
++
++export function CalEatsCombinedCounters() {
++  const current = useContext(Workspace);
++  if (!current?.connected) return null;
++  const state = current.state;
++  const counts = [...companies.map(([product, label]) => [label, displayOrderCount(state, product)]), ['Total orders', displayTotalCount(state)]];
++  return <section aria-label="Today’s orders across Calai and Cal-Eats" className="mb-6 space-y-3">
++    <h2 className="text-xl font-semibold text-white">Today’s orders</h2>
++    <div className="grid gap-3 sm:grid-cols-3">
++      {counts.map(([label, value]) => <div key={label} className="rounded-2xl border border-[#2a3b57] bg-[#142033] p-4">
++        <p className="text-sm text-blue-100">{label}</p>
++        <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
++      </div>)}
++    </div>
++    {state.orders.length > 0 && <div className="rounded-2xl border border-[#2a3b57] bg-[#141b2a] p-4">
++      <h3 className="mb-2 font-semibold text-white">Recent orders</h3>
++      <ul className="divide-y divide-white/10">
++        {state.orders.map((order, index) => <li key={`${order.source}:${order.createdAt}:${index}`} className="grid grid-cols-[1.7fr_1.3fr_auto] items-center gap-2 py-2 text-sm text-gray-200">
++          <span><span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${order.source === 'calai' ? 'bg-indigo-500/20 text-indigo-200' : 'bg-sky-500/20 text-sky-100'}`}>
++            {order.source === 'calai' ? 'Calai phone' : 'Cal-Eats online'}
++          </span><span className="ml-2 hidden text-xs text-gray-300 sm:inline">{time.format(new Date(order.createdAt))}</span></span>
++          <span className="capitalize">{order.status.replaceAll('_', ' ')}</span>
++          <span>{order.totalMinor === null ? '—' : money.format(order.totalMinor / 100)}</span>
++        </li>)}
++      </ul>
++    </div>}
++  </section>;
++}
++
++function connectionMessage(current) {
++  if (current.stale) return 'Cal-Eats is temporarily unavailable.';
++  if (!current.state) return 'Connecting to Cal-Eats…';
++  if (!current.state.authenticated) return 'Sign in to Cal-Eats to connect this workspace.';
++  if (!current.state.matchesNativeAccount) return 'The Cal-Eats account is linked to a different Calai login or location.';
++  return 'Cal-Eats access for this page is unavailable.';
++}
++
++export function CalEatsEmbeddedPage() {
++  const current = useContext(Workspace);
++  if (current?.enabled) return null;
++  return <section className={connectionPanel}><Link to="/owner/dashboard?workspace=both" className="font-semibold text-white underline">Open the combined workspace</Link></section>;
++}
++
++export function CalEatsWorkspaceSurface({ children }) {
++  const current = useContext(Workspace);
++  if (!current?.enabled) return children;
++  const { frameRef, connected, state, desiredView, visible, view, sendView } = current;
++  const policy = document.permissionsPolicy?.features ? document.permissionsPolicy : document.featurePolicy;
++  const iframeAllow = workspaceIframeAllow(policy?.features?.(), childOrigin);
++  const pending = connected ? state.pendingOrderCount ?? 0 : 0;
++  return <>
++    {!visible && pending > 0 && <div className={connectionPanel} role="status">
++      <Link className="font-semibold text-white underline" to={workspacePath('orders')}>
++        {pending} {pending === 1 ? 'Cal-Eats order awaiting confirmation' : 'Cal-Eats orders awaiting confirmation'}
++      </Link>
++    </div>}
++    {desiredView && (!visible || !connected) && <div className={connectionPanel} role="status">
++      <p>{connectionMessage(current)}</p>
++      {desiredView !== 'accounts' && <Link className="underline" to={workspacePath('accounts')}>Accounts &amp; connections</Link>}
++    </div>}
++    {!desiredView && children}
++    <div className={visible ? 'w-full' : 'pointer-events-none absolute left-0 top-0 size-px overflow-hidden opacity-0'} aria-hidden={!visible} inert={!visible}>
++      <iframe ref={frameRef} src={childUrl} allow={iframeAllow} title="Cal-Eats business workspace" tabIndex={visible ? 0 : -1} referrerPolicy="strict-origin"
++        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
++        onLoad={() => sendView(view)} className="block h-[calc(100dvh-9rem)] min-h-[32rem] w-full rounded-2xl border border-[#294769] bg-[#101722]" />
++    </div>
++  </>;
++}
+diff --git a/frontend/src/components/cal-eats/workspace-model.mjs b/frontend/src/components/cal-eats/workspace-model.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c9e2fd3b44dc106cb2385a09bd0eb203ecca506e
+--- /dev/null
++++ b/frontend/src/components/cal-eats/workspace-model.mjs
+@@ -0,0 +1,124 @@
++export const CAL_EATS_ORIGIN = 'https://eats.calai.info';
++export const CAL_EATS_EMBED = CAL_EATS_ORIGIN + '/business/embedded';
++export const WORKSPACE_STATE = 'cal-eats-workspace:state';
++export const WORKSPACE_NAVIGATE = 'cal-eats-workspace:navigate';
++export const WORKSPACE_TOOLS = Object.freeze([
++  { view: 'orders', label: 'Orders', icon: 'lucide:receipt-text', permission: 'viewOrders' },
++  { view: 'menu', label: 'Menu', icon: 'lucide:notebook-tabs', permission: 'manageMenu' },
++  { view: 'inbox', label: 'Inbox', icon: 'lucide:message-square', permission: 'viewInbox' },
++  { view: 'customers', label: 'Customers', icon: 'lucide:users', permission: 'viewCustomers' },
++  { view: 'offers', label: 'Marketing', icon: 'lucide:tag', permission: 'manageMarketing' },
++  { view: 'support', label: 'Support', icon: 'lucide:life-buoy', permission: 'viewSupport' },
++  { view: 'devices', label: 'Printers', icon: 'lucide:printer', permission: 'viewDevices' },
++  { view: 'payouts', label: 'Earnings & payouts', icon: 'lucide:wallet', permission: 'viewPayouts' },
++  { view: 'settings', label: 'Settings', icon: 'lucide:settings', permission: 'manageSettings' },
++]);
++export const WORKSPACE_VIEWS = Object.freeze(['dashboard', 'accounts', ...WORKSPACE_TOOLS.map(tool => tool.view)]);
++
++export function workspaceOrigin(development, previewOrigin) {
++  if (development && typeof previewOrigin === 'string' && /^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(previewOrigin)) {
++    const port = Number(previewOrigin.split(':').at(-1));
++    if (port <= 65535) return previewOrigin;
++  }
++  return CAL_EATS_ORIGIN;
++}
++
++export function requestedWorkspace(pathname, search) {
++  if (pathname !== '/owner/dashboard') return null;
++  const workspace = new URLSearchParams(search).getAll('workspace');
++  return workspace.length === 1 && ['both', 'calai'].includes(workspace[0]) ? workspace[0] : null;
++}
++
++const bothQuery = '?workspace=both';
++
++export function workspaceLoginPath(pathname, search) {
++  const presentationPath = pathname === '/auth/login' ? '/owner/dashboard' : pathname;
++  const suffix = requestedWorkspace(presentationPath, search) === 'both' ? bothQuery : '';
++  return '/auth/login' + suffix;
++}
++
++export function ownerDashboardAfterLogin(search) {
++  const suffix = requestedWorkspace('/owner/dashboard', search) === 'both' ? bothQuery : '';
++  return '/owner/dashboard' + suffix;
++}
++// A modern browser can delegate loopback without also granting LAN access.
++// Older managed Edge uses its documented combined Local Network Access token.
++// Delegation is limited to this child origin; it never authorises a terminal.
++export function workspaceIframeAllow(supportedFeatures = [], origin = CAL_EATS_ORIGIN) {
++  const loopbackFeature = Array.isArray(supportedFeatures) && supportedFeatures.includes('loopback-network') ? 'loopback-network' : 'local-network-access';
++  return `autoplay ${origin}; ${loopbackFeature} ${origin}`;
++}
++const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++const isId = value => typeof value === 'string' && UUID.test(value);
++const plain = value => Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype);
++const bounded = (value, size) => typeof value === 'string' && value.length > 0 && value.length <= size && !/[\u0000-\u001f\u007f]/.test(value);
++const sameId = (a, b) => typeof a === 'string' && typeof b === 'string' && UUID.test(a) && UUID.test(b) && a.toLowerCase() === b.toLowerCase();
++const permitted = product => product.adminAllowed && product.linked && product.ready;
++const validCount = value => Number.isSafeInteger(value) && value >= 0;
++function product(value) {
++  if (!plain(value) || ['adminAllowed', 'linked', 'ready'].some(key => typeof value[key] !== 'boolean') || !bounded(value.effectiveStatus, 64)) return null;
++  return { adminAllowed: value.adminAllowed, linked: value.linked, ready: value.ready, effectiveStatus: value.effectiveStatus };
++}
++function counter(value) {
++  if (!plain(value) || typeof value.available !== 'boolean' || value.today !== null && (!Number.isSafeInteger(value.today) || value.today < 0)) return null;
++  if (value.available && value.today === null) return null;
++  return { available: value.available, today: value.available ? value.today : null };
++}
++export function workspaceStateFromMessage(event, sourceWindow, nativeUser, origin = CAL_EATS_ORIGIN) {
++  if (!sourceWindow || event?.source !== sourceWindow || event.origin !== origin) return null;
++  const value = event.data;
++  if (!plain(value) || value.type !== WORKSPACE_STATE || value.version !== 1 || typeof value.authenticated !== 'boolean') return null;
++  if (!value.authenticated) return { authenticated: false, business: null, products: null, counters: null, capabilities: {}, orders: [], pendingOrderCount: null, matchesNativeAccount: false, combined: false };
++  if (!plain(value.business) || !isId(value.business.id) || !bounded(value.business.name, 160) || !plain(value.products) || !plain(value.counters)) return null;
++  const calai = product(value.products.calai), eats = product(value.products['cal-eats']);
++  const calaiCounter = counter(value.counters.calai), eatsCounter = counter(value.counters['cal-eats']);
++  if (!calai || !eats || !calaiCounter || !eatsCounter) return null;
++  const source = value.products.calai;
++  eats.sourceAccountId = isId(value.products['cal-eats'].sourceAccountId) ? value.products['cal-eats'].sourceAccountId : null;
++  const matchesNativeAccount = nativeUser?.role === 'BUSINESS_OWNER' && sameId(source.sourceAccountId, nativeUser.businessId) && sameId(source.verifiedSourceUserId, nativeUser.id);
++  const scopedMode = value.workspaceMode === 'both' &&
++    (value.principalKind === 'terminal' && value.tabletMode === 'both' ||
++     value.principalKind === 'human' && (value.tabletMode === null || value.tabletMode === 'both'));
++  const combined = matchesNativeAccount && scopedMode && permitted(calai) && permitted(eats);
++  const capabilities = {};
++  for (const { permission } of WORKSPACE_TOOLS) capabilities[permission] = combined && plain(value.capabilities) && value.capabilities[permission] === true;
++  const orders = combined && capabilities.viewOrders ? recentOrders(value.orders) : [];
++  const pendingOrderCount = combined && capabilities.viewOrders && validCount(value.pendingOrderCount) ? value.pendingOrderCount : null;
++  const counters = combined ? { calai: calaiCounter, 'cal-eats': eatsCounter } : null;
++  return { authenticated: true, business: combined ? { id: value.business.id, name: value.business.name } : null, counters, capabilities, orders, pendingOrderCount, matchesNativeAccount, combined };
++}
++
++const orderStatuses = new Set(['received', 'unconfirmed', 'confirmed', 'placed', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'completed', 'rejected']);
++function recentOrders(orders) {
++  if (!Array.isArray(orders)) return [];
++  return orders.slice(0, 8).filter(row => plain(row) && ['calai', 'cal-eats'].includes(row.source)
++      && orderStatuses.has(row.status) && typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))
++      && ['delivery', 'collection', 'takeaway', 'unknown'].includes(row.fulfilment))
++    .map(({ source, status, createdAt, fulfilment, totalMinor }) => ({
++      source, status, createdAt, fulfilment, totalMinor: validCount(totalMinor) ? totalMinor : null,
++    }));
++}
++export function navigateWorkspaceMessage(view) {
++  if (!WORKSPACE_VIEWS.includes(view)) throw new Error('Unsupported Cal-Eats workspace view');
++  return { type: WORKSPACE_NAVIGATE, version: 1, view };
++}
++export function workspaceViewForPath(pathname) {
++  if (pathname === '/owner/accounts-connections') return 'accounts';
++  const match = /^\/owner\/cal-eats\/([a-z]+)$/.exec(pathname);
++  return match && WORKSPACE_TOOLS.some(tool => tool.view === match[1]) ? match[1] : null;
++}
++export function workspacePath(view) {
++  if (view === 'accounts') return '/owner/accounts-connections';
++  if (!WORKSPACE_TOOLS.some(tool => tool.view === view)) throw new Error('Use the native Calai dashboard route');
++  return '/owner/cal-eats/' + view;
++}
++export function displayOrderCount(state, productName) {
++  const value = state?.counters?.[productName];
++  return value?.available && Number.isSafeInteger(value.today) ? String(value.today) : 'Unavailable';
++}
++export function displayTotalCount(state) {
++  const counters = ['calai', 'cal-eats'].map(product => state?.counters?.[product]);
++  if (!counters.every(counter => counter?.available === true && validCount(counter.today))) return 'Unavailable';
++  const sum = counters[0].today + counters[1].today;
++  return Number.isSafeInteger(sum) ? String(sum) : 'Unavailable';
++}
+diff --git a/frontend/src/components/cal-eats/workspace-model.test.mjs b/frontend/src/components/cal-eats/workspace-model.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ecdf0216396420c83df936d79c626419be367a0
+--- /dev/null
++++ b/frontend/src/components/cal-eats/workspace-model.test.mjs
+@@ -0,0 +1,139 @@
++import assert from 'node:assert/strict';
++import test from 'node:test';
++import {readFileSync} from 'node:fs';
++import { CAL_EATS_ORIGIN, WORKSPACE_STATE, WORKSPACE_TOOLS, workspaceStateFromMessage, navigateWorkspaceMessage, workspaceViewForPath, workspacePath, displayOrderCount, displayTotalCount, workspaceIframeAllow, workspaceOrigin, requestedWorkspace, workspaceLoginPath, ownerDashboardAfterLogin } from './workspace-model.mjs';
++const id = digit => `${digit.repeat(8)}-${digit.repeat(4)}-4${digit.repeat(3)}-8${digit.repeat(3)}-${digit.repeat(12)}`;
++const source = {}, nativeUser = { id: id('1'), businessId: id('2'), role: 'BUSINESS_OWNER' };
++function data() { return { type: WORKSPACE_STATE, version: 1, authenticated: true, workspaceMode: 'both', principalKind: 'human', tabletMode: null, business: { id: id('3'), name: 'Independent restaurant' }, products: { calai: { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active', sourceAccountId: nativeUser.businessId, verifiedSourceUserId: nativeUser.id }, 'cal-eats': { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active' } }, counters: { calai: { today: 4, available: true }, 'cal-eats': { today: 6, available: true } }, capabilities: { viewOrders: true, viewPayouts: false, manageMenu: false, viewDevices: true } }; }
++const event = value => ({ origin: CAL_EATS_ORIGIN, source, data: value });
++
++test('iframe permissions grant only the fixed child origin and prefer loopback without modern LAN access', () => {
++  const modern = workspaceIframeAllow(['autoplay', 'local-network-access', 'local-network', 'loopback-network']);
++  assert.equal(modern, 'autoplay https://eats.calai.info; loopback-network https://eats.calai.info');
++  assert.equal(modern.includes('local-network'), false);
++  for (const features of [undefined, null, [], ['autoplay', 'local-network-access'], ['loopback-network https://attacker.invalid', '*']]) {
++    assert.equal(workspaceIframeAllow(features), 'autoplay https://eats.calai.info; local-network-access https://eats.calai.info');
++  }
++  assert.equal(workspaceIframeAllow(['loopback-network', '*', 'camera', 'microphone', 'https://attacker.invalid']), modern);
++});
++
++test('the actual persistent iframe applies bounded permission delegation without changing sandbox or authentication', () => {
++  const component = readFileSync(new URL('./CalEatsWorkspace.jsx', import.meta.url), 'utf8');
++  assert.match(component, /if \(!current\?\.enabled\) return children/);
++  assert.match(component, /<iframe[^>]*src=\{childUrl\}[^>]*allow=\{iframeAllow\}/);
++  assert.match(component, /workspaceIframeAllow\(policy\?\.features\?\.\(\), childOrigin\)/);
++  assert.match(component, /sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"/);
++  assert.doesNotMatch(component, /allow-top-navigation|allow="[^"\n]*\*|Cookies\.(?:set|remove)|localStorage\.(?:setItem|removeItem|clear)|Authorization|fetch\(/);
++});
++
++test('native Calai does not enable Both unless the owner has explicitly opened the combined dashboard', () => {
++  assert.equal(requestedWorkspace('/owner/dashboard', ''), null);
++  assert.equal(requestedWorkspace('/owner/dashboard', '?workspace=both'), 'both');
++  assert.equal(requestedWorkspace('/owner/dashboard', '?workspace=calai'), 'calai');
++  assert.equal(requestedWorkspace('/owner/settings', '?workspace=both'), null);
++  assert.equal(requestedWorkspace('/owner/dashboard', '?workspace=both&workspace=calai'), null);
++  assert.equal(workspaceOrigin(false, 'http://127.0.0.1:4399'), CAL_EATS_ORIGIN);
++  assert.equal(workspaceOrigin(true, 'http://127.0.0.1:4399'), 'http://127.0.0.1:4399');
++  for (const invalid of ['https://127.0.0.1:4399', 'http://other.invalid:4399', 'http://127.0.0.1:65536', 'http://127.0.0.1:4399/extra']) {
++    assert.equal(workspaceOrigin(true, invalid), CAL_EATS_ORIGIN);
++  }
++});
++
++test('an ordinary native sign-in retains only the fixed Both presentation flag through expired and parallel unauthorised reads', () => {
++  const start = new URL('https://calai.info/owner/dashboard?workspace=both&returnTo=https://elsewhere.invalid');
++  const signIn = new URL(workspaceLoginPath(start.pathname, start.search), start.origin);
++  assert.equal(signIn.href, 'https://calai.info/auth/login?workspace=both');
++  assert.equal(workspaceLoginPath(signIn.pathname, signIn.search), '/auth/login?workspace=both');
++  assert.equal(ownerDashboardAfterLogin(signIn.search), '/owner/dashboard?workspace=both');
++  assert.equal(workspaceLoginPath('/admin/dashboard', start.search), '/auth/login');
++  assert.equal(workspaceLoginPath('/owner/settings', start.search), '/auth/login');
++  for (const search of ['', '?workspace=calai', '?workspace=both&workspace=calai', '?workspace=https://elsewhere.invalid']) {
++    assert.equal(workspaceLoginPath(start.pathname, search), '/auth/login');
++    assert.equal(ownerDashboardAfterLogin(search), '/owner/dashboard');
++  }
++});
++test('only exact child origin, frame and protocol can supply a workspace state', () => {
++  assert.equal(workspaceStateFromMessage(event(data()), source, nativeUser).combined, true);
++  assert.equal(workspaceStateFromMessage({ ...event(data()), origin: CAL_EATS_ORIGIN + '.evil.invalid' }, source, nativeUser), null);
++  assert.equal(workspaceStateFromMessage({ ...event(data()), source: {} }, source, nativeUser), null);
++  assert.equal(workspaceStateFromMessage(event({ ...data(), version: 2 }), source, nativeUser), null);
++  assert.equal(workspaceStateFromMessage(event({ ...data(), type: 'online' }), source, nativeUser), null);
++});
++test('same numeric-looking identifier in different products never substitutes for verified native identity', () => {
++  const value = data(); value.products.calai.sourceAccountId = value.business.id;
++  const state = workspaceStateFromMessage(event(value), source, nativeUser);
++  assert.equal(state.combined, false); assert.equal(state.matchesNativeAccount, false);
++  value.products.calai.sourceAccountId = nativeUser.businessId; value.products.calai.verifiedSourceUserId = id('4');
++  assert.equal(workspaceStateFromMessage(event(value), source, nativeUser).combined, false);
++  assert.equal(workspaceStateFromMessage(event(data()), source, { ...nativeUser, role: 'SYSTEM_OWNER' }).combined, false);
++});
++test('all three permission, connection and readiness flags are needed on each product', () => {
++  for (const name of ['calai', 'cal-eats']) for (const flag of ['adminAllowed', 'linked', 'ready']) {
++    const value = data(); value.products[name][flag] = false;
++    assert.equal(workspaceStateFromMessage(event(value), source, nativeUser).combined, false);
++  }
++});
++
++test('an authenticated terminal must report exactly signed Both, with no tools or activity leaking on mode change', () => {
++  const value = { ...data(), principalKind: 'terminal', tabletMode: 'both' };
++  assert.equal(workspaceStateFromMessage(event(value), source, nativeUser).combined, true);
++  for (const authority of [{ tabletMode: null }, { tabletMode: 'calai' }, { tabletMode: 'cal-eats' }, { workspaceMode: 'cal-eats' }, { principalKind: 'customer' }]) {
++    const state = workspaceStateFromMessage(event({ ...value, ...authority, pendingOrderCount: 2 }), source, nativeUser);
++    assert.equal(state.combined, false);
++    assert.equal(state.counters, null);
++    assert.equal(state.pendingOrderCount, null);
++    assert.deepEqual(state.orders, []);
++    assert.equal(Object.values(state.capabilities).some(Boolean), false);
++  }
++});
++test('financial/menu permissions do not flow from the native Calai owner role', () => {
++  const value = data(); delete value.capabilities;
++  const state = workspaceStateFromMessage(event(value), source, nativeUser);
++  assert.deepEqual(state.capabilities, Object.fromEntries(WORKSPACE_TOOLS.map(tool => [tool.permission, false])));
++});
++test('unavailable counters remain unavailable rather than becoming a misleading zero', () => {
++  const value = data(); value.counters['cal-eats'] = { today: 0, available: false };
++  const state = workspaceStateFromMessage(event(value), source, nativeUser);
++  assert.equal(state.counters['cal-eats'].today, null); assert.equal(displayOrderCount(state, 'cal-eats'), 'Unavailable');
++  assert.equal(displayTotalCount(state), 'Unavailable');
++  assert.equal(displayTotalCount(workspaceStateFromMessage(event(data()), source, nativeUser)), '10');
++  value.counters['cal-eats'] = { today: null, available: true };
++  assert.equal(workspaceStateFromMessage(event(value), source, nativeUser), null);
++});
++test('account logout clears all account-specific display state and ignores extra secrets', () => {
++  assert.deepEqual(workspaceStateFromMessage(event({ type: WORKSPACE_STATE, version: 1, authenticated: false, password: 'must-not-propagate' }), source, nativeUser), { authenticated: false, business: null, products: null, counters: null, capabilities: {}, orders: [], pendingOrderCount: null, matchesNativeAccount: false, combined: false });
++  const value = data(); value.accessToken = 'must-not-propagate'; value.business.customerAddress = 'must-not-propagate';
++  assert.equal(JSON.stringify(workspaceStateFromMessage(event(value), source, nativeUser)).includes('must-not-propagate'), false);
++});
++test('navigation allows only fixed view names and preserves existing native startup addresses', () => {
++  for (const view of ['dashboard', 'orders', 'payouts', 'menu', 'accounts', 'devices', 'inbox', 'customers', 'offers', 'support', 'settings']) assert.equal(navigateWorkspaceMessage(view).view, view);
++  for (const value of ['https://evil.invalid', '/api/order/accept', 'logout', 'calai-disable', '__proto__']) assert.throws(() => navigateWorkspaceMessage(value));
++  assert.equal(workspaceViewForPath('/owner/dashboard'), null);
++  assert.equal(workspaceViewForPath('/owner/settings/business'), null);
++  assert.equal(workspaceViewForPath('/owner/accounts-connections'), 'accounts');
++  assert.equal(workspaceViewForPath('/owner/cal-eats/orders'), 'orders');
++  assert.equal(workspaceViewForPath('/owner/cal-eats/orders/another-id'), null);
++  assert.equal(workspacePath('accounts'), '/owner/accounts-connections'); assert.throws(() => workspacePath('dashboard'));
++});
++test('malformed account identifiers cannot authorize access to a shop', () => {
++  const value = data(); value.business.id = { toString: null };
++  assert.equal(workspaceStateFromMessage(event(value), source, nativeUser), null);
++  value.business.id = id('3'); value.products.calai.sourceAccountId = { toString: null };
++  assert.equal(workspaceStateFromMessage(event(value), source, nativeUser).combined, false);
++});
++
++test('pending counts and combined display rows include only authorized, bounded, non-customer order data', () => {
++  const value = data();
++  const order = { source: 'cal-eats', status: 'placed', createdAt: '2026-11-27T12:00:00Z', fulfilment: 'delivery', totalMinor: 800 };
++  value.pendingOrderCount = 2;
++  value.orders = [{ ...order, customerAddress: 'must-not-propagate', id: 'must-not-propagate' },
++    { ...order, source: 'other' },
++    { ...order, source: 'calai', status: 'confirmed' }];
++  const state = workspaceStateFromMessage(event(value), source, nativeUser);
++  assert.equal(state.pendingOrderCount, 2);
++  assert.deepEqual(state.orders, [order, { ...order, source: 'calai', status: 'confirmed' }]);
++  value.capabilities.viewOrders = false;
++  const denied = workspaceStateFromMessage(event(value), source, nativeUser);
++  assert.deepEqual(denied.orders, []);
++  assert.equal(denied.pendingOrderCount, null);
++});
+diff --git a/frontend/src/components/layout/Sidebar.jsx b/frontend/src/components/layout/Sidebar.jsx
+index ecfca552975bd8dc1db1d32d9379ab3c7fea988a..e4085bd8a9d0033e4092312e7d69627f268867a3 100644
+--- a/frontend/src/components/layout/Sidebar.jsx
++++ b/frontend/src/components/layout/Sidebar.jsx
+@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
+ import { FiX } from "react-icons/fi";
+ import toast, { Toaster } from "react-hot-toast";
+ import Cookies from "js-cookie";
++import { CalEatsWorkspaceNavigation } from "../cal-eats/CalEatsWorkspace";
+ 
+ export default function Sidebar({ isOpen, onClose, isDesktopCollapsed }) {
+   const location = useLocation();
+@@ -99,6 +100,7 @@ export default function Sidebar({ isOpen, onClose, isDesktopCollapsed }) {
+                 <span className={`text-sm whitespace-nowrap transition-all duration-300 ${isDesktopCollapsed ? "2xl:hidden" : ""}`}>{item.name}</span>
+               </NavLink>
+             ))}
++            {role === "BUSINESS_OWNER" && <CalEatsWorkspaceNavigation collapsed={isDesktopCollapsed} onNavigate={() => window.innerWidth < 1536 && onClose()} />}
+           </nav>
+ 
+           {/* Logout */}
+diff --git a/frontend/src/hooks/useAxiosSecure.jsx b/frontend/src/hooks/useAxiosSecure.jsx
+index ce8aeb483af448c6ff79ccfcabfa9482117f629b..4722eb1b785e352a4c15af5263efa9421ba9b81e 100644
+--- a/frontend/src/hooks/useAxiosSecure.jsx
++++ b/frontend/src/hooks/useAxiosSecure.jsx
+@@ -2,6 +2,7 @@ import axios from "axios";
+ import { useNavigate } from "react-router-dom";
+ import useAuth from "./useAuth";
+ import Cookies from "js-cookie";
++import { workspaceLoginPath } from "../components/cal-eats/workspace-model.mjs";
+ 
+ 
+ const AxiosSecure = axios.create({
+@@ -31,7 +32,8 @@ const useAxiosSecure = () => {
+         const status = error.response?.status;
+         if(status === 401 || status === 403){
+             await logOutUser();
+-            navigate('/auth/login')
++            const { pathname, search } = window.location;
++            navigate(workspaceLoginPath(pathname, search));
+ 
+         }
+         
+@@ -41,4 +43,4 @@ const useAxiosSecure = () => {
+     return AxiosSecure;
+ };
+ 
+-export default useAxiosSecure;
+\ No newline at end of file
++export default useAxiosSecure;
+diff --git a/frontend/src/layout/DashboardLayout.jsx b/frontend/src/layout/DashboardLayout.jsx
+index 57369bf45fbc4f9d93b8aede7264f70a6d04cab7..c8101c0c4c30a460c364e99cd1c28d38b7777e98 100644
+--- a/frontend/src/layout/DashboardLayout.jsx
++++ b/frontend/src/layout/DashboardLayout.jsx
+@@ -5,12 +5,14 @@ import Header from "../components/layout/Header";
+ import LiveOrderPopup from "../components/LiveOrderPopup";
+ 
+ import OfflineBanner from "../components/OfflineBanner";
++import { CalEatsWorkspaceProvider, CalEatsWorkspaceSurface } from "../components/cal-eats/CalEatsWorkspace";
+ 
+ export default function DashboardLayout() {
+   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
+ 
+   return (
++    <CalEatsWorkspaceProvider>
+     <div className="flex h-screen w-full bg-[#0a1024] text-gray-100">
+       <Sidebar
+         isOpen={isSidebarOpen}
+@@ -28,7 +30,7 @@ export default function DashboardLayout() {
+ 
+ 
+         <main className="flex-1 overflow-y-auto hide-scrollbar bg-[#141416] text-white relative p-6">
+-          <Outlet />
++          <CalEatsWorkspaceSurface><Outlet /></CalEatsWorkspaceSurface>
+         </main>
+       </div>
+       
+@@ -38,5 +40,6 @@ export default function DashboardLayout() {
+       {/* Global Live Order Listener */}
+       <LiveOrderPopup />
+     </div>
++    </CalEatsWorkspaceProvider>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/frontend/src/pages/auth/LogIn.jsx b/frontend/src/pages/auth/LogIn.jsx
+index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..81750cb26fe3097393208406f71fcda6f282b844 100644
+--- a/frontend/src/pages/auth/LogIn.jsx
++++ b/frontend/src/pages/auth/LogIn.jsx
+@@ -1,6 +1,6 @@
+ import React, { useState } from "react";
+ import { Icon } from "@iconify/react";
+-import { Link, useNavigate } from "react-router-dom";
++import { Link, useLocation, useNavigate } from "react-router-dom";
+ import InputField from "../../components/Inputfield";
+ import Password from "../../components/Password";
+ import toast from "react-hot-toast";
+@@ -8,9 +8,11 @@ import { useMutation } from "@tanstack/react-query";
+ import useAxiosPublic from "../../hooks/useAxiosPublic";
+ import useAuth from "../../hooks/useAuth";
+ import Cookies from "js-cookie";
++import { ownerDashboardAfterLogin } from "../../components/cal-eats/workspace-model.mjs";
+ 
+ export default function LogIn() {
+   const navigate = useNavigate();
++  const { search } = useLocation();
+   const axiosPublic = useAxiosPublic();
+   const { setUser } = useAuth();
+ 
+@@ -38,7 +40,7 @@ export default function LogIn() {
+         if (apiRole === "SYSTEM_OWNER") {
+           navigate("/admin/dashboard");
+         } else if (apiRole === "BUSINESS_OWNER") {
+-          navigate("/owner/dashboard");
++          navigate(ownerDashboardAfterLogin(search));
+         } else {
+           navigate("/"); // Fallback if role is unknown
+         }
+diff --git a/frontend/src/pages/owner/Dashboard.jsx b/frontend/src/pages/owner/Dashboard.jsx
+index 38b8ade3fbf8368b98a929625fb5c5f0da2ff2cf..67c6fd77e060311107a04b8178b1ae27d6f2b0f5 100644
+--- a/frontend/src/pages/owner/Dashboard.jsx
++++ b/frontend/src/pages/owner/Dashboard.jsx
+@@ -7,6 +7,7 @@ import { useOwnerDashboard } from "../../hooks/useOwnerDashboard";
+ import { formatUKDateTime } from "../../utils/date";
+ 
+ import OwnerLiveActivity from "../../components/OwnerLiveActivity";
++import { CalEatsCombinedCounters } from "../../components/cal-eats/CalEatsWorkspace";
+ 
+ const StatCard = ({
+   title,
+@@ -199,6 +200,8 @@ export default function Dashboard() {
+         <p className="text-gray-400 text-sm mt-1">Your orders, conversations and live activity in one place.</p>
+       </div>
+ 
++      <CalEatsCombinedCounters />
++
+       {/* Live Activity Banner */}
+       <OwnerLiveActivity 
+         liveCalls={liveCalls} 
+diff --git a/frontend/src/router/router.jsx b/frontend/src/router/router.jsx
+index 27ce2a727cc3193a9a7988a6920465a517cb48ab..864b3f761537e0bc7626e69279b5c79034458190 100644
+--- a/frontend/src/router/router.jsx
++++ b/frontend/src/router/router.jsx
+@@ -25,6 +25,8 @@ import BusinessInfo from "../pages/owner/settings/BusinessInfo";
+ import OwnerSubscription from "../pages/owner/settings/Subscription";
+ import PrivacySetting from "../pages/owner/settings/PrivacySetting";
+ import HelpSupport from "../pages/owner/settings/HelpSupport";
++import { CalEatsEmbeddedPage } from "../components/cal-eats/CalEatsWorkspace";
++import { WORKSPACE_TOOLS, workspacePath } from "../components/cal-eats/workspace-model.mjs";
+ 
+ // auth
+ import LogIn from "../pages/auth/LogIn";
+@@ -82,6 +84,8 @@ const router = createBrowserRouter([
+     children: [
+        // owner
+       { path: "/owner/dashboard", element: <OwnerDashboard /> },
++      { path: "/owner/accounts-connections", element: <CalEatsEmbeddedPage /> },
++      ...WORKSPACE_TOOLS.map(({ view }) => ({ path: workspacePath(view), element: <CalEatsEmbeddedPage /> })),
+       { path: "/owner/agents", element: <AgentList /> },
+       { path: "/owner/call-summary", element: <CallSummary /> },
+       { path: "/owner/order-list", element: <OrderList /> },
+@@ -128,4 +132,4 @@ const router = createBrowserRouter([
+   // },
+ ]);
+ 
+-export default router;
+\ No newline at end of file
++export default router;

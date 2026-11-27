@@ -10,6 +10,7 @@ import {startOperationalPresence,stopOperationalPresence} from "./surface-presen
 import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
 import {calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
 import { EMBEDDED_PARENT_ORIGIN, embeddedCommand, embeddedState } from "./embedded-business-model.js";
+import { useOrderAlerts } from "./NewOrderAlerts.jsx";
 import "./UnifiedBusiness.css";
 
 const BusinessContext = createContext(null);
@@ -82,9 +83,8 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
+  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), tabletMode: !signedResource.error ? signedConfiguration?.selection || null : null, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
     <OperationalSurfacePresence business={business} terminal={terminal}/>
-    {embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}
     <Resource {...context}>
       {selectionError && <p className="alert" role="alert">{selectionError}</p>}
       {startupAssignment ? <CalaiTabletStartup assignment={startupAssignment} allowConnections={business?.canConnectProducts === true}
@@ -143,10 +143,22 @@ export function EmbeddedSessionBridge({ enabled, user }) {
   useEffect(() => { if (enabled && !user) window.parent.postMessage(embeddedState(null, null, null, false), EMBEDDED_PARENT_ORIGIN); }, [enabled, user?.id]);
   return null;
 }
-function EmbeddedBusinessBridge() {
+export function EmbeddedBusinessBridge({ allowedPathList }) {
   const workspace = useBusinessWorkspace(), business = workspace?.business;
-  const dashboard = useBusinessResource(business ? "/api/business/dashboard" : null, { poll: 30000 });
-  useEffect(() => { const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, null, Boolean(business && !workspace.error)); const send=()=>window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN); send();const timer=setInterval(send,30000);return()=>clearInterval(timer); }, [business, workspace.error, dashboard.value, dashboard.error]);
+  const mode = workspace?.mode, tabletMode = workspace?.tabletMode;
+  const alerts = useOrderAlerts();
+  const age = Date.now() - Date.parse(alerts?.lastCheckedAt);
+  const pendingOrderCount = alerts?.available && !alerts.error && age >= 0 && age <= 45_000 ? alerts.total : null;
+  const dashboard = useBusinessResource(business && mode === "both" ? "/api/business/dashboard" : null, { poll: 30000, scope: business?.id });
+  useEffect(() => {
+    const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, null,
+      Boolean(business && !workspace.error),
+      { mode, tabletMode, pendingOrderCount, paths: new Set(allowedPathList.split("\n")) });
+    const send = () => window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN);
+    send();
+    const timer = setInterval(send, 30000);
+    return () => clearInterval(timer);
+  }, [business, workspace.error, dashboard.value, dashboard.error, mode, tabletMode, pendingOrderCount, allowedPathList]);
   return null;
 }
 export function BusinessAccountSwitcher() {
