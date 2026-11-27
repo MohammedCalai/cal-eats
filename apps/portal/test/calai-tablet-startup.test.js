@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai} from '../src/calai-tablet-startup.js';
+import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai, ownerCombinedWorkspaceLink} from '../src/calai-tablet-startup.js';
 
 const businessId = '11111111-1111-4111-8111-111111111111';
 const terminalId = '22222222-2222-4222-8222-222222222222';
@@ -11,6 +11,18 @@ const context = {
   id: businessId, principalKind: 'terminal', tabletConfiguration, canViewCalai: true,
   products: {calai: {active: true, linked: true, allowedOnTablet: true, readiness: {ready: true}}},
 };
+
+test('a verified owner can intentionally open the native combined view without a tablet identity', () => {
+  const owner = {principalKind:'human',ownerCombinedWorkspace:true};
+  const workspace = {mode:'both',embedded:false,terminal:{status:'connection_unavailable'}};
+  const link = ownerCombinedWorkspaceLink(owner,workspace);
+  assert.equal(link,'https://calai.info/owner/dashboard?workspace=both');
+  assert.equal(new URL(link).hash,'');
+  assert.equal(ownerCombinedWorkspaceLink({...owner,ownerCombinedWorkspace:false},workspace),null);
+  assert.equal(ownerCombinedWorkspaceLink({...owner,principalKind:'terminal'},workspace),null);
+  for (const change of [{mode:'cal-eats'},{mode:'calai'},{embedded:true},{terminal:{status:'ready'}},{terminal:{status:'connecting'}}])
+    assert.equal(ownerCombinedWorkspaceLink(owner,{...workspace,...change}),null);
+});
 
 test('only a paired tablet with an exact signed Calai-only assignment can launch Calai', () => {
   assert.equal(calaiTabletAssignment(terminal, context, businessId).authorised, true);

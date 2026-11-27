@@ -27,7 +27,7 @@ async function fixture(t, options){
     try{const handled=await routeTabletFleet({req,res,url:new URL(target,f.config.origin),db:f.db,config:f.config,session,directoryReader,installerBuilder});if(!handled&&!result)result={status:404,text:'{}'};}catch(error){result={status:error.status??500,text:JSON.stringify({error:{code:error.code,message:error.message}})};}
     return{...result,body:result.headers?.['Content-Type']==='application/octet-stream'?null:JSON.parse(result.text)};
   }
-  return{...f,fleet,adminSession,ownerCookie};
+  return{...f,fleet,adminSession,adminCookie,ownerCookie};
 }
 
 test('additive application policy preserves existing defaults and intersects product rights without changing native records',()=>{
@@ -244,6 +244,8 @@ test('native Both launches only for the designated tablet and records a receipt 
   const count = () => f.db.prepare('SELECT COUNT(*) n FROM tablet_application_receipts').get().n;
   assert.equal((await send('open_both', tablet.terminalId)).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
   assert.equal((await tablet.json('/api/business/context')).body.data.nativeBothLaunch, undefined);
+  const ownerContext = async () => (await f.json('/api/business/context',{cookie:f.ownerCookie})).body.data;
+  assert.equal((await ownerContext()).ownerCombinedWorkspace,undefined,'No owner entry for another fleet row');
   // Inventory identity and signed terminal identity can be distinct.
   f.db.prepare('UPDATE admin_tablets SET id=? WHERE terminal_id=?').run(tabletId, tablet.terminalId);
   const oldReceivedAt = f.config.now().toISOString();
@@ -251,6 +253,11 @@ test('native Both launches only for the designated tablet and records a receipt 
   f.advance(1000);
   const currentContext=(await tablet.json('/api/business/context')).body.data;
   assert.equal(currentContext.nativeBothLaunch, true);
+  assert.equal(currentContext.ownerCombinedWorkspace,undefined);
+  const humanContext=await ownerContext();
+  assert.equal(humanContext.ownerCombinedWorkspace,true);
+  assert.equal(humanContext.tabletConfiguration,undefined,'The human link carries no tablet scope or receipt');
+  assert.equal((await f.json('/api/business/context',{cookie:f.adminCookie})).body.data?.ownerCombinedWorkspace,undefined);
   assert.equal(currentContext.tabletConfiguration.receivedAt, null, 'An existing standalone receipt does not prove native presentation');
   assert.equal((await f.json('/api/business/context', {cookie:f.ownerCookie})).body.data.nativeBothLaunch, undefined);
   assert.equal((await f.json(route, {method:'POST',cookie:f.ownerCookie,body:body('both_rendered')})).status, 403);
@@ -268,6 +275,7 @@ test('native Both launches only for the designated tablet and records a receipt 
   assert.equal(count(), 1);
   assert.equal((await f.allow('calai', false)).status, 200);
   assert.equal((await send('open_both')).body.error.code, 'TABLET_PRODUCT_NOT_READY');
+  assert.equal((await ownerContext()).ownerCombinedWorkspace,undefined,'The fallback is withdrawn when a product loses readiness');
   assert.equal((await send('both_rendered')).body.error.code, 'TABLET_PRODUCT_NOT_READY');
 });
 

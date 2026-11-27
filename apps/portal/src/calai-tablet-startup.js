@@ -1,6 +1,11 @@
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CALAI_SIGN_IN = "https://calai.info/auth/login?workspace=calai";
 const BOTH_DASHBOARD = "https://calai.info/owner/dashboard?workspace=both";
+export function ownerCombinedWorkspaceLink(business, workspace) {
+  return business?.principalKind === "human" && business.ownerCombinedWorkspace === true &&
+    workspace?.mode === "both" && !workspace.embedded && !["connecting","ready"].includes(workspace.terminal?.status)
+    ? BOTH_DASHBOARD : null;
+}
 const readyProduct = product => product?.linked === true && product.active === true &&
   product.allowedOnTablet === true && product.readiness?.ready === true;
 

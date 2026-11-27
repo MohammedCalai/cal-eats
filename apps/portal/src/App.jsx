@@ -24,6 +24,7 @@ import { businessReturnPath } from "./model.js";
 import RefinedMenu from "./MenuWorkspace.jsx";
 import DeliverySettings from "./DeliverySettings.jsx";
 import OwnerDashboardView, { DashboardCsvDownload } from "./OwnerDashboard.jsx";
+import {ownerCombinedWorkspaceLink} from "./calai-tablet-startup.js";
 import { OrderActivityDashboard } from "./DashboardOrderActivity.jsx";
 import EarningsPage from "./EarningsPage.jsx";
 import MerchantAgreement from "./MerchantAgreement.jsx";
@@ -402,7 +403,7 @@ function OwnerDashboard() {
   const products = dashboardOrderProducts(business);
   if (restaurant && mode !== "calai") return <OwnerDashboardView key={`${restaurant.id}:${permission}`}
     restaurant={restaurant} permission={permission} userId={user.id} canOperate={canOperate}
-    business={business} products={products} workspaceMode={mode}/>;
+    business={business} products={products} workspaceMode={mode} combinedLink={ownerCombinedWorkspaceLink(business,workspace)}/>;
   if (business && mode !== "cal-eats") return <OrderActivityDashboard business={business} products={products} workspaceMode={mode}
     onRetryRestaurant={eatsError ? refreshRestaurants : undefined}/>;
   return <>

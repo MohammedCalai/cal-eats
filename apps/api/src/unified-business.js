@@ -346,6 +346,15 @@ export async function routeUnifiedBusiness({req,res,url,db,config,session,checkR
   if(req.method==='GET'&&url.pathname==='/api/business/context'){
     const data=selectedContext(db,session,config);
     if(!session.nativeAudience&&data.principalKind==='human'&&managedTabletAwaitingBrowser(db,config,data.id))data.managedTabletAwaitingConnection=true;
+    if (!session.nativeAudience && data.principalKind === 'human' && user.role === 'restaurant' &&
+        config.nativeBothTabletId && data.canViewCalai && data.canViewEats && data.canConnectProducts &&
+        ['calai','cal-eats'].every(key => data.products[key]?.active && data.products[key]?.linked && data.products[key]?.readiness?.ready)) {
+      const pilot = db.prepare(`SELECT 1 FROM admin_tablets a JOIN business_terminals t
+        ON t.id=a.terminal_id AND t.business_id=a.business_id AND t.revoked_at IS NULL
+        WHERE a.id=? AND a.business_id=? AND a.application_products='both' AND a.lifecycle_state='assigned'
+          AND a.archived_at IS NULL AND a.authority_blocked_at IS NULL`).get(config.nativeBothTabletId.trim().toLowerCase(),data.id);
+      if (pilot) data.ownerCombinedWorkspace = true;
+    }
     return sendJson(res,200,{data},noStore);
   }
   if(req.method==='GET'&&url.pathname==='/api/business/accounts')return sendJson(res,200,{data:terminal(session)?[selectedContext(db,session,config)]:accountIds(db,user).map(id=>({...businessAccountState(db,id),canManageProducts:access(db,session,id).canManageProducts}))},noStore);
