@@ -47,7 +47,7 @@ function ApplicationForm({row,device,onSaved,onCancel}){
       const payload=tabletApplicationPayload({displayName,businessId,applicationProducts:products},{creating:!row,expectedRevision:row?.revision});
       const path=row?tabletRecordPath(row.id,'configuration'):tabletDirectoryAssignmentPath(device.intuneManagedDeviceId);
       return api(path,json('POST',payload));
-    },saved=>onSaved(saved,retrySetup?'Tablet connection retry requested.':'Tablet settings saved.'));
+    },saved=>onSaved(saved,retrySetup?'Tablet connection retry requested.':row?.applicationAccess?.paired?'App choice saved.':'Tablet settings saved.'));
   }
   return <form onSubmit={save}>
     <Notice error={action.error}/>
@@ -55,7 +55,7 @@ function ApplicationForm({row,device,onSaved,onCancel}){
     <LocationPicker value={businessId} selected={business} disabled={action.busy||!available} onChange={(id,item)=>{setBusinessId(id);setBusiness(item);setProducts('');}}/>
     <ModePicker value={products} business={business} disabled={action.busy||!available} startsConnection={startsConnection} onChange={setProducts}/>
     {business&&<Link className="tablet-text-link" to={`/admin/business-accounts?business=${encodeURIComponent(business.id)}`}>View this business’s product connections →</Link>}
-    <div className="button-row"><button className="primary" disabled={action.busy||!canSave}>{action.busy?'Saving…':retrySetup?'Retry tablet connection':row||startsManagedSetup?'Save tablet access':'Assign tablet'}</button>{onCancel&&<button className="quiet" type="button" disabled={action.busy} onClick={onCancel}>Cancel</button>}</div>
+    <div className="button-row"><button className="primary" disabled={action.busy||!canSave}>{action.busy?'Saving…':retrySetup?'Retry tablet connection':row?.applicationAccess?.paired?'Apply to tablet':row||startsManagedSetup?'Save tablet access':'Assign tablet'}</button>{onCancel&&<button className="quiet" type="button" disabled={action.busy} onClick={onCancel}>Cancel</button>}</div>
   </form>;
 }
 function AccessActions({row,onSaved}){
@@ -77,7 +77,7 @@ function TabletDetail({row,onChanged,onReload,onBack}){
       <header className="tablet-editor-heading"><span className="tablet-device-mark" aria-hidden="true">▯</span><div><p className="eyebrow">Restaurant tablet</p><h2>{row.displayName}</h2><p>{row.serialNumber?`Serial ${row.serialNumber}`:'Serial not available'} · {row.business?.name||'Unassigned'}</p></div></header>
       {restricted?<p className="alert">{row.lifecycleState==='pending_handoff'?'This tablet is quarantined. A supported physical handoff is required before it can receive access to another business.':'This tablet’s Cal-Eats application access is disabled.'}</p>:<div className="tablet-detail-heading">
         <p className="tablet-receipt-status" role="status">{label}{receivedAt?` · ${date(receivedAt)}`:requestedAt?` · Requested ${date(requestedAt)}`:''}</p>
-        <button type="button" className="quiet" onClick={()=>void onReload()}>Refresh status</button>
+        <button type="button" className="quiet" onClick={()=>void onReload()}>Refresh status</button>{row.applicationAccess?.paired && !receivedAt && <p className="fine">{row.applicationAccess.listening ? "The tablet is connected and checking its app choice." : "Open the business app shortcut on the Surface to receive this choice."}{row.registration?.lastContactAt && ` Last tablet contact: ${date(row.registration.lastContactAt)}.`}</p>}
       </div>}
       {!restricted&&row.applicationAccess?.calaiApprovalRequired&&<p className="fine">
         The restaurant owner needs to select <strong>Allow Calai on this tablet</strong> in Accounts &amp; connections.

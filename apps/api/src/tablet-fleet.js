@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {tabletModeWatch} from './tablet-mode-watch.js';
 import {HttpError,exactObject,readJson,sendJson} from './http.js';
 import {withTransaction} from './db/index.js';
 import {hasLiveBankingCredential} from './auth/password-change.js';
@@ -67,7 +68,7 @@ function applicationAccess(db,row,business,config){
  const calai=business?.products?.calai;
  const calaiApprovalRequired=Boolean(paired&&row.lifecycle_state==='assigned'&&['calai','both'].includes(selection)&&
    calai?.active&&calai.readiness?.ready&&!terminalHasCalaiAuthority(db,row.terminal_id,row.business_id));
- return{selection,choices:modes,paired,calaiApprovalRequired,configuration:tabletApplicationConfiguration(db,row.terminal_id,row.business_id,config),scope:'protected_cal_eats_application',windowsStartupChanged:false,nativeCalaiChanged:false};
+ return{selection,choices:modes,paired,calaiApprovalRequired,listening:paired&&tabletModeWatch(db).listening(row.id),configuration:tabletApplicationConfiguration(db,row.terminal_id,row.business_id,config),scope:'protected_cal_eats_application',windowsStartupChanged:false,nativeCalaiChanged:false};
 }
 function audit(db,actor,id,action,before,after,at,reason=null){db.prepare('INSERT INTO audit_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),actor,'tablet_fleet',id,action,JSON.stringify({product:'cal-eats-integration',previous:before? snapshot(before):null,current:after?snapshot(after):null,reason,windowsConfigurationChanged:false,calaiUnchanged:true}),at);}
 function requestConfiguration(db,row,userId,at){
@@ -154,6 +155,7 @@ export async function routeTabletFleet(context){
    const after=rowFor(db,before.id);queueTabletManagedSetup(db,config,after,actor.id);
    audit(db,actor.id,before.id,'tablet_application_access_updated',before,after,at,'Device-scoped application access; current native rights and protected pairing still apply. Windows startup and native Calai are unchanged.');return after;
   });
+  tabletModeWatch(db).changed(outcome.id);
   return sendJson(res,200,{data:dto(db,config,outcome,{history:true,actorId:admin.id})},noStore);
  }
  if(req.method==='GET'&&url.pathname===base+'/locations'){

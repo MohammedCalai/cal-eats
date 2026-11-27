@@ -1,8 +1,8 @@
 {
   "officialCommit": "246c09f4a6d224f09a813e20ee496b0eddf5e4df",
   "officialTree": "def82647c395f9f0607a332d04e9b48740c245d9",
-  "candidateTree": "7f2ff712082ccfb44361c4331397ba3f3c3de47d",
-  "patchSHA256": "306963bda73e4e9a551a6070ac8ebf846414790a74120d74d6c69adfb445a084",
+  "candidateTree": "14828bb364e67d62baeaf699f0af7580e5158251",
+  "patchSHA256": "0aadf8a2cc810dfea58f22f9e2e45dbd88b7001235f6184e83d0a851f02fb1e3",
   "patchVerifiedAgainstPristineIndex": true,
   "nativeRepositoryWorkingTreeClean": true,
   "changedPaths": [
@@ -11,9 +11,12 @@
     "frontend/public/both-calai-mark.png",
     "frontend/src/components/cal-eats/CalEatsWorkspace.jsx",
     "frontend/src/components/cal-eats/CombinedLiveActivity.jsx",
+    "frontend/src/components/cal-eats/TabletModeConnection.jsx",
     "frontend/src/components/cal-eats/business-message-audio.js",
     "frontend/src/components/cal-eats/business-message-melody-player.js",
     "frontend/src/components/cal-eats/combined-live-activity.css",
+    "frontend/src/components/cal-eats/tablet-host.mjs",
+    "frontend/src/components/cal-eats/tablet-host.test.mjs",
     "frontend/src/components/cal-eats/useHostedMessageReminder.js",
     "frontend/src/components/cal-eats/workspace-chrome.css",
     "frontend/src/components/cal-eats/workspace-live-stats.mjs",

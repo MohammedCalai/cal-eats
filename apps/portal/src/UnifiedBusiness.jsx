@@ -9,6 +9,7 @@ import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
 import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
 import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
+import {configurationChanged,readMode,sameConfiguration,startTabletModeWatch} from "./tablet-mode-watch.js";
 import { EMBEDDED_PARENT_ORIGIN, acceptsHostedMessageSound, embeddedCommand, embeddedState } from "./embedded-business-model.js";
 import { useOrderAlerts } from "./NewOrderAlerts.jsx";
 import { useBusinessMessageAlerts } from "./BusinessMessageReminder.jsx";
@@ -55,12 +56,28 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
   const signedResource = tabletScope ? tabletContext : context;
   const signedContext = pairedWithBusiness ? signedResource.value : null;
   const signedConfiguration = signedContext?.tabletConfiguration;
+  const signedIdentity = pairedWithBusiness ? terminal.context.businessId : null;
+  const latest = useRef(null);
+  latest.current = { configuration: signedConfiguration, reload: signedResource.reload };
+  useEffect(() => {
+    if (!signedIdentity) return;
+    const refreshChanged = configuration => {
+      if (!sameConfiguration(latest.current.configuration,configuration)) void latest.current.reload();
+    };
+    if (embedded) {
+      const refresh = event => refreshChanged(event.detail);
+      window.addEventListener(configurationChanged,refresh);
+      return () => window.removeEventListener(configurationChanged,refresh);
+    }
+    if (!automaticStartupAllowed?.()) return;
+    return startTabletModeWatch({read:signal=>readMode(terminalApi,signedIdentity,signal),observed:refreshChanged});
+  },[signedIdentity,terminal.context?.terminalId,embedded,automaticStartupAllowed]);
   const configurationReadAt = signedResource.updatedAt;
   const location = useLocation();
-  const startupPage = location.pathname.replace(/\/+$/, "") === "/owner/dashboard" && !embedded &&
+  const startupPage = /^\/owner(?:\/|$)/.test(location.pathname) && !embedded &&
     window.top === window && automaticStartupAllowed?.() === true;
   const assignment = !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
-  const startupAssignment = startupPage ? assignment : null;
+  const startupAssignment = startupPage && (assignment?.authorised || location.pathname.replace(/\/+$/,"") === "/owner/dashboard") ? assignment : null;
   const requiresHostReceipt = signedContext?.nativeBothLaunch === true && signedConfiguration?.selection === "both";
   const presentation = embedded && assignment?.selection === "both" && assignment.authorised ? assignment : null;
   const [renderedKey, setRenderedKey] = useState(null);
@@ -76,7 +93,8 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
   useEffect(() => {
     const businessId = business?.id, terminalId = terminal.context?.terminalId;
     const revision = signedConfiguration?.revision, tabletId = signedConfiguration?.tabletId;
-    if (signedResource.error || startupAssignment?.authorised || (requiresHostReceipt && (!presentation || renderedKey !== presentation.key)) ||
+    if (signedResource.error || startupAssignment?.authorised || (embedded && !requiresHostReceipt) || signedConfiguration?.selection === "calai" ||
+      (requiresHostReceipt && (!presentation || renderedKey !== presentation.key)) ||
       !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
       signedConfiguration.receivedAt || signedConfiguration.status === "received") return;
     const key = `${businessId}:${terminalId}:${tabletId}:${revision}`;
@@ -88,7 +106,7 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
       .catch(() => { /* Try again when the signed context is refreshed. */ })
       .finally(() => { if (sending.current === key) sending.current = null; });
   }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised,
-    signedResource.error, requiresHostReceipt, renderedKey, presentation?.key]);
+    signedResource.error, requiresHostReceipt, renderedKey, presentation?.key, embedded]);
   const [selecting, setSelecting] = useState(false), [selectionError, setSelectionError] = useState("");
   const navigate = useNavigate(), working = useRef(false);
   async function selectAccount(id) {
@@ -120,7 +138,7 @@ function CalaiTabletStartup({ assignment, allowConnections, automaticStartupAllo
       const device = terminalStatus();
       return automaticStartupAllowed() && current.current.authorised && current.current.key === expected.key &&
         device.status === "ready" && device.paired && device.context?.terminalId === expected.terminalId &&
-        device.context.businessId === expected.businessId && /^\/business\/owner\/dashboard\/*$/.test(window.location.pathname);
+        device.context.businessId === expected.businessId && /^\/business\/owner(?:\/|$)/.test(window.location.pathname);
     };
     void openAssignedCalai({ assignment, request: terminalApi, isCurrent, signal: controller.signal,
       replace: destination => window.location.replace(destination) })

@@ -1,6 +1,11 @@
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CALAI_SIGN_IN = "https://calai.info/auth/login?workspace=calai";
 const BOTH_DASHBOARD = "https://calai.info/owner/dashboard?workspace=both";
+export function ownerCombinedWorkspaceLink(business, workspace) {
+  return business?.principalKind === "human" && business.ownerCombinedWorkspace === true &&
+    workspace?.mode === "both" && !workspace.embedded && !["connecting","ready"].includes(workspace.terminal?.status)
+    ? BOTH_DASHBOARD : null;
+}
 const readyProduct = product => product?.linked === true && product.active === true &&
   product.allowedOnTablet === true && product.readiness?.ready === true;
 
@@ -33,7 +38,7 @@ export async function openAssignedCalai({ assignment, request, isCurrent, signal
   if (!assignment?.authorised || signal.aborted || !isCurrent(assignment)) return false;
   const result = await request(`/api/business/accounts/${assignment.businessId}/surface/heartbeat`, {
     method: "POST", signal,
-    body: JSON.stringify({ state: assignment.selection === "both" ? "open_both" : "open_calai", configurationTabletId: assignment.tabletId, configurationRevision: assignment.revision }),
+    body: JSON.stringify({ state: assignment.selection === "both" ? "open_both" : "confirm_calai_launch", configurationTabletId: assignment.tabletId, configurationRevision: assignment.revision }),
   });
   if (signal.aborted || !isCurrent(assignment)) return false;
   const confirmed = result?.tabletConfiguration;
@@ -42,6 +47,7 @@ export async function openAssignedCalai({ assignment, request, isCurrent, signal
   }
   // The original site must authenticate its own browser. The tablet grant is
   // never sent to the native domain and cannot verify an existing native cookie.
-  replace(assignment.selection === "both" ? BOTH_DASHBOARD : CALAI_SIGN_IN);
+  const destination = assignment.selection === "both" ? BOTH_DASHBOARD : CALAI_SIGN_IN;
+  replace(`${destination}&tabletWorkspace=1#tablet=${assignment.businessId}.${assignment.tabletId}`);
   return true;
 }

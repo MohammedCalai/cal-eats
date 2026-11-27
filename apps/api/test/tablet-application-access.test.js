@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,generateKeyPairSync,sign} from 'node:crypto';
 import {Readable} from 'node:stream';
+import {createServer} from 'node:http';
+import {createApp} from '../src/app.js';
+import {tabletModeWatch} from '../src/tablet-mode-watch.js';
 import {DatabaseSync} from 'node:sqlite';
 import {businessFixture} from './unified-business-test-fixture.js';
 import {enrolRegisteredTablet} from './registered-tablet-fixture.js';
@@ -24,7 +27,7 @@ async function fixture(t, options){
     try{const handled=await routeTabletFleet({req,res,url:new URL(target,f.config.origin),db:f.db,config:f.config,session,directoryReader,installerBuilder});if(!handled&&!result)result={status:404,text:'{}'};}catch(error){result={status:error.status??500,text:JSON.stringify({error:{code:error.code,message:error.message}})};}
     return{...result,body:result.headers?.['Content-Type']==='application/octet-stream'?null:JSON.parse(result.text)};
   }
-  return{...f,fleet,adminSession,ownerCookie};
+  return{...f,fleet,adminSession,adminCookie,ownerCookie};
 }
 
 test('additive application policy preserves existing defaults and intersects product rights without changing native records',()=>{
@@ -116,7 +119,7 @@ test('device product command is atomic, refreshes valid grant scope, preserves l
   assert.equal(checkout.status,409,checkout.text);
   assert.equal(checkout.body.error.code,'TABLET_PRODUCT_INACTIVE');
   assert.doesNotMatch(checkout.body.error.message,/tablet/i);
-  assert.equal(context.eatsRestaurantId,f.restaurant.id);assert.equal((await receipt(context.tabletConfiguration.revision)).status,200,'Configuration acknowledgement works in Calai-only application mode without an Eats operational grant');
+  assert.equal(context.eatsRestaurantId,f.restaurant.id);assert.equal((await receipt(context.tabletConfiguration.revision)).body.error.code,'CALAI_WORKSPACE_REQUIRED','The Eats workspace cannot acknowledge the original Calai display');
   f.db.prepare("INSERT INTO device_print_jobs(id,printer_id,order_id,operation_key,receipt,status,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?)").run(randomUUID(),printer.id,order,randomUUID(),JSON.stringify({testReceipt:true}),at,at);
   assert.equal((await claim()).body.data.job,null,'A delayed Eats job cannot dispatch after the active tablet excludes Eats');assert.equal((await acknowledge()).status,200,'Existing acknowledgements can still reconcile after a mode switch');
   f.db.prepare("DELETE FROM business_product_authorities WHERE business_id=? AND product='calai'").run(f.business.id);assert.equal((await tablet.json('/api/business/calai/orders')).status,403,'Device mode never creates native owner proof');
@@ -146,7 +149,31 @@ test('opening Calai requires the exact authorised tablet and current Calai-only 
 
   const both = await configure('both', 1);
   assert.equal((await openCalai(body(both))).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
+  const watch = {method:'POST',body:{state:'watch_configuration'}};
+  assert.equal((await f.json(route,{...watch,cookie:f.ownerCookie})).status,403,'An owner browser cannot subscribe as the tablet');
+  const issued = await tablet.json(route,watch);
+  assert.equal(issued.status,200,issued.text);
+  assert.equal(issued.body.data.tabletConfiguration.revision,both);
+  const wait = {method:'POST',body:{ticket:issued.body.data.ticket}};
+  const additional = await tablet.json(route,watch);
+  const server = createServer();
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();server.close();});
+  const host = '127.0.0.1:'+server.address().port, origin='http://'+host;
+  server.on('request',createApp({db:f.db,config:{...f.config,expectedHost:host,origin}}));
+  const socketWait = fetch(origin+'/api/business/tablet-mode-watch',{
+    method:'POST',headers:{'content-type':'application/json',Origin:origin},
+    body:JSON.stringify({ticket:additional.body.data.ticket}),signal:AbortSignal.timeout(7000)
+  });
+  const deadline=Date.now()+5000, hub=tabletModeWatch(f.db);
+  while (!hub.listening(terminalId) && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,5));
+  assert.equal(hub.listening(terminalId),true,'The real server accepted the outstanding device-specific wake request');
   const current = await configure('calai', both);
+  assert.deepEqual(await (await socketWait).json(),{data:{check:true}},'A real connected socket wakes after the administrative Save commits');
+  const wake = await f.json('/api/business/tablet-mode-watch',wait);
+  assert.deepEqual(wake.body,{data:{check:true}},'A committed Save before the listener attaches still wakes it, with no mode or user data');
+  assert.equal((await f.json('/api/business/tablet-mode-watch',wait)).status,403,'The wake ticket works once');
+  assert.equal((await tablet.json(route,watch)).body.data.tabletConfiguration.revision,current);
   const unsigned = await f.json(route, { method: 'POST', cookie: f.ownerCookie, body: body(current) });
   assert.equal(unsigned.status, 403);
   assert.equal((await openCalai(body(both))).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
@@ -160,18 +187,23 @@ test('opening Calai requires the exact authorised tablet and current Calai-only 
     method: 'POST', cookie: f.ownerCookie, body: { expectedTerminalId: terminalId },
   });
   assert.equal(approval.status, 200, approval.text);
+  const currentContext = (await tablet.json('/api/business/context')).body.data;
+  const rendered = body(current,{state:'calai_rendered',nativeAccountId:currentContext.products.calai.sourceAccountId});
   const first = tablet.options(route, { method: 'POST', body: body(current) });
   const allowed = await f.json(route, first);
   assert.equal(allowed.status, 200, allowed.text);
   assert.equal(allowed.headers.get('cache-control'), 'private, no-store');
   assert.equal(allowed.headers.has('set-cookie'), false);
-  assert.deepEqual(allowed.body, { data: { tabletConfiguration: {
+  assert.equal(allowed.body.data.tabletConfiguration.receivedAt,null,'Opening sign-in cannot confirm the native business display');
+  assert.equal((await openCalai({...rendered,nativeAccountId:'another-restaurant'})).body.error.code,'CALAI_ACCOUNT_MISMATCH');
+  const actual = await openCalai(rendered);
+  assert.deepEqual(actual.body, { data: { tabletConfiguration: {
     tabletId: terminalId, revision: current, selection: 'calai', status: 'received',
     receivedAt: f.config.now().toISOString()
   } } });
   assert.equal((await f.json(route, first)).body.error.code, 'TERMINAL_REQUEST_REPLAYED');
   f.advance(1000);
-  assert.deepEqual((await openCalai(body(current))).body, allowed.body, 'The current receipt is idempotent');
+  assert.deepEqual((await openCalai(rendered)).body, actual.body, 'The current receipt is idempotent');
   assert.equal(receiptCount(), 1);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM surface_application_presence').get().n, 0);
 
@@ -212,6 +244,8 @@ test('native Both launches only for the designated tablet and records a receipt 
   const count = () => f.db.prepare('SELECT COUNT(*) n FROM tablet_application_receipts').get().n;
   assert.equal((await send('open_both', tablet.terminalId)).body.error.code, 'TABLET_CONFIGURATION_CHANGED');
   assert.equal((await tablet.json('/api/business/context')).body.data.nativeBothLaunch, undefined);
+  const ownerContext = async () => (await f.json('/api/business/context',{cookie:f.ownerCookie})).body.data;
+  assert.equal((await ownerContext()).ownerCombinedWorkspace,undefined,'No owner entry for another fleet row');
   // Inventory identity and signed terminal identity can be distinct.
   f.db.prepare('UPDATE admin_tablets SET id=? WHERE terminal_id=?').run(tabletId, tablet.terminalId);
   const oldReceivedAt = f.config.now().toISOString();
@@ -219,6 +253,11 @@ test('native Both launches only for the designated tablet and records a receipt 
   f.advance(1000);
   const currentContext=(await tablet.json('/api/business/context')).body.data;
   assert.equal(currentContext.nativeBothLaunch, true);
+  assert.equal(currentContext.ownerCombinedWorkspace,undefined);
+  const humanContext=await ownerContext();
+  assert.equal(humanContext.ownerCombinedWorkspace,true);
+  assert.equal(humanContext.tabletConfiguration,undefined,'The human link carries no tablet scope or receipt');
+  assert.equal((await f.json('/api/business/context',{cookie:f.adminCookie})).body.data?.ownerCombinedWorkspace,undefined);
   assert.equal(currentContext.tabletConfiguration.receivedAt, null, 'An existing standalone receipt does not prove native presentation');
   assert.equal((await f.json('/api/business/context', {cookie:f.ownerCookie})).body.data.nativeBothLaunch, undefined);
   assert.equal((await f.json(route, {method:'POST',cookie:f.ownerCookie,body:body('both_rendered')})).status, 403);
@@ -236,6 +275,7 @@ test('native Both launches only for the designated tablet and records a receipt 
   assert.equal(count(), 1);
   assert.equal((await f.allow('calai', false)).status, 200);
   assert.equal((await send('open_both')).body.error.code, 'TABLET_PRODUCT_NOT_READY');
+  assert.equal((await ownerContext()).ownerCombinedWorkspace,undefined,'The fallback is withdrawn when a product loses readiness');
   assert.equal((await send('both_rendered')).body.error.code, 'TABLET_PRODUCT_NOT_READY');
 });
 

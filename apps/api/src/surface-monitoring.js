@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {tabletModeWatch} from './tablet-mode-watch.js';
 import {HttpError,exactObject,readJson,sendJson} from './http.js';
 import {businessMonitoringContext,registeredCalaiApprovalTarget,terminalHasCalaiAuthority} from './business-product-policy.js';
 import {assertBusinessTerminalSessionLive} from './business-terminals.js';
@@ -78,7 +79,7 @@ export function evaluateSurfaceMonitoring(db,config,{limit=10000}={}){if(evaluat
 function page(url){const value=Number(url.searchParams.get('page')??1),pageSize=Number(url.searchParams.get('pageSize')??25);if(!Number.isInteger(value)||value<1||!Number.isInteger(pageSize)||pageSize<1||pageSize>100)throw fail(400,'VALIDATION_ERROR','Pagination is invalid.');return{page:value,pageSize,offset:(value-1)*pageSize};}
 function incidents(db,userId,restaurantId,url){const p=page(url),total=db.prepare('SELECT COUNT(*) n FROM business_device_incidents WHERE restaurant_id=?').get(restaurantId).n;const items=db.prepare('SELECT i.*,r.name restaurant_name,x.read_at FROM business_device_incidents i JOIN restaurants r ON r.id=i.restaurant_id LEFT JOIN business_device_incident_reads x ON x.incident_id=i.id AND x.user_id=? WHERE i.restaurant_id=? ORDER BY i.last_observed_at DESC,i.id LIMIT ? OFFSET ?').all(userId,restaurantId,p.pageSize,p.offset).map(i=>({id:i.id,product:'cal-eats',restaurantId:i.restaurant_id,restaurantName:i.restaurant_name,type:i.kind,state:i.status==='resolved'?'resolved':'active',reason:parse(i.last_evidence,{}).reason??i.fault_code,title:i.title,message:i.message,openedAt:i.opened_at??i.first_observed_at,resolvedAt:i.resolved_at,lastObservedAt:i.last_observed_at,readAt:i.read_at??null,closedReason:i.closed_reason}));return{items,pagination:{page:p.page,pageSize:p.pageSize,total,totalPages:Math.max(1,Math.ceil(total/p.pageSize))}};}
 function confirmTabletConfiguration(db, config, session, businessId, body) {
-  exactObject(body, ['state', 'configurationTabletId', 'configurationRevision']);
+  exactObject(body, ['state', 'configurationTabletId', 'configurationRevision', ...(body.state === 'calai_rendered' ? ['nativeAccountId'] : [])]);
   if (session?.principalKind !== 'terminal' || session.businessId !== businessId || !session.terminalGrantHash) {
     throw fail(403, 'OPERATIONAL_SURFACE_REQUIRED', 'Use the registered restaurant tablet.');
   }
@@ -93,7 +94,7 @@ function confirmTabletConfiguration(db, config, session, businessId, body) {
       }
 
       const target = registeredCalaiApprovalTarget(db, businessId);
-      const selection = body.state === 'open_calai' ? 'calai' : 'both';
+      const selection = ['open_calai','confirm_calai_launch','calai_rendered'].includes(body.state) ? 'calai' : 'both';
       if (target?.id !== session.terminalId || !current || target.tablet_id !== current.tabletId ||
           current.tabletId !== body.configurationTabletId || current.revision !== body.configurationRevision ||
           current.selection !== selection || (selection === 'both' && !nativeBothPilot(config, current))) {
@@ -105,17 +106,32 @@ function confirmTabletConfiguration(db, config, session, businessId, body) {
       if (!terminalHasCalaiAuthority(db, session.terminalId, businessId)) {
         throw fail(403, 'CALAI_AUTHORITY_REQUIRED', 'The restaurant owner must confirm Calai access for this tablet.');
       }
-      if (body.state === 'open_both') return current;
-    } else if (nativeBothPilot(config, current)) {
+      if (['open_calai','open_both','confirm_calai_launch'].includes(body.state)) return current;
+      if (body.state === 'calai_rendered') {
+        const linked = db.prepare("SELECT source_account_id FROM business_product_links WHERE business_id=? AND product='calai' AND status='active'").get(businessId);
+        if (!linked?.source_account_id || body.nativeAccountId !== linked.source_account_id)
+          throw fail(409,'CALAI_ACCOUNT_MISMATCH','The current Calai business must be open on this tablet.');
+      }
+    } else if (nativeBothPilot(config, current) || current?.selection === 'calai') {
       // A cached standalone client may still send its old generic receipt.
-      throw fail(409, 'COMBINED_WORKSPACE_REQUIRED', 'Open the combined workspace to confirm this setting.');
+      throw fail(409, current.selection === 'calai' ? 'CALAI_WORKSPACE_REQUIRED' : 'COMBINED_WORKSPACE_REQUIRED', 'Open the selected workspace to confirm this setting.');
     }
     return recordTabletConfigurationReceipt(db, config, session, body);
   });
 }
 export async function routeSurfaceMonitoring({req,res,url,db,config,session,checkRate}){let match=/^\/api\/business\/accounts\/([^/]+)\/surface\/heartbeat$/.exec(url.pathname);if(match&&req.method==='POST'){
   const body = await readJson(req, config.bodyLimit);
-  if (['configuration_received','open_calai','open_both','both_rendered'].includes(body?.state)) {
+  if (body?.state === 'watch_configuration') {
+    exactObject(body, ['state']);
+    if (session?.principalKind !== 'terminal' || session.businessId !== match[1] || !session.terminalGrantHash)
+      throw fail(403, 'OPERATIONAL_SURFACE_REQUIRED', 'Use the registered restaurant tablet.');
+    assertBusinessTerminalSessionLive({db,config,session,product:null});
+    const assignment = tabletApplicationConfiguration(db,session.terminalId,session.businessId,config);
+    if (!assignment) throw fail(409,'TABLET_CONFIGURATION_CHANGED','Check the tablet assignment.');
+    const ticket = tabletModeWatch(db).issue(assignment.tabletId);
+    return sendJson(res, 200, {data:{ticket, tabletConfiguration:assignment}}, {'Cache-Control':'private, no-store'});
+  }
+  if (['configuration_received','open_calai','confirm_calai_launch','calai_rendered','open_both','both_rendered'].includes(body?.state)) {
     const tabletConfiguration = confirmTabletConfiguration(db, config, session, match[1], body);
     return sendJson(res, 200, { data: { tabletConfiguration } }, { 'Cache-Control': 'private, no-store' });
   }

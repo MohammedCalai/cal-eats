@@ -131,7 +131,7 @@ function DashboardActiveOrder({ order, updating, unavailable, alerts, onUpdate, 
   </article>;
 }
 
-export default function OwnerDashboard({ restaurant, permission, userId, canOperate = false, business, products = [], workspaceMode }) {
+export default function OwnerDashboard({ restaurant, permission, userId, canOperate = false, business, products = [], workspaceMode, combinedLink }) {
   const alerts = useOrderAlerts();
   const [period, setPeriod] = useState("today"), [page, setPage] = useState(1);
   const [search] = useSearchParams();
@@ -197,7 +197,9 @@ export default function OwnerDashboard({ restaurant, permission, userId, canOper
   </div>;
 
   return <div className="business-dashboard">
-    <header className="page-heading dashboard-heading"><div><h1>{reportsOnly ? "Cal-Eats tools & reports" : "Dashboard"}</h1>{!showCombined && <p>Your orders, conversations and live activity in one place.</p>}</div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
+    <header className="page-heading dashboard-heading"><div><h1>{reportsOnly ? "Cal-Eats tools & reports" : "Dashboard"}</h1>{!showCombined && <p>Your orders, conversations and live activity in one place.</p>}</div><div className="dashboard-heading-actions">
+      {combinedLink && !reportsOnly && <a className="button-link" href={combinedLink}>Open combined dashboard</a>}
+      <button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
     {reportsOnly ? null : showCombined
       ? <DashboardOrderActivity businessId={business.id} products={products} resource={orderActivity}
           workspaceMode="both" operations={data?.operations} operationsUnavailable={Boolean(result.error)}/>
