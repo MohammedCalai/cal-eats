@@ -31,10 +31,10 @@ test('successful launch checks the revision and opens the fixed original Calai s
     request: (path, options) => {
       assert.equal(path, `/api/business/accounts/${businessId}/surface/heartbeat`);
       assert.equal(options.method, 'POST');
-      assert.deepEqual(JSON.parse(options.body), {state: 'open_calai', configurationTabletId: tabletId, configurationRevision: 4});
+      assert.deepEqual(JSON.parse(options.body), {state: 'confirm_calai_launch', configurationTabletId: tabletId, configurationRevision: 4});
       return {tabletConfiguration, destination: 'https://untrusted.example'};
     }}), true);
-  assert.deepEqual(destinations, ['https://calai.info/auth/login?workspace=calai']);
+  assert.deepEqual(destinations, [`https://calai.info/auth/login?workspace=calai&tabletWorkspace=1#tablet=${businessId}.${tabletId}`]);
 });
 
 test('changed scope, cancelled startup and mismatched or rejected checks do not launch', async () => {
@@ -68,7 +68,7 @@ test('pilot Both requires two ready authorised products and launches only its fi
     }});
   await assert.rejects(launch(tabletConfiguration), /could not be confirmed/);
   assert.equal(await launch(both), true);
-  assert.deepEqual(destinations, ['https://calai.info/owner/dashboard?workspace=both']);
+  assert.deepEqual(destinations, [`https://calai.info/owner/dashboard?workspace=both&tabletWorkspace=1#tablet=${businessId}.${tabletId}`]);
   const parent={}, origin='https://calai.info';
   const data={type:'cal-eats-workspace:both-rendered',version:1,businessId,tabletId,revision:4};
   const event={data,source:parent,origin};

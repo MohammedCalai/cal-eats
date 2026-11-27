@@ -128,7 +128,10 @@ function App() {
     const permission = await recheckLoopbackPermission();
     if (permission === "granted" && !bootstrap.current.isSuspended()) await refresh();
   }, [refresh]);
-  const suspendAutomaticSignIn = useCallback(() => bootstrap.current.signOut(), []);
+  const suspendAutomaticSignIn = useCallback(() => {
+    window.dispatchEvent(new Event("cal-eats-business-signed-out"));
+    bootstrap.current.signOut();
+  }, []);
   const automaticStartupAllowed = useCallback(() => !bootstrap.current.isSuspended(), []);
   useEffect(() => { void refresh(); return () => bootstrap.current.stop(); }, [refresh]);
   useEffect(() => subscribeTerminalStatus(bootstrap.current.observeTerminal), []);

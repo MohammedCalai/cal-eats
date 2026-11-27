@@ -257,14 +257,16 @@ HcmV?d00001
 
 diff --git a/frontend/src/components/cal-eats/CalEatsWorkspace.jsx b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..33461aa6bcbafaa778301698017089b3eb5530ac
+index 0000000000000000000000000000000000000000..4948de8a594e0ef094a6a5214ea7336c5b49b36a
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,238 @@
 +import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 +import { Icon } from '@iconify/react';
 +import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 +import { workspaceNativeDestination } from './workspace-model.mjs';
++import TabletModeConnection from './TabletModeConnection';
++import { tabletTab } from './tablet-host.mjs';
 +import useAuth from '../../hooks/useAuth';
 +import CombinedLiveActivity from './CombinedLiveActivity';
 +import { FiMessageCircle } from 'react-icons/fi';
@@ -302,7 +304,7 @@ index 0000000000000000000000000000000000000000..33461aa6bcbafaa778301698017089b3
 +    ? `${user.id}:${user.businessId}` : null;
 +  const desiredView = workspaceViewForPath(pathname);
 +  const requested = requestedWorkspace(pathname, search);
-+  const [enabledFor, setEnabledFor] = useState(() => identity && readWorkspaceIntent(identity) ? identity : null);
++  const [enabledFor, setEnabledFor] = useState(() => identity && (readWorkspaceIntent(identity) || tabletTab.current()?.hostMode === 'both') ? identity : null);
 +  const enabled = Boolean(identity && (requested === 'both' || (requested !== 'calai' && enabledFor === identity)));
 +  useEffect(() => {
 +    if (!identity) {
@@ -378,6 +380,7 @@ index 0000000000000000000000000000000000000000..33461aa6bcbafaa778301698017089b3
 +  useEffect(() => { if (enabled) sendView(view); }, [enabled, view, sendView]);
 +  return <Workspace.Provider value={{ enabled, connected, state, stale, frameRef, desiredView, visible, view, sendView, messageSound }}>
 +    {children}
++    <TabletModeConnection workspaceFrame={enabled ? frameRef : null} hostMode={enabled ? 'both' : 'calai'} owner={user}/>
 +  </Workspace.Provider>;
 +}
 +
@@ -569,6 +572,64 @@ index 0000000000000000000000000000000000000000..a05d2afdb9b0385f36d6122abcf080c2
 +      </ServiceCard>
 +    </div>
 +  </>;
++}
+diff --git a/frontend/src/components/cal-eats/TabletModeConnection.jsx b/frontend/src/components/cal-eats/TabletModeConnection.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..856c1753ab2d4cdbe73c8436cbc716b655dadb34
+--- /dev/null
++++ b/frontend/src/components/cal-eats/TabletModeConnection.jsx
+@@ -0,0 +1,52 @@
++import { useEffect, useRef } from 'react';
++import { useLocation } from 'react-router-dom';
++import { useQuery } from '@tanstack/react-query';
++import Cookies from 'js-cookie';
++import useAxiosPublic from '../../hooks/useAxiosPublic';
++import { EATS, tabletTab, watchTabletHost } from './tablet-host.mjs';
++import { workspaceIframeAllow } from './workspace-model.mjs';
++
++export default function TabletModeConnection({ workspaceFrame, hostMode, owner }) {
++  const { pathname } = useLocation();
++  const fallbackFrame = useRef(null);
++  const frameRef = workspaceFrame || fallbackFrame;
++  const scope = tabletTab.current();
++  const onOwnerPage = pathname.startsWith('/owner/') && owner?.role === 'BUSINESS_OWNER';
++  const permitted = Boolean(scope && window.location.origin === 'https://calai.info' && window.top === window &&
++    (onOwnerPage || pathname === '/auth/login'));
++  const api = useAxiosPublic();
++  const profile = useQuery({ queryKey: ['tablet-native-owner', scope?.businessId, owner?.id, owner?.businessId],
++    enabled: permitted && onOwnerPage, staleTime: 30000, refetchInterval: 60000, retry: false,
++    queryFn: async ({ signal }) => {
++      const token = Cookies.get('Access-Token');
++      if (!token) return false;
++      const { data } = await api.get('/business-owner/settings/my-profile', {
++        signal, timeout: 4500, headers: { authorization: 'Bearer ' + token },
++      });
++      return data?.success === true && data.data?.id === owner.id && data.data?.role === 'BUSINESS_OWNER' &&
++        token === Cookies.get('Access-Token');
++    } });
++  const renderedTenantId = permitted && onOwnerPage && profile.data === true && !profile.error && Cookies.get('Access-Token') ? owner.businessId : null;
++  const checkingOwner = permitted && onOwnerPage && profile.isPending;
++
++  useEffect(() => {
++    const frame = frameRef.current;
++    if (!permitted || checkingOwner || !frame) return;
++    const watcher = watchTabletHost({ tab: tabletTab, scope, hostMode, renderedTenantId,
++      frameWindow: () => frameRef.current === frame ? frame.contentWindow : null,
++      nonce: crypto.randomUUID(), replace: url => window.location.replace(url) });
++    window.addEventListener('message', watcher.receive);
++    frame.addEventListener('load', watcher.challenge);
++    watcher.challenge();
++    return () => {
++      window.removeEventListener('message', watcher.receive);
++      frame.removeEventListener('load', watcher.challenge);
++    };
++  }, [permitted, checkingOwner, scope?.businessId, scope?.tabletId, hostMode, renderedTenantId, frameRef]);
++
++  if (!permitted || workspaceFrame) return null;
++  const policy = document.permissionsPolicy?.features ? document.permissionsPolicy : document.featurePolicy;
++  return <iframe hidden aria-hidden="true" tabIndex={-1} ref={fallbackFrame} title="Restaurant tablet connection"
++    src={EATS + '/business/embedded/tablet-control'} sandbox="allow-scripts allow-same-origin"
++    allow={workspaceIframeAllow(policy?.features?.(), EATS)} referrerPolicy="strict-origin" />;
 +}
 diff --git a/frontend/src/components/cal-eats/business-message-audio.js b/frontend/src/components/cal-eats/business-message-audio.js
 new file mode 100644
@@ -871,6 +932,208 @@ index 0000000000000000000000000000000000000000..9683cbf3e224673b209584ccc884c4a1
 +  .both-activity-heading > span { font-size: .75rem; }
 +}
 +@media (max-width: 340px) { .both-activity-grid { grid-template-columns: minmax(0, 1fr); } }
+diff --git a/frontend/src/components/cal-eats/tablet-host.mjs b/frontend/src/components/cal-eats/tablet-host.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2d732893d6659c898a7493a9dafecaaf4b0366fc
+--- /dev/null
++++ b/frontend/src/components/cal-eats/tablet-host.mjs
+@@ -0,0 +1,105 @@
++const CALAI = 'https://calai.info';
++export const EATS = 'https://eats.calai.info';
++const key = 'calai:assigned-tablet:v1';
++const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++const nativeMode = value => value === 'calai' || value === 'both';
++const knownMode = value => nativeMode(value) || value === 'cal-eats';
++const single = (query, field) => query.getAll(field).length === 1 ? query.get(field) : null;
++const allowedPage = path => path === '/auth/login' || path.startsWith('/owner/');
++const validScope = value => value && uuid.test(value.businessId) && uuid.test(value.tabletId) &&
++  nativeMode(value.hostMode) && Number.isSafeInteger(value.revision) && value.revision >= 0 &&
++  (value.revision === 0 ? value.selection === null : knownMode(value.selection));
++
++export function taggedTabletEntry(url) {
++  if (url.origin !== CALAI && url.origin !== 'https://www.calai.info') return null;
++  const mode = single(url.searchParams, 'workspace');
++  if (!nativeMode(mode) || !['/auth/login', '/owner/dashboard'].includes(url.pathname) ||
++      single(url.searchParams, 'tabletWorkspace') !== '1') return null;
++  const ids = /^#tablet=([^.]+)\.([^.]+)$/.exec(url.hash);
++  if (!ids || !uuid.test(ids[1]) || !uuid.test(ids[2])) return null;
++  return { businessId: ids[1], tabletId: ids[2], hostMode: mode, revision: 0, selection: null };
++}
++
++export function canonicalWorkspaceUrl(url) {
++  if (url.origin !== 'https://www.calai.info' || !['/auth/login', '/owner/dashboard'].includes(url.pathname)) return null;
++  const entry = taggedTabletEntry(url);
++  if (entry) return nativeDestination(entry.hostMode, entry, url.pathname);
++  if (url.search === '?workspace=both' && !url.hash) return CALAI + url.pathname + '?workspace=both';
++  return null;
++}
++
++function nativeDestination(mode, scope, path) {
++  const target = new URL(path || (mode === 'both' ? '/owner/dashboard' : '/auth/login'), CALAI);
++  target.search = new URLSearchParams({ workspace: mode, tabletWorkspace: '1' });
++  target.hash = 'tablet=' + scope.businessId + '.' + scope.tabletId;
++  return target.href;
++}
++
++// The tab hint selects a listener only. Device authority remains in the signed Cal-Eats child.
++export function createTabletTab({ getItem, setItem }) {
++  let current = null;
++  function save(value) {
++    current = value;
++    try { setItem(key, JSON.stringify(value)); } catch { /* Keep this page usable without storage. */ }
++  }
++  function start(url) {
++    if (url.origin !== CALAI || !allowedPage(url.pathname)) return null;
++    if (!current) {
++      try { const stored = JSON.parse(getItem(key)); if (validScope(stored)) current = stored; } catch { /* No usable tab hint. */ }
++    }
++    const entry = taggedTabletEntry(url);
++    if (entry) {
++      if (entry.businessId === current?.businessId && entry.tabletId === current?.tabletId) {
++        entry.revision = current.revision;
++        entry.selection = current.selection;
++      }
++      save(entry);
++    }
++    return current;
++  }
++  function observe(scope, message) {
++    if (!current || !scope || current.businessId !== scope.businessId || current.tabletId !== scope.tabletId ||
++        message.businessId !== current.businessId || message.tabletId !== current.tabletId ||
++        !Number.isSafeInteger(message.revision) || message.revision < 1 || !knownMode(message.selection) ||
++        message.revision < current.revision || (message.revision === current.revision && message.selection !== current.selection)) return false;
++    if (message.revision > current.revision) save({ ...current, revision: message.revision, selection: message.selection });
++    return true;
++  }
++  return { start, current: () => current, observe };
++}
++
++export const tabletTab = createTabletTab({
++  getItem: name => sessionStorage.getItem(name),
++  setItem: (name, value) => sessionStorage.setItem(name, value),
++});
++
++export function initialiseTabletHost(browser) {
++  if (browser.top !== browser) return;
++  const url = new URL(browser.location.href);
++  const canonical = canonicalWorkspaceUrl(url);
++  if (canonical) browser.location.replace(canonical);
++  else tabletTab.start(url);
++}
++
++export function watchTabletHost({ tab, scope, hostMode, renderedTenantId, frameWindow, nonce, replace }) {
++  let moving = false;
++  const challenge = () => {
++    const target = frameWindow();
++    if (!target || moving) return;
++    const command = { type: 'cal-eats-workspace:watch-mode', version: 1, nonce, hostMode,
++      businessId: scope.businessId, tabletId: scope.tabletId };
++    if (hostMode === 'calai' && typeof renderedTenantId === 'string' && renderedTenantId.length > 0) command.renderedTenantId = renderedTenantId;
++    target.postMessage(command, EATS);
++  };
++  function receive(event) {
++    const target = frameWindow();
++    if (moving || !target || event.source !== target || event.origin !== EATS || event.data?.version !== 1) return;
++    const message = event.data;
++    if (message.type === 'cal-eats-workspace:control-ready') { challenge(); return; }
++    if (message.type !== 'cal-eats-workspace:mode' || message.nonce !== nonce || !tab.observe(scope, message) || message.selection === hostMode) return;
++    moving = true;
++    replace(message.selection === 'cal-eats' ? EATS + '/business/owner/dashboard' :
++      nativeDestination(message.selection, scope, message.selection === 'calai' && renderedTenantId ? '/owner/dashboard' : undefined));
++  }
++  return { challenge, receive };
++}
+diff --git a/frontend/src/components/cal-eats/tablet-host.test.mjs b/frontend/src/components/cal-eats/tablet-host.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7486a1157b77ed87be6c66f44ad9c4d696e20f22
+--- /dev/null
++++ b/frontend/src/components/cal-eats/tablet-host.test.mjs
+@@ -0,0 +1,85 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { canonicalWorkspaceUrl, createTabletTab, EATS, taggedTabletEntry, watchTabletHost } from './tablet-host.mjs';
++
++const businessId = '21d69947-81d0-4f30-aa33-de1256700001';
++const tabletId = '77b4e044-b840-4f13-96c6-de1256700002';
++const nonce = 'ef3bd086-78ba-4592-9323-de1256700003';
++const native = 'https://calai.info';
++const tagged = mode => native + (mode === 'calai' ? '/auth/login' : '/owner/dashboard') +
++  '?workspace=' + mode + '&tabletWorkspace=1#tablet=' + businessId + '.' + tabletId;
++const makeTab = store => createTabletTab({ getItem: k => store.get(k), setItem: (k, v) => store.set(k, v) });
++function mount(hostMode, owner, store = new Map()) {
++  const tab = makeTab(store), scope = tab.start(new URL(tagged(hostMode)));
++  const sent = [], replaced = [], child = { postMessage: (...args) => sent.push(args) };
++  const watcher = watchTabletHost({ tab, scope, hostMode, renderedTenantId: owner, nonce,
++    frameWindow: () => child, replace: url => replaced.push(url) });
++  const send = (data, source = child, origin = EATS) => watcher.receive({ data, origin, source });
++  const message = (selection, revision) => ({ type: 'cal-eats-workspace:mode', version: 1, nonce, businessId, tabletId, selection, revision });
++  return { tab, watcher, sent, replaced, send, message, child, store };
++}
++
++test('ordinary business/consumer URLs do not start a tablet listener or redirect', () => {
++  const tab = makeTab(new Map());
++  for (const address of [native, native+'/auth/login', native+'/owner/dashboard?workspace=both',
++    tagged('calai').replace('tabletWorkspace=1', 'tabletWorkspace=1&tabletWorkspace=1'),
++    tagged('both').replace('/owner/dashboard', '/privacy'), tagged('calai').replace('https://', 'http://'),
++    tagged('calai').replace(tabletId, 'broken')]) {
++    const url = new URL(address);
++    assert.equal(tab.start(url), null); assert.equal(canonicalWorkspaceUrl(url), null);
++  }
++  const proof = tab.start(new URL(tagged('both')));
++  assert.deepEqual(proof, {businessId,tabletId,hostMode:'both',revision:0,selection:null});
++  assert.equal(tab.start(new URL(native+'/admin/dashboard')), null);
++});
++
++test('the www Both entry goes to the only frame-allowed origin, leaving public and regular native links alone', () => {
++  const www = 'https://www.calai.info';
++  assert.equal(canonicalWorkspaceUrl(new URL(www+'/owner/dashboard?workspace=both')), native+'/owner/dashboard?workspace=both');
++  assert.equal(canonicalWorkspaceUrl(new URL(tagged('calai').replace(native, www))), tagged('calai'));
++  for (const path of ['/', '/owner/settings', '/auth/login', '/auth/login?workspace=both&returnTo=bad', '/owner/dashboard?workspace=calai']) {
++    assert.equal(canonicalWorkspaceUrl(new URL(www+path)), null);
++  }
++  assert.equal(taggedTabletEntry(new URL(tagged('calai').replace(native, 'https://calai.info.example'))), null);
++});
++
++test('watch command challenges only its own frame with exact location and omits a rendered tenant on sign-in', () => {
++  const x=mount('calai');
++  x.watcher.challenge();
++  assert.deepEqual(x.sent[0], [{type:'cal-eats-workspace:watch-mode',version:1,nonce,hostMode:'calai',businessId,tabletId},EATS]);
++  const ready = { type:'cal-eats-workspace:control-ready', version:1 };
++  x.send(ready, {}); x.send(ready, x.child, native); assert.equal(x.sent.length,1);
++  x.send(ready); assert.deepEqual(x.sent[1],x.sent[0]);
++  const authenticated=mount('calai','native-restaurant'); authenticated.watcher.challenge();
++  assert.equal(authenticated.sent[0][0].renderedTenantId,'native-restaurant');
++});
++
++test('only the current signed-child reply for the stored tablet, business, nonce and increasing revision can move the window', () => {
++  const x=mount('both'), good=x.message('cal-eats',13);
++  x.send(x.message('both',12));
++  for(const changed of [{type:'cal-eats-workspace:state'},{version:2},{businessId:tabletId},{tabletId:businessId},{nonce:'old'},
++    {selection:'https://elsewhere.invalid'},{revision:-1},{revision:1.5},{revision:'13'},{revision:11},{revision:12}]) x.send({...good,...changed});
++  x.send(good,{}); x.send(good,x.child,'https://eats.calai.info.example');
++  assert.equal(x.replaced.length,0);
++  x.send({...good,url:'https://elsewhere.invalid'}); x.send(good);
++  assert.deepEqual(x.replaced,[EATS+'/business/owner/dashboard']);
++});
++
++test('a tagged tab survives a native sign-in or reload and ignores an older delivery after navigating', () => {
++  const x=mount('calai'); x.send(x.message('both',23));
++  assert.deepEqual(x.replaced,[tagged('both')]);
++  const next=makeTab(x.store), restored=next.start(new URL(native+'/owner/settings'));
++  assert.equal(restored.revision,23);
++  assert.equal(next.observe(restored,x.message('calai',22)),false);
++  assert.equal(next.observe(restored,x.message('calai',23)),false);
++  const same=next.start(new URL(tagged('both'))); assert.equal(same.revision,23); assert.equal(same.hostMode,'both');
++  const other=next.start(new URL(tagged('both').replace(tabletId,businessId)));
++  assert.equal(other.revision,0); assert.equal(next.observe(same,x.message('calai',24)),false);
++});
++
++test('Both → Calai opens the original dashboard for a verified owner, or its own sign-in for a signed-out screen', () => {
++  for(const owner of [undefined,'native-restaurant']){
++    const x=mount('both',owner); x.send(x.message('calai',9));
++    assert.equal(x.replaced[0],owner ? tagged('calai').replace('/auth/login','/owner/dashboard') : tagged('calai'));
++  }
++});
 diff --git a/frontend/src/components/cal-eats/useHostedMessageReminder.js b/frontend/src/components/cal-eats/useHostedMessageReminder.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..286b15d899e961c8ce427adf645453eab65f8258
@@ -1529,7 +1792,7 @@ index 57369bf45fbc4f9d93b8aede7264f70a6d04cab7..c8101c0c4c30a460c364e99cd1c28d38
 \ No newline at end of file
 +}
 diff --git a/frontend/src/pages/auth/LogIn.jsx b/frontend/src/pages/auth/LogIn.jsx
-index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..81750cb26fe3097393208406f71fcda6f282b844 100644
+index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..fc27b739ace6093bc2a68860f845ab50034b9abf 100644
 --- a/frontend/src/pages/auth/LogIn.jsx
 +++ b/frontend/src/pages/auth/LogIn.jsx
 @@ -1,6 +1,6 @@
@@ -1540,11 +1803,13 @@ index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..81750cb26fe3097393208406f71fcda6
  import InputField from "../../components/Inputfield";
  import Password from "../../components/Password";
  import toast from "react-hot-toast";
-@@ -8,9 +8,11 @@ import { useMutation } from "@tanstack/react-query";
+@@ -8,9 +8,13 @@ import { useMutation } from "@tanstack/react-query";
  import useAxiosPublic from "../../hooks/useAxiosPublic";
  import useAuth from "../../hooks/useAuth";
  import Cookies from "js-cookie";
 +import { ownerDashboardAfterLogin } from "../../components/cal-eats/workspace-model.mjs";
++import TabletModeConnection from "../../components/cal-eats/TabletModeConnection";
++import { tabletTab } from "../../components/cal-eats/tablet-host.mjs";
  
  export default function LogIn() {
    const navigate = useNavigate();
@@ -1552,7 +1817,7 @@ index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..81750cb26fe3097393208406f71fcda6
    const axiosPublic = useAxiosPublic();
    const { setUser } = useAuth();
  
-@@ -38,7 +40,7 @@ export default function LogIn() {
+@@ -38,7 +42,7 @@ export default function LogIn() {
          if (apiRole === "SYSTEM_OWNER") {
            navigate("/admin/dashboard");
          } else if (apiRole === "BUSINESS_OWNER") {
@@ -1561,6 +1826,14 @@ index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..81750cb26fe3097393208406f71fcda6
          } else {
            navigate("/"); // Fallback if role is unknown
          }
+@@ -84,6 +88,7 @@ export default function LogIn() {
+ 
+   return (
+     <div className="flex flex-col items-center ">
++      <TabletModeConnection hostMode={tabletTab.current()?.hostMode} />
+       <h1 className="text-[32px] text-white font-semibold mb-2">
+         Welcome back!
+       </h1>
 diff --git a/frontend/src/pages/owner/Dashboard.jsx b/frontend/src/pages/owner/Dashboard.jsx
 index 38b8ade3fbf8368b98a929625fb5c5f0da2ff2cf..de73dfaa8a27366447efbb578868344720bf9179 100644
 --- a/frontend/src/pages/owner/Dashboard.jsx
@@ -1725,10 +1998,16 @@ index e9440b7a72138c91eeec9cc4439fcee36d7d992a..1ce970eec24e2d4b14812e86550084a2
              isCurrentPlan={plan.id === currentPlanId}
            />
 diff --git a/frontend/src/router/router.jsx b/frontend/src/router/router.jsx
-index 27ce2a727cc3193a9a7988a6920465a517cb48ab..ba025ee12231f529cd3582451eb1c30a19d1b0c1 100644
+index 27ce2a727cc3193a9a7988a6920465a517cb48ab..d19f6d310961c1e7c205c0a945097b6009be9b0f 100644
 --- a/frontend/src/router/router.jsx
 +++ b/frontend/src/router/router.jsx
-@@ -25,6 +25,8 @@ import BusinessInfo from "../pages/owner/settings/BusinessInfo";
+@@ -1,4 +1,5 @@
+ import { createBrowserRouter, Navigate } from "react-router-dom";
++import { initialiseTabletHost } from "../components/cal-eats/tablet-host.mjs";
+ 
+ import DashboardLayout from "../layout/DashboardLayout";
+ import AuthLayout from "../layout/AuthLayout";
+@@ -25,6 +26,8 @@ import BusinessInfo from "../pages/owner/settings/BusinessInfo";
  import OwnerSubscription from "../pages/owner/settings/Subscription";
  import PrivacySetting from "../pages/owner/settings/PrivacySetting";
  import HelpSupport from "../pages/owner/settings/HelpSupport";
@@ -1737,7 +2016,15 @@ index 27ce2a727cc3193a9a7988a6920465a517cb48ab..ba025ee12231f529cd3582451eb1c30a
  
  // auth
  import LogIn from "../pages/auth/LogIn";
-@@ -82,6 +84,9 @@ const router = createBrowserRouter([
+@@ -44,6 +47,7 @@ import PrivacyPolicy from "@/pages/landindPage/PrivacyPolicy";
+ import ThankYouContact from "@/pages/landindPage/ThankYouContact";
+ // import OnboardingWizard from "@/pages/onboarding/OnboardingWizard";
+ 
++initialiseTabletHost(window);
+ const router = createBrowserRouter([
+   //  AUTH ROUTES
+   {
+@@ -82,6 +86,9 @@ const router = createBrowserRouter([
      children: [
         // owner
        { path: "/owner/dashboard", element: <OwnerDashboard /> },
@@ -1747,7 +2034,7 @@ index 27ce2a727cc3193a9a7988a6920465a517cb48ab..ba025ee12231f529cd3582451eb1c30a
        { path: "/owner/agents", element: <AgentList /> },
        { path: "/owner/call-summary", element: <CallSummary /> },
        { path: "/owner/order-list", element: <OrderList /> },
-@@ -128,4 +133,4 @@ const router = createBrowserRouter([
+@@ -128,4 +135,4 @@ const router = createBrowserRouter([
    // },
  ]);
  

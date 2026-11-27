@@ -52,6 +52,7 @@ import {routePlatformAdmin,enforcePlatformAdminAuthority} from "./platform-admin
 import {routeUnifiedBusiness} from "./unified-business.js";
 import {hasBusinessTerminalHeaders,readBusinessTerminalSession,enforceBusinessTerminalCapabilities,routeBusinessTerminals} from "./business-terminals.js";
 import {routeSurfaceMonitoring} from './surface-monitoring.js';
+import {tabletModeWatch} from './tablet-mode-watch.js';
 import {routeBusinessMonitoringPush} from './business-monitoring-push.js';
 import {routeTabletFleet} from './tablet-fleet.js';
 
@@ -128,6 +129,12 @@ export function createApp({ db, config, logger = console }) {
       const originExempt = publicNativeAuth || Boolean(nativeSession) || deviceBearerRoute || pairingRoute || terminalAuthority;
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && ((req.headers.origin && req.headers.origin !== config.origin) || (config.runMode === "hosted-preview" && !originExempt && req.headers.origin !== config.origin))) throw new HttpError(403, "INVALID_ORIGIN", "Request origin is not allowed");
       await enforcePlatformAdminAuthority({req,res,url,db,config,session});
+      if (req.method === 'POST' && url.pathname === '/api/business/tablet-mode-watch') {
+        const body = await readJson(req, 128);
+        await tabletModeWatch(db).wait(body?.ticket,res);
+        if (!res.destroyed) sendJson(res,200,{data:{check:true}},{'Cache-Control':'private, no-store'});
+        return;
+      }
       if(await routeTabletFleet({req,res,url,db,config,session,checkRate}))return;
       if(await routeSurfaceMonitoring({req,res,url,db,config,session,checkRate}))return;
       if(await routeBusinessMonitoringPush({req,res,url,db,config,session,checkRate}))return;
