@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyTabletProductAccess, businessWorkspaceMode, canUseCalaiWorkspaceTools, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
+import { applyTabletProductAccess, businessWorkspaceMode, canUseCalaiWorkspaceTools, calaiWorkspaceReadPath, productPresentation, businessNavigation, counterPresentation, connectionConfirmation, safeNativeLink, accountDirectoryQuery, productControlLabel, operationalTabletFor,terminalSetupDocument,businessToolPermissions,canConnectBusinessProduct,calaiTabletAuthorizationPath,canLoadEatsRestaurantWorkspace } from "../src/unified-business-model.js";
 import {ownerNavigation,ownerMobileNavigation} from "../src/model.js";
 import { dashboardOrderActivity, dashboardOrderProducts } from "../src/unified-business-model.js";
 const product = (id, extra = {}) => ({ linked:true,nativeAccountId:id,adminAllowed:true,readiness:{ready:true,tasks:[]},effectiveStatus:"ready",...extra });
@@ -11,6 +11,22 @@ test("linked Calai tools require current account permission and a matching works
   assert.equal(canUseCalaiWorkspaceTools(business, "cal-eats"), false);
   assert.equal(canUseCalaiWorkspaceTools({ ...business, canViewCalai: false }, "calai"), false);
   assert.equal(canUseCalaiWorkspaceTools({ ...business, products: { calai: product("native", { allowedOnTablet: false }) } }, "both"), false);
+});
+test("Both previews only supported Calai reads and leaves tablet permissions intact", () => {
+  const business = { principalKind: "human", canViewCalai: true, products: { calai: product("native") } };
+  assert.equal(calaiWorkspaceReadPath("agents", business, "both"), "/api/business/calai/agents");
+  assert.equal(calaiWorkspaceReadPath("item-management", business, "both"), "/api/business/calai/menu");
+  assert.equal(calaiWorkspaceReadPath("orders", business, "calai"), "/api/business/calai/orders");
+  assert.equal(calaiWorkspaceReadPath("settings", { ...business, principalKind: "terminal" }, "both"), "/api/business/calai/hours");
+  for (const section of ["agents", "item-management", "calls", "test-voice", "printer"]) {
+    assert.equal(calaiWorkspaceReadPath(section, { ...business, principalKind: "terminal" }, "both"), null);
+  }
+  for (const section of ["calls", "test-voice", "printer", "../admin"]) {
+    assert.equal(calaiWorkspaceReadPath(section, business, "both"), null);
+  }
+  assert.equal(calaiWorkspaceReadPath("agents", business, "calai"), null);
+  assert.equal(calaiWorkspaceReadPath("orders", business, "cal-eats"), null);
+  assert.equal(calaiWorkspaceReadPath("orders", { ...business, canViewCalai: false }, "both"), null);
 });
 test("dashboard order sources respect each product and signed tablet selection", () => {
   const business = {
@@ -165,7 +181,9 @@ test("business tablet navigation retains ordinary tools without a monitoring wor
       const business={principalKind,products:{...(withCalai?{calai:product("calai-account")}:{}),"cal-eats":product("eats-account",{capabilities:{viewDevices:true}})}};
       const groups=businessNavigation(business,nativeLinks),paths=groups.flatMap(group=>group.items.map(([,path])=>path));
       assert.equal(paths.filter(path=>path==="/owner/dashboard").length,1);
-      assert.ok(paths.includes("/owner/orders"));assert.ok(paths.includes("/owner/printers"),"Printer setup stays available");
+      assert.ok(paths.includes("/owner/orders"));
+      assert.equal(paths.includes("/owner/printers"),!withCalai,"Cal-Eats provides printer settings when used alone");
+      assert.equal(paths.includes("/owner/calai/printer"),withCalai,"Both uses the shared Calai printer settings");
       assert.ok(paths.includes("/owner/connections"));assert.ok(paths.includes("/owner/statements"));
       assert.ok(!paths.includes("/owner/devices"),"Device-health monitoring belongs to the manager phone app");
       assert.ok(groups.every(group=>group.title!=="Workspace"));

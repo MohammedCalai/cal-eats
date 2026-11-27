@@ -1,3 +1,4 @@
+import { assertBusinessTerminalSessionLive } from "./business-terminals.js";
 import { assertRestaurantContactAllowed } from "./customer-safety-policy.js";
 import { randomUUID } from "node:crypto";
 import { requireRestaurantMembership, requireRestaurantOwner, requireUser } from "./auth/authorization.js";
@@ -85,6 +86,24 @@ export function runMessageRetention(db, config) {
   });
 }
 
+function conversationReadReceipt(db, config, session, orderId, lastMessageId) {
+  const granted = access(db, session, orderId);
+  const id = clean(lastMessageId, 1, 100, "Message");
+  if (session.principalKind === "terminal") assertBusinessTerminalSessionLive({ db, config, session, restaurantId: granted.order.restaurant_id });
+  if (!availability(db, granted.order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
+  const row = db.prepare("SELECT * FROM order_messages WHERE id=? AND order_id=? AND expires_at>?").get(id, granted.order.id, nowIso(config)); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
+  const messageAttentionRevision = withTransaction(db, () => {
+    const prior = db.prepare("SELECT * FROM order_message_reads WHERE order_id=? AND user_id=?").get(granted.order.id, granted.user.id);
+    if (!prior || row.created_at > prior.last_read_created_at || (row.created_at === prior.last_read_created_at && row.id > prior.last_read_message_id)) {
+      const readAt = nowIso(config);
+      db.prepare("INSERT INTO order_message_reads VALUES(?,?,?,?,?) ON CONFLICT(order_id,user_id) DO UPDATE SET last_read_created_at=excluded.last_read_created_at,last_read_message_id=excluded.last_read_message_id,updated_at=excluded.updated_at").run(granted.order.id, granted.user.id, row.created_at, row.id, readAt);
+      db.prepare("UPDATE user_notifications SET read_at=? WHERE user_id=? AND order_id=? AND type='order_message' AND read_at IS NULL AND event_key IN (SELECT 'order-message:'||id FROM order_messages WHERE order_id=? AND (created_at<? OR (created_at=? AND id<=?)))").run(readAt, granted.user.id, granted.order.id, granted.order.id, row.created_at, row.created_at, row.id);
+    }
+    return restaurantMessageArrivalRevision(db, granted.order.restaurant_id, granted.user.id);
+  });
+  return { orderId: granted.order.id, restaurantId: granted.order.restaurant_id, viewerUserId: granted.user.id, messageAttentionRevision, lastMessageId: id, unreadCount: unreadCount(db, granted.order.id, granted.user.id, nowIso(config)) };
+}
+
 export async function routeOrderMessaging({ req, res, url, db, config, session }) {
   if (req.method === "GET" && url.pathname === "/api/notifications/stream") {
     const user = requireUser(session);
@@ -123,19 +142,9 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
   }
   match = url.pathname.match(/^\/api\/orders\/([^/]+)\/messages\/read$/);
   if (match && ["POST", "PUT", "PATCH"].includes(req.method)) {
-    const granted = access(db, session, match[1]); const body = await readJson(req, config.bodyLimit); exactObject(body, ["lastMessageId"]); const id = clean(body.lastMessageId, 1, 100, "Message");
-    if (!availability(db, granted.order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
-    const row = db.prepare("SELECT * FROM order_messages WHERE id=? AND order_id=? AND expires_at>?").get(id, granted.order.id, nowIso(config)); if (!row) throw new HttpError(404, "NOT_FOUND", "Resource not found");
-    const messageAttentionRevision = withTransaction(db, () => {
-      const prior = db.prepare("SELECT * FROM order_message_reads WHERE order_id=? AND user_id=?").get(granted.order.id, granted.user.id);
-      if (!prior || row.created_at > prior.last_read_created_at || (row.created_at === prior.last_read_created_at && row.id > prior.last_read_message_id)) {
-        const readAt = nowIso(config);
-        db.prepare("INSERT INTO order_message_reads VALUES(?,?,?,?,?) ON CONFLICT(order_id,user_id) DO UPDATE SET last_read_created_at=excluded.last_read_created_at,last_read_message_id=excluded.last_read_message_id,updated_at=excluded.updated_at").run(granted.order.id, granted.user.id, row.created_at, row.id, readAt);
-        db.prepare("UPDATE user_notifications SET read_at=? WHERE user_id=? AND order_id=? AND type='order_message' AND read_at IS NULL AND event_key IN (SELECT 'order-message:'||id FROM order_messages WHERE order_id=? AND (created_at<? OR (created_at=? AND id<=?)))").run(readAt, granted.user.id, granted.order.id, granted.order.id, row.created_at, row.created_at, row.id);
-      }
-      return restaurantMessageArrivalRevision(db, granted.order.restaurant_id, granted.user.id);
-    });
-    return sendJson(res, 200, { data: { orderId: granted.order.id, restaurantId: granted.order.restaurant_id, viewerUserId:granted.user.id, messageAttentionRevision, lastMessageId: id, unreadCount: unreadCount(db, granted.order.id, granted.user.id, nowIso(config)) } });
+    const body = await readJson(req, config.bodyLimit);
+    exactObject(body, ["lastMessageId"]);
+    return sendJson(res, 200, { data: conversationReadReceipt(db, config, session, match[1], body.lastMessageId) });
   }
   match = url.pathname.match(/^\/api\/orders\/([^/]+)\/messages$/);
   if (!match) return false;
@@ -150,9 +159,16 @@ export async function routeOrderMessaging({ req, res, url, db, config, session }
   }
   if (req.method === "POST") {
     const granted = access(db, session, match[1]); if (granted.role === "admin") throw new HttpError(403, "FORBIDDEN", "Administrators cannot send order messages");
+    const body = await readJson(req, config.bodyLimit);
+    // Installed tablets already sign this conversation endpoint. A read receipt
+    // advances only this terminal user's cursor, just like the web read route.
+    if (session.principalKind === "terminal" && body?.action === "markRead") {
+      exactObject(body, ["action", "lastMessageId"]);
+      return sendJson(res, 200, { data: conversationReadReceipt(db, config, session, match[1], body.lastMessageId) });
+    }
     assertRestaurantContactAllowed(db, granted.order.customer_id, granted.order.restaurant_id);
     if (!availability(db, granted.order, config).open) throw new HttpError(410, "MESSAGING_CLOSED", "This order conversation is closed");
-    const body = await readJson(req, config.bodyLimit); exactObject(body, ["message", "clientMessageId"]); const key = clean(req.headers["idempotency-key"] ?? body.clientMessageId, 1, 100, "Idempotency-Key"); const message = clean(body.message, 1, 300, "Message");
+    exactObject(body, ["message", "clientMessageId"]); const key = clean(req.headers["idempotency-key"] ?? body.clientMessageId, 1, 100, "Idempotency-Key"); const message = clean(body.message, 1, 300, "Message");
     const hash = messageFingerprint(config, granted.order.id, message); const prior = db.prepare("SELECT * FROM order_messages WHERE sender_user_id=? AND order_id=? AND idempotency_key=?").get(granted.user.id, granted.order.id, key);
     if (prior) { if (prior.request_hash !== hash) throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was already used"); if (prior.expires_at <= nowIso(config)) throw new HttpError(410, "MESSAGE_EXPIRED", "This message has expired"); return sendJson(res, 200, { data: await dto(config, prior) }); }
     assertCustomerContentAllowed(message);

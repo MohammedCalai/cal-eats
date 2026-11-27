@@ -89,6 +89,7 @@ export function loadConfig(overrides = {}) {
     businessIntegration:overrides.businessIntegration??{encryptionKey:process.env.CALAI_BUSINESS_ENCRYPTION_KEY??process.env.CALAI_PLATFORM_ADMIN_ENCRYPTION_KEY??null},
     businessPush:overrides.businessPush??loadBusinessPushConfig(),
     surfaceMonitoring:overrides.surfaceMonitoring??{},
+    nativeBothTabletId: overrides.nativeBothTabletId ?? process.env.CALAI_NATIVE_BOTH_TABLET_ID ?? null,
     tabletManagement:loadTabletManagementConfig(overrides.tabletManagement),
     tabletManagedSetup:loadTabletManagedSetupSettings(overrides.tabletManagedSetup),
     mediaObjectStore:loadMediaObjectStore(overrides.mediaObjectStore),

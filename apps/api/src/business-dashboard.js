@@ -54,13 +54,21 @@ function unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, acti
   return orderMessages + customerMessages;
 }
 
+export function liveRestaurantOrderCounts(db, restaurantId) {
+  return db.prepare(`SELECT COUNT(*) AS liveOrders,
+    COUNT(CASE WHEN o.status='placed' AND o.confirmed_at IS NULL THEN 1 END) AS pendingConfirmation,
+    COUNT(CASE WHEN o.status IN ('accepted','preparing') THEN 1 END) AS confirmedInKitchen,
+    COUNT(CASE WHEN o.status='ready' THEN 1 END) AS readyForHandover
+    FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready')
+      OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId);
+}
+
 function operationalCounts(db, restaurantId, userId, owner, now, actionableConfig) {
   if(db.prepare("SELECT archived_at FROM restaurants WHERE id=?").get(restaurantId)?.archived_at)return {pendingConfirmation:0,overdueConfirmation:0,activeOrders:0,liveOrders:0,confirmedInKitchen:0,readyForHandover:0,unreadMessages:0,openOrderHelp:owner?0:null,actionRequiredOrderHelp:owner?0:null,openRefundCases:owner?0:null,actionRequiredRefundCases:owner?0:null};
-  const pending = db.prepare(`SELECT COUNT(*) AS pending,SUM(CASE WHEN o.confirmation_due_at<=? THEN 1 ELSE 0 END) AS overdue FROM orders o WHERE o.restaurant_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}`).get(now, restaurantId);
+  const overdue = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND o.status='placed' AND o.confirmed_at IS NULL AND o.confirmation_due_at<=? AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}`).get(restaurantId, now);
   const active = db.prepare(`SELECT COUNT(*) AS count FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready','out_for_delivery') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId).count;
-  const kitchen = db.prepare(`SELECT COUNT(*) AS liveOrders,COALESCE(SUM(CASE WHEN o.status IN ('accepted','preparing') THEN 1 ELSE 0 END),0) AS confirmedInKitchen,COALESCE(SUM(CASE WHEN o.status='ready' THEN 1 ELSE 0 END),0) AS readyForHandover FROM orders o WHERE o.restaurant_id=? AND (o.status IN ('accepted','preparing','ready') OR (o.status='placed' AND o.merchant_visible_at IS NOT NULL AND ${PAYABLE_ORDER_SQL}))`).get(restaurantId);
   return {
-    pendingConfirmation: pending.pending, overdueConfirmation: pending.overdue ?? 0, activeOrders: active, ...kitchen,
+    overdueConfirmation: overdue.count, activeOrders: active, ...liveRestaurantOrderCounts(db, restaurantId),
     // This dashboard action count matches the reminder's open chat windows.
     // Historical messages and notification/read records remain unchanged.
     unreadMessages: unreadRestaurantMessageCount(db, restaurantId, userId, owner, now, actionableConfig),

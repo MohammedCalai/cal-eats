@@ -1,4 +1,10 @@
 import {HttpError} from './http.js';
+import {randomUUID} from 'node:crypto';
+
+export function nativeBothPilot(config, assignment) {
+  return assignment?.selection === 'both' && typeof config?.nativeBothTabletId === 'string' &&
+    assignment.tabletId === config.nativeBothTabletId.trim().toLowerCase();
+}
 
 // This policy belongs to the protected Cal-Eats application identity. It neither
 // changes Windows startup nor delegates access to an independent Calai website.
@@ -7,21 +13,34 @@ export function tabletApplicationSelection(db, terminalId, businessId) {
   return db.prepare('SELECT application_products FROM admin_tablets WHERE terminal_id=? AND business_id=? AND archived_at IS NULL').get(terminalId, businessId)?.application_products ?? null;
 }
 
-export function tabletApplicationConfiguration(db, terminalId, businessId) {
+function presentationKey(assignment, terminalId, businessId) {
+  return [assignment.tabletId, assignment.revision, terminalId, businessId].join(':');
+}
+
+export function tabletApplicationConfiguration(db, terminalId, businessId, config) {
   if(!terminalId||!businessId)return null;
   const row=db.prepare('SELECT id,revision,application_products FROM admin_tablets WHERE terminal_id=? AND business_id=? AND archived_at IS NULL AND authority_blocked_at IS NULL').get(terminalId,businessId);
   if(!row?.application_products)return null;
-  const receipt=db.prepare('SELECT received_at FROM tablet_application_receipts WHERE tablet_id=? AND record_revision=? AND terminal_id=? AND business_id=?').get(row.id,row.revision,terminalId,businessId);
-  return{tabletId:row.id,revision:row.revision,selection:row.application_products,status:receipt?'received':'waiting_for_tablet',receivedAt:receipt?.received_at??null};
+  const assignment={tabletId:row.id,revision:row.revision,selection:row.application_products};
+  const receipt=nativeBothPilot(config,assignment)
+    ? db.prepare("SELECT created_at AS received_at FROM audit_events WHERE entity_type='tablet_configuration' AND entity_id=? AND action='native_both_rendered'").get(presentationKey(assignment,terminalId,businessId))
+    : db.prepare('SELECT received_at FROM tablet_application_receipts WHERE tablet_id=? AND record_revision=? AND terminal_id=? AND business_id=?').get(row.id,row.revision,terminalId,businessId);
+  return{...assignment,status:receipt?'received':'waiting_for_tablet',receivedAt:receipt?.received_at??null};
 }
 
 export function recordTabletConfigurationReceipt(db,config,session,body) {
   if(typeof body.configurationTabletId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.configurationTabletId))throw new HttpError(400,'VALIDATION_ERROR','The current tablet configuration identity is required.');
   if(!Number.isSafeInteger(body.configurationRevision)||body.configurationRevision<1)throw new HttpError(400,'VALIDATION_ERROR','A current tablet configuration revision is required.');
-  const current=tabletApplicationConfiguration(db,session.terminalId,session.businessId);
+  const current=tabletApplicationConfiguration(db,session.terminalId,session.businessId,config);
   if(!current||current.tabletId!==body.configurationTabletId||current.revision!==body.configurationRevision)throw new HttpError(409,'TABLET_CONFIGURATION_CHANGED','The tablet application configuration changed. Read its current context before acknowledging it.');
-  db.prepare('INSERT OR IGNORE INTO tablet_application_receipts(tablet_id,record_revision,terminal_id,business_id,received_at) VALUES(?,?,?,?,?)').run(current.tabletId,current.revision,session.terminalId,session.businessId,config.now().toISOString());
-  return tabletApplicationConfiguration(db,session.terminalId,session.businessId);
+  const at=config.now().toISOString();
+  db.prepare('INSERT OR IGNORE INTO tablet_application_receipts(tablet_id,record_revision,terminal_id,business_id,received_at) VALUES(?,?,?,?,?)').run(current.tabletId,current.revision,session.terminalId,session.businessId,at);
+  if(body.state==='both_rendered' && nativeBothPilot(config,current) && !current.receivedAt){
+    db.prepare("INSERT INTO audit_events VALUES(?,?,'tablet_configuration',?,'native_both_rendered',?,?)")
+      .run(randomUUID(),session.user.id,presentationKey(current,session.terminalId,session.businessId),
+        JSON.stringify({tabletId:current.tabletId,revision:current.revision,businessId:session.businessId,terminalId:session.terminalId}),at);
+  }
+  return tabletApplicationConfiguration(db,session.terminalId,session.businessId,config);
 }
 
 export function tabletProductPermitted(db, terminalId, businessId, product) {

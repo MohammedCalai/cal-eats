@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { bankProviderDestination } from "./bank-provider-navigation.js";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { api, json, newKey } from "./api.js";
 import { pounds, shortDate } from "./model.js";
@@ -26,6 +27,7 @@ function BankPayoutWorkspace({ restaurantId, showSetupLink,readOnly }) {
   const banking = useFinanceResource(`${root}/banking`);
   const [cursors, setCursors] = useState([null]), [cursorIndex, setCursorIndex] = useState(0), [busy, setBusy] = useState(false), [actionError, setActionError] = useState("");
   const managing = useRef(false), active = useRef(true);
+  const [secureLink, setSecureLink] = useState(null);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const cursor = cursors[cursorIndex];
   const query = new URLSearchParams({ pageSize: "20", ...(cursor ? { startingAfter: cursor } : {}) });
@@ -38,13 +40,12 @@ function BankPayoutWorkspace({ restaurantId, showSetupLink,readOnly }) {
   }, [banking.reload, payouts.reload]);
   async function manageBank() {
     if (readOnly||managing.current || !bank?.canManageBankDetails) return;
-    managing.current = true; setBusy(true); setActionError("");
+    managing.current = true; setBusy(true); setActionError(""); setSecureLink(null);
     try {
       const value = await api(`${root}/dashboard`, json("POST", {}, newKey("bank-details")));
       if (!active.current) return;
-      const destination = new URL(value.url);
-      if (destination.protocol !== "https:" || !["connect.stripe.com", "dashboard.stripe.com"].includes(destination.hostname) || destination.username || destination.password) throw new Error("The payment service returned an unexpected destination. Refresh and try again.");
-      window.location.assign(destination.href);
+      const link = bankProviderDestination(value.url, ["connect.stripe.com", "dashboard.stripe.com"]);
+      if (link) { setSecureLink(link); managing.current = false; setBusy(false); }
     } catch (error) { if (active.current) { setActionError(error.message); managing.current = false; setBusy(false); } }
   }
   function next() { if (!payouts.value?.hasMore || !payouts.value.nextCursor) return; setCursors(previous => [...previous.slice(0, cursorIndex + 1), payouts.value.nextCursor]); setCursorIndex(index => index + 1); }
@@ -58,7 +59,7 @@ function BankPayoutWorkspace({ restaurantId, showSetupLink,readOnly }) {
         <div className="finance-bank-list">{bank.bankAccounts?.length ? bank.bankAccounts.map(account => <BankStatus key={account.id} bank={account}/>) : <div className="finance-empty"><strong>{bank.bankDetailsAvailable ? "No payout bank details reported" : "Bank details available through your payment account"}</strong><p>{merchantCopy(bank.note) || "Open your secure payment account to view or update your payout destination."}</p></div>}</div>
         <div className="finance-account-state"><span>Account: <strong>{readable(bank.account?.status)}</strong></span><span>Card payments: <strong>{bank.account?.chargesEnabled ? "Enabled" : "Not enabled"}</strong></span><span>Bank payouts: <strong>{bank.account?.payoutsEnabled ? "Enabled" : "Not enabled"}</strong></span>{bank.onboardingOnly&&<span>Customer ordering: <strong>{bank.customerPaymentsLive?"Live":"Paused before launch"}</strong></span>}</div>
         {bank.account?.requirements?.length > 0 && <p className="finance-preview-note">Your payment account needs more information. Complete payment setup above to review the remaining verification tasks.</p>}
-        {!readOnly&&bank.canManageBankDetails && <button className="primary" disabled={busy} onClick={() => void manageBank()}>{busy ? "Opening secure account…" : "View or update bank details"}</button>}
+        {!readOnly&&bank.canManageBankDetails && (secureLink ? <a className="button-link primary" href={secureLink} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setSecureLink(null), 0)}>Continue to secure bank details in a new window</a> : <button className="primary" disabled={busy} onClick={() => void manageBank()}>{busy ? "Opening secure account…" : "View or update bank details"}</button>)}
         <p className="fine">Cal-Eats shows only masked bank information. Changes are made through secure bank setup. {bank.refreshedAt ? `Last refreshed ${shortDate(bank.refreshedAt)}.` : ""}</p>
       </>}
       <div className="fine" aria-label="Payout schedule verification"><p><strong>Cal-Eats plan:</strong> {schedule.plan}.</p><p><strong>Verified bank payout schedule:</strong> {schedule.verified?schedule.actual:"Not yet verified"}{schedule.verifiedAt?` · checked ${shortDate(schedule.verifiedAt)}`:""}.</p>{schedule.mismatch&&<p className="finance-preview-note">Your current schedule differs from the Cal-Eats plan. Open your secure payment account to review payout settings.</p>}{!schedule.verified&&<p>{merchantCopy(schedule.message)}</p>}<p>{bank.onboardingOnly?"Bank payouts remain subject to completed setup and launch checks. ":""}Available funds, verification and bank processing affect arrival.</p></div>

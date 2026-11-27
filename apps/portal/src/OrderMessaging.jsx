@@ -1,6 +1,6 @@
 import "./BusinessCommunication.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { api, json, newKey } from "./api.js";
+import { api, json, markOrderMessagesRead, newKey } from "./api.js";
 import { MESSAGE_OPENED_EVENT } from "./BusinessMessageReminder.jsx";
 
 const time = (value) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -27,7 +27,7 @@ export function OrderConversation({ orderId, onClose }) {
       if(!mounted.current||request!==loadSequence.current)return;
       setConversation(data);setError("");const last=data.items.at(-1);
       if(last&&lastRead.current!==last.id&&!document.hidden){
-        const read=await api(`/api/orders/${encodeURIComponent(orderId)}/messages/read`,json("POST",{lastMessageId:last.id}));
+        const read=await markOrderMessagesRead(orderId,last.id);
         if(!mounted.current||request!==loadSequence.current||document.hidden)return;
         lastRead.current=last.id;
         window.dispatchEvent(new CustomEvent(MESSAGE_OPENED_EVENT,{detail:{restaurantId:read.restaurantId,viewerUserId:read.viewerUserId,messageAttentionRevision:read.messageAttentionRevision,unreadCount:read.unreadCount,orderId}}));

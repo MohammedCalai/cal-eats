@@ -5,6 +5,7 @@ import BusinessSoundSetting from "./BusinessSoundSetting.jsx";
 import BusinessHomeLink from "./BusinessHomeLink.jsx";
 import TabletConnectionControls from "./TabletConnectionControls.jsx";
 import {BusinessMessageReminderProvider} from "./BusinessMessageReminder.jsx";
+import { CalaiActivityAlert } from "./CalaiActivityAlert.jsx";
 import "./BusinessOrders.css";
 import { orderReceiptPrincipal, orderCustomerName, orderDeliveryAddress, orderDestination, orderStatusText, orderDatePreset } from "./order-presentation.js";
 import { deliveryDeadlineAt, deliveryDispatchWarning } from "./delivery-deadline.js";
@@ -39,7 +40,7 @@ import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, use
 import { api, json, newKey, setBusinessApiPrincipal } from "./api.js";
 import { connectAutomaticTerminal, disconnectLocalTerminal, terminalStatus, terminalApi, recheckLoopbackPermission, clearTabletDiscoveryHint, subscribeTerminalStatus } from "./terminal-client.js";
 import {createBusinessBootstrap} from "./business-bootstrap.js";
-import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
+import { BusinessWorkspaceProvider, useBusinessWorkspace, BusinessAccountSwitcher, BusinessConnections, NativeCalaiView, ProductStatements, AdminBusinessAccounts, EmbeddedSessionBridge, EmbeddedBusinessBridge, StaffCapabilityControls } from "./UnifiedBusiness.jsx";
 import { businessNavigation, CALAI_WORKSPACE_TOOLS, canUseCalaiWorkspaceTools, operationalTabletFor, businessToolPermissions, canLoadEatsRestaurantWorkspace, dashboardOrderProducts } from "./unified-business-model.js";
 import { endOperationalPresence,resumeOperationalPresenceAfterSignIn } from "./surface-presence-client.js";
 import { adminNavigation, listItems, ownerNavigation, ownerMobileNavigation, parseMenuCsv, pounds, poundsInputMinor, roleHome, shortDate } from "./model.js";
@@ -98,6 +99,7 @@ function TabletConnectionAccess() {
 function App() {
   const [session, setSession] = useState({ loading: true, user: null, principalKind: null, generation: 0 });
   const embedded = useRef(window.parent !== window && window.location.pathname.startsWith("/business/embedded"));
+  const hostedMessageSound = useRef(embedded.current && new URLSearchParams(window.location.search).get("messageSound") === "host");
   const bootstrap = useRef(null);
   if (!bootstrap.current) bootstrap.current = createBusinessBootstrap({
     readHuman: options => api("/api/auth/me", { ...options, humanSession: true }),
@@ -132,7 +134,7 @@ function App() {
   useEffect(() => subscribeTerminalStatus(bootstrap.current.observeTerminal), []);
   useEffect(()=>{const restored=()=>setSession(old=>({...old,terminalRevision:(old.terminalRevision||0)+1}));window.addEventListener("cal-eats-terminal-session-restored",restored);return()=>window.removeEventListener("cal-eats-terminal-session-restored",restored);},[]);
   if (session.loading) return <PageState text="Opening business platform…" />;
-  return <SessionContext.Provider value={{ ...session, refresh, setSession, suspendAutomaticSignIn, automaticStartupAllowed, connectTablet, recheckTablet, observeManagedSetup, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>
+  return <SessionContext.Provider value={{ ...session, refresh, setSession, suspendAutomaticSignIn, automaticStartupAllowed, connectTablet, recheckTablet, observeManagedSetup, automaticSignInSuspended:bootstrap.current.isSuspended(), embedded:embedded.current, hostedMessageSound:hostedMessageSound.current }}><EmbeddedSessionBridge enabled={embedded.current} user={session.user}/><Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/embedded" element={<Navigate to="/owner/connections" replace/>}/>
     <Route path="/admin/login" element={<PlatformAdminLogin user={session.user} onSignedIn={()=>refresh({afterSignIn:true})}/>} />
@@ -141,11 +143,13 @@ function App() {
       <Route path="/owner" element={<OwnerBootstrap />}>
         <Route element={<Shell kind="owner" />}>
           <Route path="dashboard" element={<OwnerDashboard />} />
+          <Route path="embedded-background" element={embedded.current ? <></> : <Navigate to="/owner/dashboard" replace/>}/>
           <Route path="connections" element={<BusinessConnections tabletConnection={<TabletConnectionAccess/>}/>}/>
           <Route path="statements" element={<ProductStatements/>}/>
           <Route path="devices" element={<Navigate to="/owner/printers" replace/>}/>
           {CALAI_WORKSPACE_TOOLS.map(({ id }) => <Route key={id} path={"calai/" + id} element={<NativeCalaiView section={id}/>}/>)}
           <Route element={<RequireEatsAccount/>}>
+          <Route path="notifications" element={<OwnerNotifications />} />
           <Route path="orders" element={<Orders />} />
           <Route path="menu" element={<Menu />} />
           <Route path="inbox" element={<CustomerTools view="inbox" />} />
@@ -294,15 +298,17 @@ function NavIcon({label}) {
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d={paths[key]||tools[key]||paths.Home}/></svg>;
 }
 function Shell({ kind }) {
-  const { user, principalKind, refresh, suspendAutomaticSignIn } = React.useContext(SessionContext), owner = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
+  const { user, principalKind, refresh, suspendAutomaticSignIn, hostedMessageSound } = React.useContext(SessionContext), owner = React.useContext(RestaurantContext), workspace = useBusinessWorkspace();
   const { desktop, collapsed, toggleDesktop } = useSidebarLayout(), [open, setOpen] = useState(false), [messageCount,setMessageCount]=useState(0), location=useLocation();
   const business = workspace?.business, mode = workspace?.mode || "cal-eats";
   const hasEats = mode !== "calai" && Boolean(owner?.restaurant);
   const canOperate = operationalTabletFor(business?.id, owner?.restaurant?.id, workspace?.terminal);
   const tools = businessToolPermissions({ permission: owner?.permission, capabilities: owner?.restaurant?.capabilities, principalKind: business?.principalKind });
-  const groups = businessNavigation(business, hasEats ? ownerNavigation(owner.permission, tools) : [], mode);
+  const embedded = workspace?.embedded === true;
+  const eatsNavigation = hasEats ? ownerNavigation(owner.permission, tools) : [];
+  const groups = businessNavigation(business, eatsNavigation, mode);
   const nav = groups.flatMap(group => group.items);
-  const calaiToolsAvailable = canUseCalaiWorkspaceTools(business, mode);
+  const linkToStandaloneCalai = mode === "calai" && canUseCalaiWorkspaceTools(business, mode);
   const mobileNav = mode === "calai" ? [["Home", "/owner/dashboard"], ["Order list", "/owner/calai/orders"]]
     : hasEats ? ownerMobileNavigation(owner.permission, tools) : [["Home", "/owner/dashboard"], ["Accounts", "/owner/connections"]];
   useEffect(()=>{setOpen(false);window.scrollTo({top:0,left:0,behavior:"instant"});},[location.pathname]);
@@ -317,8 +323,9 @@ function Shell({ kind }) {
   const showHeaderShortcuts = mode !== "calai" && location.pathname.replace(/\/+$/, "") !== "/owner/dashboard";
 
   return <OrderAlertProvider operationalRestaurantId={owner?.restaurant?.id} enabled={hasEats && canOperate} restaurants={owner?.restaurants} onSelectRestaurant={selectRestaurant} onRefreshRestaurants={owner?.refreshRestaurants} userId={user.id}>
-    <BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id}>
-      <div className={`portal calai-theme${collapsed ? " sidebar-collapsed" : ""}`} data-workspace-mode={mode}>
+    <BusinessMessageReminderProvider enabled={hasEats} userId={user.id} restaurantId={owner?.restaurant?.id} playbackInHost={hostedMessageSound}>
+      {embedded && <EmbeddedBusinessBridge hostedMessageSound={hostedMessageSound} allowedPathList={eatsNavigation.map(([, path]) => path).join("\n")}/>}
+      <div className={`portal calai-theme${collapsed ? " sidebar-collapsed" : ""}${embedded ? " portal--calai-embed" : ""}`} data-workspace-mode={mode}>
         <a className="skip" href="#portal-main">Skip to content</a>
         {open && !desktop && <button className="sidebar-shade" aria-label="Close navigation" onClick={() => setOpen(false)}/>}
         <aside id="business-navigation" inert={!desktop && !open ? true : undefined} className={open ? "sidebar open" : "sidebar"}>
@@ -329,7 +336,7 @@ function Shell({ kind }) {
               {group.title && <h2>{group.title}</h2>}
               {group.items.map(([label, path]) => {
                 const hasUnread = path === "/owner/inbox" && messageCount > 0;
-                const nativeTool = calaiToolsAvailable && CALAI_WORKSPACE_TOOLS.find(
+                const nativeTool = linkToStandaloneCalai && CALAI_WORKSPACE_TOOLS.find(
                   ({ id }) => id !== "orders" && path === "/owner/calai/" + id,
                 );
                 const contents = <>
@@ -363,11 +370,16 @@ function Shell({ kind }) {
             </div>
             {mode !== "calai" && <nav className="business-header-navigation" aria-label="Business shortcuts" hidden={!showHeaderShortcuts}>
               {showHeaderShortcuts && <BusinessHomeLink/>}
-              <NotificationsPanel userId={user.id} restaurantId={owner?.restaurant?.id} enableSound={false} kind="owner" onSelectRestaurant={selectRestaurant} visible={showHeaderShortcuts} labelled/>
+              {!embedded && <NotificationsPanel userId={user.id} restaurantId={owner?.restaurant?.id} enableSound={false} kind="owner" onSelectRestaurant={selectRestaurant} visible={showHeaderShortcuts} labelled/>}
             </nav>}
             <div className="top-actions"><button className="quiet topbar-signout" onClick={() => void logout()}>Sign out</button><span className="user-avatar" aria-label={user.name}>{user.name?.slice(0, 1) || "C"}</span></div>
           </header>
-          <main id="portal-main" className="content" tabIndex={-1}><Outlet/></main>
+          <main id="portal-main" className="content" tabIndex={-1}>
+            {!embedded && <CalaiActivityAlert business={business} workspaceMode={mode} terminal={workspace?.terminal} userId={user.id}/>}
+            {embedded && principalKind === "terminal" && location.pathname === "/owner/connections" &&
+              <p className="fine"><NavLink to="/login?as=owner" state={{ returnTo: location.pathname }}>Sign in as Cal-Eats owner</NavLink></p>}
+            <Outlet/>
+          </main>
           <nav className="mobile-bottom-nav" style={{ gridTemplateColumns: `repeat(${mobileNav.length + 1},minmax(0,1fr))` }} aria-label="Quick business tools">
             {mobileNav.map(([label, path]) => <NavLink key={path} to={path}><span className="nav-icon"><NavIcon label={label}/>{label === "Inbox" && messageCount > 0 && <b className="nav-count">{messageCount}</b>}</span><span>{label}</span></NavLink>)}
             <button type="button" aria-label="More business tools" onClick={() => setOpen(true)}><span className="more-icon"><NavIcon label="More"/></span><span>More</span></button>
@@ -491,6 +503,14 @@ const splitEditorList=value=>value.split(",").map(entry=>entry.trim()).filter(Bo
 const newEditorId=prefix=>`${prefix}-${crypto.randomUUID().slice(0,8)}`;
 
 function CustomerTools({view}){const {restaurant,permission}=React.useContext(RestaurantContext),tools=useRestaurantTools();if(permission!=="owner"&&!(view==="offers"&&tools.manageMarketing))return <Denied message="The relevant restaurant permission is required for these customer tools."/>;return view==="inbox"?<CustomerInbox key={restaurant.id} restaurantId={restaurant.id}/>:view==="offers"?<Loyalty key={restaurant.id} restaurantId={restaurant.id}/>:<CustomerDirectory key={restaurant.id} restaurantId={restaurant.id}/>;}
+function OwnerNotifications() {
+  const { restaurant } = React.useContext(RestaurantContext);
+  const { user } = React.useContext(SessionContext);
+  return <section className="business-notifications-page">
+    <header className="page-heading"><h1>Notifications</h1></header>
+    <NotificationsPanel key={restaurant.id + ":" + user.id} page restaurantId={restaurant.id} userId={user.id} enableSound={false}/>
+  </section>;
+}
 function OwnerSupport(){const{restaurant}=React.useContext(RestaurantContext);return <SupportWorkspace key={restaurant.id} kind="restaurant" restaurantId={restaurant.id}/>;}
 
 function Printers() {

@@ -4,8 +4,10 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "../src/http.js";
 import { businessFixture, EATS_PASSWORD } from "./unified-business-test-fixture.js";
 import { enrolRegisteredTablet } from "./registered-tablet-fixture.js";
+import { requestAllowed } from "../../terminal-auth/src/protocol.js";
 
 const dashboardPath = "/api/business/dashboard";
+const activityPath = "/api/business/calai/orders?scope=activity";
 const liveSummary = {
   activeCalls: 2,
   agentsInUse: 1,
@@ -244,4 +246,97 @@ test("a failed native post-read identity check cannot publish an in-flight snaps
   assert.equal(fresh.status, 200, fresh.text);
   assert.deepEqual(fresh.body.data.calaiLiveCalls, { ...liveSummary, generatedAt: f.config.now().toISOString() });
   assert.equal(f.feed.reads, 2, "Recovery reads a new native snapshot");
+});
+
+test("Both activity uses the installed signed read, exact business proof, and a limited shared snapshot", async t => {
+  const f = await fixture(t);
+  const { tablet, selectMode, approve } = await registeredBothTablet(f);
+  assert.equal(requestAllowed("GET", activityPath, f.restaurant.id, f.business.id), true);
+  assert.equal((await tablet.json(activityPath)).status, 403);
+  assert.equal((await f.call(activityPath, { session: f.otherSession })).status, 403);
+  assert.equal(f.feed.reads, 0);
+  assert.equal(f.state.reads.length, 0);
+
+  assert.equal((await approve()).status, 200);
+  const snapshot = f.feed.getSnapshot;
+  let generatedAge = 0;
+  f.feed.getSnapshot = now => ({ ...snapshot(new Date(now.getTime() - generatedAge)), calls: [
+    { id: "private-current-call", status: "ringing", agentName: "private-agent-name", startedAt: new Date(now.getTime() - 2_000).toISOString() },
+    { id: "private-ended-call", status: "ended", startedAt: now.toISOString() },
+    { id: "invalid-call-time", status: "queued", startedAt: "unknown" },
+  ] });
+
+  const [owner, kitchen] = await Promise.all([f.call(activityPath), tablet.json(activityPath)]);
+  for (const response of [owner, kitchen]) {
+    assert.equal(response.status, 200, response.text);
+    assert.equal(response.headers.get?.("cache-control") ?? response.headers["Cache-Control"], "private, no-store");
+    assert.equal(response.body.data.businessId, f.business.id);
+    for (const projection of [response.body.data.calls, response.body.data.phoneOrders]) {
+      assert.deepEqual(Object.keys(projection).sort(), ["events", "generatedAt"]);
+      assert.equal(projection.events.length, 1);
+      assert.deepEqual(Object.keys(projection.events[0]).sort(), ["at", "key"]);
+      assert.match(projection.events[0].key, /^[a-f0-9]{64}$/);
+    }
+    for (const privateValue of ["private-current-call", "private-agent-name", "Synthetic phone customer", "c3333333-3333-4333-8333-333333333333"]) {
+      assert.equal(response.text.includes(privateValue), false);
+    }
+  }
+  assert.deepEqual(owner.body.data, kitchen.body.data);
+  assert.equal(f.feed.reads, 1);
+  assert.deepEqual(f.state.reads, ["orders"]);
+
+  f.advance(6_000);
+  const next = await tablet.json(activityPath);
+  assert.equal(next.status, 200, next.text);
+  assert.equal(next.body.data.calls.events[0].key, owner.body.data.calls.events[0].key);
+  assert.deepEqual(next.body.data.phoneOrders, owner.body.data.phoneOrders);
+  assert.equal(f.feed.reads, 2);
+  assert.deepEqual(f.state.reads, ["orders"], "Do not fetch the full native list at the call cadence");
+
+  f.advance(25_000);
+  generatedAge = 21_000;
+  const stale = await tablet.json(activityPath);
+  assert.equal(stale.status, 200, stale.text);
+  assert.equal(stale.body.data.calls, null);
+  assert.equal(stale.body.data.phoneOrders.events[0].key, owner.body.data.phoneOrders.events[0].key);
+  assert.deepEqual(f.state.reads, ["orders", "orders"]);
+
+  for (const selection of ["calai", "cal-eats", null]) {
+    selectMode(selection);
+    assert.equal((await tablet.json(activityPath)).status, 403, String(selection));
+  }
+  assert.equal(f.feed.reads, 3, "Other tablet modes cannot use a previously cached Both feed");
+
+  selectMode("both");
+  f.state.available = false;
+  const unavailable = await tablet.json(activityPath);
+  assert.equal(unavailable.status, 200, unavailable.text);
+  assert.deepEqual(unavailable.body.data, { businessId: f.business.id, calls: null, phoneOrders: null });
+  const current = await tablet.json("/api/business/context");
+  assert.equal(current.status, 200, current.text);
+  assert.equal(current.body.data.canViewEats, true);
+});
+
+test("an in-flight Both activity read cannot publish to a tablet switched to another mode", async t => {
+  const f = await fixture(t);
+  const { tablet, selectMode, approve } = await registeredBothTablet(f);
+  assert.equal((await approve()).status, 200);
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const snapshot = f.feed.getSnapshot;
+  f.feed.getSnapshot = async now => {
+    entered.resolve();
+    await release.promise;
+    return snapshot(now);
+  };
+  const pending = tablet.json(activityPath);
+  try {
+    await Promise.race([entered.promise, pending.then(result => assert.fail("Expected a pending native read: " + result.text))]);
+    selectMode("cal-eats");
+  } finally {
+    release.resolve();
+  }
+  const switched = await pending;
+  assert.equal(switched.status, 403, switched.text);
+  assert.equal(switched.body.error.code, "CALAI_AUTHORITY_REQUIRED");
+  assert.equal(switched.body.data, undefined);
 });

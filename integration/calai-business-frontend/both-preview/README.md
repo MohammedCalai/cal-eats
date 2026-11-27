@@ -1,0 +1,13 @@
+# Calai and Cal-Eats together
+
+The combined workspace runs in Calai’s existing business frontend. Its original navigation, settings, test-call screen and order notifications continue to work. The Calai + Cal-Eats wordmark links back to the shared dashboard. The two live counters show Calai calls and Cal-Eats orders in progress. Daily counts and recent orders cover both services. Selecting a recent Cal-Eats order opens its details.
+
+Customer messages stays in the header while staff move between services. An owner opens the inbox from the header. A tablet user with order access reaches the location’s notifications and order chats. With business message sounds enabled, the original three-note melody repeats every ten seconds until staff open a conversation and its read is confirmed. A later customer message starts the reminder again. Browsers that require a tap before playing sound show a prompt.
+
+Cal-Eats tools & reports opens the restaurant’s existing live order management, period filters, statistics, popular items and emailed CSV reports. The sidebar also includes authorised notifications, statements, earnings, menu and marketing tools. While staff work in Calai, the Cal-Eats connection listens for orders and messages in the same window.
+
+This is a Cal-Eats review package. The native frontend patch targets `calai-operation/calai-platform` at `246c09f4a6d224f09a813e20ee496b0eddf5e4df`. The protected-file report records the exact reference tree and changed files. Apply the patch only to a separate review checkout of that commit. The optional native entry is `/owner/dashboard?workspace=both`; direct Calai navigation retains its normal screens.
+
+The two services retain their own authentication and route permissions. The parent verifies the native owner, location and current assignment before displaying Cal-Eats activity. The child shares allowed menu links, aggregate counts, recent order summaries and message reminder state. Chat contents stay in the Cal-Eats conversation. A terminal needs a signed Both assignment and its own order-processing permissions.
+
+Local browser verification used a synthetic restaurant and isolated Calai API. Edge opened reports, notification history, statements and native Calai settings in one window. A Calai order popup appeared while Cal-Eats Orders was open. On Calai Call Summary, a customer message updated the badge and started the three-note reminder. The next melody started ten seconds later. Opening the inbox kept the conversation unread. Reading it stopped the reminder, and a later message restarted it. Physical Surface speaker volume, automatic launch and live order fulfilment require a separate pilot.

@@ -1,4 +1,5 @@
-import { tabletJson } from "./registered-tablet-fixture.js";
+import { enrolRegisteredTablet, tabletJson } from "./registered-tablet-fixture.js";
+import { requestAllowed } from "../../terminal-auth/src/protocol.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {randomUUID} from "node:crypto";
@@ -7,6 +8,40 @@ import {addNotification} from "../src/offers.js";
 import {migrateDatabase,openDatabase} from "../src/db/index.js";
 import {migrations} from "../src/db/migrations.js";
 import {restaurantMessageArrivalRevision} from "../src/business-message-attention.js";
+
+test("an installed ordering tablet acknowledges its own order chat through its existing signed messaging action",async()=>{
+  const f=await journeyFixture();
+  try {
+    const owner=await f.login("restaurant@calai.local","LocalRestaurant!4310"), other=await f.login("restaurant2@calai.local","LocalRestaurant2!4310");
+    const customer=await f.login("customer@calai.local","LocalCustomer!4310");
+    const tablet=await enrolRegisteredTablet(f,{ownerCookie:owner}),foreign=await enrolRegisteredTablet(f,{ownerCookie:other});
+    const item=(await f.json(`/api/restaurants/${tablet.restaurantId}/menu`)).body.data.items[0];
+    const placed=await f.json("/api/orders",{method:"POST",cookie:customer,headers:{"Idempotency-Key":"signed-chat-order"},body:{
+      restaurantId:tablet.restaurantId,items:[{menuItemId:item.id,quantity:1}],fulfillment:"collection",paymentMethod:"mock_card"
+    }});
+    assert.equal(placed.status,201,placed.text);
+    const path=`/api/orders/${placed.body.data.id}/messages`;
+    const sent=await f.json(path,{method:"POST",cookie:customer,headers:{"Idempotency-Key":"signed-chat-message"},body:{message:"Please add cutlery."}});
+    assert.equal(sent.status,201,sent.text);
+    const body={action:"markRead",lastMessageId:sent.body.data.id};
+    const attentionPath=`/api/restaurant/restaurants/${tablet.restaurantId}/message-attention`;
+    const before=(await tablet.json(attentionPath)).body.data;
+    assert.equal(before.unreadCount,1);
+    assert.equal(requestAllowed("POST",path,tablet.restaurantId,tablet.businessId),true);
+    assert.equal((await foreign.json(path,{method:"POST",body})).status,404);
+    assert.equal((await f.json(path,{cookie:owner,method:"POST",body})).status,400);
+    assert.equal((await tablet.json(path,{method:"POST",body:{...body,message:"not a new message"}})).status,400);
+    const result=await tablet.json(path,{method:"POST",body});
+    assert.equal(result.status,200,result.text);
+    assert.equal(result.body.data.lastMessageId,body.lastMessageId);
+    assert.equal(result.body.data.unreadCount,0);
+    assert.equal(result.body.data.messageAttentionRevision,before.revision);
+    assert.equal((await tablet.json(path,{method:"POST",body})).status,200);
+    assert.equal((await tablet.json(attentionPath)).body.data.unreadCount,0);
+    assert.equal((await f.json(attentionPath,{cookie:owner})).body.data.unreadCount,1);
+    assert.equal((await tablet.json(path)).body.data.items.length,1);
+  } finally { await f.close(); }
+});
 
 test("reading one customer order conversation leaves the other conversation actionable",async()=>{
   let clock=Date.parse("2026-01-01T01:00:00.000Z");

@@ -5,12 +5,13 @@ import {createSession,cookieFor} from './auth/sessions.js';
 import {verifyPassword} from './auth/passwords.js';
 import {businessProductState,businessProductPermission,ensureBusinessProductPermissions,terminalHasCalaiAuthority} from './business-product-policy.js';
 import {businessAccountMembership as membership} from './business-account-membership.js';
-import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration} from './tablet-product-policy.js';
+import {tabletApplicationProducts,tabletProductPermitted,tabletApplicationConfiguration,nativeBothPilot} from './tablet-product-policy.js';
 import {managedTabletAwaitingBrowser} from './tablet-managed-setup.js';
 import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
 import {PAYABLE_ORDER_SQL} from './order-confirmation.js';
-import {freshCalaiLiveCalls,readCalaiLiveCalls} from './calai-live-calls.js';
+import {calaiLiveCallSummary,freshCalaiLiveCalls,readCalaiLiveCalls,readCalaiPhoneOrderActivity} from './calai-live-calls.js';
+import {liveRestaurantOrderCounts} from './business-dashboard.js';
 import {CALAI_BUSINESS_ORIGIN,authenticateCalaiBusiness,calaiBusinessAdapter,calaiBusinessReadPath,calaiTokenMetadata,assertCalaiBusinessIdentity,encryptCalaiBusinessCredentials,decryptCalaiBusinessCredentials,redactCalaiBusinessData,isSourceId} from './unified-business-calai.js';
 export {authenticateCalaiBusiness} from './unified-business-calai.js';
 
@@ -89,7 +90,8 @@ function selectedContext(db,session,config){
  state.products.calai.financialAccess=!terminal(session)&&calaiAllowed;
  state.products['cal-eats'].financialAccess=!terminal(session)&&Boolean(admin||capabilities.viewFinance);
  state.products['cal-eats'].capabilities={viewOrders:canViewEats,viewPayouts:state.products['cal-eats'].financialAccess,manageMenu:!terminal(session)&&Boolean(admin||capabilities.manageMenu),viewDevices:!terminal(session)&&Boolean(admin||capabilities.viewDevices),manageTerminal:!terminal(session)&&Boolean(admin||capabilities.manageTerminal)};
- return{...state,...(terminal(session)?{tabletConfiguration:tabletApplicationConfiguration(db,session.terminalId,state.id)}:{}),canManageProducts:admin,canConnectProducts:rights.canManageProducts,canViewEats:canViewEats&&(!terminal(session)||state.products['cal-eats'].allowedOnTablet),canViewCalai:terminal(session)?state.products.calai.allowedOnTablet&&terminalHasCalaiAuthority(db,session.terminalId,state.id):calaiAllowed,principalKind:terminal(session)?'terminal':'human'};
+ const assignment=terminal(session)?tabletApplicationConfiguration(db,session.terminalId,state.id,config):null;
+ return{...state,...(terminal(session)?{tabletConfiguration:assignment,...(nativeBothPilot(config,assignment)?{nativeBothLaunch:true}:{})}:{}),canManageProducts:admin,canConnectProducts:rights.canManageProducts,canViewEats:canViewEats&&(!terminal(session)||state.products['cal-eats'].allowedOnTablet),canViewCalai:terminal(session)?state.products.calai.allowedOnTablet&&terminalHasCalaiAuthority(db,session.terminalId,state.id):calaiAllowed,principalKind:terminal(session)?'terminal':'human'};
 }
 function selectAccount(db,userId,id,now){db.prepare('INSERT INTO business_account_preferences(user_id,business_id,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET business_id=excluded.business_id,updated_at=excluded.updated_at').run(userId,id,now);}
 function revokeSourceTerminals(db,businessId,now){
@@ -184,8 +186,45 @@ async function readCalaiDashboard(db, config, business) {
     });
     return dashboard;
   } finally {
-    live?.finish?.(dashboard);
+    live?.finish?.(dashboard?.liveCalls, Boolean(dashboard));
   }
+}
+
+function assertCurrentBusinessRead(db, session, config) {
+  if (!terminal(session)) return currentHumanSession(db, session, config);
+  if (!db.prepare(`SELECT 1 FROM business_terminals t JOIN business_terminal_grants g ON g.terminal_id=t.id
+    WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL AND g.token_hash=? AND g.revoked_at IS NULL AND g.expires_at>?`)
+    .get(session.terminalId, session.businessId, session.terminalGrantHash, stamp(config))) {
+    throw fail(401, 'TERMINAL_SESSION_EXPIRED', 'Reconnect the registered restaurant tablet.');
+  }
+}
+
+async function calaiBusinessActivity(db, session, config) {
+  const denied = () => fail(403, 'CALAI_AUTHORITY_REQUIRED', 'Calai alerts require authorised access to both services.');
+  const business = selectedContext(db, session, config);
+  if (!canReadCalaiLiveCalls(business)) throw denied();
+  let live, orders, activity;
+  try {
+    activity = await withCalaiBusinessRead(db, config, business.id, async (adapter, accessToken, link) => {
+      live = readCalaiLiveCalls(db, config, link, adapter, accessToken);
+      orders = readCalaiPhoneOrderActivity(db, config, link, adapter, accessToken);
+      const [calls, phoneOrders] = await Promise.all([live.result, orders.result]);
+      return { calls, phoneOrders };
+    });
+  } catch {
+    // Calai activity is optional. A native source outage must not interrupt
+    // a signed tablet's ability to keep receiving its Cal-Eats orders.
+  } finally {
+    live?.finish?.(activity?.calls, Boolean(activity));
+    orders?.finish?.(activity?.phoneOrders, Boolean(activity));
+  }
+  assertCurrentBusinessRead(db, session, config);
+  const fresh = selectedContext(db, session, config);
+  if (!canReadCalaiLiveCalls(fresh) || fresh.id !== business.id || fresh.eatsRestaurantId !== business.eatsRestaurantId ||
+      fresh.products.calai.sourceAccountId !== business.products.calai.sourceAccountId ||
+      fresh.products.calai.verifiedSourceUserId !== business.products.calai.verifiedSourceUserId) throw denied();
+  const calls = freshCalaiLiveCalls(activity?.calls, config.now().getTime(), 20_000);
+  return { businessId: fresh.id, calls: calls && { generatedAt: calls.generatedAt, events: calls.events }, phoneOrders: activity?.phoneOrders ?? null };
 }
 
 const londonOrderDay = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -225,7 +264,7 @@ export async function unifiedBusinessDashboard(db,session,config){
     }
     catch(error){counts.calai={today:null,available:false};connections.calai={status:error.status===503?'unavailable':'reconnect_required',code:error.code??'CALAI_UNAVAILABLE',message:error.status===503?'Calai is temporarily unavailable.':'An owner must reconnect Calai.'};}
   }
-  if(terminal(session)){if(!db.prepare('SELECT 1 FROM business_terminals t JOIN business_terminal_grants g ON g.terminal_id=t.id WHERE t.id=? AND t.business_id=? AND t.revoked_at IS NULL AND g.token_hash=? AND g.revoked_at IS NULL AND g.expires_at>?').get(session.terminalId,session.businessId,session.terminalGrantHash,stamp(config)))throw fail(401,'TERMINAL_SESSION_EXPIRED','Reconnect the registered restaurant tablet.');}else currentHumanSession(db,session,config);
+  assertCurrentBusinessRead(db, session, config);
   const fresh=selectedContext(db,session,config);if(fresh.id!==business.id)throw fail(409,'BUSINESS_CONTEXT_CHANGED','The selected account changed. Refresh its dashboard.');
   const canShowCalai=fresh.canViewCalai&&fresh.products.calai.active&&fresh.products.calai.sourceAccountId===business.products.calai.sourceAccountId&&fresh.products.calai.verifiedSourceUserId===business.products.calai.verifiedSourceUserId;
   if(!canShowCalai){counts.calai={today:null,available:false};connections.calai={status:fresh.products.calai.adminAllowed?'permission_required':'disabled_by_admin'};}
@@ -250,8 +289,10 @@ export async function unifiedBusinessDashboard(db,session,config){
     .map(row=>fresh.products[row.source].financialAccess?row:{...row,totalMinor:null});
   const complete=Object.entries(fresh.products).every(([product,state])=>!state.active||counts[product].available);
   const canShowLive = canShowCalai && canReadCalaiLiveCalls(fresh) && fresh.eatsRestaurantId === business.eatsRestaurantId;
-  const liveCalls = canShowLive ? freshCalaiLiveCalls(calaiLiveCalls, config.now().getTime()) : null;
-  return{business:fresh,calaiLiveCalls:liveCalls,counts:{...counts,total:{today:complete?Object.values(counts).reduce((sum,row)=>sum+(row.today??0),0):null,complete}},orders:visible,connections,generatedAt:stamp(config),timeZone:'Europe/London',counterPeriod:'today',counterDefinition:'Orders received today in London. Cal-Eats counts orders released to the restaurant, including completed and closed orders.'};
+  const liveCalls = canShowLive ? calaiLiveCallSummary(calaiLiveCalls, config.now().getTime()) : null;
+  const eatsLiveOrders = canReadCalaiLiveCalls(fresh) && fresh.eatsRestaurantId && counts['cal-eats'].available
+    ? liveRestaurantOrderCounts(db, fresh.eatsRestaurantId) : null;
+  return{business:fresh,calaiLiveCalls:liveCalls,eatsLiveOrders,counts:{...counts,total:{today:complete?Object.values(counts).reduce((sum,row)=>sum+(row.today??0),0):null,complete}},orders:visible,connections,generatedAt:stamp(config),timeZone:'Europe/London',counterPeriod:'today',counterDefinition:'Orders received today in London. Cal-Eats counts orders released to the restaurant, including completed and closed orders.'};
 }
 function requireConnectionAllowed(db,businessId,product){if(!businessProductPermission(db,businessId,product))throw fail(403,'ADMIN_CONNECTION_PERMISSION_REQUIRED','The platform administrator must allow this product connection first.');}
 function currentHumanSession(db,session,config){const user=human(db,session);if(session.sessionId){const table=session.nativeAudience==='platform-admin'?'native_platform_sessions':session.nativeAudience==='business'?'native_business_sessions':'sessions';if(!db.prepare(`SELECT 1 FROM ${table} WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?`).get(session.sessionId,user.id,stamp(config)))throw fail(401,'AUTH_REQUIRED','Sign in again to confirm this account connection.');}return user;}
@@ -309,6 +350,11 @@ export async function routeUnifiedBusiness({req,res,url,db,config,session,checkR
   }
   if(req.method==='GET'&&url.pathname==='/api/business/accounts')return sendJson(res,200,{data:terminal(session)?[selectedContext(db,session,config)]:accountIds(db,user).map(id=>({...businessAccountState(db,id),canManageProducts:access(db,session,id).canManageProducts}))},noStore);
   if(req.method==='GET'&&url.pathname==='/api/business/dashboard')return sendJson(res,200,{data:await unifiedBusinessDashboard(db,session,config)},noStore);
+  // The installed tablet companion already permits the scoped Calai orders
+  // read. Alert clients receive opaque observations, never native order data.
+  if(req.method==='GET'&&url.pathname==='/api/business/calai/orders'&&url.search==='?scope=activity'){
+    return sendJson(res,200,{data:await calaiBusinessActivity(db,session,config)},noStore);
+  }
   if(req.method==='POST'&&url.pathname==='/api/business/accounts'){
     if(human(db,session).role!=='admin')throw fail(403,'ADMIN_REQUIRED','The platform administrator must create or authorise this location.');const body=await readJson(req,config.bodyLimit);exactObject(body,['name']);const name=text(body.name,'Business name'),id=randomUUID(),now=stamp(config);
     withTransaction(db,()=>{db.prepare('INSERT INTO business_accounts(id,name,created_at,updated_at) VALUES(?,?,?,?)').run(id,name,now,now);ensureBusinessProductPermissions(db,id,now);db.prepare("INSERT INTO business_account_memberships(business_id,user_id,permission,created_at) VALUES(?,?,'owner',?)").run(id,user.id,now);selectAccount(db,user.id,id,now);audit(db,user.id,id,'business_account_created',{},now);});return sendJson(res,201,{data:businessAccountState(db,id,{config})},noStore);

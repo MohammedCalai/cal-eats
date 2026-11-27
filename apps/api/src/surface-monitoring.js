@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {HttpError,exactObject,readJson,sendJson} from './http.js';
 import {businessMonitoringContext,registeredCalaiApprovalTarget,terminalHasCalaiAuthority} from './business-product-policy.js';
 import {assertBusinessTerminalSessionLive} from './business-terminals.js';
-import {recordTabletConfigurationReceipt,tabletApplicationConfiguration} from './tablet-product-policy.js';
+import {nativeBothPilot,recordTabletConfigurationReceipt,tabletApplicationConfiguration} from './tablet-product-policy.js';
 import {assertTabletSelectionReady} from './tablet-assignment-safety.js';
 
 export const SURFACE_DEFAULTS=Object.freeze({heartbeatSeconds:30,evaluationSeconds:30,staleSeconds:120,openingGraceSeconds:120,reauthenticationGraceSeconds:60,recoverySeconds:30,reminderSeconds:600,printerStaleSeconds:60,printerFaultGraceSeconds:30});
@@ -85,31 +85,37 @@ function confirmTabletConfiguration(db, config, session, businessId, body) {
 
   return transaction(db, () => {
     assertBusinessTerminalSessionLive({ db, config, session, product: null });
-    if (body.state === 'open_calai') {
+    const current = tabletApplicationConfiguration(db, session.terminalId, businessId, config);
+    if (body.state !== 'configuration_received') {
       if (typeof body.configurationTabletId !== 'string' || !uuid.test(body.configurationTabletId) ||
           !Number.isSafeInteger(body.configurationRevision) || body.configurationRevision < 1) {
         throw fail(400, 'VALIDATION_ERROR', 'The current tablet configuration is required.');
       }
 
       const target = registeredCalaiApprovalTarget(db, businessId);
-      const current = tabletApplicationConfiguration(db, session.terminalId, businessId);
+      const selection = body.state === 'open_calai' ? 'calai' : 'both';
       if (target?.id !== session.terminalId || !current || target.tablet_id !== current.tabletId ||
           current.tabletId !== body.configurationTabletId || current.revision !== body.configurationRevision ||
-          current.selection !== 'calai') {
+          current.selection !== selection || (selection === 'both' && !nativeBothPilot(config, current))) {
         throw fail(409, 'TABLET_CONFIGURATION_CHANGED', 'The tablet assignment changed. Check its current configuration.');
       }
 
-      assertTabletSelectionReady(db, config, businessId, 'calai');
+      assertTabletSelectionReady(db, config, businessId, selection);
+      if (selection === 'both') assertBusinessTerminalSessionLive({db, config, session, product: 'cal-eats'});
       if (!terminalHasCalaiAuthority(db, session.terminalId, businessId)) {
         throw fail(403, 'CALAI_AUTHORITY_REQUIRED', 'The restaurant owner must confirm Calai access for this tablet.');
       }
+      if (body.state === 'open_both') return current;
+    } else if (nativeBothPilot(config, current)) {
+      // A cached standalone client may still send its old generic receipt.
+      throw fail(409, 'COMBINED_WORKSPACE_REQUIRED', 'Open the combined workspace to confirm this setting.');
     }
     return recordTabletConfigurationReceipt(db, config, session, body);
   });
 }
 export async function routeSurfaceMonitoring({req,res,url,db,config,session,checkRate}){let match=/^\/api\/business\/accounts\/([^/]+)\/surface\/heartbeat$/.exec(url.pathname);if(match&&req.method==='POST'){
   const body = await readJson(req, config.bodyLimit);
-  if (body?.state === 'configuration_received' || body?.state === 'open_calai') {
+  if (['configuration_received','open_calai','open_both','both_rendered'].includes(body?.state)) {
     const tabletConfiguration = confirmTabletConfiguration(db, config, session, match[1], body);
     return sendJson(res, 200, { data: { tabletConfiguration } }, { 'Cache-Control': 'private, no-store' });
   }

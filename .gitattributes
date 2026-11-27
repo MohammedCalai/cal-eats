@@ -11,3 +11,4 @@ apps/api/legal-documents/*.txt text eol=lf
 
 # Preserve the exact reviewed source patch, including native context whitespace.
 integration/calai-business-frontend/*.patch -text -whitespace
+integration/calai-business-frontend/both-preview/*.patch -text -whitespace

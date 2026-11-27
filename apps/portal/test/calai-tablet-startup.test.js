@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {calaiTabletAssignment, openAssignedCalai} from '../src/calai-tablet-startup.js';
+import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai} from '../src/calai-tablet-startup.js';
 
 const businessId = '11111111-1111-4111-8111-111111111111';
 const terminalId = '22222222-2222-4222-8222-222222222222';
@@ -34,7 +34,7 @@ test('successful launch checks the revision and opens the fixed original Calai s
       assert.deepEqual(JSON.parse(options.body), {state: 'open_calai', configurationTabletId: tabletId, configurationRevision: 4});
       return {tabletConfiguration, destination: 'https://untrusted.example'};
     }}), true);
-  assert.deepEqual(destinations, ['https://calai.info/auth/login']);
+  assert.deepEqual(destinations, ['https://calai.info/auth/login?workspace=calai']);
 });
 
 test('changed scope, cancelled startup and mismatched or rejected checks do not launch', async () => {
@@ -48,4 +48,33 @@ test('changed scope, cancelled startup and mismatched or rejected checks do not 
   current = true;
   assert.equal(await openAssignedCalai({...options, request: async () => { abort.abort(); return {tabletConfiguration}; }}), false);
   assert.equal(launched, false);
+});
+
+test('pilot Both requires two ready authorised products and launches only its fixed combined host', async () => {
+  const both = {...tabletConfiguration, selection:'both'};
+  const scoped = {...context, nativeBothLaunch:true, tabletConfiguration:both, canViewEats:true,
+    products:{...context.products, 'cal-eats':context.products.calai}};
+  const assignment = calaiTabletAssignment(terminal, scoped, businessId);
+  assert.equal(assignment.authorised, true);
+  assert.equal(calaiTabletAssignment(terminal, {...scoped,canViewEats:false}, businessId).authorised, false);
+  assert.equal(calaiTabletAssignment(terminal, {...scoped,products:context.products}, businessId).authorised, false);
+  assert.equal(calaiTabletAssignment(terminal, {...scoped,nativeBothLaunch:false}, businessId), null);
+  assert.equal(calaiTabletAssignment(terminal, {...scoped,principalKind:'human'}, businessId), null);
+  const signal = new AbortController().signal, destinations = [];
+  const launch = confirmation => openAssignedCalai({assignment, signal, isCurrent:()=>true,
+    replace:url=>destinations.push(url), request:(path, options)=>{
+      assert.deepEqual(JSON.parse(options.body), {state:'open_both',configurationTabletId:tabletId,configurationRevision:4});
+      return {tabletConfiguration:confirmation,destination:'https://wrong.invalid'};
+    }});
+  await assert.rejects(launch(tabletConfiguration), /could not be confirmed/);
+  assert.equal(await launch(both), true);
+  assert.deepEqual(destinations, ['https://calai.info/owner/dashboard?workspace=both']);
+  const parent={}, origin='https://calai.info';
+  const data={type:'cal-eats-workspace:both-rendered',version:1,businessId,tabletId,revision:4};
+  const event={data,source:parent,origin};
+  assert.equal(acceptsRenderedBoth(event,parent,origin,assignment), true);
+  for (const other of [{...event,source:{}},{...event,origin:'https://other.invalid'},{...event,data:{...data,revision:5}},
+    {...event,data:{...data,businessId:terminalId}}, {...event,data:{...data,tabletId:terminalId}}, {...event,data:{...data,type:'cal-eats-workspace:host-message-audio'}}]) {
+    assert.equal(acceptsRenderedBoth(other,parent,origin,assignment), false);
+  }
 });

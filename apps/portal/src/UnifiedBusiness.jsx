@@ -1,15 +1,17 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
-import { shortDate, listItems } from "./model.js";
-import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, canUseCalaiWorkspaceTools, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
+import { shortDate, listItems, pounds } from "./model.js";
+import { BUSINESS_PRODUCTS, CALAI_WORKSPACE_TOOLS, businessWorkspaceMode, canUseCalaiWorkspaceTools, calaiWorkspaceReadPath, applyTabletProductAccess, productPresentation, productControlLabel, productName, safeNativeLink, accountDirectoryQuery, connectionConfirmation, deviceStateLabel, terminalSetupDocument, canConnectBusinessProduct, calaiTabletAuthorizationPath, calaiTabletFirstSetupPath, calaiFirstSetupTablets, calaiFirstSetupPayload } from "./unified-business-model.js";
 import { requestCalaiFirstTabletSetup, saveCalaiFirstTabletSetup } from "./calai-first-tablet-download.js";
 import WeeklyStatements from "./WeeklyStatements.jsx";
 import {WorkspaceDialog} from "./CustomerWorkspace.jsx";
 import {startOperationalPresence,stopOperationalPresence} from "./surface-presence-client.js";
 import {subscribeTerminalStatus, terminalApi, terminalStatus} from "./terminal-client.js";
-import {calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
-import { EMBEDDED_PARENT_ORIGIN, embeddedCommand, embeddedState } from "./embedded-business-model.js";
+import {acceptsRenderedBoth, calaiTabletAssignment, openAssignedCalai} from "./calai-tablet-startup.js";
+import { EMBEDDED_PARENT_ORIGIN, acceptsHostedMessageSound, embeddedCommand, embeddedState } from "./embedded-business-model.js";
+import { useOrderAlerts } from "./NewOrderAlerts.jsx";
+import { useBusinessMessageAlerts } from "./BusinessMessageReminder.jsx";
 import "./UnifiedBusiness.css";
 
 const BusinessContext = createContext(null);
@@ -57,22 +59,36 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
   const location = useLocation();
   const startupPage = location.pathname.replace(/\/+$/, "") === "/owner/dashboard" && !embedded &&
     window.top === window && automaticStartupAllowed?.() === true;
-  const startupAssignment = startupPage && !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
+  const assignment = !signedResource.error ? calaiTabletAssignment(terminal, signedContext, business?.id) : null;
+  const startupAssignment = startupPage ? assignment : null;
+  const requiresHostReceipt = signedContext?.nativeBothLaunch === true && signedConfiguration?.selection === "both";
+  const presentation = embedded && assignment?.selection === "both" && assignment.authorised ? assignment : null;
+  const [renderedKey, setRenderedKey] = useState(null);
+  useEffect(() => {
+    if (!presentation) return;
+    const receive = event => {
+      if (acceptsRenderedBoth(event, window.parent, EMBEDDED_PARENT_ORIGIN, presentation)) setRenderedKey(presentation.key);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [presentation?.key]);
   const received = useRef(null), sending = useRef(null);
   useEffect(() => {
     const businessId = business?.id, terminalId = terminal.context?.terminalId;
     const revision = signedConfiguration?.revision, tabletId = signedConfiguration?.tabletId;
-    if (startupAssignment?.authorised || !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
+    if (signedResource.error || startupAssignment?.authorised || (requiresHostReceipt && (!presentation || renderedKey !== presentation.key)) ||
+      !businessId || !terminalId || !tabletId || !Number.isSafeInteger(revision) ||
       signedConfiguration.receivedAt || signedConfiguration.status === "received") return;
     const key = `${businessId}:${terminalId}:${tabletId}:${revision}`;
     if (received.current === key || sending.current === key) return;
     sending.current = key;
     void terminalApi(`/api/business/accounts/${encodeURIComponent(businessId)}/surface/heartbeat`,
-      json("POST", { state: "configuration_received", configurationTabletId: tabletId, configurationRevision: revision }))
+      json("POST", { state: requiresHostReceipt ? "both_rendered" : "configuration_received", configurationTabletId: tabletId, configurationRevision: revision }))
       .then(() => { if (sending.current === key) received.current = key; })
       .catch(() => { /* Try again when the signed context is refreshed. */ })
       .finally(() => { if (sending.current === key) sending.current = null; });
-  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised]);
+  }, [business?.id, terminal.context?.terminalId, signedConfiguration, configurationReadAt, startupAssignment?.authorised,
+    signedResource.error, requiresHostReceipt, renderedKey, presentation?.key]);
   const [selecting, setSelecting] = useState(false), [selectionError, setSelectionError] = useState("");
   const navigate = useNavigate(), working = useRef(false);
   async function selectAccount(id) {
@@ -82,9 +98,8 @@ export function BusinessWorkspaceProvider({ userId, embedded = false, observeMan
     catch (error) { setSelectionError(error.message); }
     finally { working.current = false; setSelecting(false); }
   }
-  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
+  return <BusinessContext.Provider value={{ ...context, business, terminal, mode: businessWorkspaceMode(business, signedConfiguration), tabletMode: !signedResource.error ? signedConfiguration?.selection || null : null, presentation, accounts: listItems(accounts.value), accountsError: accounts.error, reloadAccounts: accounts.reload, selecting, selectAccount, userId, embedded }}>
     <OperationalSurfacePresence business={business} terminal={terminal}/>
-    {embedded && <EmbeddedBusinessBridge key={business?.id||"no-business"}/>}
     <Resource {...context}>
       {selectionError && <p className="alert" role="alert">{selectionError}</p>}
       {startupAssignment ? <CalaiTabletStartup assignment={startupAssignment} allowConnections={business?.canConnectProducts === true}
@@ -114,12 +129,13 @@ function CalaiTabletStartup({ assignment, allowConnections, automaticStartupAllo
   }, [assignment.key, assignment.authorised, automaticStartupAllowed, attempt]);
 
   const failed = failure?.key === assignment.key && failure?.attempt === attempt;
+  const label = assignment.selection === "both" ? "Calai and Cal-Eats" : "Calai";
   return <main className="auth"><section className="auth-card">
-    <h1>Calai</h1>
-    {!assignment.authorised ? <p>Ask the restaurant owner to check this tablet’s Calai access.</p>
-      : failed ? <><p role="alert">The tablet’s Calai setting could not be confirmed.</p>
+    <h1>{label}</h1>
+    {!assignment.authorised ? <p>Ask the restaurant owner to check this tablet’s access to {label}.</p>
+      : failed ? <><p role="alert">The tablet’s setting for {label} could not be confirmed.</p>
         <button type="button" className="primary" onClick={() => setAttempt(value => value + 1)}>Try again</button></>
-        : <p role="status">Opening Calai…</p>}
+        : <p role="status">Opening {label}…</p>}
     {allowConnections && <Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link>}
   </section></main>;
 }
@@ -143,10 +159,50 @@ export function EmbeddedSessionBridge({ enabled, user }) {
   useEffect(() => { if (enabled && !user) window.parent.postMessage(embeddedState(null, null, null, false), EMBEDDED_PARENT_ORIGIN); }, [enabled, user?.id]);
   return null;
 }
-function EmbeddedBusinessBridge() {
+export function EmbeddedBusinessBridge({ allowedPathList, hostedMessageSound }) {
   const workspace = useBusinessWorkspace(), business = workspace?.business;
-  const dashboard = useBusinessResource(business ? "/api/business/dashboard" : null, { poll: 30000 });
-  useEffect(() => { const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, null, Boolean(business && !workspace.error)); const send=()=>window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN); send();const timer=setInterval(send,30000);return()=>clearInterval(timer); }, [business, workspace.error, dashboard.value, dashboard.error]);
+  const mode = workspace?.mode, tabletMode = workspace?.tabletMode;
+  const alerts = useOrderAlerts();
+  const messages = useBusinessMessageAlerts();
+  const [hostAudioBusiness, setHostAudioBusiness] = useState(null);
+  useEffect(() => {
+    setHostAudioBusiness(null);
+    if (!hostedMessageSound || !business?.id || mode !== "both" || workspace.error) return;
+    const receive = event => {
+      if (acceptsHostedMessageSound(event, window.parent, business.id)) setHostAudioBusiness(business.id);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [hostedMessageSound, business?.id, mode, workspace.error]);
+  const attention = hostedMessageSound && hostAudioBusiness === business?.id ? messages?.hostAttention : null;
+  useEffect(() => {
+    if (!hostedMessageSound || !business?.id || hostAudioBusiness !== business.id) return;
+    const interact = event => {
+      if (event.isTrusted) window.parent.postMessage({ type: "cal-eats-workspace:audio-interaction", version: 1, businessId: business.id }, EMBEDDED_PARENT_ORIGIN);
+    };
+    document.addEventListener("pointerdown", interact, true);
+    document.addEventListener("keydown", interact, true);
+    return () => { document.removeEventListener("pointerdown", interact, true); document.removeEventListener("keydown", interact, true); };
+  }, [hostedMessageSound, hostAudioBusiness, business?.id]);
+  const age = Date.now() - Date.parse(alerts?.lastCheckedAt);
+  const pendingOrderCount = alerts?.available && !alerts.error && age >= 0 && age <= 45_000 ? alerts.total : null;
+  const dashboard = useBusinessResource(business && mode === "both" ? "/api/business/dashboard" : null, { poll: 30000, scope: business?.id });
+  useEffect(() => {
+    const paths = new Set(allowedPathList.split("\n"));
+    const send = () => {
+      const payload = embeddedState(workspace.error ? null : business, dashboard.error ? null : dashboard.value, null,
+        Boolean(business && !workspace.error), { mode, tabletMode, pendingOrderCount, paths, messageAttention: attention });
+      if (payload.authenticated && workspace.presentation) payload.presentationReceipt = {
+        tabletId: workspace.presentation.tabletId, revision: workspace.presentation.revision
+      };
+      window.parent.postMessage(payload, EMBEDDED_PARENT_ORIGIN);
+    };
+    send();
+    const timer = setInterval(send, 30000);
+    return () => clearInterval(timer);
+  }, [business, workspace.error, dashboard.value, dashboard.error, mode, tabletMode, pendingOrderCount, allowedPathList,
+    workspace.presentation?.key, hostAudioBusiness, attention?.restaurantId, attention?.checkedAt, attention?.revision, attention?.unreadCount,
+    attention?.acknowledgedRevision, attention?.soundEnabled, attention?.orderAlarmActive]);
   return null;
 }
 export function BusinessAccountSwitcher() {
@@ -331,6 +387,24 @@ function CalaiTabletAuthorization({ business }) {
       </WorkspaceDialog>}
   </div>;
 }
+function NativeAccountLink({ href, children, primary = false }) {
+  const embedded = useBusinessWorkspace()?.embedded;
+  const destinations = {
+    "https://calai.info/owner/settings": "settings",
+    "https://calai.info/owner/settings/subscription": "subscription",
+  };
+  const className = primary ? "button-link primary" : "button-link";
+  if (!embedded) return <a className={className} href={href} target="_top">{children}</a>;
+  if (!Object.hasOwn(destinations, href)) return null;
+  return <button type="button" className={className} onClick={() => {
+    window.parent.postMessage({ type: "cal-eats-workspace:open-native", version: 1, view: destinations[href] }, EMBEDDED_PARENT_ORIGIN);
+  }}>{children}</button>;
+}
+function RegistrationLink({ href, className, children }) {
+  const embedded = useBusinessWorkspace()?.embedded;
+  return <a className={className} href={href} target={embedded ? "_blank" : "_top"}
+    rel={embedded ? "noopener noreferrer" : undefined}>{children}</a>;
+}
 function OwnerProductCard({ business, product, tabletConnection }) {
   const state = productPresentation(business, product), settings = safeNativeLink(state.nativeLinks?.settings), finance = safeNativeLink(state.nativeLinks?.statements || state.nativeLinks?.billing);
   const reconnect = state.connectionStatus === "reconnect_required", status = state.usable ? "Connected" : !state.allowed ? "Not enabled" : state.status === "unavailable" ? "Temporarily unavailable" : reconnect ? "Sign in required" : state.linked ? "Setup needed" : "Not connected";
@@ -341,11 +415,11 @@ function OwnerProductCard({ business, product, tabletConnection }) {
     {!state.allowed && !state.usable && <p className="fine">Contact Cal-Eats support if you would like to connect this service.</p>}
     <div className="business-account-actions">
       {canConnectBusinessProduct(business, product) && <Link className={state.linked && !reconnect ? "button-link" : "button-link primary"} to={`/owner/connections?connect=${product}`}>{state.linked ? reconnect ? `Reconnect ${state.name}` : "Verify connection" : `Connect ${state.name}`}</Link>}
-      {state.nativeAccountId && settings && <a className="button-link" target="_top" href={settings}>Calai settings</a>}
-      {state.nativeAccountId && state.financialAccess && finance && <a className="button-link" target="_top" href={finance}>Calai statements</a>}
+      {state.nativeAccountId && settings && <NativeAccountLink href={settings}>Calai settings</NativeAccountLink>}
+      {state.nativeAccountId && state.financialAccess && finance && <NativeAccountLink href={finance}>Calai statements</NativeAccountLink>}
       {product === "cal-eats" && state.linked && <Link className="button-link" to="/owner/settings">Restaurant settings</Link>}
-      {product === "calai" && !state.nativeAccountId && safeNativeLink(state.nativeLinks?.onboarding) && <a className="button-link" target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register with Calai</a>}
-      {canConnectBusinessProduct(business, product) && !state.linked && product === "cal-eats" && <a className="button-link" target="_top" href="/order/?view=register-restaurant">List your restaurant</a>}
+      {product === "calai" && !state.nativeAccountId && safeNativeLink(state.nativeLinks?.onboarding) && <RegistrationLink className="button-link" href={safeNativeLink(state.nativeLinks.onboarding)}>Register with Calai</RegistrationLink>}
+      {canConnectBusinessProduct(business, product) && !state.linked && product === "cal-eats" && <RegistrationLink className="button-link" href="/order/?view=register-restaurant">List your restaurant</RegistrationLink>}
     </div>
     {product === "calai" && <CalaiOwnerTabletControls key={business.id} business={business} tabletConnection={tabletConnection}/>}
     {state.nativeAccountId && <details className="business-account-reference"><summary>Account details</summary><dl><div><dt>Business</dt><dd>{business.name}</dd></div><div><dt>Account reference</dt><dd>{state.nativeAccountId}</dd></div></dl></details>}
@@ -393,7 +467,11 @@ export function BusinessConnections({ tabletConnection }) {
   async function commit() {
     if (pending.current || !canConnect) return; const requestedScope = scope.current;
     pending.current = true; setBusy(true); setError("");
-    try { const result=await api(`/api/business/accounts/${encodeURIComponent(business.id)}/${product}/link`, json("POST", connectionConfirmation(product, proof, confirmed))); if (requestedScope !== scope.current) return; setProof(null); if(result?.sessionChanged){window.location.assign(workspace.embedded?"/business/embedded":"/business/owner/connections");return;}setNotice(`${state.name} account connected successfully.`); await workspace.reload(); await workspace.reloadAccounts(); }
+    try { const result=await api(`/api/business/accounts/${encodeURIComponent(business.id)}/${product}/link`, json("POST", connectionConfirmation(product, proof, confirmed))); if (requestedScope !== scope.current) return; setProof(null); if(result?.sessionChanged){
+      if (workspace.embedded) window.location.reload();
+      else window.location.assign("/business/owner/connections");
+      return;
+    }setNotice(`${state.name} account connected successfully.`); await workspace.reload(); await workspace.reloadAccounts(); }
     catch (caught) { if (requestedScope === scope.current) { setError(caught.message); if ([401, 403, 409, 410].includes(caught.status)) setProof(null); } }
     finally { pending.current = false; if (requestedScope === scope.current) setBusy(false); }
   }
@@ -416,7 +494,7 @@ export function BusinessConnections({ tabletConnection }) {
           <label>Owner email<input name="email" type="email" required disabled={busy} autoComplete="username" placeholder="Email used for this account"/></label>
           <label>Password<input name="password" type="password" required disabled={busy} autoComplete="off"/></label>
           <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify account"}</button>
-          {state.nativeLinks?.onboarding && safeNativeLink(state.nativeLinks.onboarding) && <p className="fine"><a target="_top" href={safeNativeLink(state.nativeLinks.onboarding)}>Register a Calai account</a></p>}
+          {state.nativeLinks?.onboarding && safeNativeLink(state.nativeLinks.onboarding) && <p className="fine"><RegistrationLink href={safeNativeLink(state.nativeLinks.onboarding)}>Register a Calai account</RegistrationLink></p>}
         </form>}
         {product === "calai" && !proof && !busy && <CalaiOwnerTabletControls key={business.id} business={business} tabletConnection={tabletConnection}/>}
       </section>
@@ -429,29 +507,76 @@ export function NativeCalaiView({ section = "orders" }) {
   const tool = CALAI_WORKSPACE_TOOLS.find(({ id }) => id === section);
   const permitted = workspace?.mode !== "cal-eats" && state.allowedOnTablet !== false;
   const toolsAvailable = permitted && canUseCalaiWorkspaceTools(business, workspace?.mode);
-  const showOrders = section === "orders" && toolsAvailable;
-  const resource = useBusinessResource(showOrders ? "/api/business/calai/orders" : null, {
-    poll: showOrders ? 30000 : 0,
+  const path = calaiWorkspaceReadPath(section, business, workspace?.mode);
+  const resource = useBusinessResource(path, {
+    poll: path && section === "orders" ? 30000 : 0,
     scope: business?.id,
   });
   if (!tool || !permitted) return <Navigate to="/owner/dashboard" replace/>;
-  const nativeUrl = "https://calai.info" + tool.nativePath, rows = listItems(resource.value);
+  const nativeUrl = "https://calai.info" + tool.nativePath;
+  const descriptions = {
+    agents: "View the phone agents for this location.",
+    "test-voice": "Start a test call in Calai’s calling tool.",
+    calls: "Open Calai to view call history and transcripts. Live activity appears on the dashboard.",
+    orders: "View this location’s phone orders. Calai has the full order details and receipt controls.",
+    "item-management": "View this location’s Calai menu. Use Calai to make changes.",
+    printer: "Calai manages its own printer settings.",
+    settings: "View Calai’s opening hours for this location. Use Calai to make changes.",
+  };
 
   return <div className="unified-business business-account-page business-native-page">
     <header className="page-heading business-account-heading"><p className="eyebrow">{business?.name || "Calai"}</p><h1>{tool.label}</h1></header>
     {toolsAvailable ? <section className="panel business-native-intro">
-      <div><p>{showOrders ? "Open the original Calai order list for full order details." : "Use your existing Calai business sign-in to open this tool."}</p>
-        <a className="button-link primary" target="_blank" rel="noopener noreferrer" href={nativeUrl}>Open {tool.label} in Calai</a>
+      <div><p>{descriptions[section]}</p>
+        {!path && business?.principalKind === "terminal" && ["agents", "item-management"].includes(section) &&
+          <p>Sign in as the Calai owner to view this tool.</p>}
+        <a className="button-link quiet" target="_blank" rel="noopener noreferrer" href={nativeUrl}>Open {tool.label} in Calai</a>
       </div>
     </section> : <section className="panel business-native-intro">
       <div>{business?.principalKind === "terminal" && state.usable
         ? <><h2>Calai needs owner approval</h2><p>Ask the restaurant owner to choose <strong>Allow Calai on this tablet</strong> in Accounts &amp; connections.</p></>
         : <><h2>Check your Calai connection</h2><Link className="button-link" to="/owner/connections">Accounts &amp; connections</Link></>}</div>
     </section>}
-    {showOrders && <section className="panel"><Resource {...resource}>{rows.length
-      ? <div className="business-native-records">{rows.slice(0, 100).map((row, index) => <article key={row.id || index}><div><strong>{row.reference || row.orderNumber || row.id || "Order " + (index + 1)}</strong><small>{shortDate(row.createdAt || row.created_at)}</small></div><span className="pill">{row.status || "Recorded"}</span></article>)}</div>
-      : <p className="empty">No Calai orders yet.</p>}</Resource></section>}
+    {path && <section className="panel"><Resource {...resource}><CalaiToolRecords section={section} value={resource.value}/></Resource></section>}
   </div>;
+}
+
+function CalaiToolRecords({ section, value }) {
+  if (section === "settings") {
+    return <><h2>Opening hours</h2><dl className="business-connection-details">
+      <div><dt>Opens</dt><dd>{value?.openingTime || "Unspecified"}</dd></div>
+      <div><dt>Closes</dt><dd>{value?.closingTime || "Unspecified"}</dd></div>
+      <div><dt>Closed days</dt><dd>{(Array.isArray(value?.offDays) ? value.offDays.filter(day => typeof day === "string").join(", ") : "") || "None specified"}</dd></div>
+    </dl></>;
+  }
+  const rows = listItems(value).filter(row => row && typeof row === "object").slice(0, 100);
+  if (!rows.length) {
+    const blank = { orders: "No Calai orders yet.", agents: "No Calai agents listed.", "item-management": "No Calai menu items listed." };
+    return <p className="empty">{blank[section]}</p>;
+  }
+  return <div className="business-native-records">{rows.map((row, index) => {
+    let title, subtitle, status;
+    if (section === "orders") {
+      title = row.customerName || "Phone order";
+      const date = row.createdAt || row.created_at;
+      subtitle = [row.reference || row.orderNumber || (typeof row.id === "string" && "#" + row.id.slice(0, 8).toUpperCase()),
+        Number.isFinite(Date.parse(date)) && shortDate(date)].filter(Boolean).join(" · ");
+      status = row.confirmationStatus === true || row.confirmationStatus === "confirmed" ? "Confirmed"
+        : row.confirmationStatus === false || row.confirmationStatus === "unconfirmed" ? "Unconfirmed" : "Recorded";
+    } else if (section === "agents") {
+      title = row.name || "Unnamed agent";
+      subtitle = row.twilioNumber;
+      status = row.status;
+    } else {
+      title = row.name || "Unnamed item";
+      subtitle = [row.category, row.unit].filter(Boolean).join(" · ");
+      status = row.price !== null && row.price !== undefined && row.price !== "" && Number.isFinite(Number(row.price))
+        ? pounds(Math.round(Number(row.price) * 100)) : null;
+    }
+    return <article key={row.id || index}><div><strong>{String(title)}</strong>{subtitle && <small>{String(subtitle)}</small>}</div>
+      {status && <span className="pill">{String(status)}</span>}
+    </article>;
+  })}</div>;
 }
 
 export function ProductStatements() {
@@ -463,7 +588,7 @@ export function ProductStatements() {
     <div className="business-product-cards business-statement-cards">{accounts.map(account => <section className="panel business-statement-card" key={account.product}>
       <header><ProductMark product={account.product}/><div><p className="eyebrow">{account.name}</p><h2>{account.product === "calai" ? "Usage & billing" : "Earnings & payouts"}</h2></div></header>
       <p>{account.product === "calai" ? "Your Calai subscription, usage and billing history." : "Your Cal-Eats orders, commission and payment statements."}</p>
-      {account.financialAccess ? account.product === "calai" ? nativeStatement ? <a className="button-link primary" target="_top" href={nativeStatement}>View Calai statements</a> : <p className="business-statement-note">Use your usual Calai billing page to view statements. A direct statement link is not currently available.</p> : <Link className="button-link primary" to="/owner/earnings">View earnings & statements</Link> : <p className="business-statement-note">Statement access is managed by your business owner. Contact them if you need access.</p>}
+      {account.financialAccess ? account.product === "calai" ? nativeStatement ? <NativeAccountLink href={nativeStatement} primary>View Calai statements</NativeAccountLink> : <p className="business-statement-note">Use your usual Calai billing page to view statements. A direct statement link is not currently available.</p> : <Link className="button-link primary" to="/owner/earnings">View earnings & statements</Link> : <p className="business-statement-note">Statement access is managed by your business owner. Contact them if you need access.</p>}
       <details className="business-account-reference"><summary>Account details</summary><p>{account.nativeAccountId}</p></details>
     </section>)}</div>
     {!accounts.length && <section className="panel"><h2>No connected accounts</h2><p>Connect your business account to view its statements here.</p><Link className="button-link" to="/owner/connections">Accounts & connections</Link></section>}

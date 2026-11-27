@@ -74,3 +74,8 @@
   .business-native-intro{padding:20px;gap:14px}
   .business-account-heading{margin-bottom:20px}
 }
+.portal.calai-theme.portal--calai-embed .portal-body{padding-left:0}
+.portal.calai-theme.portal--calai-embed .content{padding:16px}
+.portal.calai-theme.portal--calai-embed .sidebar,
+.portal.calai-theme.portal--calai-embed .business-header,
+.portal.calai-theme.portal--calai-embed .mobile-bottom-nav{display:none}

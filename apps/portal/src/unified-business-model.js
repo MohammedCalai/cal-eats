@@ -125,12 +125,23 @@ export function canUseCalaiWorkspaceTools(business, mode) {
   return (mode === "calai" || mode === "both") && business?.canViewCalai === true && productPresentation(business, "calai").usable;
 }
 
+export function calaiWorkspaceReadPath(section, business, mode) {
+  if (!canUseCalaiWorkspaceTools(business, mode)) return null;
+  if (section === "orders") return "/api/business/calai/orders";
+  if (mode !== "both") return null;
+  if (section === "settings") return "/api/business/calai/hours";
+  if (business.principalKind === "terminal") return null;
+  if (section === "agents") return "/api/business/calai/agents";
+  if (section === "item-management") return "/api/business/calai/menu";
+  return null;
+}
+
 export function businessNavigation(business, eatsNavigation = [], mode = businessWorkspaceMode(business)) {
   const eats = productPresentation(business, "cal-eats");
   const dashboard = ["Dashboard", "/owner/dashboard"];
   const calaiItems = CALAI_WORKSPACE_TOOLS.map(({ id, label }) => [label, "/owner/calai/" + id]);
   const eatsItems = mode !== "calai" && eats.linked && eats.allowedOnTablet !== false
-    ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices")
+    ? eatsNavigation.filter(([, path]) => path !== "/owner/dashboard" && path !== "/owner/devices" && (mode !== "both" || path !== "/owner/printers"))
     : [];
   if (mode === "calai") return [{ title: "", items: [dashboard, ...calaiItems] }];
   return [
