@@ -32,6 +32,12 @@ export function json(method, body, idempotencyKey) {
   return { method, headers, body: JSON.stringify(body ?? {}) };
 }
 
+export function markOrderMessagesRead(orderId,lastMessageId) {
+  const path = `/api/orders/${encodeURIComponent(orderId)}/messages`;
+  if (businessApiPrincipal === "terminal") return terminalApi(path,json("POST",{action:"markRead",lastMessageId}));
+  return api(path + "/read",{...json("POST",{lastMessageId}),humanSession:true});
+}
+
 export function newKey(prefix = "portal") {
   return `${prefix}-${crypto.randomUUID()}`;
 }

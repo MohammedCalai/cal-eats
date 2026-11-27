@@ -3,7 +3,7 @@ import { restaurantContactBlocked, assertRestaurantContactAllowed } from "./cust
 import {releasePlatformVoucher} from "./platform-vouchers.js";
 import { createHash, randomUUID } from "node:crypto";
 import { assertCustomerContentAllowed } from "./content-moderation.js";
-import { requireRestaurantCapability, requireRole, requireUser } from "./auth/authorization.js";
+import { requireRestaurantCapability, requireRestaurantMembership, requireRole, requireUser } from "./auth/authorization.js";
 import { withTransaction } from "./db/index.js";
 import { HttpError, exactObject, readJson, sendJson } from "./http.js";
 import { routeCustomerRelationships } from "./customer-relationships.js";
@@ -91,7 +91,13 @@ export async function routeOffers({ req, res, url, db, config, session }) {
     const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 100, before = url.searchParams.get("before"), beforeId = url.searchParams.get("beforeId");
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (before && Number.isNaN(Date.parse(before))) || (beforeId && (!before || beforeId.length > 100))) throw new HttpError(400,"VALIDATION_ERROR","Notification pagination is invalid");
     const params = { uid: user.id, role: user.role, permitsOffers: Number(permitsOffers) };
-    const allowed = `user_id=$uid AND ${surfaceNotificationSql()} AND ${surfaceNotificationDeliverySql(session)} AND (type<>'offer' OR $permitsOffers=1)
+    const scoped = url.searchParams.has("restaurantId");
+    if (scoped) {
+      params.restaurantId = url.searchParams.get("restaurantId");
+      requireRole(session, "restaurant");
+      requireRestaurantMembership(db, session, params.restaurantId);
+    }
+    const allowed = `user_id=$uid ${scoped ? "AND restaurant_id=$restaurantId" : ""} AND ${surfaceNotificationSql()} AND ${surfaceNotificationDeliverySql(session)} AND (type<>'offer' OR $permitsOffers=1)
       AND (restaurant_id IS NULL OR ($role NOT IN ('restaurant','admin') AND type<>'offer') OR EXISTS(SELECT 1 FROM restaurants ar WHERE ar.id=user_notifications.restaurant_id AND ar.archived_at IS NULL))
       AND ($role<>'restaurant' OR restaurant_id IS NULL OR EXISTS(SELECT 1 FROM restaurant_memberships mm WHERE mm.restaurant_id=user_notifications.restaurant_id AND mm.user_id=$uid))
       AND (type<>'customer_message' OR EXISTS(SELECT 1 FROM restaurant_customer_threads t WHERE t.id=user_notifications.conversation_id AND (t.customer_id=$uid OR EXISTS(SELECT 1 FROM restaurant_memberships cm WHERE cm.restaurant_id=t.restaurant_id AND cm.user_id=$uid AND cm.permission='owner'))))

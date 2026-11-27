@@ -1,7 +1,7 @@
 import { orderCustomerName, orderDestination } from "./order-presentation.js";
 import "./BusinessMenu.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useSearchParams } from "react-router-dom";
 import { api, json } from "./api.js";
 import { shortDate } from "./model.js";
 import { connectLiveNotifications } from "../../web/live-notifications.js";
@@ -134,8 +134,10 @@ function DashboardActiveOrder({ order, updating, unavailable, alerts, onUpdate, 
 export default function OwnerDashboard({ restaurant, permission, userId, canOperate = false, business, products = [], workspaceMode }) {
   const alerts = useOrderAlerts();
   const [period, setPeriod] = useState("today"), [page, setPage] = useState(1);
+  const [search] = useSearchParams();
   const showCombined = workspaceMode === "both" || (!workspaceMode && products.length === 2);
-  const orderActivity = useDashboardOrderActivity(business, showCombined ? products : []);
+  const reportsOnly = showCombined && search.get("section") === "reports";
+  const orderActivity = useDashboardOrderActivity(business, showCombined && !reportsOnly ? products : []);
   const result = useDashboard(restaurant.id, period, page, business?.principalKind), active = useActiveOrders(restaurant.id), refresh = useRef(result.reload);
   const deadlineNow = useDeliveryDeadlineClock(active.items.some(order => deliveryDeadlineAt(order) !== null));
   const [updating, setUpdating] = useState(""), [actionError, setActionError] = useState(""), [manualRefreshing, setManualRefreshing] = useState(false);
@@ -195,12 +197,12 @@ export default function OwnerDashboard({ restaurant, permission, userId, canOper
   </div>;
 
   return <div className="business-dashboard">
-    <header className="page-heading dashboard-heading"><div><h1>Dashboard</h1>{!showCombined && <p>Your orders, conversations and live activity in one place.</p>}</div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
-    {showCombined
+    <header className="page-heading dashboard-heading"><div><h1>{reportsOnly ? "Cal-Eats tools & reports" : "Dashboard"}</h1>{!showCombined && <p>Your orders, conversations and live activity in one place.</p>}</div><div className="dashboard-heading-actions"><button className="quiet" disabled={manualRefreshing || result.loading || active.loading} onClick={() => void refreshManually()}><DashboardIcon kind="refresh"/>{manualRefreshing ? "Refreshing…" : "Refresh"}</button></div></header>
+    {reportsOnly ? null : showCombined
       ? <DashboardOrderActivity businessId={business.id} products={products} resource={orderActivity}
           workspaceMode="both" operations={data?.operations} operationsUnavailable={Boolean(result.error)}/>
       : <LiveOrders operations={data?.operations} unavailable={Boolean(result.error)} generatedAt={data?.generatedAt}/>}
-    {showCombined
+    {showCombined && !reportsOnly
       ? <details className="dashboard-online-tools"><summary>Cal-Eats tools &amp; reports</summary>{restaurantTools}</details>
       : restaurantTools}
   </div>;

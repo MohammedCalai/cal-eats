@@ -86,6 +86,14 @@
   outline-offset:3px;
 }
 .business-header .notifications{position:static}
+.business-notifications-page .notifications{display:block;width:100%}
+.business-notifications-page .notification-panel--page{
+  position:static;
+  width:100%;
+  max-height:none;
+  box-sizing:border-box;
+  z-index:auto;
+}
 .calai-theme .business-header .notification-panel{
   position:absolute;
   top:calc(100% + 8px);

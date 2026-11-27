@@ -1,19 +1,271 @@
+diff --git a/frontend/public/both-calai-logo.png b/frontend/public/both-calai-logo.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..8cffa478216c2021e5ab5ae2e12b5267da406090
+GIT binary patch
+literal 8299
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/frontend/public/both-calai-mark.png b/frontend/public/both-calai-mark.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c607b1a5a32c79c49e88092784f898fb202a81c
+GIT binary patch
+literal 3399
+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
+
+literal 0
+HcmV?d00001
+
 diff --git a/frontend/src/components/cal-eats/CalEatsWorkspace.jsx b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b719e49fb50
+index 0000000000000000000000000000000000000000..976a6712b0202398fefd2a9a0f9fccf6e260c823
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/CalEatsWorkspace.jsx
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,227 @@
 +import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 +import { Icon } from '@iconify/react';
-+import { Link, NavLink, useLocation } from 'react-router-dom';
++import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
++import { workspaceNativeDestination } from './workspace-model.mjs';
 +import useAuth from '../../hooks/useAuth';
-+import { WORKSPACE_TOOLS, displayOrderCount, displayTotalCount, navigateWorkspaceMessage, requestedWorkspace, workspaceIframeAllow, workspaceOrigin, workspacePath, workspaceStateFromMessage, workspaceViewForPath } from './workspace-model.mjs';
++import CombinedLiveActivity from './CombinedLiveActivity';
++import { FiMessageCircle } from 'react-icons/fi';
++import { useHostedMessageReminder } from './useHostedMessageReminder.js';
++import './workspace-chrome.css';
++import { WORKSPACE_TOOLS, displayTotalCount, navigateWorkspaceMessage, requestedWorkspace, workspaceIframeAllow, workspaceOrigin, workspacePath, workspaceStateFromMessage, workspaceViewForPath } from './workspace-model.mjs';
 +
 +const Workspace = createContext(null);
++export function useCombinedScope() {
++  const workspace = useContext(Workspace);
++  return { enabled: workspace?.enabled === true, businessId: workspace?.connected ? workspace.state.business.id : null };
++}
 +const childOrigin = workspaceOrigin(import.meta.env.DEV, import.meta.env.VITE_CAL_EATS_LOCAL_PREVIEW_ORIGIN);
-+const childUrl = new URL('/business/embedded', childOrigin).href;
-+const companies = [['calai', 'Calai phone orders'], ['cal-eats', 'Cal-Eats online orders']];
++const childUrl = new URL('/business/embedded?messageSound=host', childOrigin).href;
 +const money = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
 +const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
 +const connectionPanel = 'mb-4 rounded-2xl border border-[#2a3b57] bg-[#142033] p-4 text-sm text-blue-100';
@@ -50,12 +302,14 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +    }
 +  }, [identity, requested]);
 +
-+  return <WorkspaceConnection key={enabled ? identity : 'standalone'} enabled={enabled} user={user} desiredView={desiredView}>
++  const orderId = desiredView === 'orders' ? new URLSearchParams(search).get('order') : null;
++  return <WorkspaceConnection key={enabled ? identity : 'standalone'} enabled={enabled} user={user} desiredView={desiredView} orderId={orderId}>
 +    {children}
 +  </WorkspaceConnection>;
 +}
 +
-+function WorkspaceConnection({ children, enabled, user, desiredView }) {
++function WorkspaceConnection({ children, enabled, user, desiredView, orderId }) {
++  const navigate = useNavigate();
 +  const frameRef = useRef(null);
 +  const [state, setState] = useState(null);
 +  const [stale, setStale] = useState(false);
@@ -63,9 +317,18 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +  const canOpen = connected && WORKSPACE_TOOLS.some(tool => tool.view === desiredView && state.capabilities[tool.permission]);
 +  const showAccounts = desiredView === 'accounts' && !stale && (state?.authenticated === false || state?.matchesNativeAccount === true);
 +  const visible = Boolean(canOpen || showAccounts);
++  useEffect(() => {
++    if (!connected || !visible || !['accounts', 'statements'].includes(desiredView)) return;
++    const onNativeLink = event => {
++      const path = workspaceNativeDestination(event, frameRef.current?.contentWindow, childOrigin);
++      if (path) navigate(path);
++    };
++    window.addEventListener('message', onNativeLink);
++    return () => window.removeEventListener('message', onNativeLink);
++  }, [connected, visible, desiredView, navigate]);
 +  const sendView = useCallback(view => {
-+    frameRef.current?.contentWindow?.postMessage(navigateWorkspaceMessage(view), childOrigin);
-+  }, []);
++    frameRef.current?.contentWindow?.postMessage(navigateWorkspaceMessage(view, view === 'orders' ? orderId : null), childOrigin);
++  }, [orderId]);
 +
 +  useEffect(() => {
 +    if (!enabled) return;
@@ -79,6 +342,9 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +      if (!next) return;
 +      setState(next);
 +      setStale(false);
++      if (next.combined && (next.capabilities.viewInbox || next.capabilities.viewOrders)) {
++        event.source.postMessage({ type: 'cal-eats-workspace:host-message-audio', version: 1, businessId: next.business.id }, childOrigin);
++      }
 +      waitForProof(65_000);
 +    }
 +    waitForProof(15_000);
@@ -86,11 +352,40 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +    return () => { clearTimeout(deadline); window.removeEventListener('message', receive); };
 +  }, [enabled, user?.id, user?.businessId, user?.role]);
 +
-+  const view = visible ? desiredView : connected ? 'dashboard' : 'accounts';
++  const view = visible ? desiredView : connected ? 'background' : 'accounts';
++  const messageSound = useHostedMessageReminder(connected ? state.business.id : null, connected ? state.messageAttention : null, frameRef, childOrigin);
 +  useEffect(() => { if (enabled) sendView(view); }, [enabled, view, sendView]);
-+  return <Workspace.Provider value={{ enabled, connected, state, stale, frameRef, desiredView, visible, view, sendView }}>
++  return <Workspace.Provider value={{ enabled, connected, state, stale, frameRef, desiredView, visible, view, sendView, messageSound }}>
 +    {children}
 +  </Workspace.Provider>;
++}
++
++export function CombinedBrand({ placement, collapsed = false, children }) {
++  const current = useContext(Workspace);
++  if (!current?.connected) return children;
++  return <Link to="/owner/dashboard" className={`both-brand both-brand--${placement}${collapsed ? ' both-brand--collapsed' : ''}`}
++    aria-label="Calai and Cal-Eats dashboard">
++    <img className="both-brand-full" src="/both-calai-logo.png" alt="" />
++    <img className="both-brand-mark" src="/both-calai-mark.png" alt="" />
++    <span aria-hidden="true" className="both-brand-plus">+</span>
++    <span aria-hidden="true" className="both-brand-eats">Cal<span>-Eats</span></span>
++  </Link>;
++}
++
++export function WorkspaceMessages() {
++  const current = useContext(Workspace);
++  if (!current?.connected) return null;
++  const { capabilities, messageAttention } = current.state;
++  const destination = capabilities.viewInbox ? 'inbox' : capabilities.viewOrders ? 'notifications' : null;
++  if (!destination) return null;
++  const count = messageAttention?.unreadCount;
++  return <Link className="both-messages" data-unread={count > 0} to={workspacePath(destination)}
++    onClick={() => { if (current.desiredView === destination) current.sendView(destination); }}
++    aria-label={count == null ? 'Customer messages, unread count unavailable' : count > 0 ? `Customer messages, ${count} unread` : 'Customer messages'}>
++    <FiMessageCircle aria-hidden="true" size={20} />
++    <span className="both-messages-label">Customer messages</span>
++    {count > 0 && <span className="both-unread-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
++  </Link>;
 +}
 +
 +export function CalEatsWorkspaceNavigation({ collapsed = false, onNavigate }) {
@@ -100,7 +395,10 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +  const items = [...tools, { view: 'accounts', label: 'Accounts & connections', icon: 'lucide:link-2' }];
 +  return <section aria-label="Cal-Eats navigation" className="mt-5 border-t border-[#262626] pt-3">
 +    <p className={`px-2 pb-2 text-xs font-semibold text-blue-200 ${collapsed ? '2xl:sr-only' : ''}`}>Cal-Eats</p>
-+    {items.map(({ view, label, icon }) => <NavLink key={view} to={workspacePath(view)} onClick={onNavigate}
++    {items.map(({ view, label, icon }) => <NavLink key={view} to={workspacePath(view)} onClick={() => {
++      if (current.desiredView === view) current.sendView(view);
++      onNavigate?.();
++    }}
 +      aria-label={`Cal-Eats ${label}`}
 +      className={({ isActive }) => `flex items-center gap-4 rounded-xl border border-l-4 px-2 py-3.5 transition-colors ${collapsed ? '2xl:justify-center 2xl:px-0' : ''} ${isActive ? 'border-blue-600/30 border-l-blue-600 bg-[#18181A] text-white' : 'border-transparent text-gray-300 hover:bg-[#18181A] hover:text-white'}`}>
 +      <Icon icon={icon} width="24" className="shrink-0" aria-hidden="true" />
@@ -111,24 +409,21 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +
 +export function CalEatsCombinedCounters() {
 +  const current = useContext(Workspace);
-+  if (!current?.connected) return null;
++  if (!current?.enabled) return null;
++  if (!current.connected) return <div className={connectionPanel} role="status">{connectionMessage(current)}</div>;
 +  const state = current.state;
-+  const counts = [...companies.map(([product, label]) => [label, displayOrderCount(state, product)]), ['Total orders', displayTotalCount(state)]];
++  if (!state.capabilities.viewOrders) return null;
 +  return <section aria-label="Today’s orders across Calai and Cal-Eats" className="mb-6 space-y-3">
-+    <h2 className="text-xl font-semibold text-white">Today’s orders</h2>
-+    <div className="grid gap-3 sm:grid-cols-3">
-+      {counts.map(([label, value]) => <div key={label} className="rounded-2xl border border-[#2a3b57] bg-[#142033] p-4">
-+        <p className="text-sm text-blue-100">{label}</p>
-+        <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-+      </div>)}
-+    </div>
++    <CombinedLiveActivity state={state} total={displayTotalCount(state)}/>
++    <Link className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-blue-200 hover:underline" to={workspacePath('reports')}>Cal-Eats tools &amp; reports <span aria-hidden="true">→</span></Link>
 +    {state.orders.length > 0 && <div className="rounded-2xl border border-[#2a3b57] bg-[#141b2a] p-4">
 +      <h3 className="mb-2 font-semibold text-white">Recent orders</h3>
 +      <ul className="divide-y divide-white/10">
 +        {state.orders.map((order, index) => <li key={`${order.source}:${order.createdAt}:${index}`} className="grid grid-cols-[1.7fr_1.3fr_auto] items-center gap-2 py-2 text-sm text-gray-200">
-+          <span><span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${order.source === 'calai' ? 'bg-indigo-500/20 text-indigo-200' : 'bg-sky-500/20 text-sky-100'}`}>
++          <span><Link to={order.source === 'calai' ? '/owner/order-list' : workspacePath('orders') + (order.sourceOrderId ? '?order=' + encodeURIComponent(order.sourceOrderId) : '')} className={`inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-semibold hover:underline ${order.source === 'calai' ? 'bg-indigo-500/20 text-indigo-200' : 'bg-sky-500/20 text-sky-100'}`}>
 +            {order.source === 'calai' ? 'Calai phone' : 'Cal-Eats online'}
-+          </span><span className="ml-2 hidden text-xs text-gray-300 sm:inline">{time.format(new Date(order.createdAt))}</span></span>
++            {order.sourceOrderId && ' · #' + order.sourceOrderId.slice(0, 8).toUpperCase()}
++          </Link><span className="ml-2 hidden text-xs text-gray-300 sm:inline">{time.format(new Date(order.createdAt))}</span></span>
 +          <span className="capitalize">{order.status.replaceAll('_', ' ')}</span>
 +          <span>{order.totalMinor === null ? '—' : money.format(order.totalMinor / 100)}</span>
 +        </li>)}
@@ -159,6 +454,10 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +  const iframeAllow = workspaceIframeAllow(policy?.features?.(), childOrigin);
 +  const pending = connected ? state.pendingOrderCount ?? 0 : 0;
 +  return <>
++    {!desiredView && !connected && (current.stale || state) && <div className={connectionPanel} role="status">
++      {connectionMessage(current)} <Link className="underline" to={workspacePath('accounts')}>Check connection</Link>
++    </div>}
++    {connected && current.messageSound?.error && <p className={connectionPanel} role="status">{current.messageSound.error}</p>}
 +    {!visible && pending > 0 && <div className={connectionPanel} role="status">
 +      <Link className="font-semibold text-white underline" to={workspacePath('orders')}>
 +        {pending} {pending === 1 ? 'Cal-Eats order awaiting confirmation' : 'Cal-Eats orders awaiting confirmation'}
@@ -176,28 +475,544 @@ index 0000000000000000000000000000000000000000..d80945bcc491f99d9f077736c15b8b71
 +    </div>
 +  </>;
 +}
+diff --git a/frontend/src/components/cal-eats/CombinedLiveActivity.jsx b/frontend/src/components/cal-eats/CombinedLiveActivity.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..a05d2afdb9b0385f36d6122abcf080c2820db076
+--- /dev/null
++++ b/frontend/src/components/cal-eats/CombinedLiveActivity.jsx
+@@ -0,0 +1,68 @@
++import { useId } from 'react';
++import { Link } from 'react-router-dom';
++import { workspacePath } from './workspace-model.mjs';
++import './combined-live-activity.css';
++
++function LiveOrderOrbitArt({ live }) {
++  const id = `live-order-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
++  const blue = live ? "#3184ff" : "#40516b", cyan = live ? "#b8ebff" : "#9eacc0";
++  return <svg className="live-order-orbit-art" aria-hidden="true" viewBox="0 0 256 256" fill="none">
++    <defs>
++      <linearGradient id={`${id}-shell`} x1="53" y1="21" x2="205" y2="238" gradientUnits="userSpaceOnUse"><stop stopColor="#617ba7"/><stop offset=".18" stopColor="#243b60"/><stop offset=".57" stopColor="#0a1425"/><stop offset=".84" stopColor="#32466e"/><stop offset="1" stopColor="#0c1729"/></linearGradient>
++      <linearGradient id={`${id}-rim`} x1="39" y1="27" x2="221" y2="227" gradientUnits="userSpaceOnUse"><stop stopColor={cyan}/><stop offset=".25" stopColor={blue}/><stop offset=".56" stopColor={live ? "#2853bd" : "#27344e"}/><stop offset=".82" stopColor={live ? "#5494ff" : "#62718d"}/><stop offset="1" stopColor="#182846"/></linearGradient>
++      <radialGradient id={`${id}-face`} cx=".27" cy=".15" r=".92"><stop stopColor={live ? "#293f62" : "#293240"}/><stop offset=".45" stopColor={live ? "#15283f" : "#1b2532"}/><stop offset="1" stopColor="#0c1626"/></radialGradient>
++      <linearGradient id={`${id}-edge`} x1="73" y1="23" x2="173" y2="232" gradientUnits="userSpaceOnUse"><stop stopColor="#c4e8ff" stopOpacity=".72"/><stop offset=".38" stopColor="#6d9acd" stopOpacity=".12"/><stop offset="1" stopColor="#0a1221" stopOpacity=".78"/></linearGradient>
++      <linearGradient id={`${id}-glass`} x1="98" y1="28" x2="143" y2="143" gradientUnits="userSpaceOnUse"><stop stopColor="#d5eeff" stopOpacity=".115"/><stop offset="1" stopColor="#d5eeff" stopOpacity="0"/></linearGradient>
++      <clipPath id={`${id}-clip`}><circle cx="128" cy="128" r="109"/></clipPath>
++    </defs>
++    <circle cx="128" cy="128" r="124" fill="#030a14" opacity=".3"/>
++    <circle cx="128" cy="128" r="121.3" fill={`url(#${id}-shell)`} stroke="#7f9bc0" strokeOpacity=".22" strokeWidth=".8"/>
++    <circle cx="128" cy="128" r="117" stroke={`url(#${id}-rim)`} strokeWidth="6.3"/>
++    <circle cx="128" cy="128" r="112.8" fill={`url(#${id}-face)`} stroke={`url(#${id}-edge)`} strokeWidth="1.8"/>
++    <g clipPath={`url(#${id}-clip)`}><path d="M4 46C64-1 173 0 248 48L248 116C182 97 86 142 8 113Z" fill={`url(#${id}-glass)`}/></g>
++    <circle cx="128" cy="128" r="106" stroke="#b6dbff" strokeOpacity=".045" strokeWidth=".8"/>
++    <path d="M36 64A116 116 0 0 1 135 12" stroke="#e2f7ff" strokeOpacity={live ? ".7" : ".3"} strokeWidth="1.25" strokeLinecap="round"/>
++    <path d="M233 167A113 113 0 0 1 163 235" stroke={live ? "#5a9fff" : "#5c7293"} strokeOpacity=".5" strokeWidth="1.1" strokeLinecap="round"/>
++  </svg>;
++}
++function LiveOrderOrbit({ value, label, active, announcement }) {
++  return <div className="live-order-orbit">
++    <LiveOrderOrbitArt live={active}/>
++    <strong role="status" aria-atomic="true" aria-label={announcement}>{value ?? "—"}</strong>
++    <small>{label}</small>
++  </div>;
++}
++
++function ServiceCard({ product, value, label, unavailable, daily, link, linkText, children }) {
++  return <article className={`both-activity-card both-activity-card--${product === 'Calai' ? 'calai' : 'eats'}`}>
++    <div className="both-activity-heading">
++      <h3>{product}</h3>
++      {daily !== null && <span>{daily} {product === 'Calai' ? 'phone' : 'online'} {daily === 1 ? 'order' : 'orders'} today</span>}
++    </div>
++    <LiveOrderOrbit value={value?.toLocaleString('en-GB')} label={label}
++      active={value > 0} announcement={value == null ? unavailable : value + ' ' + (value === 1 ? label.slice(0, -1) : label).toLowerCase()}/>
++    <div className="both-activity-stages">{value == null ? <span>{unavailable}</span> : children}</div>
++    <Link className="both-activity-link" to={link}>{linkText}<span aria-hidden="true">→</span></Link>
++  </article>;
++}
++
++export default function CombinedLiveActivity({ state, total }) {
++  const calls = state.calaiLiveCalls;
++  const orders = state.eatsLiveOrders;
++  return <>
++    <div className="both-activity-title">
++      <h2>Live activity</h2>
++      <span>{total === 'Unavailable' ? 'Today’s total unavailable' : <><strong>{total}</strong> {total === '1' ? 'order' : 'orders'} today</>}</span>
++    </div>
++    <div className="both-activity-grid">
++      <ServiceCard product="Calai" value={calls?.activeCalls} label="LIVE CALLS" unavailable="Live calls unavailable"
++        daily={state.counters.calai.today} link="/owner/order-list" linkText="View phone orders">
++        {calls && <><span>{calls.agentsInUse} {calls.agentsInUse === 1 ? 'agent' : 'agents'} in use</span><span>{calls.ringing} ringing</span><span>{calls.queued} queued</span><span>{calls.forwarding} forwarded</span></>}
++      </ServiceCard>
++      <ServiceCard product="Cal-Eats" value={orders?.liveOrders} label="LIVE ORDERS" unavailable="Live orders unavailable"
++        daily={state.counters['cal-eats'].today} link={workspacePath('orders')} linkText="Manage online orders">
++        {orders && <><span>{orders.pendingConfirmation} to confirm</span><span>{orders.confirmedInKitchen} preparing</span><span>{orders.readyForHandover} ready</span></>}
++      </ServiceCard>
++    </div>
++  </>;
++}
+diff --git a/frontend/src/components/cal-eats/business-message-audio.js b/frontend/src/components/cal-eats/business-message-audio.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..7822adf35bd4006909c07f85f0398d4582776fa8
+--- /dev/null
++++ b/frontend/src/components/cal-eats/business-message-audio.js
+@@ -0,0 +1,110 @@
++export const BUSINESS_MESSAGE_REPEAT_MS = 10_000;
++const numericRevision = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
++const validScope = value => typeof value === "string" ? value.trim() : "";
++
++/** Sound prompts attention until a conversation is successfully read. Acknowledging
++ * attention never changes any conversation's unread badge or server read cursor. */
++export function createBusinessMessageAudio(player, {
++  schedule = (callback, delay) => setTimeout(callback, delay),
++  cancel = handle => clearTimeout(handle)
++} = {}) {
++  if (typeof player?.play !== "function" || typeof player?.pause !== "function") throw new TypeError("A message melody player is required");
++  const listeners = new Set();
++  const acknowledged = new Map();
++  let current = { scope: "", enabled: false, pending: false, revision: 0, orderAlarmActive: false };
++  let timer = null, active = null, generation = 0, repeatDue = false;
++  let state = Object.freeze({ ...current, acknowledgedRevision: -1, playing: false, blocked: false, error: "" });
++  function publish(patch = {}) {
++    const next = { ...state, ...current, acknowledgedRevision: acknowledged.get(current.scope) ?? -1, ...patch };
++    if (Object.keys(next).every(key => next[key] === state[key])) return;
++    state = Object.freeze(next);
++    for (const listener of listeners) listener(state);
++  }
++  function eligible() {
++    return Boolean(current.scope && current.enabled && current.pending && current.revision > (acknowledged.get(current.scope) ?? -1) && !current.orderAlarmActive);
++  }
++  function clearRepeat() {
++    if (timer !== null) cancel(timer);
++    timer = null;
++    repeatDue = false;
++  }
++  function silence({ alwaysPause = false } = {}) {
++    clearRepeat();
++    generation++;
++    const hadActive = Boolean(active);
++    active = null;
++    if (hadActive || alwaysPause) {
++      try { player.pause(); } catch { /* Playback must remain disabled even if the underlying player fails to stop. */ }
++    }
++    publish({ playing: false, blocked: false, error: "" });
++  }
++  function start() {
++    if (!eligible() || active || state.blocked) return;
++    clearRepeat();
++    const attempt = ++generation;
++    active = { attempt, scope: current.scope };
++    publish({ playing: true, blocked: false, error: "" });
++    // The cadence is measured from each start. A longer melody must finish before another can start.
++    timer = schedule(() => {
++      timer = null;
++      if (!eligible()) return;
++      if (active) repeatDue = true;
++      else start();
++    }, BUSINESS_MESSAGE_REPEAT_MS);
++    const complete = error => {
++      if (active?.attempt !== attempt || generation !== attempt) return;
++      active = null;
++      if (error) {
++        clearRepeat();
++        publish({ playing: false, blocked: true, error: error?.name === "NotAllowedError"
++          ? "Tap anywhere in the business platform to allow message sounds."
++          : "Message sound could not play. Check device volume and audio permissions." });
++        return;
++      }
++      publish({ playing: false, blocked: false, error: "" });
++      if (repeatDue && eligible()) start();
++    };
++    try { Promise.resolve(player.play()).then(() => complete(), complete); }
++    catch (error) { complete(error); }
++  }
++
++  return {
++    getSnapshot: () => state,
++    subscribe(listener) {
++      listeners.add(listener);
++      listener(state);
++      return () => listeners.delete(listener);
++    },
++    update(next) {
++      const scope = validScope(next?.scope), revision = numericRevision(next?.revision);
++      const scopeChanged = scope !== current.scope;
++      if (scopeChanged) silence();
++      current = {
++        scope, enabled: Boolean(next?.enabled), pending: typeof next?.pending === "number" ? next.pending > 0 : Boolean(next?.pending),
++        revision, orderAlarmActive: Boolean(next?.orderAlarmActive)
++      };
++      publish(scopeChanged ? { blocked: false, error: "" } : {});
++      if (!eligible()) { silence(); return; }
++      // Repeated polls, route renders and count changes do not restart an active melody/cadence.
++      if (!active && timer === null && !state.blocked) start();
++    },
++    acknowledge({ scope, revision, unreadCount } = {}) {
++      // This is called only with the successful server read response for the
++      // conversation the user opened. A racing newer arrival must keep ringing.
++      if (validScope(scope) !== current.scope || !current.scope || unreadCount !== 0 || !Number.isSafeInteger(revision) || revision < current.revision || revision < 0) return false;
++      acknowledged.set(current.scope, Math.max(acknowledged.get(current.scope) ?? -1, revision));
++      silence();
++      return true;
++    },
++    // Call synchronously from the shell's trusted click/key handler.
++    interact() {
++      if (!eligible()) return;
++      if (state.blocked) publish({ blocked: false, error: "" });
++      if (!active && timer === null) start();
++    },
++    stop() {
++      current = { scope: "", enabled: false, pending: false, revision: 0, orderAlarmActive: false };
++      silence({ alwaysPause: true });
++    }
++  };
++}
+diff --git a/frontend/src/components/cal-eats/business-message-melody-player.js b/frontend/src/components/cal-eats/business-message-melody-player.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e115e4d5759bf313ee3df21ea3a1bb56c470c5a
+--- /dev/null
++++ b/frontend/src/components/cal-eats/business-message-melody-player.js
+@@ -0,0 +1,103 @@
++// A single-shot three-note message chime, separate from the order ringtone.
++// Preparing an AudioContext is silent: oscillators exist only for real playback.
++export function createBusinessMessageMelody(
++  getContext=()=>typeof window==="undefined"?null:window.AudioContext||window.webkitAudioContext,
++  {setTimeout:schedule=setTimeout,clearTimeout:cancelTimer=clearTimeout}={}
++){
++  let context,preparation=null,revision=0,nodes=[],finish=null,playbackTimer=null,disposed=false;
++  const released=new WeakSet();
++  const interactionRequired=()=>Object.assign(new Error("Audio interaction required"),{name:"NotAllowedError"});
++  const cancelled=()=>Object.assign(new Error("Message audio was disposed"),{name:"AbortError"});
++  function release(previous){
++    if(context===previous)context=null;
++    if(!previous||released.has(previous))return;
++    released.add(previous);
++    try{void Promise.resolve(previous.close()).catch(()=>{});}catch{}
++  }
++  function pause(){
++    revision++;
++    if(playbackTimer!==null){cancelTimer(playbackTimer);playbackTimer=null;}
++    const playing=nodes;nodes=[];
++    for(const {oscillator,gain} of playing){
++      oscillator.onended=null;
++      try{oscillator.stop();}catch{}
++      try{oscillator.disconnect();}catch{}
++      try{gain?.disconnect();}catch{}
++    }
++    const done=finish;finish=null;done?.();
++  }
++  function prepare(retryPending=true){
++    if(disposed)return Promise.reject(cancelled());
++    if(preparation){if(retryPending)preparation.retry();return preparation.promise;}
++    let active;
++    try{
++      if(context?.state==="closed")context=null;
++      if(!context){const Context=getContext();if(!Context)throw new Error("Message audio is unavailable");context=new Context();}
++      active=context;
++    }catch(error){return Promise.reject(error);}
++    if(active.state==="running")return Promise.resolve();
++
++    // Some browsers leave resume() pending when autoplay is blocked. Bound the
++    // wait and retire that context so a later trusted gesture can retry safely.
++    let resolve,reject;
++    const pending={context:active,promise:new Promise((yes,no)=>{resolve=yes;reject=no;}),settled:false,timer:null,cancel:null,retry:null,resumeRevision:0};
++    preparation=pending;
++    const settle=(error)=>{
++      if(pending.settled)return;
++      pending.settled=true;cancelTimer(pending.timer);
++      if(preparation===pending)preparation=null;
++      if(error){release(active);reject(error);}else resolve();
++    };
++    pending.cancel=()=>settle(cancelled());
++    pending.timer=schedule(()=>settle(interactionRequired()),1000);
++    pending.retry=()=>{
++      if(pending.settled)return;
++      if(active.state==="running")return settle();
++      const request=++pending.resumeRevision;
++      const rejected=error=>{if(request===pending.resumeRevision)settle(error||interactionRequired());};
++      try{
++        // Retry synchronously on a new trusted gesture even if the browser has
++        // left an older resume() pending. The original timeout is not extended.
++        Promise.resolve(active.resume()).then(()=>{
++          if(pending.settled)return;
++          if(disposed||context!==active)return settle(cancelled());
++          if(active.state==="running")settle();
++          else if(request===pending.resumeRevision)settle(interactionRequired());
++        },rejected);
++      }catch(error){rejected(error);}
++    };
++    pending.retry();
++    return pending.promise;
++  }
++  return {
++    prepare:()=>prepare(),
++    play(){
++      pause();const attempt=revision;
++      return new Promise((resolve,reject)=>{
++        finish=resolve;
++        // Playback joins trusted preparation rather than superseding it from
++        // an unrelated reminder timer.
++        prepare(false).then(()=>{
++          if(attempt!==revision)return;
++          try{
++            const active=context,start=active.currentTime+.015;
++            [523.25,659.25,783.99].forEach((frequency,index)=>{
++              const oscillator=active.createOscillator(),node={oscillator,gain:null};nodes.push(node);
++              const gain=active.createGain(),at=start+index*.18;node.gain=gain;
++              oscillator.type="sine";oscillator.frequency.value=frequency;
++              gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(.14,at+.025);gain.gain.exponentialRampToValueAtTime(.0001,at+.34);
++              oscillator.connect(gain).connect(active.destination);
++              if(index===2)oscillator.onended=()=>{if(attempt===revision)pause();};
++              oscillator.start(at);oscillator.stop(at+.36);
++            });
++            // A suspended/interrupted context may never emit onended. Release
++            // the waiting reminder loop even when its audio clock stops.
++            playbackTimer=schedule(()=>{if(attempt===revision)pause();},1000);
++          }catch(error){finish=null;pause();reject(error);}
++        },error=>{if(attempt===revision){finish=null;pause();reject(error);}});
++      });
++    },
++    pause,
++    dispose(){if(disposed)return;disposed=true;pause();preparation?.cancel();release(context);}
++  };
++}
+diff --git a/frontend/src/components/cal-eats/combined-live-activity.css b/frontend/src/components/cal-eats/combined-live-activity.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..9683cbf3e224673b209584ccc884c4a10c17a68e
+--- /dev/null
++++ b/frontend/src/components/cal-eats/combined-live-activity.css
+@@ -0,0 +1,70 @@
++.both-activity-title, .both-activity-heading {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: baseline;
++  justify-content: space-between;
++  gap: .4rem .75rem;
++}
++.both-activity-title h2 {
++  color: #f6f7fa;
++  font-size: 1.35rem;
++  font-weight: 650;
++}
++.both-activity-title > span, .both-activity-heading > span {
++  color: #b8c1ce;
++  font-size: .84rem;
++  font-variant-numeric: tabular-nums;
++}
++.both-activity-title strong { color: #fff; }
++.both-activity-grid {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: clamp(.65rem, 1.5vw, 1.15rem);
++}
++.both-activity-card {
++  --accent: #bad8ff;
++  --border: #32425b;
++  --glow: #2d5b9755;
++  --surface: #161d2a;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  min-width: 0;
++  gap: .75rem;
++  border: 1px solid var(--border);
++  border-radius: 1rem;
++  background: radial-gradient(ellipse at 50% 43%, var(--glow), transparent 65%), linear-gradient(165deg, var(--surface), #15161c 87%);
++  padding: clamp(.8rem, 1.7vw, 1.25rem);
++}
++.both-activity-card--calai { --accent: #dbccff; --border: #483d5e; --glow: #6747ad51; --surface: #211b2f; }
++.both-activity-heading { align-self: stretch; align-items: center; }
++.both-activity-heading h3 { font-size: clamp(1.05rem, 2vw, 1.35rem); font-weight: 650; color: #fff; }
++.both-activity-card .live-order-orbit {
++  width: min(100%, clamp(130px, 16vw, 205px));
++  aspect-ratio: 1;
++  position: relative;
++  isolation: isolate;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: .28rem;
++}
++.both-activity-card .live-order-orbit-art {
++  position: absolute;
++  inset: 0;
++  width: 100%;
++  height: 100%;
++  z-index: -1;
++  filter: drop-shadow(0 5px 10px #07081285);
++}
++.both-activity-card .live-order-orbit strong { font-size: clamp(2.6rem, 4.5vw, 4.25rem); font-weight: 700; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
++.both-activity-card .live-order-orbit small { font-size: clamp(.6rem, .95vw, .75rem); letter-spacing: .14em; color: var(--accent); font-weight: 650; }
++.both-activity-stages { display: flex; flex-wrap: wrap; justify-content: center; gap: .2rem .8rem; font-size: .8rem; color: #cbd3e0; }
++.both-activity-link { margin-top: auto; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: .7rem; border-radius: .65rem; border: 1px solid var(--border); min-height: 44px; font-size: .86rem; color: #f1f3f9; font-weight: 600; }
++.both-activity-link:hover, .both-activity-link:focus-visible { background: #ffffff0c; border-color: var(--accent); }
++@media (max-width: 560px) {
++  .both-activity-heading { flex-direction: column; align-items: center; gap: .15rem; text-align: center; }
++  .both-activity-heading > span { font-size: .75rem; }
++}
++@media (max-width: 340px) { .both-activity-grid { grid-template-columns: minmax(0, 1fr); } }
+diff --git a/frontend/src/components/cal-eats/useHostedMessageReminder.js b/frontend/src/components/cal-eats/useHostedMessageReminder.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..286b15d899e961c8ce427adf645453eab65f8258
+--- /dev/null
++++ b/frontend/src/components/cal-eats/useHostedMessageReminder.js
+@@ -0,0 +1,57 @@
++import { useEffect, useRef, useState } from 'react';
++import { createBusinessMessageAudio } from './business-message-audio.js';
++import { createBusinessMessageMelody } from './business-message-melody-player.js';
++
++const quiet = { blocked: false, error: '', playing: false };
++
++export function useHostedMessageReminder(scope, attention, frameRef, childOrigin) {
++  const audio = useRef(null);
++  const latest = useRef(attention);
++  latest.current = attention;
++  const [state, setState] = useState(quiet);
++
++  useEffect(() => {
++    if (!scope) { setState(quiet); return; }
++    const player = createBusinessMessageMelody();
++    const controller = createBusinessMessageAudio(player);
++    audio.current = controller;
++    const unsubscribe = controller.subscribe(setState);
++    const prepare = () => {
++      if (latest.current?.soundEnabled === false) return;
++      void player.prepare().catch(() => {});
++      controller.interact();
++    };
++    const interact = event => { if (event.isTrusted) prepare(); };
++    // A tap inside the Cal-Eats frame activates its ancestors too, but pointer
++    // events don't bubble across documents. The frame signals that actual tap.
++    const frameInteraction = event => {
++      if (!frameRef?.current || event.source !== frameRef.current.contentWindow || event.origin !== childOrigin ||
++          event.data?.type !== 'cal-eats-workspace:audio-interaction' || event.data.version !== 1 ||
++          event.data.businessId !== scope || navigator.userActivation?.hasBeenActive === false) return;
++      prepare();
++    };
++    document.addEventListener('pointerdown', interact, true);
++    document.addEventListener('keydown', interact, true);
++    window.addEventListener('message', frameInteraction);
++    return () => {
++      unsubscribe();
++      document.removeEventListener('pointerdown', interact, true);
++      document.removeEventListener('keydown', interact, true);
++      window.removeEventListener('message', frameInteraction);
++      audio.current = null;
++      controller.stop();
++      player.dispose();
++    };
++  }, [scope, frameRef, childOrigin]);
++
++  useEffect(() => {
++    if (!audio.current) return;
++    audio.current.update({
++      scope, enabled: attention?.soundEnabled === true, revision: attention?.revision ?? 0,
++      pending: attention && attention.unreadCount > 0 && attention.revision > attention.acknowledgedRevision,
++      orderAlarmActive: attention?.orderAlarmActive === true,
++    });
++  }, [scope, attention?.unreadCount, attention?.soundEnabled, attention?.revision,
++    attention?.acknowledgedRevision, attention?.orderAlarmActive, frameRef, childOrigin]);
++  return scope ? state : quiet;
++}
+diff --git a/frontend/src/components/cal-eats/workspace-chrome.css b/frontend/src/components/cal-eats/workspace-chrome.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a074e854fbae5b0f9873914982d5365ff798366
+--- /dev/null
++++ b/frontend/src/components/cal-eats/workspace-chrome.css
+@@ -0,0 +1,39 @@
++.both-brand {
++  display: inline-flex;
++  align-items: center;
++  flex: none;
++  gap: .4rem;
++  line-height: 1;
++  white-space: nowrap;
++}
++.both-brand-full, .both-brand-mark { object-fit: contain; mix-blend-mode: lighten; }
++.both-brand-full { width: 5.8rem; height: 2.45rem; }
++.both-brand-mark { display: none; width: 2.1rem; height: 2.5rem; }
++.both-brand-plus { font-size: 1rem; color: #92a2bd; }
++.both-brand-eats { font-size: 1.25rem; font-weight: 750; letter-spacing: -.045em; color: #f8fafc; }
++.both-brand-eats > span { color: #67c7fc; }
++.both-brand--header .both-brand-full { width: 4.2rem; height: 1.9rem; }
++header > div:has(.both-brand--header) { min-width: 0; flex: 1; gap: .5rem; }
++.both-brand--header .both-brand-eats { font-size: 1.05rem; }
++.both-brand--header ~ div:has(img[alt="hand"]) { display: none; }
++.both-brand--header + h3 { font-size: 1.05rem; margin-inline-start: .6rem; }
++.both-messages {
++  display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px;
++  min-width: 44px; padding: .5rem .85rem; border: 1px solid #374252; border-radius: .75rem;
++  background: #1a202a; color: #ecf3ff; font-size: .875rem; font-weight: 600;
++}
++.both-messages:hover, .both-messages:focus-visible { background: #233348; }
++.both-brand:focus-visible, .both-messages:focus-visible { outline: 2px solid #87d2ff; outline-offset: 3px; }
++.both-messages[data-unread="true"] { background: #163250; border-color: #3e729c; }
++.both-unread-count { min-width: 1.4rem; padding: .12rem .32rem; text-align: center; border-radius: 99px; background: #a9e2ff; color: #0a2539; font-size: .78rem; }
++@media (min-width: 1536px) {
++  .both-brand--header { display: none; }
++  .both-brand--header + h3 { font-size: 1.6rem; margin-inline-start: 0; }
++  .both-brand--collapsed .both-brand-full, .both-brand--collapsed .both-brand-eats, .both-brand--collapsed .both-brand-plus { display: none; }
++  .both-brand--collapsed .both-brand-mark { display: block; }
++}
++@media (max-width: 767px) {
++  .both-brand--header + h3 { display: none; }
++  .both-messages-label { display: none; }
++  .both-messages { padding: .5rem; }
++}
+diff --git a/frontend/src/components/cal-eats/workspace-live-stats.mjs b/frontend/src/components/cal-eats/workspace-live-stats.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9265a0087c75ddf30d50ac31aaf32a66c5676776
+--- /dev/null
++++ b/frontend/src/components/cal-eats/workspace-live-stats.mjs
+@@ -0,0 +1,22 @@
++const callFields = ["activeCalls", "agentsInUse", "ringing", "queued", "forwarding"];
++const orderFields = ["liveOrders", "pendingConfirmation", "confirmedInKitchen", "readyForHandover"];
++
++function counts(source, fields) {
++  if (!source || !fields.every(field => Number.isSafeInteger(source[field]) && source[field] >= 0)) return null;
++  return Object.fromEntries(fields.map(field => [field, source[field]]));
++}
++
++export function workspaceLiveStats(payload) {
++  return {
++    calaiLiveCalls: counts(payload?.calaiLiveCalls, callFields),
++    eatsLiveOrders: counts(payload?.eatsLiveOrders, orderFields),
++  };
++}
++
++export function recordedPhoneOrderValue(insights, stats, field) {
++  if (field !== 'todayValue' && field !== 'value') return null;
++  const amount = Object.hasOwn(insights?.orders || {}, field) ? insights.orders[field] : stats?.orderValue?.[field];
++  if (typeof amount !== 'number' && !(typeof amount === 'string' && /^\d+(?:\.\d+)?$/.test(amount))) return null;
++  const value = Number(amount);
++  return Number.isFinite(value) && value >= 0 ? value : null;
++}
 diff --git a/frontend/src/components/cal-eats/workspace-model.mjs b/frontend/src/components/cal-eats/workspace-model.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c9e2fd3b44dc106cb2385a09bd0eb203ecca506e
+index 0000000000000000000000000000000000000000..541367c621815caebb5487909d3d310ceba08134
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.mjs
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,157 @@
++import { workspaceLiveStats } from './workspace-live-stats.mjs';
++
 +export const CAL_EATS_ORIGIN = 'https://eats.calai.info';
 +export const CAL_EATS_EMBED = CAL_EATS_ORIGIN + '/business/embedded';
 +export const WORKSPACE_STATE = 'cal-eats-workspace:state';
 +export const WORKSPACE_NAVIGATE = 'cal-eats-workspace:navigate';
 +export const WORKSPACE_TOOLS = Object.freeze([
 +  { view: 'orders', label: 'Orders', icon: 'lucide:receipt-text', permission: 'viewOrders' },
++  { view: 'reports', label: 'Tools & reports', icon: 'lucide:chart-column', permission: 'viewOrders' },
 +  { view: 'menu', label: 'Menu', icon: 'lucide:notebook-tabs', permission: 'manageMenu' },
-+  { view: 'inbox', label: 'Inbox', icon: 'lucide:message-square', permission: 'viewInbox' },
++  { view: 'inbox', label: 'Customer messages', icon: 'lucide:message-square', permission: 'viewInbox' },
 +  { view: 'customers', label: 'Customers', icon: 'lucide:users', permission: 'viewCustomers' },
 +  { view: 'offers', label: 'Marketing', icon: 'lucide:tag', permission: 'manageMarketing' },
 +  { view: 'support', label: 'Support', icon: 'lucide:life-buoy', permission: 'viewSupport' },
 +  { view: 'devices', label: 'Printers', icon: 'lucide:printer', permission: 'viewDevices' },
 +  { view: 'payouts', label: 'Earnings & payouts', icon: 'lucide:wallet', permission: 'viewPayouts' },
 +  { view: 'settings', label: 'Settings', icon: 'lucide:settings', permission: 'manageSettings' },
++  { view: 'notifications', label: 'Notifications', icon: 'lucide:bell', permission: 'viewOrders' },
++  { view: 'statements', label: 'Statements', icon: 'lucide:files', permission: 'viewOrders' },
 +]);
-+export const WORKSPACE_VIEWS = Object.freeze(['dashboard', 'accounts', ...WORKSPACE_TOOLS.map(tool => tool.view)]);
++export const WORKSPACE_VIEWS = Object.freeze(['background', 'dashboard', 'accounts', ...WORKSPACE_TOOLS.map(tool => tool.view)]);
 +
 +export function workspaceOrigin(development, previewOrigin) {
 +  if (development && typeof previewOrigin === 'string' && /^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(previewOrigin)) {
@@ -236,6 +1051,20 @@ index 0000000000000000000000000000000000000000..c9e2fd3b44dc106cb2385a09bd0eb203
 +const isId = value => typeof value === 'string' && UUID.test(value);
 +const plain = value => Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype);
 +const bounded = (value, size) => typeof value === 'string' && value.length > 0 && value.length <= size && !/[\u0000-\u001f\u007f]/.test(value);
++export function workspaceNativeDestination(event, sourceWindow, origin = CAL_EATS_ORIGIN) {
++  const value = event.data;
++  if (!sourceWindow || event.source !== sourceWindow || event.origin !== origin || !plain(value) ||
++      value.version !== 1 || value.type !== 'cal-eats-workspace:open-native') return null;
++  if (value.view === 'settings') return '/owner/settings';
++  if (value.view === 'subscription') return '/owner/settings/subscription';
++  return null;
++}
++export function workspaceCheckoutUrl(value) {
++  try {
++    const url = new URL(value);
++    return url.origin === 'https://checkout.stripe.com' && !url.username && !url.password ? url.href : null;
++  } catch { return null; }
++}
 +const sameId = (a, b) => typeof a === 'string' && typeof b === 'string' && UUID.test(a) && UUID.test(b) && a.toLowerCase() === b.toLowerCase();
 +const permitted = product => product.adminAllowed && product.linked && product.ready;
 +const validCount = value => Number.isSafeInteger(value) && value >= 0;
@@ -269,22 +1098,36 @@ index 0000000000000000000000000000000000000000..c9e2fd3b44dc106cb2385a09bd0eb203
 +  const orders = combined && capabilities.viewOrders ? recentOrders(value.orders) : [];
 +  const pendingOrderCount = combined && capabilities.viewOrders && validCount(value.pendingOrderCount) ? value.pendingOrderCount : null;
 +  const counters = combined ? { calai: calaiCounter, 'cal-eats': eatsCounter } : null;
-+  return { authenticated: true, business: combined ? { id: value.business.id, name: value.business.name } : null, counters, capabilities, orders, pendingOrderCount, matchesNativeAccount, combined };
++  const messageAttention = combined && (capabilities.viewInbox || capabilities.viewOrders)
++    ? readMessageAttention(value.messageAttention) : null;
++  return { authenticated: true, business: combined ? { id: value.business.id, name: value.business.name } : null,
++    counters, capabilities, orders, pendingOrderCount, messageAttention, matchesNativeAccount, combined,
++    ...workspaceLiveStats(combined && capabilities.viewOrders ? value : null) };
 +}
 +
-+const orderStatuses = new Set(['received', 'unconfirmed', 'confirmed', 'placed', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'completed', 'rejected']);
++function readMessageAttention(value) {
++  if (!plain(value) || !validCount(value.unreadCount) || !validCount(value.revision) ||
++      !Number.isSafeInteger(value.acknowledgedRevision) || value.acknowledgedRevision < -1 ||
++      value.acknowledgedRevision > value.revision || typeof value.soundEnabled !== 'boolean' ||
++      typeof value.orderAlarmActive !== 'boolean') return null;
++  const { unreadCount, revision, acknowledgedRevision, soundEnabled, orderAlarmActive } = value;
++  return { unreadCount, revision, acknowledgedRevision, soundEnabled, orderAlarmActive };
++}
++
++const orderStatuses = new Set(['received', 'unconfirmed', 'confirmed', 'placed', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'completed', 'rejected', 'cancelled', 'expired']);
 +function recentOrders(orders) {
 +  if (!Array.isArray(orders)) return [];
 +  return orders.slice(0, 8).filter(row => plain(row) && ['calai', 'cal-eats'].includes(row.source)
 +      && orderStatuses.has(row.status) && typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))
 +      && ['delivery', 'collection', 'takeaway', 'unknown'].includes(row.fulfilment))
-+    .map(({ source, status, createdAt, fulfilment, totalMinor }) => ({
++    .map(({ source, status, createdAt, fulfilment, totalMinor, sourceOrderId }) => ({
 +      source, status, createdAt, fulfilment, totalMinor: validCount(totalMinor) ? totalMinor : null,
++      ...(source === 'cal-eats' && isId(sourceOrderId) ? { sourceOrderId } : {}),
 +    }));
 +}
-+export function navigateWorkspaceMessage(view) {
++export function navigateWorkspaceMessage(view, orderId = null) {
 +  if (!WORKSPACE_VIEWS.includes(view)) throw new Error('Unsupported Cal-Eats workspace view');
-+  return { type: WORKSPACE_NAVIGATE, version: 1, view };
++  return { type: WORKSPACE_NAVIGATE, version: 1, view, ...(view === 'orders' && isId(orderId) ? { orderId } : {}) };
 +}
 +export function workspaceViewForPath(pathname) {
 +  if (pathname === '/owner/accounts-connections') return 'accounts';
@@ -308,18 +1151,51 @@ index 0000000000000000000000000000000000000000..c9e2fd3b44dc106cb2385a09bd0eb203
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.test.mjs b/frontend/src/components/cal-eats/workspace-model.test.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0ecdf0216396420c83df936d79c626419be367a0
+index 0000000000000000000000000000000000000000..7b4be222ccab88d995a9ac855e7813fba7aa6259
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.test.mjs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,209 @@
 +import assert from 'node:assert/strict';
 +import test from 'node:test';
 +import {readFileSync} from 'node:fs';
++import { recordedPhoneOrderValue } from './workspace-live-stats.mjs';
++
++test('combined phone order value uses recorded money and never the count or an invented zero', () => {
++  const stats = { orderValue: { todayValue: 9.5, value: 225 } };
++  assert.equal(recordedPhoneOrderValue({ orders:{ today:2, todayValue:15.75 } },stats,'todayValue'),15.75);
++  assert.equal(recordedPhoneOrderValue({ orders:{ today:2 } },stats,'todayValue'),9.5);
++  assert.equal(recordedPhoneOrderValue({ orders:{ today:2, todayValue:null } },stats,'todayValue'),null);
++  assert.equal(recordedPhoneOrderValue({ orders:{ today:0, todayValue:0 } },stats,'todayValue'),0);
++  assert.equal(recordedPhoneOrderValue({ orders:{ today:2, value:'17.75' } },stats,'value'),17.75);
++  assert.equal(recordedPhoneOrderValue({ orders:{ today:2 } },undefined,'todayValue'),null);
++});
 +import { CAL_EATS_ORIGIN, WORKSPACE_STATE, WORKSPACE_TOOLS, workspaceStateFromMessage, navigateWorkspaceMessage, workspaceViewForPath, workspacePath, displayOrderCount, displayTotalCount, workspaceIframeAllow, workspaceOrigin, requestedWorkspace, workspaceLoginPath, ownerDashboardAfterLogin } from './workspace-model.mjs';
 +const id = digit => `${digit.repeat(8)}-${digit.repeat(4)}-4${digit.repeat(3)}-8${digit.repeat(3)}-${digit.repeat(12)}`;
 +const source = {}, nativeUser = { id: id('1'), businessId: id('2'), role: 'BUSINESS_OWNER' };
 +function data() { return { type: WORKSPACE_STATE, version: 1, authenticated: true, workspaceMode: 'both', principalKind: 'human', tabletMode: null, business: { id: id('3'), name: 'Independent restaurant' }, products: { calai: { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active', sourceAccountId: nativeUser.businessId, verifiedSourceUserId: nativeUser.id }, 'cal-eats': { adminAllowed: true, linked: true, ready: true, effectiveStatus: 'active' } }, counters: { calai: { today: 4, available: true }, 'cal-eats': { today: 6, available: true } }, capabilities: { viewOrders: true, viewPayouts: false, manageMenu: false, viewDevices: true } }; }
 +const event = value => ({ origin: CAL_EATS_ORIGIN, source, data: value });
++
++test('unread totals and sound metadata are scoped to the connected business and its conversation permissions', () => {
++  const value = data();
++  const attention = { unreadCount: 3, revision: 7, acknowledgedRevision: 6, soundEnabled: true, orderAlarmActive: false };
++  value.capabilities.viewOrders = false;
++  value.messageAttention = { ...attention, message: 'private' };
++  const read = () => workspaceStateFromMessage(event(value), source, nativeUser).messageAttention;
++  assert.equal(read(), null);
++  value.capabilities.viewInbox = true;
++  assert.deepEqual(read(), attention);
++  value.capabilities.viewInbox = false;
++  value.capabilities.viewOrders = true;
++  assert.deepEqual(read(), attention);
++  value.messageAttention.acknowledgedRevision = 8;
++  assert.equal(read(), null);
++  value.messageAttention = attention;
++  value.workspaceMode = 'calai';
++  assert.equal(read(), null);
++  value.workspaceMode = 'both';
++  value.products.calai.verifiedSourceUserId = id('5');
++  assert.equal(read(), null);
++});
 +
 +test('iframe permissions grant only the fixed child origin and prefer loopback without modern LAN access', () => {
 +  const modern = workspaceIframeAllow(['autoplay', 'local-network-access', 'local-network', 'loopback-network']);
@@ -451,18 +1327,96 @@ index 0000000000000000000000000000000000000000..0ecdf0216396420c83df936d79c62641
 +  assert.deepEqual(denied.orders, []);
 +  assert.equal(denied.pendingOrderCount, null);
 +});
++
++test('live dials reject malformed aggregates independently and a receipt reference opens only a scoped Eats order', () => {
++  const value = data(), orderId = id('1');
++  value.eatsLiveOrders = { liveOrders: 0, pendingConfirmation: 0, confirmedInKitchen: 0, readyForHandover: 0, address:'hidden' };
++  value.calaiLiveCalls = { activeCalls: 2, agentsInUse: 1, ringing: 1, queued: -1, forwarding: 0 };
++  const order = { source:'cal-eats', status:'ready', sourceOrderId:orderId, createdAt:'2026-11-27T12:00:00Z', fulfilment:'collection', totalMinor:800 };
++  value.orders = [order,{...order,source:'calai'}, {...order,sourceOrderId:orderId+'?foo'}];
++  const state = workspaceStateFromMessage(event(value),source,nativeUser);
++  assert.deepEqual(state.eatsLiveOrders,{liveOrders:0,pendingConfirmation:0,confirmedInKitchen:0,readyForHandover:0});
++  assert.equal(state.calaiLiveCalls,null);
++  assert.deepEqual(state.orders.map(row=>row.sourceOrderId),[orderId,undefined,undefined]);
++  assert.equal(navigateWorkspaceMessage('orders',orderId).orderId,orderId);
++  assert.equal(navigateWorkspaceMessage('orders',orderId+'&x=1').orderId,undefined);
++  assert.equal(navigateWorkspaceMessage('menu',orderId).orderId,undefined);
++  assert.equal(workspaceViewForPath(workspacePath('reports')),'reports');
++  assert.equal(navigateWorkspaceMessage('background').view,'background');
++  assert.equal(workspaceStateFromMessage(event(value),source,{...nativeUser,id:id('7')}).eatsLiveOrders,null);
++});
++import { workspaceNativeDestination, workspaceCheckoutUrl } from './workspace-model.mjs';
++test('the combined plan chooser exposes only the existing hosted checkout provider', () => {
++  const sample = 'https://checkout.stripe.com/c/pay/fixture-offline';
++  assert.equal(workspaceCheckoutUrl(sample), sample);
++  for (const value of ['', '/c/pay/x', null, 'https://checkout.stripe.com.invalid/x', 'https://checkout.stripe.com:3210/x',
++    'https://person@checkout.stripe.com/x', 'https://checkout.stripe.com@wrong.invalid/x', 'http://checkout.stripe.com/x']) {
++    assert.equal(workspaceCheckoutUrl(value), null);
++  }
++});
++test('only the exact embedded child can request its existing native settings and billing screens', () => {
++  const frame = {};
++  const request = { origin: CAL_EATS_ORIGIN, source: frame, data: { type:'cal-eats-workspace:open-native', version:1, view:'subscription' } };
++  assert.equal(workspaceNativeDestination(request,frame),'/owner/settings/subscription');
++  assert.equal(workspaceNativeDestination({...request,data:{...request.data,view:'settings'}},frame),'/owner/settings');
++  assert.equal(workspaceNativeDestination({...request,origin:'https://example.invalid'},frame),null);
++  assert.equal(workspaceNativeDestination(request,{}),null);
++  for (const view of ['//example.invalid', '/admin', '__proto__']) assert.equal(workspaceNativeDestination({...request,data:{...request.data,view}},frame),null);
++  for (const view of ['statements','notifications']) assert.equal(workspaceViewForPath(workspacePath(view)),view);
++});
+diff --git a/frontend/src/components/layout/Header.jsx b/frontend/src/components/layout/Header.jsx
+index 32b9f068d7e52066bdbf0ceb4cda6e40c36c3402..54705885966db5503c5f955e5272b7f35cef7082 100644
+--- a/frontend/src/components/layout/Header.jsx
++++ b/frontend/src/components/layout/Header.jsx
+@@ -11,6 +11,7 @@ import Cookies from "js-cookie";
+ import { useQuery } from '@tanstack/react-query';
+ import useAxiosSecure from '../../hooks/useAxiosSecure';
+ import axios from 'axios';
++import { CombinedBrand, WorkspaceMessages } from '../cal-eats/CalEatsWorkspace';
+ 
+ export default function Header({ onMenuClick, isDesktopCollapsed, onDesktopMenuClick }) {
+   const [openDropdown, setOpenDropdown] = useState(false);
+@@ -180,6 +181,7 @@ export default function Header({ onMenuClick, isDesktopCollapsed, onDesktopMenuC
+           <FaSearch className="absolute top-1/2 -translate-y-1/2 left-3 text-[#64748B]"/>
+         </div> */}
+         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
++          <CombinedBrand placement="header">{null}</CombinedBrand>
+           <h3 className="text-2xl sm:text-xl md:text-2xl lg:text-3xl font-medium text-white truncate">
+             {role === "BUSINESS_OWNER" ? (businessName) : "Welcome to Calai"}
+           </h3>
+@@ -194,6 +196,7 @@ export default function Header({ onMenuClick, isDesktopCollapsed, onDesktopMenuC
+ 
+ 
+         <div className="flex items-center ml-auto gap-2 sm:gap-4 shrink-0">
++          <WorkspaceMessages />
+           {role === "BUSINESS_OWNER" && (
+             <div className="hidden sm:flex items-center gap-2 bg-[#1C2242] px-4 py-2 rounded-full border border-gray-800">
+               
 diff --git a/frontend/src/components/layout/Sidebar.jsx b/frontend/src/components/layout/Sidebar.jsx
-index ecfca552975bd8dc1db1d32d9379ab3c7fea988a..e4085bd8a9d0033e4092312e7d69627f268867a3 100644
+index ecfca552975bd8dc1db1d32d9379ab3c7fea988a..a276c6db96219e62bdaa5b9fc06f2190258162c4 100644
 --- a/frontend/src/components/layout/Sidebar.jsx
 +++ b/frontend/src/components/layout/Sidebar.jsx
 @@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
  import { FiX } from "react-icons/fi";
  import toast, { Toaster } from "react-hot-toast";
  import Cookies from "js-cookie";
-+import { CalEatsWorkspaceNavigation } from "../cal-eats/CalEatsWorkspace";
++import { CalEatsWorkspaceNavigation, CombinedBrand } from "../cal-eats/CalEatsWorkspace";
  
  export default function Sidebar({ isOpen, onClose, isDesktopCollapsed }) {
    const location = useLocation();
+@@ -74,10 +75,10 @@ export default function Sidebar({ isOpen, onClose, isDesktopCollapsed }) {
+         <div className="flex h-full flex-col">
+           {/* Header */}
+           <div className={`py-6 flex items-center gap-4 transition-all duration-300 ${isDesktopCollapsed ? "px-6 2xl:px-0 2xl:justify-center" : "px-6"}`}>
+-            <Link to="/">
++            <CombinedBrand placement="sidebar" collapsed={isDesktopCollapsed}><Link to="/">
+               <Image src="/logo.png" alt="Company Logo" className={`transition-all duration-300 ${isDesktopCollapsed ? "2xl:hidden" : ""}`} />
+               <Image src="/title.png" alt="Company Logo" className={`w-8 h-10 transition-all duration-300 hidden ${isDesktopCollapsed ? "2xl:block" : ""}`} />
+-            </Link>
++            </Link></CombinedBrand>
+           </div>
+ 
+           {/* Navigation */}
 @@ -99,6 +100,7 @@ export default function Sidebar({ isOpen, onClose, isDesktopCollapsed }) {
                  <span className={`text-sm whitespace-nowrap transition-all duration-300 ${isDesktopCollapsed ? "2xl:hidden" : ""}`}>{item.name}</span>
                </NavLink>
@@ -571,18 +1525,54 @@ index ef36c75e0afd2f3c62beb94f3423eb775a1ee483..81750cb26fe3097393208406f71fcda6
            navigate("/"); // Fallback if role is unknown
          }
 diff --git a/frontend/src/pages/owner/Dashboard.jsx b/frontend/src/pages/owner/Dashboard.jsx
-index 38b8ade3fbf8368b98a929625fb5c5f0da2ff2cf..67c6fd77e060311107a04b8178b1ae27d6f2b0f5 100644
+index 38b8ade3fbf8368b98a929625fb5c5f0da2ff2cf..de73dfaa8a27366447efbb578868344720bf9179 100644
 --- a/frontend/src/pages/owner/Dashboard.jsx
 +++ b/frontend/src/pages/owner/Dashboard.jsx
-@@ -7,6 +7,7 @@ import { useOwnerDashboard } from "../../hooks/useOwnerDashboard";
+@@ -7,6 +7,8 @@ import { useOwnerDashboard } from "../../hooks/useOwnerDashboard";
  import { formatUKDateTime } from "../../utils/date";
  
  import OwnerLiveActivity from "../../components/OwnerLiveActivity";
-+import { CalEatsCombinedCounters } from "../../components/cal-eats/CalEatsWorkspace";
++import { CalEatsCombinedCounters, useCombinedScope } from "../../components/cal-eats/CalEatsWorkspace";
++import { recordedPhoneOrderValue } from "../../components/cal-eats/workspace-live-stats.mjs";
  
  const StatCard = ({
    title,
-@@ -199,6 +200,8 @@ export default function Dashboard() {
+@@ -71,6 +73,7 @@ const StatCard = ({
+ 
+ export default function Dashboard() {
+   const { stats, graphData, overallReport, insights, live, printers, isLoading } = useOwnerDashboard();
++  const combined = Boolean(useCombinedScope().businessId);
+ 
+   const formatTrendText = (text, defaultText) => {
+     if (!text) return defaultText;
+@@ -89,8 +92,8 @@ export default function Dashboard() {
+   const totalOrders = insights?.orders?.total ?? stats?.totalOrder?.value ?? 0;
+   const todayOrders = insights?.orders?.today ?? stats?.totalOrder?.today ?? 0;
+   
+-  const orderValue = insights?.orders?.value ?? stats?.orderValue?.value ?? 0;
+-  const todayValue = insights?.orders?.today ?? stats?.orderValue?.today ?? 0;
++  const orderValue = combined ? recordedPhoneOrderValue(insights, stats, 'value') : insights?.orders?.value ?? stats?.orderValue?.value ?? 0;
++  const todayValue = combined ? recordedPhoneOrderValue(insights, stats, 'todayValue') : insights?.orders?.today ?? stats?.orderValue?.today ?? 0;
+   const unpricedOrders = insights?.orders?.unpriced ?? stats?.orderValue?.noPriceCount ?? 0;
+   const currencySymbol = insights?.orders?.currency === "GBP" ? "£" : (insights?.orders?.currency === "USD" ? "$" : "£");
+ 
+@@ -126,12 +129,12 @@ export default function Dashboard() {
+     },
+     {
+       title: "Order value",
+-      value: `${currencySymbol}${Number(todayValue).toFixed(2)}`,
++      value: todayValue === null ? "Unavailable" : `${currencySymbol}${Number(todayValue).toFixed(2)}`,
+       icon: "lucide:pound-sterling",
+       iconBg: "bg-transparent",
+       trend: "",
+-      trendText: "recorded value",
+-      prefixText: `${currencySymbol}${Number(orderValue).toFixed(2)}`,
++      trendText: combined && insights?.orders?.todayUnpriced > 0 ? `${insights.orders.todayUnpriced} unpriced today` : "recorded value",
++      prefixText: orderValue === null ? "" : `${currencySymbol}${Number(orderValue).toFixed(2)}`,
+       showArrow: false
+     },
+     {
+@@ -199,6 +202,8 @@ export default function Dashboard() {
          <p className="text-gray-400 text-sm mt-1">Your orders, conversations and live activity in one place.</p>
        </div>
  
@@ -591,6 +1581,112 @@ index 38b8ade3fbf8368b98a929625fb5c5f0da2ff2cf..67c6fd77e060311107a04b8178b1ae27
        {/* Live Activity Banner */}
        <OwnerLiveActivity 
          liveCalls={liveCalls} 
+@@ -254,6 +259,7 @@ export default function Dashboard() {
+         </div>
+       )}
+ 
++      {combined && <h2 className="mb-3 text-xl font-semibold text-white">Calai phone statistics</h2>}
+       <div className="grid grid-cols-12 gap-5 mb-5">
+         {statsData.map((stat, index) => (
+           <div key={index} className="col-span-12 sm:col-span-6 lg:col-span-4">
+diff --git a/frontend/src/pages/owner/settings/Plan.jsx b/frontend/src/pages/owner/settings/Plan.jsx
+index e9440b7a72138c91eeec9cc4439fcee36d7d992a..1ce970eec24e2d4b14812e86550084a281b672fe 100644
+--- a/frontend/src/pages/owner/settings/Plan.jsx
++++ b/frontend/src/pages/owner/settings/Plan.jsx
+@@ -1,11 +1,13 @@
+-import React, { useState } from "react";
++import React, { useRef, useState } from "react";
+ import { Sparkles, Check, X, Loader2 } from "lucide-react";
+ import { useQuery, useMutation } from "@tanstack/react-query";
+ import useAxiosSecure from "../../../hooks/useAxiosSecure";
+ import toast from "react-hot-toast";
+ import EnterpriseContactModal from "../../../components/EnterpriseContactModal";
++import { useCombinedScope } from "../../../components/cal-eats/CalEatsWorkspace";
++import { workspaceCheckoutUrl } from "../../../components/cal-eats/workspace-model.mjs";
+ 
+-const PlanCard = ({ plan, onUpgrade, isPendingUpgrade, isCurrentPlan }) => {
++const PlanCard = ({ plan, onUpgrade, isPendingUpgrade, isCurrentPlan, checkoutLink, onOpenCheckout }) => {
+   const isPopular = plan.name?.toLowerCase() === "starter" || plan.isPopular;
+ 
+   return (
+@@ -61,6 +63,11 @@ const PlanCard = ({ plan, onUpgrade, isPendingUpgrade, isCurrentPlan }) => {
+           >
+             Current Plan
+           </button>
++        ) : checkoutLink ? (
++          <a className="block rounded-lg bg-blue-700 px-3 py-2.5 text-center text-sm font-medium text-white"
++            href={checkoutLink} target="_blank" rel="noopener noreferrer" onClick={onOpenCheckout}>
++            Continue to secure checkout in a new window
++          </a>
+         ) : (
+           <button
+             onClick={() => onUpgrade(plan)}
+@@ -80,6 +87,10 @@ const PlanCard = ({ plan, onUpgrade, isPendingUpgrade, isCurrentPlan }) => {
+ 
+ const Plan = () => {
+   const axiosSecure = useAxiosSecure();
++  const scope = useCombinedScope();
++  const currentScope = useRef(scope);
++  currentScope.current = scope;
++  const [checkout, setCheckout] = useState(null);
+   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+ 
+   const { data: plansResponse, isLoading: isLoadingPlans } = useQuery({
+@@ -103,7 +114,7 @@ const Plan = () => {
+   });
+ 
+   const checkoutMutation = useMutation({
+-    mutationFn: async (planId) => {
++    mutationFn: async ({ planId }) => {
+       const payload = {
+         planId,
+         billingCycle: "monthly",
+@@ -114,9 +125,16 @@ const Plan = () => {
+       );
+       return response.data;
+     },
+-    onSuccess: (res) => {
++    onSuccess: (res, request) => {
+       if (res?.data?.url) {
+-        window.location.href = res.data.url;
++        if (request.enabled !== currentScope.current.enabled || request.businessId !== currentScope.current.businessId) return;
++        if (!request.enabled) {
++          window.location.href = res.data.url;
++          return;
++        }
++        const url = workspaceCheckoutUrl(res.data.url);
++        if (!url) { toast.error("The secure checkout address could not be verified."); return; }
++        setCheckout({ ...request, url });
+       } else {
+         toast.error("Failed to initiate checkout session");
+       }
+@@ -135,7 +153,12 @@ const Plan = () => {
+       setIsContactModalOpen(true);
+       return;
+     }
+-    checkoutMutation.mutate(plan.id);
++    if (scope.enabled && !scope.businessId) {
++      toast.error("Reconnect the combined workspace to continue to checkout.");
++      return;
++    }
++    setCheckout(null);
++    checkoutMutation.mutate({ planId: plan.id, ...scope });
+   };
+ 
+   const plans = [...(plansResponse?.data || [])].sort((a, b) => {
+@@ -170,9 +193,11 @@ const Plan = () => {
+             key={plan.id || index}
+             plan={plan}
+             onUpgrade={handleUpgrade}
++            checkoutLink={scope.businessId && checkout?.businessId === scope.businessId && checkout.planId === plan.id ? checkout.url : null}
++            onOpenCheckout={() => setTimeout(() => setCheckout(null), 0)}
+             isPendingUpgrade={
+               checkoutMutation.isPending &&
+-              checkoutMutation.variables === plan.id
++              checkoutMutation.variables?.planId === plan.id
+             }
+             isCurrentPlan={plan.id === currentPlanId}
+           />
 diff --git a/frontend/src/router/router.jsx b/frontend/src/router/router.jsx
 index 27ce2a727cc3193a9a7988a6920465a517cb48ab..864b3f761537e0bc7626e69279b5c79034458190 100644
 --- a/frontend/src/router/router.jsx

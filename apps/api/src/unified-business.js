@@ -11,6 +11,7 @@ import {readCalaiBusinessDirectory} from './platform-admin.js';
 import {parseLondonDateRange} from './marketplace-reporting.js';
 import {PAYABLE_ORDER_SQL} from './order-confirmation.js';
 import {calaiLiveCallSummary,freshCalaiLiveCalls,readCalaiLiveCalls,readCalaiPhoneOrderActivity} from './calai-live-calls.js';
+import {liveRestaurantOrderCounts} from './business-dashboard.js';
 import {CALAI_BUSINESS_ORIGIN,authenticateCalaiBusiness,calaiBusinessAdapter,calaiBusinessReadPath,calaiTokenMetadata,assertCalaiBusinessIdentity,encryptCalaiBusinessCredentials,decryptCalaiBusinessCredentials,redactCalaiBusinessData,isSourceId} from './unified-business-calai.js';
 export {authenticateCalaiBusiness} from './unified-business-calai.js';
 
@@ -288,7 +289,9 @@ export async function unifiedBusinessDashboard(db,session,config){
   const complete=Object.entries(fresh.products).every(([product,state])=>!state.active||counts[product].available);
   const canShowLive = canShowCalai && canReadCalaiLiveCalls(fresh) && fresh.eatsRestaurantId === business.eatsRestaurantId;
   const liveCalls = canShowLive ? calaiLiveCallSummary(calaiLiveCalls, config.now().getTime()) : null;
-  return{business:fresh,calaiLiveCalls:liveCalls,counts:{...counts,total:{today:complete?Object.values(counts).reduce((sum,row)=>sum+(row.today??0),0):null,complete}},orders:visible,connections,generatedAt:stamp(config),timeZone:'Europe/London',counterPeriod:'today',counterDefinition:'Orders received today in London. Cal-Eats counts orders released to the restaurant, including completed and closed orders.'};
+  const eatsLiveOrders = canReadCalaiLiveCalls(fresh) && fresh.eatsRestaurantId && counts['cal-eats'].available
+    ? liveRestaurantOrderCounts(db, fresh.eatsRestaurantId) : null;
+  return{business:fresh,calaiLiveCalls:liveCalls,eatsLiveOrders,counts:{...counts,total:{today:complete?Object.values(counts).reduce((sum,row)=>sum+(row.today??0),0):null,complete}},orders:visible,connections,generatedAt:stamp(config),timeZone:'Europe/London',counterPeriod:'today',counterDefinition:'Orders received today in London. Cal-Eats counts orders released to the restaurant, including completed and closed orders.'};
 }
 function requireConnectionAllowed(db,businessId,product){if(!businessProductPermission(db,businessId,product))throw fail(403,'ADMIN_CONNECTION_PERMISSION_REQUIRED','The platform administrator must allow this product connection first.');}
 function currentHumanSession(db,session,config){const user=human(db,session);if(session.sessionId){const table=session.nativeAudience==='platform-admin'?'native_platform_sessions':session.nativeAudience==='business'?'native_business_sessions':'sessions';if(!db.prepare(`SELECT 1 FROM ${table} WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?`).get(session.sessionId,user.id,stamp(config)))throw fail(401,'AUTH_REQUIRED','Sign in again to confirm this account connection.');}return user;}

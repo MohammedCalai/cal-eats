@@ -8,11 +8,11 @@ import BankingPasswordChange from "./BankingPasswordChange.jsx";
 import { bankSetupState } from "./bank-setup-state.js";
 import { describePayoutSchedule,payoutScheduleState } from "./payout-schedule-state.js";
 import { merchantFinanceCopy as merchantCopy } from "./merchant-finance-copy.js";
+import { bankProviderDestination } from "./bank-provider-navigation.js";
 
 export function StripeAdminReadiness(){return <><PaymentLaunchReadiness/><StripeConnectionReadiness/></>;}
 
 const money = (minor) => new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format((minor || 0) / 100);
-function hosted(url, hosts) { const parsed = new URL(url); if (parsed.protocol !== "https:" || !hosts.includes(parsed.hostname) || parsed.username || parsed.password) throw new Error("The payment service returned an unexpected destination."); return parsed.toString(); }
 
 export function RestaurantBankSetupSummary({ restaurantId, onOpen }) {
   const result = useFinanceResource(`/api/restaurant/restaurants/${restaurantId}/finance/stripe`);
@@ -28,15 +28,16 @@ function StripeRestaurantWorkspace({ restaurantId }) {
   const root = `/api/restaurant/restaurants/${restaurantId}/finance/stripe`;
   const result = useFinanceResource(root), [error, setError] = useState(""), [busy, setBusy] = useState(""), [bankVersion, setBankVersion] = useState(0),[securityNotice,setSecurityNotice]=useState("");
   const pending = useRef(false), active = useRef(true);
+  const [secureLink, setSecureLink] = useState(null);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(()=>{const refresh=()=>{if(!document.hidden&&!pending.current)void result.reload();};window.addEventListener("focus",refresh);return()=>window.removeEventListener("focus",refresh);},[result.reload]);
   async function action(kind, hosts) {
     if (pending.current || !bankSetupState(result).available) return;
-    pending.current = true; setBusy(kind); setError("");
+    pending.current = true; setBusy(kind); setError(""); setSecureLink(null);
     try {
       const value = await api(`${root}/${kind}`, json("POST", {}, newKey(`stripe-${kind}`)));
       if (!active.current) return;
-      if (value.url) window.location.assign(hosted(value.url, hosts));
+      if (value.url) setSecureLink(bankProviderDestination(value.url, hosts));
       else { await result.reload(); if (active.current) setBankVersion(version => version + 1); }
     } catch (caught) {
       if (active.current) {
@@ -54,7 +55,7 @@ function StripeRestaurantWorkspace({ restaurantId }) {
     {(result.error || error) && <p className="alert" role="alert">{merchantCopy(result.error || error)}</p>}
     {securityNotice&&<p className="alert success" role="status">{securityNotice}</p>}
     <p id="bank-setup-description">{setup.description}</p>
-    <div className="button-row finance-bank-setup-actions"><button className="primary" type="button" aria-describedby="bank-setup-description" disabled={Boolean(busy)||!setup.available} onClick={() => void action(setup.action, setup.action==="dashboard"?["dashboard.stripe.com", "connect.stripe.com"]:["connect.stripe.com"])}>{busy===setup.action?"Opening secure account…":setup.label}</button><button className="quiet" type="button" disabled={Boolean(busy)||result.loading} onClick={()=>void result.reload()}>{result.loading?"Checking connection…":"Refresh bank connection"}</button></div>
+    <div className="button-row finance-bank-setup-actions">{secureLink && setup.available ? <a className="button-link primary" href={secureLink} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setSecureLink(null), 0)}>Continue to secure bank setup in a new window</a> : <button className="primary" type="button" aria-describedby="bank-setup-description" disabled={Boolean(busy)||!setup.available} onClick={() => void action(setup.action, setup.action==="dashboard"?["dashboard.stripe.com", "connect.stripe.com"]:["connect.stripe.com"])}>{busy===setup.action?"Opening secure account…":setup.label}</button>}<button className="quiet" type="button" disabled={Boolean(busy)||result.loading} onClick={()=>void result.reload()}>{result.loading?"Checking connection…":"Refresh bank connection"}</button></div>
     {passwordRequired&&<BankingPasswordChange onChanged={passwordChanged}/>}
     {stripe?.merchantAgreementReviewAvailable&&<p><NavLink to="/owner/agreement">Review merchant agreement</NavLink></p>}
     {!stripe ? <p role="status">{result.loading ? "Loading payment setup…" : "Payment setup status is unavailable. Refresh to try again."}</p> : !stripe.configured ? <div className="finance-empty"><h3>{onboardingOnly?"Real bank setup awaiting connection":"Card payments awaiting connection"}</h3><p>{onboardingOnly?"Cal-Eats is preparing your real bank-payout connection. Customer ordering stays paused until Cal-Eats completes launch checks.":"Card payments and bank payouts are unavailable for this restaurant until its payment setup is completed."}</p><ol><li>Cal-Eats connects the payment account.</li><li>You enter your business and bank details through secure bank setup.</li><li>{onboardingOnly?"After verification and launch, completed orders become eligible for weekly payouts.":"Once verified, completed orders become eligible for weekly payouts."}</li><li>Available earnings are paid automatically to your bank on your verified payout schedule.</li></ol><p>Your order statements show the saved commission and confirmed refunds. Cash stays a separate payment to your restaurant.</p></div> : <>
