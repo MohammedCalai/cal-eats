@@ -1,11 +1,12 @@
 {
   "officialCommit": "246c09f4a6d224f09a813e20ee496b0eddf5e4df",
   "officialTree": "def82647c395f9f0607a332d04e9b48740c245d9",
-  "candidateTree": "163a3940d079babbc77d0e9254016f32ac650f94",
-  "patchSHA256": "f5208980859a2b31dc8e823389b938bd0edf7f214b9cf4bb3aa2bcb889bdf324",
+  "candidateTree": "7f2ff712082ccfb44361c4331397ba3f3c3de47d",
+  "patchSHA256": "306963bda73e4e9a551a6070ac8ebf846414790a74120d74d6c69adfb445a084",
   "patchVerifiedAgainstPristineIndex": true,
   "nativeRepositoryWorkingTreeClean": true,
   "changedPaths": [
+    "frontend/index.html",
     "frontend/public/both-calai-logo.png",
     "frontend/public/both-calai-mark.png",
     "frontend/src/components/cal-eats/CalEatsWorkspace.jsx",
@@ -27,7 +28,7 @@
     "frontend/src/pages/owner/settings/Plan.jsx",
     "frontend/src/router/router.jsx"
   ],
-  "protectedPathsVerified": 368,
+  "protectedPathsVerified": 367,
   "protectedGitBlobIds": {
     ".env.example": "ed1ae1d8e43e83468d25d541f0d02a74aca6c0c2",
     ".gitignore": "6edae927d535e9b23716675e245c0c65424d45e5",
@@ -262,7 +263,6 @@
     "frontend/README.md": "d63f688acbe41c21ef5166aeb544905144591f3e",
     "frontend/components.json": "9c80a4087bec27f5852ca3b3d23f50f1bfb5d31d",
     "frontend/eslint.config.js": "4fa125da29e01fa85529cfa06a83a7c0ce240d55",
-    "frontend/index.html": "76a7d665d56d1d2b02526ab13307c0e6d36e14d8",
     "frontend/jsconfig.json": "abe04df57891975b7972e6f33d456f995d198a4f",
     "frontend/nginx.conf": "8d2766eb0d225d7f1a7d2bb878a02a95c73ca8f9",
     "frontend/package-lock.json": "a5865d1be512861ab31eddc08ee9698782e87318",

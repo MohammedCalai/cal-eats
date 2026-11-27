@@ -1,3 +1,16 @@
+diff --git a/frontend/index.html b/frontend/index.html
+index 76a7d665d56d1d2b02526ab13307c0e6d36e14d8..7a71f6b03cbdaeb1c4bb23602e48b951fa04e618 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -2,7 +2,7 @@
+ <html lang="en">
+   <head>
+     <meta charset="UTF-8" />
+-    <link rel="icon" type="image/svg+xml" href="/title.png" />
++    <link rel="icon" type="image/png" href="/both-calai-mark.png" />
+     <link rel="preconnect" href="https://fonts.googleapis.com" />
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+     <link
 diff --git a/frontend/public/both-calai-logo.png b/frontend/public/both-calai-logo.png
 new file mode 100644
 index 0000000000000000000000000000000000000000..8cffa478216c2021e5ab5ae2e12b5267da406090
@@ -1415,7 +1428,7 @@ index 32b9f068d7e52066bdbf0ceb4cda6e40c36c3402..54705885966db5503c5f955e5272b7f3
              <div className="hidden sm:flex items-center gap-2 bg-[#1C2242] px-4 py-2 rounded-full border border-gray-800">
                
 diff --git a/frontend/src/components/layout/Sidebar.jsx b/frontend/src/components/layout/Sidebar.jsx
-index ecfca552975bd8dc1db1d32d9379ab3c7fea988a..a276c6db96219e62bdaa5b9fc06f2190258162c4 100644
+index ecfca552975bd8dc1db1d32d9379ab3c7fea988a..1abbc10ac8a93181e7f43c9158538288ccf98a06 100644
 --- a/frontend/src/components/layout/Sidebar.jsx
 +++ b/frontend/src/components/layout/Sidebar.jsx
 @@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
@@ -1431,10 +1444,12 @@ index ecfca552975bd8dc1db1d32d9379ab3c7fea988a..a276c6db96219e62bdaa5b9fc06f2190
            {/* Header */}
            <div className={`py-6 flex items-center gap-4 transition-all duration-300 ${isDesktopCollapsed ? "px-6 2xl:px-0 2xl:justify-center" : "px-6"}`}>
 -            <Link to="/">
-+            <CombinedBrand placement="sidebar" collapsed={isDesktopCollapsed}><Link to="/">
-               <Image src="/logo.png" alt="Company Logo" className={`transition-all duration-300 ${isDesktopCollapsed ? "2xl:hidden" : ""}`} />
-               <Image src="/title.png" alt="Company Logo" className={`w-8 h-10 transition-all duration-300 hidden ${isDesktopCollapsed ? "2xl:block" : ""}`} />
+-              <Image src="/logo.png" alt="Company Logo" className={`transition-all duration-300 ${isDesktopCollapsed ? "2xl:hidden" : ""}`} />
+-              <Image src="/title.png" alt="Company Logo" className={`w-8 h-10 transition-all duration-300 hidden ${isDesktopCollapsed ? "2xl:block" : ""}`} />
 -            </Link>
++            <CombinedBrand placement="sidebar" collapsed={isDesktopCollapsed}><Link to="/">
++              <Image src="/both-calai-logo.png" alt="Calai" className={`mix-blend-lighten transition-all duration-300 ${isDesktopCollapsed ? "2xl:hidden" : ""}`} />
++              <Image src="/both-calai-mark.png" alt="Calai" className={`w-8 h-10 mix-blend-lighten transition-all duration-300 hidden ${isDesktopCollapsed ? "2xl:block" : ""}`} />
 +            </Link></CombinedBrand>
            </div>
  
