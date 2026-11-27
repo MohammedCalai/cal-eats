@@ -34,7 +34,7 @@ test('successful launch checks the revision and opens the fixed original Calai s
       assert.deepEqual(JSON.parse(options.body), {state: 'open_calai', configurationTabletId: tabletId, configurationRevision: 4});
       return {tabletConfiguration, destination: 'https://untrusted.example'};
     }}), true);
-  assert.deepEqual(destinations, ['https://calai.info/auth/login']);
+  assert.deepEqual(destinations, ['https://calai.info/auth/login?workspace=calai']);
 });
 
 test('changed scope, cancelled startup and mismatched or rejected checks do not launch', async () => {

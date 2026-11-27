@@ -996,10 +996,10 @@ index 0000000000000000000000000000000000000000..9265a0087c75ddf30d50ac31aaf32a66
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.mjs b/frontend/src/components/cal-eats/workspace-model.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a6e24418bd3aec846cde146b9dbace7b91669d2
+index 0000000000000000000000000000000000000000..04278c7ff484e5c9685a7c6ada1e4df0eeed7f70
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.mjs
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,158 @@
 +import { workspaceLiveStats } from './workspace-live-stats.mjs';
 +
 +export const CAL_EATS_ORIGIN = 'https://eats.calai.info';
@@ -1035,17 +1035,15 @@ index 0000000000000000000000000000000000000000..3a6e24418bd3aec846cde146b9dbace7
 +  return workspace.length === 1 && ['both', 'calai'].includes(workspace[0]) ? workspace[0] : null;
 +}
 +
-+const bothQuery = '?workspace=both';
-+
 +export function workspaceLoginPath(pathname, search) {
 +  const presentationPath = pathname === '/auth/login' ? '/owner/dashboard' : pathname;
-+  const suffix = requestedWorkspace(presentationPath, search) === 'both' ? bothQuery : '';
-+  return '/auth/login' + suffix;
++  const mode = requestedWorkspace(presentationPath, search);
++  return mode ? '/auth/login?workspace=' + mode : '/auth/login';
 +}
 +
 +export function ownerDashboardAfterLogin(search) {
-+  const suffix = requestedWorkspace('/owner/dashboard', search) === 'both' ? bothQuery : '';
-+  return '/owner/dashboard' + suffix;
++  const mode = requestedWorkspace('/owner/dashboard', search);
++  return mode ? '/owner/dashboard?workspace=' + mode : '/owner/dashboard';
 +}
 +// A modern browser can delegate loopback without also granting LAN access.
 +// Older managed Edge uses its documented combined Local Network Access token.
@@ -1162,10 +1160,10 @@ index 0000000000000000000000000000000000000000..3a6e24418bd3aec846cde146b9dbace7
 +}
 diff --git a/frontend/src/components/cal-eats/workspace-model.test.mjs b/frontend/src/components/cal-eats/workspace-model.test.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9eaa17a69b6d738fc9ce935f7ec14eb066de9c80
+index 0000000000000000000000000000000000000000..a7c1e2348cab4406688f5f08cd7febe2777a0891
 --- /dev/null
 +++ b/frontend/src/components/cal-eats/workspace-model.test.mjs
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,222 @@
 +import assert from 'node:assert/strict';
 +import test from 'node:test';
 +import {readFileSync} from 'node:fs';
@@ -1249,7 +1247,7 @@ index 0000000000000000000000000000000000000000..9eaa17a69b6d738fc9ce935f7ec14eb0
 +  }
 +});
 +
-+test('an ordinary native sign-in retains only the fixed Both presentation flag through expired and parallel unauthorised reads', () => {
++test('native sign-in retains an explicit tablet mode through expired and parallel unauthorised reads', () => {
 +  const start = new URL('https://calai.info/owner/dashboard?workspace=both&returnTo=https://elsewhere.invalid');
 +  const signIn = new URL(workspaceLoginPath(start.pathname, start.search), start.origin);
 +  assert.equal(signIn.href, 'https://calai.info/auth/login?workspace=both');
@@ -1257,7 +1255,10 @@ index 0000000000000000000000000000000000000000..9eaa17a69b6d738fc9ce935f7ec14eb0
 +  assert.equal(ownerDashboardAfterLogin(signIn.search), '/owner/dashboard?workspace=both');
 +  assert.equal(workspaceLoginPath('/admin/dashboard', start.search), '/auth/login');
 +  assert.equal(workspaceLoginPath('/owner/settings', start.search), '/auth/login');
-+  for (const search of ['', '?workspace=calai', '?workspace=both&workspace=calai', '?workspace=https://elsewhere.invalid']) {
++  const calaiOnly = '?workspace=calai';
++  assert.equal(workspaceLoginPath('/auth/login', calaiOnly), '/auth/login' + calaiOnly);
++  assert.equal(ownerDashboardAfterLogin(calaiOnly), '/owner/dashboard' + calaiOnly);
++  for (const search of ['', '?workspace=both&workspace=calai', '?workspace=https://elsewhere.invalid']) {
 +    assert.equal(workspaceLoginPath(start.pathname, search), '/auth/login');
 +    assert.equal(ownerDashboardAfterLogin(search), '/owner/dashboard');
 +  }
